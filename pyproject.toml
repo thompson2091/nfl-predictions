@@ -14,12 +14,17 @@ dependencies = [
     "pyyaml>=6.0",
     "matplotlib>=3.8",
     "seaborn>=0.13",
-    "jupyter>=1.0",
-    "ipykernel>=6.0",
     "streamlit>=1.30",
     "plotly>=5.18",
     "anthropic>=0.40",
     "requests>=2.31",
+]
+
+[project.optional-dependencies]
+# Notebook tooling — kept out of the runtime image.
+dev = [
+    "jupyter>=1.0",
+    "ipykernel>=6.0",
 ]
 
 [build-system]

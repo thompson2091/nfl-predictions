@@ -1,0 +1,29 @@
+# Version control / tooling
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose*.yml
+.claude
+.agents
+.playwright-mcp
+
+# Local Python environments and build artifacts
+.venv
+**/__pycache__
+**/*.pyc
+*.egg-info
+.ipynb_checkpoints
+notebooks
+
+# Secrets never belong in an image layer
+.env
+.env.*
+!.env.example
+
+**/.DS_Store
+
+# Raw pulls are large and only schedules.parquet is read at serve time.
+# The pipeline entrypoint regenerates the rest via `ingest`.
+data/raw/*
+!data/raw/schedules.parquet

@@ -1,0 +1,66 @@
+# Local dev. Same image as production — only the mounts and the file watcher
+# differ, so what you run here is what ECS runs.
+#
+#   docker compose up                                   # app at :8501
+#   docker compose run --rm pipeline all                # full pipeline
+#   docker compose --profile prod up prod               # prod parity (no mounts)
+#
+# Secrets come from .env in the project root, which Compose loads automatically.
+
+x-env: &env
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  ODDS_API_KEY: ${ODDS_API_KEY:-}
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nfl-td-predict:dev
+    ports:
+      - "${APP_PORT:-8501}:8501"
+    environment:
+      <<: *env
+      # Bind mounts on macOS/Windows need polling for reload to fire.
+      STREAMLIT_SERVER_FILE_WATCHER_TYPE: poll
+      STREAMLIT_SERVER_RUN_ON_SAVE: "true"
+    volumes:
+      - ./app.py:/app/app.py:ro
+      - ./src:/app/src:ro
+      - ./scripts:/app/scripts:ro
+      # run_all.py rewrites settings.yaml in place, so config stays writable.
+      - ./config:/app/config
+      # Host artifacts shadow the baked ones — retrain locally, refresh the app.
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./output:/app/output
+
+  # Pipeline stages: ingest | targets | candidates | features | train |
+  # predict | all | pipeline. Writes land on the host through the mounts above.
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nfl-td-predict:dev
+    profiles: ["pipeline"]
+    environment: *env
+    command: ["all"]
+    volumes:
+      - ./src:/app/src:ro
+      - ./scripts:/app/scripts:ro
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./output:/app/output
+
+  # No mounts: exercises the artifacts actually baked into the image, which is
+  # what Fargate will serve. Use this to verify a build before pushing to ECR.
+  prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nfl-td-predict:dev
+    profiles: ["prod"]
+    ports:
+      - "${PROD_PORT:-8502}:8501"
+    environment: *env

@@ -10,19 +10,22 @@ Two prediction targets are supported:
 
 ## Requirements
 
-- Python 3.11+
-- `libomp` (LightGBM's OpenMP runtime). On macOS: `brew install libomp`.
-  Without it, `import lightgbm` fails with a `libomp.dylib` dlopen error.
+- Docker (the quickest path — see [Docker](#docker)), **or**
+- Python 3.11+ and `libomp` (LightGBM's OpenMP runtime). On macOS:
+  `brew install libomp`. Without it, `import lightgbm` fails with a
+  `libomp.dylib` dlopen error.
 
 ## Setup
 
 ```bash
 uv venv --python 3.11
 source .venv/bin/activate
-uv pip install -e .
+uv pip install -e ".[dev]"
 ```
 
-(`pip install -e .` works too if you'd rather not use `uv`.)
+(`pip install -e ".[dev]"` works too if you'd rather not use `uv`.) The `dev`
+extra adds Jupyter for the notebooks; plain `-e .` installs only what the
+pipeline and app need.
 
 ### Environment variables
 
@@ -90,6 +93,79 @@ Opens at <http://localhost:8501>. The sidebar selects the target type
 - **Model Performance** — calibration curves and evaluation metrics
 - **Parlay Builder** — combine legs and see joint probabilities
 
+## Docker
+
+One image serves everything: it bakes the code **and** the artifacts the app
+reads (`models/`, `output/`, `data/processed/`, `data/raw/schedules.parquet`),
+so a container needs no S3 bucket or EFS mount. Build once, run the same image
+locally and on ECS Fargate.
+
+### Local dev
+
+```bash
+cp .env.example .env    # optional keys; Compose picks .env up automatically
+make docker-build
+make docker-up          # http://localhost:8501
+```
+
+`docker compose up` bind-mounts `app.py`, `src/`, `scripts/`, `config/`,
+`data/`, `models/`, and `output/` over the baked copies, with Streamlit's
+watcher in polling mode — edit a file on the host and the app reloads. Host
+artifacts shadow the image's, so a local retrain shows up immediately.
+
+| Command | What it does |
+| --- | --- |
+| `make docker-build` | Build the image |
+| `make docker-up` / `make docker-down` | Start / stop the app |
+| `make docker-logs` | Tail app logs |
+| `make docker-shell` | Bash shell in the container |
+| `make docker-pipeline` | Run the full pipeline (`STAGE=predict` to pick one stage) |
+| `make docker-prod` | Serve on :8502 with no mounts — exactly what Fargate runs |
+| `make docker-build-amd64` | Build `linux/amd64` for Fargate |
+
+The entrypoint takes a verb: `app` (default), `ingest`, `targets`,
+`candidates`, `features`, `train`, `predict`, `all` (single target type, ingest
+through train), `pipeline` (`run_all.py`, both target types), `shell`, or any
+command to exec directly.
+
+```bash
+docker compose --profile pipeline run --rm pipeline predict
+docker run --rm -p 8501:8501 --env-file .env nfl-td-predict
+```
+
+### Deploying to ECS Fargate
+
+```bash
+make docker-build-amd64 IMAGE=<acct>.dkr.ecr.<region>.amazonaws.com/nfl-td-predict TAG=v1
+docker push <acct>.dkr.ecr.<region>.amazonaws.com/nfl-td-predict:v1
+```
+
+Task settings that matter:
+
+- **Platform** — build `linux/amd64` unless the task definition specifies
+  `ARM64` (Apple Silicon builds default to arm64 and will fail to start on an
+  x86 task).
+- **Port** — container port `8501`. The entrypoint honours `PORT` if you'd
+  rather set one.
+- **Health check** — `/_stcore/health` for the ALB target group; the image also
+  carries a Docker `HEALTHCHECK` on the same endpoint.
+- **Size** — 1 vCPU / 4 GB is comfortable; the app loads a ~59 MB feature
+  parquet per target type into memory. The image is ~2 GB, well under the 20 GB
+  default ephemeral storage.
+- **Secrets** — pass `ANTHROPIC_API_KEY` and `ODDS_API_KEY` via the task
+  definition's `secrets` block (Secrets Manager / SSM). Both are optional; the
+  app degrades gracefully without them.
+- **Filesystem** — leave `readonlyRootFilesystem` off, or mount writable
+  volumes at `/app/data`, `/app/models`, `/app/output`, and `/app/config`:
+  `get_path()` calls `mkdir(parents=True, exist_ok=True)`, and `run_all.py`
+  rewrites `config/settings.yaml` in place.
+- **Websockets** — Streamlit holds a websocket per session, so raise the ALB
+  idle timeout (300s) and enable target-group stickiness if you run more than
+  one task.
+- **Refreshing predictions** — artifacts are baked in, so new predictions mean
+  a rebuild and redeploy. Run the pipeline (locally or as an ECS run-task with
+  the same image), rebuild, push a new tag, update the service.
+
 ## Configuration
 
 `config/settings.yaml` drives the pipeline. Key sections:
@@ -108,6 +184,9 @@ Opens at <http://localhost:8501>. The sidebar selects the target type
 
 ```
 app.py              Streamlit app
+Dockerfile          multi-stage build (deps -> slim runtime)
+docker-compose.yml  local dev (app), pipeline, and prod-parity services
+docker/             entrypoint + container health check
 config/             settings.yaml
 scripts/            numbered pipeline stages + run_all.py
 src/
