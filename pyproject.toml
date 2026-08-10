@@ -1,0 +1,30 @@
+[project]
+name = "nfl-td-predict"
+version = "0.2.0"
+description = "NFL touchdown prediction engine with calibrated probabilities"
+requires-python = ">=3.11"
+dependencies = [
+    "nfl_data_py>=0.3.0",
+    "polars>=1.0",
+    "pandas>=2.0",
+    "pyarrow>=14.0",
+    "scikit-learn>=1.4",
+    "lightgbm>=4.0",
+    "xgboost>=2.0",
+    "pyyaml>=6.0",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "jupyter>=1.0",
+    "ipykernel>=6.0",
+    "streamlit>=1.30",
+    "plotly>=5.18",
+    "anthropic>=0.40",
+    "requests>=2.31",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*"]

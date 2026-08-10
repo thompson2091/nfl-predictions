@@ -1,0 +1,242 @@
+"""Fetch player TD props from The Odds API and cache locally."""
+import json
+import time
+from pathlib import Path
+from datetime import datetime, timezone
+
+import requests
+
+from src.utils.paths import get_path
+
+API_BASE = "https://api.the-odds-api.com/v4"
+SPORT = "americanfootball_nfl"
+CACHE_DIR = get_path("raw") / "odds_cache"
+
+
+def _get_api_key() -> str:
+    """Read API key from .env or environment."""
+    import os
+    key = os.environ.get("ODDS_API_KEY", "")
+    if not key:
+        env_path = Path(".env")
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                if line.startswith("ODDS_API_KEY="):
+                    key = line.split("=", 1)[1].strip().strip("\"'")
+                    break
+    return key
+
+
+def _american_to_implied(price: int) -> float:
+    """Convert American odds to implied probability."""
+    if price > 0:
+        return 100.0 / (price + 100.0)
+    else:
+        return -price / (-price + 100.0)
+
+
+def _cache_path(week_start: str) -> Path:
+    """Cache file for a given week (by start date)."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR / f"td_props_{week_start}.json"
+
+
+def fetch_week_td_props(week_start: str = None, force_refresh: bool = False) -> dict:
+    """Fetch first TD and anytime TD props for upcoming NFL games.
+
+    Args:
+        week_start: Date string (YYYY-MM-DD) to identify the week for caching.
+                    If None, uses today's date.
+        force_refresh: If True, bypass cache.
+
+    Returns:
+        Dict keyed by (home_team, away_team) with player odds:
+        {
+            "Seattle Seahawks vs New England Patriots": {
+                "home_team": "Seattle Seahawks",
+                "away_team": "New England Patriots",
+                "commence_time": "2026-09-10T00:15:00Z",
+                "first_td": [{"player": "...", "odds": 600, "implied_prob": 0.143}, ...],
+                "anytime_td": [{"player": "...", "odds": -105, "implied_prob": 0.512}, ...],
+            }
+        }
+    """
+    if week_start is None:
+        week_start = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    cache = _cache_path(week_start)
+    if not force_refresh and cache.exists():
+        # Use cache if less than 6 hours old
+        age_hours = (time.time() - cache.stat().st_mtime) / 3600
+        if age_hours < 6:
+            with open(cache) as f:
+                return json.load(f)
+
+    api_key = _get_api_key()
+    if not api_key:
+        print("No ODDS_API_KEY found. Set it in .env or environment.")
+        return {}
+
+    # Step 1: Get events
+    resp = requests.get(
+        f"{API_BASE}/sports/{SPORT}/events",
+        params={"apiKey": api_key},
+    )
+    resp.raise_for_status()
+    events = resp.json()
+
+    if not events:
+        return {}
+
+    # Find the earliest week of games (group by week)
+    events_by_date = {}
+    for e in events:
+        date = e["commence_time"][:10]
+        events_by_date.setdefault(date, []).append(e)
+
+    # Get all games in the upcoming week (first cluster of games)
+    sorted_dates = sorted(events_by_date.keys())
+    week_events = []
+    first_date = sorted_dates[0]
+    for date in sorted_dates:
+        # NFL weeks span Thu-Mon, so include dates within 5 days of first game
+        days_diff = (datetime.strptime(date, "%Y-%m-%d") -
+                     datetime.strptime(first_date, "%Y-%m-%d")).days
+        if days_diff <= 5:
+            week_events.extend(events_by_date[date])
+        else:
+            break
+
+    print(f"Fetching TD props for {len(week_events)} games...")
+
+    results = {}
+    for event in week_events:
+        event_id = event["id"]
+        home = event["home_team"]
+        away = event["away_team"]
+        game_key = f"{away} @ {home}"
+
+        try:
+            resp = requests.get(
+                f"{API_BASE}/sports/{SPORT}/events/{event_id}/odds",
+                params={
+                    "apiKey": api_key,
+                    "regions": "us",
+                    "markets": "player_1st_td,player_anytime_td",
+                    "oddsFormat": "american",
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            print(f"  Error fetching {game_key}: {e}")
+            continue
+
+        game_data = {
+            "home_team": home,
+            "away_team": away,
+            "commence_time": event["commence_time"],
+            "first_td": [],
+            "anytime_td": [],
+        }
+
+        # Aggregate across bookmakers — use first bookmaker with data
+        for bk in data.get("bookmakers", []):
+            for market in bk.get("markets", []):
+                market_key = market["key"]
+                target = "first_td" if market_key == "player_1st_td" else "anytime_td"
+
+                if game_data[target]:
+                    continue  # Already have data from another bookmaker
+
+                for outcome in market.get("outcomes", []):
+                    if outcome["name"] == "Yes":
+                        price = outcome["price"]
+                        game_data[target].append({
+                            "player": outcome["description"],
+                            "odds": price,
+                            "implied_prob": round(_american_to_implied(price), 4),
+                            "bookmaker": bk["key"],
+                        })
+
+                # Sort by implied probability descending
+                game_data[target].sort(key=lambda x: x["implied_prob"], reverse=True)
+
+        results[game_key] = game_data
+
+    remaining = resp.headers.get("x-requests-remaining", "?")
+    print(f"  API credits remaining: {remaining}")
+
+    # Cache
+    with open(cache, "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"  Cached to {cache}")
+
+    return results
+
+
+def load_cached_odds() -> dict:
+    """Load most recent cached odds without making API calls."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_files = sorted(CACHE_DIR.glob("td_props_*.json"), reverse=True)
+    if not cache_files:
+        return {}
+    with open(cache_files[0]) as f:
+        return json.load(f)
+
+
+def build_odds_parquet() -> Path | None:
+    """Consolidate all cached odds JSON files into a single parquet for features.
+
+    Output schema: player_name, home_team, away_team, commence_time,
+                   first_td_odds, first_td_implied, anytime_td_odds, anytime_td_implied
+    """
+    import polars as pl
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_files = list(CACHE_DIR.glob("td_props_*.json"))
+    if not cache_files:
+        return None
+
+    rows = []
+    for f in cache_files:
+        with open(f) as fh:
+            data = json.load(fh)
+
+        for game_key, game_data in data.items():
+            home = game_data["home_team"]
+            away = game_data["away_team"]
+            commence = game_data.get("commence_time", "")
+
+            # Build player lookup for each market
+            first_td_map = {
+                p["player"]: p for p in game_data.get("first_td", [])
+            }
+            anytime_td_map = {
+                p["player"]: p for p in game_data.get("anytime_td", [])
+            }
+
+            # Union all player names from both markets
+            all_players = set(first_td_map.keys()) | set(anytime_td_map.keys())
+            for player in all_players:
+                ftd = first_td_map.get(player)
+                atd = anytime_td_map.get(player)
+                rows.append({
+                    "odds_player_name": player,
+                    "odds_home_team": home,
+                    "odds_away_team": away,
+                    "commence_time": commence,
+                    "first_td_odds": ftd["odds"] if ftd else None,
+                    "first_td_implied": ftd["implied_prob"] if ftd else None,
+                    "anytime_td_odds": atd["odds"] if atd else None,
+                    "anytime_td_implied": atd["implied_prob"] if atd else None,
+                })
+
+    if not rows:
+        return None
+
+    df = pl.DataFrame(rows)
+    out_path = get_path("raw") / "player_td_odds.parquet"
+    df.write_parquet(out_path)
+    print(f"Player TD odds: {df.shape[0]} rows -> {out_path}")
+    return out_path

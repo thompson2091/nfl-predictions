@@ -1,0 +1,53 @@
+target:
+  type: first_td          # first_td | anytime_td
+
+seasons:
+  start: 2015
+  end: 2025
+  predict_season: 2026
+
+splits:
+  train_end: 2024
+  val_season: 2025
+  test_season: 2025
+
+rolling_windows:
+  short: 3
+  medium: 5
+
+models:
+  active: [lr, lgbm, xgb]
+  production: lr
+
+model:
+  seed: 42
+  lgbm:
+    n_estimators: 500
+    learning_rate: 0.05
+    max_depth: 6
+    num_leaves: 31
+    subsample: 0.8
+    colsample_bytree: 0.8
+  xgb:
+    n_estimators: 500
+    learning_rate: 0.05
+    max_depth: 6
+    subsample: 0.8
+    colsample_bytree: 0.8
+  logistic:
+    max_iter: 2000
+    C: 0.1
+
+paths:
+  raw: data/raw
+  processed: data/processed
+  models: models
+  output: output
+  plots: output/plots
+
+ai_context:
+  enabled: true
+  max_adjustment: 0.1
+
+positions:
+  offensive: ["QB", "RB", "WR", "TE", "FB"]

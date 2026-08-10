@@ -1,0 +1,21 @@
+- generic [ref=e3]:
+  - banner [ref=e6]:
+    - generic [ref=e9]:
+      - button "Deploy" [ref=e19] [cursor=pointer]
+      - button "Main menu" [ref=e23] [cursor=pointer]
+  - alert [ref=e30]:
+    - generic [ref=e32]:
+      - generic [ref=e33]: "ModuleNotFoundError: No module named 'anthropic'"
+      - generic [ref=e34]:
+        - generic [ref=e35]: "Traceback:"
+        - code [ref=e38]:
+          - generic [ref=e39]: File "/Users/mthompson/projects/personal/nfl-predictions/.venv/lib/python3.11/site-packages/streamlit/runtime/scriptrunner/exec_code.py", line 129, in exec_func_with_error_handling result = func() ^^^^^^
+          - generic [ref=e40]: "File \"/Users/mthompson/projects/personal/nfl-predictions/.venv/lib/python3.11/site-packages/streamlit/runtime/scriptrunner/script_runner.py\", line 795, in code_to_exec exec(code, module.__dict__) # noqa: S102 ^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+          - generic [ref=e41]: File "/Users/mthompson/projects/personal/nfl-predictions/app.py", line 21, in <module> from src.analysis.game_analyst import analyze_edges
+          - generic [ref=e42]: File "/Users/mthompson/projects/personal/nfl-predictions/src/analysis/game_analyst.py", line 6, in <module> import anthropic
+      - generic [ref=e43]:
+        - button "Copy" [ref=e44] [cursor=pointer]
+        - link "Ask Google" [ref=e45] [cursor=pointer]:
+          - /url: https://www.google.com/search?q=ModuleNotFoundError%3A%20No%20module%20named%20'anthropic'
+        - link "Ask ChatGPT" [ref=e46] [cursor=pointer]:
+          - /url: https://chatgpt.com/?q=ModuleNotFoundError%3A%20No%20module%20named%20'anthropic'%0A%0AFile%20%22%2FUsers%2Fmthompson%2Fprojects%2Fpersonal%2Fnfl-predictions%2F.venv%2Flib%2Fpython3.11%2Fsite-packages%2Fstreamlit%2Fruntime%2Fscriptrunner%2Fexec_code.py%22%2C%20line%20129%2C%20in%20exec_func_with_error_handling%0A%20%20%20%20result%20%3D%20func()%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%5E%5E%5E%5E%5E%5E%0AFile%20%22%2FUsers%2Fmthompson%2Fprojects%2Fpersonal%2Fnfl-predictions%2F.venv%2Flib%2Fpython3.11%2Fsite-packages%2Fstreamlit%2Fruntime%2Fscriptrunner%2Fscript_runner.py%22%2C%20line%20795%2C%20in%20code_to_exec%0A%20%20%20%20exec(code%2C%20module.__dict__)%20%20%23%20noqa%3A%20S102%0A%20%20%20%20%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%5E%0AFile%20%22%2FUsers%2Fmthompson%2Fprojects%2Fpersonal%2Fnfl-predictions%2Fapp.py%22%2C%20line%2021%2C%20in%20%3Cmodule%3E%0A%20%20%20%20from%20src.analysis.game_analyst%20import%20analyze_edges%0AFile%20%22%2FUsers%2Fmthompson%2Fprojects%2Fpersonal%2Fnfl-predictions%2Fsrc%2Fanalysis%2Fgame_analyst.py%22%2C%20line%206%2C%20in%20%3Cmodule%3E%0A%20%20%20%20import%20anthropic

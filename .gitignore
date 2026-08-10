@@ -1,0 +1,9 @@
+data/
+models/*.pkl
+output/
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.ipynb_checkpoints/
+.env
