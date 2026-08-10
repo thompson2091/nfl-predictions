@@ -1,9 +1,11 @@
 """Player share features: target_share, air_yards_share, wopr, rush_share, td_market_share."""
 import polars as pl
 from src.utils.config import get_config
+from src.features.carry_forward import build_with_carry_forward
 
 
-def build_player_share_features(weekly_stats: pl.DataFrame) -> pl.DataFrame:
+def build_player_share_features(weekly_stats: pl.DataFrame,
+                                spine: pl.DataFrame = None) -> pl.DataFrame:
     """Per-player share/efficiency metrics. Shift(1) rolling."""
     cfg = get_config()
     short = cfg["rolling_windows"]["short"]
@@ -61,25 +63,19 @@ def build_player_share_features(weekly_stats: pl.DataFrame) -> pl.DataFrame:
     elif "racr" in df.columns:
         share_cols.append("racr")
 
-    # Rolling features with shift(1)
-    rolling_exprs = []
-    for col in share_cols:
-        if col not in df.columns:
-            continue
-        shifted = pl.col(col).shift(1)
-        rolling_exprs.extend([
-            shifted.rolling_mean(short, min_samples=3).over("player_id").alias(f"player_{col}_avg_{short}g"),
-            shifted.rolling_mean(medium, min_samples=3).over("player_id").alias(f"player_{col}_avg_{medium}g"),
-            (shifted.cum_sum().over("player_id") / shifted.cum_count().over("player_id")).alias(f"player_{col}_szn_avg"),
-        ])
+    # Rolling features. lag=1 for real rows (no leakage); lag=0 supplies the
+    # state carried into an unplayed week — see src/features/carry_forward.py.
+    def _exprs(lag: int) -> list[pl.Expr]:
+        out = []
+        for col in share_cols:
+            if col not in df.columns:
+                continue
+            base = pl.col(col).shift(lag) if lag else pl.col(col)
+            out.extend([
+                base.rolling_mean(short, min_samples=3).over("player_id").alias(f"player_{col}_avg_{short}g"),
+                base.rolling_mean(medium, min_samples=3).over("player_id").alias(f"player_{col}_avg_{medium}g"),
+                (base.cum_sum().over("player_id") / base.cum_count().over("player_id")).alias(f"player_{col}_szn_avg"),
+            ])
+        return out
 
-    if not rolling_exprs:
-        # Return empty frame if no share columns found
-        return pl.DataFrame(schema={"player_id": pl.Utf8, "season": pl.Int64, "week": pl.Int64})
-
-    result = (
-        df.with_columns(rolling_exprs)
-        .select(["player_id", "season", "week"] + [e.meta.output_name() for e in rolling_exprs])
-    )
-
-    return result
+    return build_with_carry_forward(df, _exprs, spine=spine, zero_cols=share_cols)

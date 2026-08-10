@@ -1,0 +1,30 @@
+{
+  "kind": "scorer_rate_prior",
+  "design_cols": [
+    "total_line",
+    "abs_spread"
+  ],
+  "coef": [
+    0.9002830750509774,
+    0.0018643531039704184,
+    -0.000616361362261942
+  ],
+  "seasons_used": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+  ],
+  "n_games": 2458,
+  "mean_scorers_per_game": 0.9816924328722538,
+  "rmse": 0.1337956080649967,
+  "min_expected": 0.0,
+  "max_expected": 1.0,
+  "fit_date": "2026-08-10",
+  "source": "labels derived from nflverse play-by-play (see docs/DATA_SOURCES.md)"
+}

@@ -1,9 +1,10 @@
 """First-half usage features: carries, targets, touches in Half1 only."""
 import polars as pl
 from src.utils.config import get_config
+from src.features.spine import densify
 
 
-def build_first_half_features(pbp: pl.DataFrame) -> pl.DataFrame:
+def build_first_half_features(pbp: pl.DataFrame, spine: pl.DataFrame) -> pl.DataFrame:
     """Per-player first-half usage. Filters out garbage-time inflation. Shift(1)."""
     cfg = get_config()
     medium = cfg["rolling_windows"]["medium"]
@@ -53,7 +54,12 @@ def build_first_half_features(pbp: pl.DataFrame) -> pl.DataFrame:
         .alias("h1_touch_share")
     ).drop("team_h1_plays")
 
-    player_h1 = player_h1.sort(["player_id", "season", "week"])
+    # Densify: absence must mean "available, no first-half touch" rather than
+    # silently encoding current-game involvement. See src/features/spine.py.
+    player_h1 = densify(
+        player_h1, spine,
+        zero_cols=["h1_carries", "h1_targets", "h1_touches", "h1_touch_share"],
+    )
 
     # Rolling with shift(1)
     rolling_exprs = []

@@ -35,6 +35,21 @@ def _american_to_implied(price: int) -> float:
         return -price / (-price + 100.0)
 
 
+def _median(values: list[float]) -> float:
+    """Median of a non-empty sequence.
+
+    Consensus across books rather than whichever bookmaker answered first: a
+    single book's price carries its own margin and its own stale lines, and one
+    outlier moves a mean far more than it moves a median.
+    """
+    s = sorted(values)
+    n = len(s)
+    if n == 0:
+        raise ValueError("median of empty sequence")
+    mid = n // 2
+    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2.0
+
+
 def _cache_path(week_start: str) -> Path:
     """Cache file for a given week (by start date)."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -140,27 +155,43 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False) -> 
             "anytime_td": [],
         }
 
-        # Aggregate across bookmakers — use first bookmaker with data
-        for bk in data.get("bookmakers", []):
-            for market in bk.get("markets", []):
-                market_key = market["key"]
-                target = "first_td" if market_key == "player_1st_td" else "anytime_td"
+        # Aggregate across bookmakers. Consensus (median across books) is more
+        # stable than any single book and is what we de-vig against.
+        for market_key, target in (("player_1st_td", "first_td"),
+                                   ("player_anytime_td", "anytime_td")):
+            # player -> {"yes": [probs], "no": [probs], "odds": [american]}
+            quotes: dict[str, dict] = {}
+            for bk in data.get("bookmakers", []):
+                for market in bk.get("markets", []):
+                    if market["key"] != market_key:
+                        continue
+                    for outcome in market.get("outcomes", []):
+                        side = outcome["name"].lower()
+                        if side not in ("yes", "no"):
+                            continue
+                        player = outcome["description"]
+                        q = quotes.setdefault(player, {"yes": [], "no": [], "odds": []})
+                        q[side].append(_american_to_implied(outcome["price"]))
+                        if side == "yes":
+                            q["odds"].append(outcome["price"])
 
-                if game_data[target]:
-                    continue  # Already have data from another bookmaker
+            for player, q in quotes.items():
+                if not q["yes"]:
+                    continue
+                p_yes = _median(q["yes"])
+                p_no = _median(q["no"]) if q["no"] else None
+                game_data[target].append({
+                    "player": player,
+                    "odds": int(_median(q["odds"])),
+                    # Raw two-way price, vig included.
+                    "implied_prob": round(p_yes, 4),
+                    # Vig removed where the book posts both sides.
+                    "fair_prob": round(p_yes / (p_yes + p_no), 4) if p_no else None,
+                    "n_books": len(q["yes"]),
+                    "overround": round(p_yes + p_no, 4) if p_no else None,
+                })
 
-                for outcome in market.get("outcomes", []):
-                    if outcome["name"] == "Yes":
-                        price = outcome["price"]
-                        game_data[target].append({
-                            "player": outcome["description"],
-                            "odds": price,
-                            "implied_prob": round(_american_to_implied(price), 4),
-                            "bookmaker": bk["key"],
-                        })
-
-                # Sort by implied probability descending
-                game_data[target].sort(key=lambda x: x["implied_prob"], reverse=True)
+            game_data[target].sort(key=lambda x: x["implied_prob"], reverse=True)
 
         results[game_key] = game_data
 

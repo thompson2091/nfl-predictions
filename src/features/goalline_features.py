@@ -1,9 +1,10 @@
 """Goal line & end zone features: inside-5/10 usage and share metrics."""
 import polars as pl
 from src.utils.config import get_config
+from src.features.spine import densify
 
 
-def build_goalline_features(pbp: pl.DataFrame) -> pl.DataFrame:
+def build_goalline_features(pbp: pl.DataFrame, spine: pl.DataFrame) -> pl.DataFrame:
     """Per-player goal-line carry/target share and TD rate. Shift(1) rolling."""
     cfg = get_config()
     medium = cfg["rolling_windows"]["medium"]
@@ -80,7 +81,15 @@ def build_goalline_features(pbp: pl.DataFrame) -> pl.DataFrame:
         .alias("endzone_td_rate")
     )
 
-    gl = gl.sort(["player_id", "season", "week"])
+    # Densify before rolling. A row previously existed only for weeks the player
+    # had goal-line usage, so non-nullness leaked current-game involvement —
+    # worth a 15.5x lift in P(scored) on its own. See src/features/spine.py.
+    gl = densify(
+        gl, spine,
+        zero_cols=["i5_carries", "i5_rush_tds", "i5_targets", "i5_touches",
+                   "i5_touch_share", "i10_carries", "i10_targets",
+                   "i10_touches", "i10_touch_share", "endzone_td_rate"],
+    )
 
     # Rolling features with shift(1)
     stat_cols = ["i5_carries", "i5_targets", "i5_touches", "i5_touch_share",

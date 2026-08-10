@@ -31,6 +31,11 @@ def get_feature_cols(df: pl.DataFrame) -> list[str]:
         "sbook_first_td_implied", "sbook_anytime_td_implied",
         "sbook_first_td_rank", "sbook_anytime_td_rank",
         "depth_chart_rank",
+        # Measured at kickoff, so never known when we actually predict. They were
+        # 34% null in training and 100% null at predict time — a guaranteed
+        # train/serve skew. The derived is_cold / is_windy / is_dome flags come
+        # from the schedule and ARE available ahead of time; use those instead.
+        "temp", "wind",
     }
     return [c for c in df.columns
             if c not in exclude
@@ -250,6 +255,23 @@ def train_all(target_type: str = None):
     # Save feature cols
     with open(model_dir / "feature_cols.pkl", "wb") as f:
         pickle.dump(feature_cols, f)
+
+    # --- Fit the empirical scorer-rate prior on the training seasons ---
+    from src.models.market_prior import fit_scorer_rate_prior, save_prior
+    train_seasons = sorted(train_df["season"].unique().to_list())
+    prior = fit_scorer_rate_prior(df, train_seasons)
+    save_prior(prior, model_dir / "scorer_rate_prior.json")
+    print(f"\nScorer-rate prior: {prior['mean_scorers_per_game']:.2f} scorers/game "
+          f"over {prior['n_games']:,} games (RMSE {prior['rmse']:.2f}) "
+          f"-> {model_dir / 'scorer_rate_prior.json'}")
+
+    # --- Record the training feature distribution for train/serve skew checks ---
+    null_rates = {
+        c: float(train_df[c].is_null().mean()) for c in feature_cols
+        if c in train_df.columns
+    }
+    with open(model_dir / "train_null_rates.pkl", "wb") as f:
+        pickle.dump(null_rates, f)
 
     # Save metrics
     output_dir = get_path("output", target_type)

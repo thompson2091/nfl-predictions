@@ -14,6 +14,12 @@ def build_box_features(pbp: pl.DataFrame) -> pl.DataFrame:
     Returns one row per (season, week, opponent) with lagged rolling averages.
     Join on opponent (the defense) to get their box tendency.
     """
+    if "defenders_in_box" not in pbp.columns:
+        # Participation data is unavailable for these seasons. Return empty
+        # rather than raising — the assembler skips empty feature frames,
+        # and a missing optional feed should degrade, not halt the run.
+        print("  build_box_features: no 'defenders_in_box' column, skipping")
+        return pl.DataFrame()
     plays = pbp.filter(
         pl.col("defenders_in_box").is_not_null()
         & pl.col("defteam").is_not_null()

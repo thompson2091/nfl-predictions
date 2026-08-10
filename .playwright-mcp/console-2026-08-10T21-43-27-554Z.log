@@ -1,0 +1,11 @@
+[  104293ms] [WARNING] WebSocket onclose @ http://localhost:8501/static/js/index.bE3scgDe.js:34
+[  104765ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:8501/_stcore/health:0
+[  104765ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:8501/_stcore/host-config:0
+[  104869ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:8501/_stcore/health:0
+[  104869ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:8501/_stcore/host-config:0
+[  105018ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:8501/_stcore/health:0
+[  105018ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:8501/_stcore/host-config:0
+[  105413ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:8501/_stcore/health:0
+[  105413ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:8501/_stcore/host-config:0
+[  106115ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:8501/_stcore/health:0
+[  106115ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:8501/_stcore/host-config:0

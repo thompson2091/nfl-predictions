@@ -66,52 +66,41 @@ def build_team_target_tendency(target_type: str = None) -> pl.DataFrame:
     td_cols = ["target_was_rush", "target_was_pass", "target_was_defst",
                "target_by_rb", "target_by_wr", "target_by_te", "target_by_qb"]
 
-    ftd_slim = ftd.select(["game_id", "td_team"] + td_cols)
-
-    # For anytime_td there can be multiple rows per game per team — aggregate
-    if target_type == "anytime_td":
-        ftd_slim = (
-            ftd_slim
-            .group_by(["game_id", "td_team"])
-            .agg([pl.col(c).max().alias(c) for c in td_cols])
-        )
-
-    # Home team view
-    home = games.join(ftd_slim, on="game_id", how="left").with_columns(
-        pl.col("home_team").alias("team")
+    # Exactly one row per (game_id, scoring team). Without this collapse the
+    # joins below fan out and shift(1) lands on another row of the SAME game,
+    # leaking the current game's result into its own "historical" rate.
+    ftd_slim = (
+        ftd.select(["game_id", "td_team"] + td_cols)
+        .group_by(["game_id", "td_team"])
+        .agg([pl.col(c).max().alias(c) for c in td_cols])
     )
-    for col in td_cols:
-        home = home.with_columns(
-            pl.when(pl.col("team") == pl.col("td_team"))
-            .then(pl.col(col))
-            .otherwise(0)
-            .alias(col)
-        )
 
-    away = games.join(ftd_slim, on="game_id", how="left").with_columns(
-        pl.col("away_team").alias("team")
-    )
-    for col in td_cols:
-        away = away.with_columns(
-            pl.when(pl.col("team") == pl.col("td_team"))
-            .then(pl.col(col))
-            .otherwise(0)
-            .alias(col)
-        )
+    # One row per (game_id, team) for both participants...
+    team_games = pl.concat([
+        games.select(["game_id", "season", "week",
+                      pl.col("home_team").alias("team")]),
+        games.select(["game_id", "season", "week",
+                      pl.col("away_team").alias("team")]),
+    ])
 
-    team_ftd = pl.concat([
-        home.select(["game_id", "season", "week", "team"] + td_cols),
-        away.select(["game_id", "season", "week", "team"] + td_cols),
-    ]).sort(["team", "season", "week"])
-
-    # Track: did this team score the target at all?
-    team_ftd = team_ftd.join(
-        ftd_slim.select(["game_id", "td_team"]).unique(),
-        on="game_id", how="left",
+    # ...joined to that team's OWN scoring row for the game (keyed on team, not
+    # just game_id). A team that scored nothing simply has no match.
+    team_ftd = team_games.join(
+        ftd_slim, left_on=["game_id", "team"], right_on=["game_id", "td_team"],
+        how="left",
     )
     team_ftd = team_ftd.with_columns(
-        (pl.col("team") == pl.col("td_team")).fill_null(False).cast(pl.Int8).alias("team_scored_target")
-    ).drop("td_team")
+        [pl.col(c).fill_null(0).cast(pl.Int8) for c in td_cols]
+        + [pl.max_horizontal([pl.col(c) for c in td_cols])
+           .fill_null(0).cast(pl.Int8).alias("team_scored_target")]
+    ).sort(["team", "season", "week"])
+
+    n_rows, n_keys = team_ftd.height, team_ftd.select(["game_id", "team"]).unique().height
+    if n_rows != n_keys:
+        raise ValueError(
+            f"team_target_tendency fanned out: {n_rows} rows for {n_keys} "
+            f"(game_id, team) pairs. shift(1) would leak the current game."
+        )
 
     # Rolling features with shift(1)
     rolling_exprs = []

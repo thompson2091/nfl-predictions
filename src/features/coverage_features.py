@@ -11,6 +11,12 @@ def build_coverage_features(pbp: pl.DataFrame) -> pl.DataFrame:
     Returns one row per (season, week, opponent) with lagged rolling averages.
     Join on opponent (the defense) to get their coverage tendency.
     """
+    if "defense_man_zone_type" not in pbp.columns:
+        # Participation data is unavailable for these seasons. Return empty
+        # rather than raising — the assembler skips empty feature frames,
+        # and a missing optional feed should degrade, not halt the run.
+        print("  build_coverage_features: no 'defense_man_zone_type' column, skipping")
+        return pl.DataFrame()
     # Filter to pass plays with coverage data
     passes = pbp.filter(
         (pl.col("play_type") == "pass")

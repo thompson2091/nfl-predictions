@@ -1,24 +1,28 @@
 target:
-  type: first_td          # first_td | anytime_td
+  type: anytime_td          # first_td | anytime_td
 
 seasons:
   start: 2015
   end: 2025
   predict_season: 2026
 
+# Val and test must stay different seasons. Sharing one means the model
+# early-stops on it, the temperature scaler is fit on it, ensemble weights are
+# optimised on it, and then accuracy is *reported* on it — which inflated every
+# number in the app's Model Performance tab.
 splits:
-  train_end: 2024
-  val_season: 2025
+  train_end: 2023
+  val_season: 2024
   test_season: 2025
-
 rolling_windows:
   short: 3
   medium: 5
-
 models:
-  active: [lr, lgbm, xgb]
+  active:
+  - lr
+  - lgbm
+  - xgb
   production: lr
-
 model:
   seed: 42
   lgbm:
@@ -37,6 +41,27 @@ model:
   logistic:
     max_iter: 2000
     C: 0.1
+# Market anchoring. Nothing here is a probability — the expected scorer count is
+# refit from labels on every training run (src/models/market_prior.py) and the
+# blend weight is learned from graded odds history as soon as enough exists
+# (src/prediction/blend.py). See docs/DATA_SOURCES.md.
+blend:
+  enabled: true
+  # Used ONLY until odds_history.parquet holds min_history_rows graded
+  # player-games. Replaced automatically by the fitted weight thereafter; the
+  # prediction output records which one was used in `blend_source`.
+  bootstrap_market_weight: 0.5
+  min_history_rows: 500
+# Bankroll policy — how model probabilities become stakes. These are risk
+# preferences, not model constants: they belong to you, not to the data.
+betting:
+  bankroll: 1000.0
+  # Fraction of full Kelly. Full Kelly assumes your probabilities are exact;
+  # any overconfidence compounds into ruin, so stake a fraction of it.
+  kelly_fraction: 0.25
+  # Floors a play must clear. Edge is measured against the DE-VIGGED price.
+  min_edge_pp: 2.0
+  min_ev_pct: 0.0
 
 paths:
   raw: data/raw
@@ -44,10 +69,13 @@ paths:
   models: models
   output: output
   plots: output/plots
-
 ai_context:
   enabled: true
   max_adjustment: 0.1
-
 positions:
-  offensive: ["QB", "RB", "WR", "TE", "FB"]
+  offensive:
+  - QB
+  - RB
+  - WR
+  - TE
+  - FB

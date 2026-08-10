@@ -1,9 +1,10 @@
 """Red zone features: carries, targets, and TD rate inside the 20."""
 import polars as pl
 from src.utils.config import get_config
+from src.features.spine import densify
 
 
-def build_player_redzone_features(pbp: pl.DataFrame) -> pl.DataFrame:
+def build_player_redzone_features(pbp: pl.DataFrame, spine: pl.DataFrame) -> pl.DataFrame:
     """Per-player red zone usage and TD rate. Shift(1)."""
     cfg = get_config()
     short = cfg["rolling_windows"]["short"]
@@ -52,7 +53,13 @@ def build_player_redzone_features(pbp: pl.DataFrame) -> pl.DataFrame:
         (pl.col("rz_rush_tds") + pl.col("rz_recv_tds")).alias("rz_tds"),
     )
 
-    rz_player = rz_player.sort(["player_id", "season", "week"])
+    # Densify before rolling. Without this a row exists only for weeks the
+    # player had red-zone usage, so non-nullness leaks current-game involvement.
+    rz_player = densify(
+        rz_player, spine,
+        zero_cols=["rz_carries", "rz_rush_tds", "rz_targets", "rz_recv_tds",
+                   "rz_touches", "rz_tds"],
+    )
 
     # Rolling features with shift(1)
     stat_cols = ["rz_carries", "rz_targets", "rz_touches", "rz_tds"]

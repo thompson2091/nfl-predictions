@@ -1,0 +1,215 @@
+# Data Sources
+
+Every input the model consumes, where it comes from, how often it refreshes, and
+how it fails. Read this before trusting a number the app shows you.
+
+The governing rule: **no probability, rate, or weight in this project is a
+hand-set constant.** Anything that looks like a magic number is fit from the data
+below and refit on every training run. Where a starting value is unavoidable
+(the blend bootstrap), it is declared in `config/settings.yaml`, labelled as a
+bootstrap, and replaced automatically once real data exists.
+
+---
+
+## 0. Known source problems, ranked by what they cost us
+
+| Problem | Impact | Status |
+|---|---|---|
+| ~~`nfl_data_py` is deprecated~~ | Was the *root cause* of the 2025 weekly-stats gap | ✅ **Migrated to [`nflreadpy`](https://nflreadpy.nflverse.com/)**. Weekly stats went from 54,479 rows stopping at 2024 to **199,865 rows covering 2015–2025**. Returns Polars natively — no pandas round-trip |
+| ~~Depth charts stale~~ | Drove the `snap_pct` zeroing bug and the phantom Week-1 fades | ✅ Current-format depth charts now **974,305 rows, refreshed daily** (was 554,215 stale to March). Still re-run ingest close to kickoff |
+| **No historical odds** | The model/market blend weight can't be fitted, so it sits at the config bootstrap; no true ROI backtest is possible | The Odds API sells a historical endpoint — player props available from **2023-05-03**, 5-minute snapshots, included on the Business plan at zero extra credit cost. This is the single highest-value purchase for this project |
+| Injuries stop at 2025 | Injury features go stale for the predict season | Same migration |
+
+**The historical-odds gap is the one worth money.** Everything the model claims
+about beating the market is currently unfalsifiable — we can only compare to
+*today's* prices for *this* week. With the historical archive you could fit the
+blend weight properly, backtest closing-line value, and measure real ROI instead
+of Top-1 accuracy, which is not a betting metric.
+
+---
+
+## 1. nflverse — play-by-play, rosters, snaps, depth charts, schedules
+
+| | |
+|---|---|
+| Provider | [nflverse](https://github.com/nflverse/nflverse-data), via the `nfl_data_py` package |
+| Access | Public, free, no key. Parquet released on GitHub |
+| Licence | CC-BY-4.0 |
+| Loaded by | `src/ingest/loader.py` |
+| Lands in | `data/raw/*.parquet` |
+| Refresh | `make ingest`. In-season, nflverse updates within ~24h of a game |
+| Coverage | `seasons.start`–`seasons.end` in `config/settings.yaml` (currently 2015–2025) |
+
+Files pulled:
+
+| File | Function | Notes |
+|---|---|---|
+| `pbp.parquet` | `import_pbp_data` | The spine. Every label and most team/opponent features derive from it |
+| `weekly_stats.parquet` | `import_weekly_data` | **Lags — see the trap below** |
+| `rosters.parquet` | `import_weekly_rosters` | Also pulled for `predict_season` so upcoming players exist as candidates |
+| `schedules.parquet` | `import_schedules` | Includes `spread_line` / `total_line`, which feed the scorer-rate prior |
+| `snap_counts.parquet` | `import_snap_counts` | |
+| `depth_charts.parquet` | `import_depth_charts` | Stops at 2024; `depth_charts_new.parquet` covers recent seasons |
+| `ngs_receiving/rushing.parquet` | `import_ngs_data` | 2016+ only |
+| `injuries.parquet` | `import_injuries` | |
+
+### ⚠ The weekly-stats trap
+
+`nfl.import_weekly_data()` **lags the play-by-play feed by a full season**, and
+`_safe_load` in `loader.py` swallows the failure with a warning. This silently
+produced the worst bug this project has had:
+
+- `weekly_stats.parquet` stopped at 2024 while `pbp.parquet` had 2025.
+- Every `player_*` rolling feature (usage, shares, TD history) went **100% null
+  for 2025 and 2026**, having been populated 2015–2024.
+- `prepare_data` converts null to `0.0`, so the model scored rows unlike anything
+  in training. Week 1 2026 probabilities averaged **0.380 against a true base
+  rate of ~0.08**, implying **7.6 TD scorers per game when reality is ~4.3**.
+- The app reported +40 to +58pp "edges" over Vegas. All of them were artifacts.
+
+**Mitigations now in place:**
+
+1. `backfill_weekly_stats()` (`src/ingest/derive_weekly_stats.py`) reconstructs
+   the missing seasons from play-by-play, and `ingest_all` **calls it every run**.
+   It was previously written but orphaned — nothing invoked it.
+2. `check_feature_skew()` (`src/prediction/predict.py`) compares predict-time
+   null rates against the rates recorded at training and prints a loud warning
+   when a block of features degrades.
+
+Derived columns are close to but not identical to the official ones — EPA is
+summed per play and first downs come from `first_down_rush`/`first_down_pass`.
+Coverage differs slightly (derived EPA is non-null for more players than the
+official field). Prefer the official feed when it catches up.
+
+---
+
+### ⚠ Sparse usage frames leak the current game
+
+The red-zone, goal-line, opening-drive and first-half frames are built by
+aggregating play-by-play, so **a row exists only for a player-week where that
+usage occurred**. Left-joined onto candidates, the consequence is that
+`player_i10_touches_szn_avg IS NOT NULL` means *"this player touched the ball
+inside the 10 in the game being predicted."*
+
+Measured on 2023–2025, nullness alone was worth:
+
+| Feature | P(scored) non-null | P(scored) null | Lift |
+|---|---|---|---|
+| `player_i10_touches_szn_avg` | 0.513 | 0.033 | **15.5x** |
+| `player_rz_touches_szn_avg` | 0.393 | 0.019 | **20.3x** |
+| `player_carries_szn_avg` | 0.210 | 0.008 | **26.6x** |
+
+Every rolling *value* was correctly lagged with `shift(1)`, which is why this
+survived repeated leakage audits — it was the row's **existence** that leaked.
+
+`src/features/spine.py` fixes it: all such frames are densified against a
+player-week spine taken from the candidate pool (rosters + schedule, both known
+before kickoff) with usage filled to 0, *before* any shift or rolling. Absence
+then means "was available and didn't get a touch", which is what the model
+should learn.
+
+**When adding a usage feature, densify it.** If a frame is built by filtering
+play-by-play and grouping by player-week, it is sparse by construction and will
+leak unless it goes through `densify()`.
+
+---
+
+## 2. The Odds API — sportsbook TD props
+
+| | |
+|---|---|
+| Provider | [The Odds API](https://the-odds-api.com/) |
+| Access | **Paid**, requires `ODDS_API_KEY` in `.env`. Credit-metered |
+| Loaded by | `src/ingest/odds_api.py` |
+| Lands in | `data/raw/odds_cache/td_props_<date>.json`, consolidated to `player_td_odds.parquet` |
+| Refresh | On demand from the app; local cache reused for 6 hours |
+| Markets | `player_1st_td`, `player_anytime_td` |
+
+**Prices are consensus, not single-book.** `fetch_week_td_props` takes the median
+across every bookmaker quoting a player, which is more stable than whichever book
+happened to respond first.
+
+**Vig is removed before use.** A raw "Yes" price embeds the book's margin and
+overstates every player. Where a book posts both sides we de-vig exactly
+(`p_yes / (p_yes + p_no)`); where only "Yes" is posted we scale the game's prices
+to the fitted expected scorer count. Both paths live in `blend.devig_market`.
+The raw price is kept as `implied_prob` and the fair one as `fair_prob` — **never
+compare model output to `implied_prob`, that comparison is biased by the vig.**
+
+### Odds history (`data/raw/odds_history.parquet`)
+
+The API only serves *current* markets; once kickoff passes those prices are gone
+forever. `src/ingest/odds_history.py` snapshots every fetch, append-only, and
+grades resolved weeks against play-by-play outcomes.
+
+This archive is the **only** path to a defensible model-vs-market blend weight.
+It starts empty and compounds. Until it holds `blend.min_history_rows` graded
+player-games, the blend falls back to the declared bootstrap and says so in the
+prediction output (`blend_source` column).
+
+**Fetch odds every week even when you aren't betting.** A week not snapshotted is
+a week that can never be used to calibrate.
+
+---
+
+## 3. Anthropic API — situational context and edge commentary
+
+| | |
+|---|---|
+| Provider | Anthropic |
+| Access | `ANTHROPIC_API_KEY` in `.env`. Optional — the app degrades to a notice |
+| Used by | `src/prediction/ai_adjustments.py`, `src/analysis/game_analyst.py` |
+| Cache | `data/raw/ai_context_cache/*.json` |
+
+Adjustments are bounded by `ai_context.max_adjustment` (±0.10).
+
+**Cache invalidation trap:** the cache key is
+`md5(season_week_gameid_targettype)` — it does **not** include the probabilities.
+Commentary generated against a broken model therefore survives a re-run and keeps
+narrating stale edges. **Clear `data/raw/ai_context_cache/` whenever the model or
+feature pipeline changes.**
+
+---
+
+## 4. Fitted artifacts (derived, not sourced)
+
+Written by `make train` into `models/<target_type>/`, refit every run.
+
+| Artifact | Fit by | What it holds |
+|---|---|---|
+| `scorer_rate_prior.json` | `src/models/market_prior.py` | `E[distinct scorers per game] ~ total_line + \|spread\|`, OLS on labelled training games. Carries `seasons_used`, `n_games`, `rmse`, `fit_date` |
+| `blend_weight.json` | `src/prediction/blend.py` | Model-vs-market weight from logistic stacking on graded odds history. Absent until enough history exists |
+| `train_null_rates.pkl` | `src/models/trainer.py` | Per-feature training null rates, for the skew guard |
+| `<model>_calibrator.pkl` | `src/models/calibration.py` | Temperature scaling, fit on the validation season |
+
+The scorer-rate prior tracks league scoring environment automatically: a
+higher-scoring era shifts the fit without anyone editing a threshold.
+
+---
+
+## Evaluation integrity
+
+`config/settings.yaml` previously set `val_season` and `test_season` both to
+2025. The model early-stopped on 2025, the temperature scaler was fit on 2025,
+ensemble weights were optimised for top-1 on 2025 — and then accuracy was
+*reported* on 2025. The app's "Historical Accuracy 75.4%" was not out-of-sample.
+
+Now: train ≤2023, validate 2024, test 2025 — disjoint.
+
+Also note what Top-1 means for `anytime_td` in `src/evaluation/metrics.py`: it
+scores a hit if the single highest-ranked player is **any** of the ~4.3 players
+who scored in that game. That is a much easier question than "does this specific
+player score", which is what the props table sells. Do not read Top-1 as a
+hit rate on individual bets.
+
+---
+
+## Reproducing from scratch
+
+```bash
+make ingest                 # nflverse -> data/raw, incl. weekly-stats backfill
+python scripts/run_all.py   # targets -> candidates -> features -> train, both targets
+make predict                # score the upcoming week
+```
+
+`run_all.py` starts at label extraction and assumes `data/raw/` is populated.

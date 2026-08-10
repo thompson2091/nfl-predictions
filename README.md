@@ -60,7 +60,36 @@ Individual stages:
 | `make features` | `scripts/04_features.py` | Assemble the feature matrix |
 | `make train` | `scripts/05_train.py` | Train and calibrate models |
 | `make predict` | `scripts/06_predict.py` | Score the upcoming week |
+| `make odds WEEK=n` | `scripts/07_odds.py` | Snapshot sportsbook props into the archive |
+| `make bets WEEK=n` | `scripts/08_bets.py` | Actionable bet card: EV vs de-vigged market, Kelly stakes |
+| `make test` | `tests/` | Leakage + train/serve skew regression tests |
 | `make clean` | — | Delete generated data, models, and output |
+
+### Getting bets
+
+```bash
+make odds WEEK=1   # pull and archive current prices
+make bets WEEK=1   # rank plays by EV, size them by fractional Kelly
+```
+
+A play only appears if a book prices it. **Edge is measured against the de-vigged
+price; EV is computed at the raw price you're actually paid.** Anytime-TD books
+run ~1.23x overround, so comparing a model number to the raw price invents
+roughly 5 points of edge on every line. Stake sizing is fractional Kelly — set
+your bankroll and risk fraction under `betting:` in `config/settings.yaml`.
+
+`make test` runs regression tests for the three leakage/skew bugs that shipped
+undetected. Run it after touching anything in `src/features/`.
+
+> **Run `make odds WEEK=n` every week the season is live**, even weeks you don't
+> bet. The Odds API only serves *current* markets, so an unarchived week is gone
+> for good — and `data/raw/odds_history.parquet` is what the model-vs-market
+> blend weight is fit from. Until it has enough graded rows the blend falls back
+> to the bootstrap value in `config/settings.yaml` and says so in its output.
+
+**Read [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md) before trusting a number
+the app shows you.** It documents every feed, its refresh cadence, and two
+failure modes that produce plausible-looking but wrong probabilities silently.
 
 `make test-ingest` runs ingestion for only the most recent season
 (`seasons.end`) — useful for a fast smoke test.

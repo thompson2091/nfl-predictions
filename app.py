@@ -669,6 +669,12 @@ with tab2:
                 (pl.col("season") == test_season)
                 & pl.col("target").is_not_null()
             )
+            # Score the same pool production actually scores. Training, metrics.json
+            # and predict() all apply this filter; without it the ranking includes
+            # ~9,500 deep-bench rows per season whose null features become 0.0, some
+            # of which outrank real starters — which reported Top-1 as 10.2% against
+            # the 63.4% in metrics.json for the identical model.
+            test_df = _filter_low_activity(test_df)
 
             if test_df.shape[0] == 0:
                 st.info(f"No test data for season {test_season}")

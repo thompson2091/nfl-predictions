@@ -4,7 +4,7 @@ version = "0.2.0"
 description = "NFL touchdown prediction engine with calibrated probabilities"
 requires-python = ">=3.11"
 dependencies = [
-    "nfl_data_py>=0.3.0",
+    "nflreadpy>=0.1.5",   # replaces the deprecated nfl_data_py
     "polars>=1.0",
     "pandas>=2.0",
     "pyarrow>=14.0",
@@ -23,6 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 # Notebook tooling — kept out of the runtime image.
 dev = [
+    "pytest>=8.0",
     "jupyter>=1.0",
     "ipykernel>=6.0",
 ]

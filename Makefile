@@ -22,8 +22,34 @@ train:
 predict:
 	python scripts/06_predict.py
 
+# Snapshot sportsbook prices into the append-only archive. Run weekly in season —
+# unarchived weeks can never be used to calibrate model vs market.
+# Usage: make odds WEEK=1
+odds:
+	python scripts/07_odds.py --week $(WEEK)
+
+# Actionable bet card: model vs de-vigged market, ranked by EV, Kelly-staked.
+# Needs cached prices — run `make odds WEEK=n` first. Usage: make bets WEEK=1
+bets:
+	python scripts/08_bets.py --week $(WEEK)
+
+test:
+	python -m pytest tests/ -q
+
+# Deletes only what can be regenerated for free. data/archive/ is NEVER touched —
+# it holds purchased historical odds that the API sells once and cannot be
+# re-downloaded without paying again.
 clean:
 	rm -rf data/raw/*.parquet data/processed/*.parquet models/*.pkl output/*.json output/*.csv output/plots/*.png
+
+# Timestamped copy of the irreplaceable odds archive. Run before anything risky.
+backup-odds:
+	@mkdir -p data/archive/backups
+	@test -f data/archive/odds_history.parquet \
+		&& cp data/archive/odds_history.parquet \
+		   "data/archive/backups/odds_history_$$(date +%Y%m%d_%H%M%S).parquet" \
+		&& echo "Backed up to data/archive/backups/" \
+		|| echo "No archive yet — nothing to back up."
 
 test-ingest:
 	python scripts/01_ingest.py --test-mode

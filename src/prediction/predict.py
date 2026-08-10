@@ -33,10 +33,22 @@ def _rank_bucket_lines(target_type: str, model_name: str = None):
 
     X_test, _ = prepare_data(test_df, feature_cols)
 
-    model_cls = get_model(model_name)
-    model = model_cls.load(model_dir / f"{model_name}.pkl")
-    model.feature_names = feature_cols
-    raw_probs = model.predict_proba(X_test)
+    if model_name == "ensemble":
+        weights_path = model_dir / "ensemble_weights.pkl"
+        if not weights_path.exists():
+            return []
+        with open(weights_path, "rb") as f:
+            weights = pickle.load(f)
+        raw_probs = np.zeros(X_test.shape[0])
+        for name, w in weights.items():
+            sub = get_model(name).load(model_dir / f"{name}.pkl")
+            sub.feature_names = feature_cols
+            raw_probs += w * sub.predict_proba(X_test)
+    else:
+        model_cls = get_model(model_name)
+        model = model_cls.load(model_dir / f"{model_name}.pkl")
+        model.feature_names = feature_cols
+        raw_probs = model.predict_proba(X_test)
 
     eval_df = test_df.with_columns(pl.Series("prob", raw_probs))
     eval_df = eval_df.with_columns(
@@ -86,6 +98,174 @@ def _game_pick_lines(result: pl.DataFrame, top_n: int = 5):
     return lines
 
 
+def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
+                      model_dir, cfg: dict, season: int, week: int) -> pl.DataFrame:
+    """Level-calibrate anytime-TD probabilities, then blend with the market."""
+    from src.models.market_prior import load_prior, expected_scorers
+    from src.prediction.blend import (
+        calibrate_level, devig_market, blend, fit_blend_weight,
+        load_blend_weight, save_blend_weight,
+    )
+
+    bcfg = cfg.get("blend", {})
+    if not bcfg.get("enabled", True):
+        return result.with_columns(pl.col("raw_prob").alias("probability"))
+
+    prior = load_prior(model_dir / "scorer_rate_prior.json")
+    if prior is None:
+        print("  No scorer-rate prior found — run `make train` to fit one. "
+              "Falling back to raw probabilities.")
+        return result.with_columns(pl.col("raw_prob").alias("probability"))
+
+    # Expected scorers for each game, from its betting lines.
+    games = week_df.group_by("game_id").agg([
+        pl.col("total_line").first(), pl.col("spread_line").first(),
+    ])
+    expected = expected_scorers(prior, games)
+    print(f"  Expected scorers/game (fitted prior): "
+          f"{expected['expected_scorers'].mean():.2f}")
+
+    result = calibrate_level(result, "raw_prob", expected, out_col="prob_calibrated")
+
+    # De-vigged market prices, if any are cached for this slate.
+    market = _load_market(week_df, expected, season, week)
+    if market is not None and market.height > 0:
+        result = result.with_columns(
+            _norm_name_expr("player_name").alias("player_name_norm")
+        ).join(
+            market.select(["game_id", "player_name_norm", "market_prob"]),
+            on=["game_id", "player_name_norm"], how="left",
+        )
+    else:
+        result = result.with_columns(pl.lit(None, dtype=pl.Float64).alias("market_prob"))
+        print("  No cached sportsbook prices — publishing model-only probabilities.")
+
+    # Weight: fitted from graded history when we have enough, else the declared
+    # bootstrap from config.
+    from src.ingest.odds_history import load_graded_history
+    weight_path = model_dir / "blend_weight.json"
+    graded = load_graded_history("anytime_td")
+    fitted = fit_blend_weight(graded, min_rows=bcfg.get("min_history_rows", 500))
+    if fitted is not None:
+        save_blend_weight(fitted, weight_path)
+        print(f"  Blend weight FITTED on {fitted['n_rows']:,} graded player-games: "
+              f"market={fitted['market_weight']:.2f}")
+    weight = load_blend_weight(weight_path, bcfg.get("bootstrap_market_weight"))
+    if weight.get("source") == "bootstrap":
+        n = 0 if graded is None else graded.height
+        print(f"  Blend weight BOOTSTRAP (market={weight['market_weight']:.2f}) — "
+              f"{n:,}/{bcfg.get('min_history_rows', 500)} graded rows archived so far.")
+
+    result = blend(result, "prob_calibrated", "market_prob", weight,
+                   out_col="probability")
+    return result
+
+
+def _norm_name_expr(col: str) -> pl.Expr:
+    e = pl.col(col).str.to_lowercase().str.strip_chars()
+    for suffix in [" jr.", " sr.", " ii", " iii", " iv", " jr", " sr"]:
+        e = e.str.replace(rf"{suffix}$", "")
+    return e.str.replace_all(r"\.", "").str.strip_chars()
+
+
+def _load_market(week_df: pl.DataFrame, expected: pl.DataFrame,
+                 season: int, week: int) -> pl.DataFrame | None:
+    """De-vigged market probabilities for this slate.
+
+    Reads the odds cache directly rather than relying on `sbook_*` columns baked
+    into features.parquet — prices move every week, and rebuilding the full
+    feature history just to refresh them is both slow and easy to forget.
+    """
+    from src.prediction.blend import devig_market
+
+    market = _market_from_cache(season, week)
+    if market is None and "sbook_anytime_td_implied" in week_df.columns:
+        market = (
+            week_df.select(["game_id", "player_name", "sbook_anytime_td_implied"])
+            .filter(pl.col("sbook_anytime_td_implied") > 0)
+            .rename({"sbook_anytime_td_implied": "implied_prob"})
+            .with_columns(_norm_name_expr("player_name").alias("player_name_norm"))
+        )
+    if market is None or market.height == 0:
+        return None
+    return devig_market(market, expected)
+
+
+def _market_from_cache(season: int, week: int) -> pl.DataFrame | None:
+    """Anytime-TD prices from the odds cache, keyed to this week's game_ids."""
+    try:
+        from src.ingest.odds_api import load_cached_odds
+        from src.features.odds_features import TEAM_ABBREV
+    except Exception:
+        return None
+
+    odds = load_cached_odds()
+    if not odds:
+        return None
+
+    schedules = pl.read_parquet(get_path("raw") / "schedules.parquet")
+    sched = schedules.filter(
+        (pl.col("season") == season) & (pl.col("week") == week)
+    ).select(["game_id", "home_team", "away_team"])
+    key = {(h, a): g for g, h, a in zip(
+        sched["game_id"], sched["home_team"], sched["away_team"])}
+
+    rows = []
+    for game in odds.values():
+        gid = key.get((TEAM_ABBREV.get(game.get("home_team", "")),
+                       TEAM_ABBREV.get(game.get("away_team", ""))))
+        if gid is None:
+            continue
+        for p in game.get("anytime_td", []):
+            rows.append({
+                "game_id": gid,
+                "player_name_norm": p["player"],
+                # The American price is what you're actually paid — bets.py needs
+                # it for EV and Kelly, so it must survive this hop.
+                "odds": p.get("odds"),
+                "implied_prob": p["implied_prob"],
+                "fair_prob": p.get("fair_prob"),
+            })
+    if not rows:
+        return None
+    return pl.DataFrame(rows).with_columns(
+        _norm_name_expr("player_name_norm").alias("player_name_norm")
+    )
+
+
+def check_feature_skew(week_df: pl.DataFrame, feature_cols: list[str],
+                       model_dir, threshold: float = 0.35) -> list[str]:
+    """Warn when predict-time features are far more null than they were in training.
+
+    This is the check that would have caught the 2025 weekly-stats gap: a whole
+    block of player_* features silently went 100% null at predict time while the
+    model had been trained on populated values, and `prepare_data` turned them
+    into 0.0 without complaint. Probabilities inflated ~2.7x with no error raised.
+    """
+    path = model_dir / "train_null_rates.pkl"
+    if not path.exists():
+        return []
+    with open(path, "rb") as f:
+        train_nulls = pickle.load(f)
+
+    degraded = []
+    for c in feature_cols:
+        if c not in week_df.columns or c not in train_nulls:
+            continue
+        now = float(week_df[c].is_null().mean())
+        if now - train_nulls[c] > threshold:
+            degraded.append((c, train_nulls[c], now))
+
+    if degraded:
+        print(f"\n  !! FEATURE SKEW: {len(degraded)} feature(s) far more null than in training.")
+        print("     These become 0.0 and push probabilities off-distribution:")
+        for c, was, now in sorted(degraded, key=lambda r: r[2] - r[1], reverse=True)[:15]:
+            print(f"       {c:45s} train={was:.2f} -> now={now:.2f}")
+        if len(degraded) > 15:
+            print(f"       ... and {len(degraded) - 15} more")
+    return [c for c, _, _ in degraded]
+
+
 def predict(season: int, week: int, model_name: str = None,
             target_type: str = None) -> pl.DataFrame | None:
     """Generate predictions for a given season/week."""
@@ -116,6 +296,8 @@ def predict(season: int, week: int, model_name: str = None,
     week_df = _filter_low_activity(week_df)
     if week_df.shape[0] < before:
         print(f"Filtered {before} -> {week_df.shape[0]} candidates (removed low-activity)")
+
+    check_feature_skew(week_df, feature_cols, model_dir)
 
     X, _ = prepare_data(week_df, feature_cols)
 
@@ -154,16 +336,16 @@ def predict(season: int, week: int, model_name: str = None,
     result = week_df.select(id_cols).with_columns(pl.Series("raw_prob", probs))
 
     # For first_td: normalize within game (exactly one scorer, probs sum to 100%)
-    # For anytime_td: use calibrated probs directly (independent per-player probabilities)
+    # For anytime_td: anchor the level to the fitted scorer-rate prior, then
+    # blend with the de-vigged market. See src/prediction/blend.py.
     if target_type == "first_td":
         result = result.with_columns(
             (pl.col("raw_prob") / pl.col("raw_prob").sum().over("game_id"))
             .alias("probability")
         )
     else:
-        result = result.with_columns(
-            pl.col("raw_prob").alias("probability")
-        )
+        result = _anchor_to_market(result, week_df, model_dir, cfg,
+                                   season=season, week=week)
 
     result = result.with_columns(
         pl.col("probability")

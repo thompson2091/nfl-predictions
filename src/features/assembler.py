@@ -2,6 +2,7 @@ import polars as pl
 from src.utils.config import get_config
 from src.utils.paths import get_path
 from src.features.player_features import build_player_rolling_features
+from src.features.spine import player_week_spine
 from src.features.team_features import build_team_features, build_opponent_features
 from src.features.game_features import build_game_features
 from src.features.context_features import build_snap_features, build_depth_chart_features
@@ -137,8 +138,16 @@ def assemble_features() -> pl.DataFrame:
 
     print("Building features...")
 
+    # Dense player-week spine. Usage frames are sparse — a row exists only for
+    # weeks a player actually had that usage — so joining them raw makes
+    # "feature is not null" mean "this player had a goal-line touch in the game
+    # we're predicting". Densifying against the candidate pool (roster + schedule,
+    # both known pre-kickoff) makes absence a real zero. See src/features/spine.py.
+    spine = player_week_spine(candidates)
+    print(f"  Player-week spine: {spine.height:,} rows")
+
     # === Core features ===
-    player_feats = build_player_rolling_features(weekly_stats)
+    player_feats = build_player_rolling_features(weekly_stats, spine)
     team_feats = build_team_features(pbp)
     opp_feats = build_opponent_features(pbp)
     game_feats = build_game_features(schedules)
@@ -168,7 +177,7 @@ def assemble_features() -> pl.DataFrame:
     print(f"  Target team features: {team_ftd_feats.shape}")
 
     # === Red zone features ===
-    player_rz_feats = build_player_redzone_features(pbp)
+    player_rz_feats = build_player_redzone_features(pbp, spine)
     team_rz_feats = build_team_redzone_features(pbp)
     print(f"  Red zone player features: {player_rz_feats.shape}")
     print(f"  Red zone team features: {team_rz_feats.shape}")
@@ -186,20 +195,20 @@ def assemble_features() -> pl.DataFrame:
     print(f"  Game context features: {game_context_feats.shape}")
 
     # === Player share features ===
-    player_share_feats = build_player_share_features(weekly_stats)
+    player_share_feats = build_player_share_features(weekly_stats, spine)
     print(f"  Player share features: {player_share_feats.shape}")
 
     # === Goal line features ===
-    goalline_feats = build_goalline_features(pbp)
+    goalline_feats = build_goalline_features(pbp, spine)
     print(f"  Goal line features: {goalline_feats.shape}")
 
     # === Opening drive features ===
-    od_team_feats, od_player_feats = build_opening_drive_features(pbp)
+    od_team_feats, od_player_feats = build_opening_drive_features(pbp, spine)
     print(f"  Opening drive team features: {od_team_feats.shape}")
     print(f"  Opening drive player features: {od_player_feats.shape}")
 
     # === First-half features ===
-    h1_feats = build_first_half_features(pbp)
+    h1_feats = build_first_half_features(pbp, spine)
     print(f"  First-half features: {h1_feats.shape}")
 
     # === QB features ===
@@ -333,21 +342,32 @@ def assemble_features() -> pl.DataFrame:
             ])
         )
 
-        # Use depth chart to fix stale snap_pct for players who changed roles/teams
-        # If a player is NOT a starter on the depth chart (rank > 1 or absent),
-        # zero out their carried-forward snap_pct
-        dc_starters = dc_feats.filter(
-            (pl.col("season") == predict_season) & (pl.col("is_starter") == 1)
-        ).select(["player_id"]).unique()
+        # Use the predict-season depth chart to correct stale snap_pct for
+        # players whose role changed — but only where the chart actually has an
+        # opinion. Absence from the chart is missing data, not evidence that a
+        # player won't play: the previous version zeroed anyone not among the
+        # ~144 listed starters, which wiped snap_pct for ~1,600 players
+        # including genuine starters, and snap_pct is a top-10 feature.
+        dc_pred = dc_feats.filter(pl.col("season") == predict_season)
+        dc_starters = dc_pred.filter(pl.col("is_starter") == 1).select("player_id").unique()
+        dc_listed = dc_pred.select("player_id").unique()
 
-        last_snaps = last_snaps.with_columns(
-            pl.when(pl.col("player_id").is_in(dc_starters["player_id"]))
-            .then(pl.col("snap_pct"))
-            .otherwise(pl.lit(0.0))
-            .alias("snap_pct")
-        )
-        print(f"  Snap carry-forward: {last_snaps.shape[0]} players, "
-              f"{last_snaps.filter(pl.col('snap_pct') > 0).shape[0]} starters kept")
+        # The depth chart may only CONFIRM a starter, never zero anyone out.
+        # "Listed below rank 1" is not evidence of no playing time — a WR2 or RB2
+        # plays most snaps — and "absent from the chart" is missing data, not a
+        # benching. The old version zeroed everyone not among the ~145 listed
+        # rank-1 players, wiping snap_pct (a top-10 feature) for ~1,600 players
+        # including genuine starters like Xavier Worthy, which is what produced
+        # the huge phantom fades against the market in Week 1.
+        kept = last_snaps.filter(pl.col("snap_pct") > 0).height
+        print(f"  Snap carry-forward: {last_snaps.height} players, "
+              f"{kept} with non-zero snap_pct "
+              f"({dc_starters.height} confirmed by the {predict_season} depth chart, "
+              f"{dc_listed.height} listed)")
+        if dc_listed.height < 300:
+            print(f"    NOTE: only {dc_listed.height} players on the {predict_season} "
+                  f"depth chart — too sparse to judge roles, so carried-forward "
+                  f"snap_pct stands. Re-run `make ingest` closer to kickoff.")
 
         snap_feats = pl.concat([snap_feats, last_snaps], how="diagonal_relaxed")
 

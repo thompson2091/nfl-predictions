@@ -1,9 +1,10 @@
 """Opening drive features: team TD rate and player touch share on drive 1."""
 import polars as pl
 from src.utils.config import get_config
+from src.features.spine import densify
 
 
-def build_opening_drive_features(pbp: pl.DataFrame) -> pl.DataFrame:
+def build_opening_drive_features(pbp: pl.DataFrame, spine: pl.DataFrame) -> pl.DataFrame:
     """Team and player opening-drive features. Returns two DataFrames merged.
     Shift(1) rolling to prevent leakage."""
     cfg = get_config()
@@ -81,7 +82,12 @@ def build_opening_drive_features(pbp: pl.DataFrame) -> pl.DataFrame:
         .alias("od_touch_share")
     ).drop("od_plays")
 
-    player_d1 = player_d1.sort(["player_id", "season", "week"])
+    # Densify: absence must mean "available, no opening-drive touch" rather than
+    # silently encoding current-game involvement. See src/features/spine.py.
+    player_d1 = densify(
+        player_d1, spine,
+        zero_cols=["od_carries", "od_targets", "od_touches", "od_touch_share"],
+    )
 
     player_rolling = []
     for col in ["od_touches", "od_touch_share"]:

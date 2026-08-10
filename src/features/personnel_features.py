@@ -11,6 +11,12 @@ def build_personnel_features(pbp: pl.DataFrame) -> pl.DataFrame:
 
     Returns one row per (season, week, team) with lagged rolling averages.
     """
+    if "offense_personnel" not in pbp.columns:
+        # Participation data is unavailable for these seasons. Return empty
+        # rather than raising — the assembler skips empty feature frames,
+        # and a missing optional feed should degrade, not halt the run.
+        print("  build_personnel_features: no 'offense_personnel' column, skipping")
+        return pl.DataFrame()
     plays = pbp.filter(
         pl.col("offense_personnel").is_not_null()
         & pl.col("posteam").is_not_null()
