@@ -35,6 +35,20 @@ def _american_to_implied(price: int) -> float:
         return -price / (-price + 100.0)
 
 
+def _prob_to_american(p: float) -> int:
+    """Convert a probability back to an American price.
+
+    Consensus must be taken in probability space and converted here — never by
+    averaging American odds directly. That scale is discontinuous at +/-100
+    (there is no such thing as +50 or -50), so the median of books quoting -110
+    and +120 lands on an impossible number. Those values silently became payouts
+    of 20x or divide-by-zero on ~50% players, which is exactly the population our
+    top picks live in.
+    """
+    p = min(max(float(p), 1e-6), 1 - 1e-6)
+    return int(round(-p / (1 - p) * 100)) if p >= 0.5 else int(round((1 - p) / p * 100))
+
+
 def _median(values: list[float]) -> float:
     """Median of a non-empty sequence.
 
@@ -125,6 +139,9 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False) -> 
     print(f"Fetching TD props for {len(week_events)} games...")
 
     results = {}
+    # Per-book quotes, accumulated across every event in the fetch. Written to
+    # its own archive by the caller; see odds_history.append_book_quotes.
+    book_rows: list[dict] = []
     for event in week_events:
         event_id = event["id"]
         home = event["home_team"]
@@ -157,6 +174,11 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False) -> 
 
         # Aggregate across bookmakers. Consensus (median across books) is more
         # stable than any single book and is what we de-vig against.
+        #
+        # Every individual quote is also kept, in `book_rows`. The response
+        # already contains them, so this costs no extra API credits — and the
+        # detail cannot be bought back later, because the endpoint only sells
+        # each snapshot once. See odds_history.BOOKS_PATH for what it is for.
         for market_key, target in (("player_1st_td", "first_td"),
                                    ("player_anytime_td", "anytime_td")):
             # player -> {"yes": [probs], "no": [probs], "odds": [american]}
@@ -174,6 +196,18 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False) -> 
                         q[side].append(_american_to_implied(outcome["price"]))
                         if side == "yes":
                             q["odds"].append(outcome["price"])
+                        book_rows.append({
+                            "game_id": game_key,
+                            "bookmaker": bk.get("key"),
+                            "book_last_update": market.get("last_update")
+                                                or bk.get("last_update"),
+                            "player_name_raw": player,
+                            "market": target,
+                            "side": side,
+                            "odds": int(outcome["price"]),
+                            "implied_prob": round(
+                                _american_to_implied(outcome["price"]), 6),
+                        })
 
             for player, q in quotes.items():
                 if not q["yes"]:
@@ -182,7 +216,7 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False) -> 
                 p_no = _median(q["no"]) if q["no"] else None
                 game_data[target].append({
                     "player": player,
-                    "odds": int(_median(q["odds"])),
+                    "odds": _prob_to_american(p_yes),
                     # Raw two-way price, vig included.
                     "implied_prob": round(p_yes, 4),
                     # Vig removed where the book posts both sides.
@@ -203,13 +237,48 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False) -> 
         json.dump(results, f, indent=2)
     print(f"  Cached to {cache}")
 
+    # Per-book detail goes to a sibling file rather than into `results`, which
+    # every caller iterates as {game_key: game_data} — an extra key there would
+    # be read as a game with no teams.
+    if book_rows:
+        books_cache = cache.with_name(cache.stem + "_books.json")
+        with open(books_cache, "w") as f:
+            json.dump(book_rows, f)
+        print(f"  {len(book_rows):,} individual book quotes -> {books_cache}")
+
     return results
+
+
+def _prop_caches() -> list[Path]:
+    """Consensus cache files only.
+
+    The per-book sibling written alongside each fetch also matches
+    `td_props_*.json`, and it holds a *list* rather than the {game: data} dict
+    every consumer expects — so a plain glob made `build_odds_parquet` fail with
+    "'list' object has no attribute 'items'" the first time both existed.
+    """
+    return [p for p in CACHE_DIR.glob("td_props_*.json")
+            if not p.name.endswith("_books.json")]
+
+
+def load_cached_book_quotes() -> list[dict]:
+    """Per-book quotes from the most recent fetch, for archiving.
+
+    Returns [] when the newest cache predates per-book capture, so a caller can
+    archive what exists without special-casing the transition.
+    """
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    files = sorted(CACHE_DIR.glob("td_props_*_books.json"), reverse=True)
+    if not files:
+        return []
+    with open(files[0]) as f:
+        return json.load(f)
 
 
 def load_cached_odds() -> dict:
     """Load most recent cached odds without making API calls."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache_files = sorted(CACHE_DIR.glob("td_props_*.json"), reverse=True)
+    cache_files = sorted(_prop_caches(), reverse=True)
     if not cache_files:
         return {}
     with open(cache_files[0]) as f:
@@ -225,7 +294,7 @@ def build_odds_parquet() -> Path | None:
     import polars as pl
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache_files = list(CACHE_DIR.glob("td_props_*.json"))
+    cache_files = list(_prop_caches())
     if not cache_files:
         return None
 

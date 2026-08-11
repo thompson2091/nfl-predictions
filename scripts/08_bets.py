@@ -62,6 +62,10 @@ if __name__ == "__main__":
     ap.add_argument("--season", type=int, default=cfg["seasons"]["predict_season"])
     ap.add_argument("--week", type=int, required=True)
     ap.add_argument("--target", default=cfg["target"]["type"])
-    ap.add_argument("--model", default=cfg["models"]["production"])
+    # Resolved after parsing: the right model depends on --target.
+    ap.add_argument("--model", default=None)
     a = ap.parse_args()
+    if a.model is None:
+        from src.utils.config import production_model
+        a.model = production_model(a.target)
     sys.exit(main(a.season, a.week, a.target, a.model))

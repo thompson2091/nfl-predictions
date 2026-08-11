@@ -66,6 +66,8 @@ COPY --chown=appuser:appuser docker ./docker
 COPY --chown=appuser:appuser scripts ./scripts
 COPY --chown=appuser:appuser src ./src
 COPY --chown=appuser:appuser app.py pyproject.toml README.md ./
+# Theme lives here; without it the container falls back to Streamlit's default look.
+COPY --chown=appuser:appuser .streamlit ./.streamlit
 
 RUN chmod +x docker/entrypoint.sh && chown appuser:appuser /app
 

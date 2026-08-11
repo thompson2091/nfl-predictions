@@ -1,0 +1,76 @@
+# Light, neutral, data-first. Deliberately the default: most people read this in
+# daylight, and a betting board full of red and green numbers is easier to scan
+# on white. Dark mode is still available to anyone who wants it via the app menu
+# (top-right ⋮ → Settings → Appearance).
+
+[theme]
+base = "light"
+primaryColor = "#2563EB"             # Blue for interactive elements
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#FAFAFA"
+codeBackgroundColor = "#F4F4F5"
+textColor = "#09090B"
+linkColor = "#2563EB"
+borderColor = "#E4E4E7"
+codeTextColor = "#18181B"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "6px"
+buttonRadius = "6px"
+
+# Typography — Inter reads cleanly at small sizes, which matters for dense tables.
+font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+baseFontSize = 14
+baseFontWeight = 400
+codeFontSize = "13px"
+headingFontSizes = ["28px", "22px", "18px", "16px", "14px", "12px"]
+headingFontWeights = [700, 600, 600, 600, 500, 500]
+linkUnderline = false
+
+# Semantic colours. Green/red carry meaning on this app (we're ahead of the
+# book / we're behind it), so they are tuned for contrast on white rather than
+# borrowed from a dark palette.
+greenColor = "#059669"
+redColor = "#DC2626"
+yellowColor = "#D97706"
+orangeColor = "#EA580C"
+blueColor = "#2563EB"
+violetColor = "#7C3AED"
+grayColor = "#71717A"
+
+chartCategoricalColors = [
+    "#2563EB",
+    "#059669",
+    "#7C3AED",
+    "#DC2626",
+    "#D97706",
+    "#0891B2",
+    "#71717A",
+    "#EA580C",
+]
+
+chartSequentialColors = [
+    "#EFF6FF",
+    "#DBEAFE",
+    "#BFDBFE",
+    "#93C5FD",
+    "#60A5FA",
+    "#3B82F6",
+    "#2563EB",
+    "#1D4ED8",
+    "#1E40AF",
+    "#1E3A8A",
+]
+
+dataframeBorderColor = "#E4E4E7"
+dataframeHeaderBackgroundColor = "#F4F4F5"
+
+[theme.sidebar]
+backgroundColor = "#FAFAFA"
+secondaryBackgroundColor = "#F4F4F5"
+codeBackgroundColor = "#F4F4F5"
+textColor = "#09090B"
+borderColor = "#E4E4E7"
+primaryColor = "#2563EB"

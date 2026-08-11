@@ -1,0 +1,15 @@
+{
+  "kind": "blend_weight",
+  "source": "fitted",
+  "model_coef": 0.710748761564547,
+  "market_coef": 0.3404179184235541,
+  "intercept": 0.17564101158357143,
+  "market_weight": 0.32384770646212596,
+  "n_rows": 20957,
+  "seasons": [
+    2023,
+    2024,
+    2025
+  ],
+  "fit_date": "2026-08-11"
+}

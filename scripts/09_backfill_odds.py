@@ -31,7 +31,8 @@ sys.path.insert(0, ".")
 import polars as pl
 import requests
 
-from src.ingest.odds_api import API_BASE, SPORT, _get_api_key, _median, _american_to_implied
+from src.ingest.odds_api import (API_BASE, SPORT, _get_api_key, _median,
+                                 _american_to_implied, _prob_to_american)
 from src.ingest.odds_history import HISTORY_PATH, append_snapshot
 from src.features.odds_features import TEAM_ABBREV, _normalize_name
 from src.utils.paths import get_path
@@ -48,6 +49,11 @@ REGIONS = "us"
 PROPS_AVAILABLE_FROM = datetime(2023, 5, 3, 5, 30, tzinfo=timezone.utc)
 #: Snapshots are published every 5 minutes; ask for the last one before kickoff.
 CLOSING_OFFSET = timedelta(minutes=5)
+#: Opening snapshot. Probing a 2024 Sunday game, anytime-TD props were absent
+#: 120h before kickoff, thin at 96h (3 books, 85 outcomes) and settled by 72h
+#: (5 books, 145). 72h is therefore the earliest point with enough books for a
+#: stable consensus — an opening line taken from three books is mostly noise.
+OPENING_OFFSET = timedelta(hours=72)
 
 
 class Budget:
@@ -118,17 +124,23 @@ def _kickoff(row: dict) -> datetime | None:
     return naive.replace(tzinfo=timezone.utc) + timedelta(hours=4)
 
 
-def _already_archived(market_names: list[str]) -> set[str]:
+def _already_archived(market_names: list[str], snapshot: str = "close") -> set[str]:
     """Games already archived *for every market being requested*.
 
-    Keyed by market, not just game_id: otherwise a first pass for anytime-TD
-    would make a later first-TD pass skip every game as 'done'.
+    Keyed by market and by snapshot phase, not just game_id: otherwise a first
+    pass for anytime-TD would make a later first-TD pass skip every game as
+    "done", and a closing-line backfill would make an opening-line pass skip
+    everything it has never actually fetched.
     """
     if not HISTORY_PATH.exists():
         return set()
     hist = pl.read_parquet(HISTORY_PATH)
     if "game_id" not in hist.columns or "market" not in hist.columns:
         return set()
+    # Rows written before the column existed are closing lines by construction.
+    if "snapshot" not in hist.columns:
+        hist = hist.with_columns(pl.lit("close").alias("snapshot"))
+    hist = hist.filter(pl.col("snapshot") == snapshot)
 
     done: set[str] | None = None
     for m in market_names:
@@ -183,7 +195,7 @@ def _parse_event_odds(payload: dict) -> list[dict]:
                 "player_name_raw": player,
                 "player_name_norm": _normalize_name(player),
                 "market": market_name,
-                "odds": int(_median(q["odds"])),
+                "odds": _prob_to_american(p_yes),
                 "implied_prob": round(p_yes, 4),
                 "fair_prob": round(p_yes / (p_yes + p_no), 4) if p_no else None,
                 "n_books": len(q["yes"]),
@@ -195,6 +207,11 @@ def _parse_event_odds(payload: dict) -> list[dict]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seasons", type=int, nargs="+", default=[2023, 2024, 2025])
+    ap.add_argument("--snapshot", choices=["open", "close"], default="close",
+                    help="Which end of the market to capture. 'close' is 5 min "
+                         "before kickoff; 'open' is 72h before, the earliest "
+                         "point with enough books to form a consensus. Both "
+                         "together make closing-line value measurable.")
     ap.add_argument("--max-credits", type=int, default=None,
                     help="Stop once this many credits have been spent.")
     ap.add_argument("--dry-run", action="store_true",
@@ -212,7 +229,7 @@ def main() -> int:
     games = _games(args.seasons)
     market_names = ["anytime_td" if k == "player_anytime_td" else "first_td"
                     for k in markets.split(",")]
-    done = _already_archived(market_names)
+    done = _already_archived(market_names, args.snapshot)
     todo = [r for r in games.iter_rows(named=True) if r["game_id"] not in done]
 
     # Props only exist in the archive after PROPS_AVAILABLE_FROM.
@@ -251,7 +268,8 @@ def main() -> int:
         if ko is None:
             skipped += 1
             continue
-        snapshot = (ko - CLOSING_OFFSET).strftime("%Y-%m-%dT%H:%M:%SZ")
+        offset = OPENING_OFFSET if args.snapshot == "open" else CLOSING_OFFSET
+        snapshot = (ko - offset).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         eid = _find_event(snapshot, row["home_team"], row["away_team"], budget)
         if not eid:
@@ -279,7 +297,8 @@ def main() -> int:
             continue
 
         snap = pl.DataFrame(rows).with_columns(pl.lit(row["game_id"]).alias("game_id"))
-        append_snapshot(snap, season=row["season"], week=row["week"])
+        append_snapshot(snap, season=row["season"], week=row["week"],
+                        snapshot=args.snapshot)
         fetched += 1
         print(f"  [{i}/{n}] {row['game_id']}: {len(rows)} prices "
               f"(spent {budget.used}, remaining {budget.remaining_reported})")

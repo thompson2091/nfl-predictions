@@ -1,11 +1,12 @@
+import json
 import pickle
 import numpy as np
 import polars as pl
-from src.utils.config import get_config
+from src.utils.config import get_config, production_model
 from src.utils.paths import get_path
 from src.models.trainer import get_feature_cols, prepare_data, _filter_low_activity
 from src.models.registry import get_model, ensure_registered
-from src.models.calibration import TemperatureScaler
+from src.models.calibration import IsotonicCalibrator
 
 
 def _rank_bucket_lines(target_type: str, model_name: str = None):
@@ -13,7 +14,7 @@ def _rank_bucket_lines(target_type: str, model_name: str = None):
     ensure_registered()
     cfg = get_config()
     if model_name is None:
-        model_name = cfg["models"]["production"]
+        model_name = production_model(target_type)
     model_dir = get_path("models", target_type)
 
     df = pl.read_parquet(get_path("processed", target_type) / "features.parquet")
@@ -99,7 +100,9 @@ def _game_pick_lines(result: pl.DataFrame, top_n: int = 5):
 
 
 def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
-                      model_dir, cfg: dict, season: int, week: int) -> pl.DataFrame:
+                      model_dir, cfg: dict, season: int, week: int,
+                      target_type: str = "anytime_td",
+                      model_name: str | None = None) -> pl.DataFrame:
     """Level-calibrate anytime-TD probabilities, then blend with the market."""
     from src.models.market_prior import load_prior, expected_scorers
     from src.prediction.blend import (
@@ -125,9 +128,11 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
     print(f"  Expected scorers/game (fitted prior): "
           f"{expected['expected_scorers'].mean():.2f}")
 
-    result = calibrate_level(result, "raw_prob", expected, out_col="prob_calibrated")
-
-    # De-vigged market prices, if any are cached for this slate.
+    # Load the market first: the level calibration below needs to know who was
+    # priced. Roughly five candidates a game never are, and they account for
+    # well under 1% of actual scorers, so normalising the total across all of
+    # them hands ~10% of the probability mass to players who essentially never
+    # score and leaves every priced player short.
     market = _load_market(week_df, expected, season, week)
     if market is not None and market.height > 0:
         result = result.with_columns(
@@ -140,16 +145,93 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
         result = result.with_columns(pl.lit(None, dtype=pl.Float64).alias("market_prob"))
         print("  No cached sportsbook prices — publishing model-only probabilities.")
 
+    # Joint structure: the team rate sets the level, the model sets the shares,
+    # and P = 1 - exp(-lambda * share). Expected touchdowns sum to lambda by
+    # construction, so there is no level to anchor afterwards and nothing for
+    # the blend to undo. Falls back to the log-odds shift when the team rate
+    # has not been fitted, so an older model directory still predicts.
+    from src.models.joint import apply_joint, load_team_rate, load_conversion
+    team_model = load_team_rate(model_dir / "team_td_rate.json")
+    conversion = load_conversion(model_dir / "td_conversion.json")
+    if team_model is not None:
+        result = apply_joint(result, week_df, team_model,
+                             score_col="raw_prob", out_col="prob_calibrated",
+                             conversion=conversion)
+        print(f"  Joint model: team rate {team_model['mean_team_tds']:.2f} "
+              f"TDs/team-game x model share")
+    else:
+        share = float(prior.get("priced_share", 1.0))
+        result = result.with_columns(
+            pl.col("market_prob").is_not_null().alias("is_priced"))
+        if result["is_priced"].any():
+            result = calibrate_level(
+                result, "raw_prob",
+                expected.with_columns(pl.col("expected_scorers") * share),
+                out_col="prob_calibrated", mask_col="is_priced",
+            )
+            print(f"  Level anchored over priced players (share {share:.3f})")
+        else:
+            result = calibrate_level(result, "raw_prob", expected,
+                                     out_col="prob_calibrated")
+
+    # The positional correction exists because one per-game log-odds shift
+    # cannot fix a bias that varies by rank within that game. The joint model
+    # does not have that problem — the team rate sets the level and the shares
+    # carry the within-game shape — and stacking the two is destructive. Its
+    # per-rank deltas are additive and not monotone in rank (rank 4 corrected
+    # by +0.115 against rank 1's +0.040), so the order-preserving clamp
+    # collapses the top ranks into ties and ordinal tie-breaking then picks
+    # among them arbitrarily. Measured on 2025 that took AUC from 0.862 to
+    # 0.497 and Top-1 from 52.3% to 11.7%.
+    from src.models.rank_calibration import apply_rank_calibration, load as load_rank
+    rank_calib = None if team_model is not None else load_rank(
+        model_dir / "rank_calibration.json")
+    if rank_calib:
+        result = apply_rank_calibration(
+            result, rank_calib, "prob_calibrated", out_col="prob_calibrated"
+        )
+        print(f"  Rank calibration applied "
+              f"({len(rank_calib.get('deltas', {}))} ranks, order preserved)")
+
     # Weight: fitted from graded history when we have enough, else the declared
     # bootstrap from config.
+    #
+    # `load_graded_history` returns prices and outcomes but no model
+    # predictions, and `fit_blend_weight` needs all three — so passing it
+    # straight through returned None on every run and the blend sat on its
+    # bootstrap 0.50 forever, across 32,194 graded player-games. The archive has
+    # to go back through the production path first; that is what
+    # `build_blend_training_frame` is for, and it was written for this and then
+    # never wired in here.
     from src.ingest.odds_history import load_graded_history
+    from src.prediction.blend import build_blend_training_frame
+
     weight_path = model_dir / "blend_weight.json"
-    graded = load_graded_history("anytime_td")
-    fitted = fit_blend_weight(graded, min_rows=bcfg.get("min_history_rows", 500))
-    if fitted is not None:
-        save_blend_weight(fitted, weight_path)
-        print(f"  Blend weight FITTED on {fitted['n_rows']:,} graded player-games: "
-              f"market={fitted['market_weight']:.2f}")
+    graded = load_graded_history(target_type)
+    n_graded = 0 if graded is None else graded.height
+    min_rows = bcfg.get("min_history_rows", 500)
+
+    # Refitting replays the whole archive through the model, so do it only when
+    # the archive has actually grown since the stored weight was fitted.
+    stored = None
+    if weight_path.exists():
+        try:
+            stored = json.loads(weight_path.read_text())
+        except Exception:
+            stored = None
+    needs_fit = n_graded >= min_rows and (
+        stored is None or stored.get("source") != "fitted"
+        or int(stored.get("n_rows", 0)) < n_graded
+    )
+    if needs_fit:
+        print(f"  Fitting blend weight on {n_graded:,} graded player-games "
+              f"(replaying the archive through the model)...")
+        history = build_blend_training_frame(target_type, model_name)
+        fitted = fit_blend_weight(history, min_rows=min_rows)
+        if fitted is not None:
+            save_blend_weight(fitted, weight_path)
+            print(f"  Blend weight FITTED on {fitted['n_rows']:,} graded "
+                  f"player-games: market={fitted['market_weight']:.2f}")
     weight = load_blend_weight(weight_path, bcfg.get("bootstrap_market_weight"))
     if weight.get("source") == "bootstrap":
         n = 0 if graded is None else graded.height
@@ -188,6 +270,17 @@ def _load_market(week_df: pl.DataFrame, expected: pl.DataFrame,
         )
     if market is None or market.height == 0:
         return None
+
+    # Only de-vig the players this week's board will actually contain. The
+    # one-sided normalisation divides by sum(implied), so quoting extra deep
+    # longshots drags every favourite down — see devig_market's docstring.
+    candidates = week_df.select([
+        _norm_name_expr("player_name").alias("player_name_norm"), "game_id",
+    ]).unique()
+    scored = market.join(candidates, on=["game_id", "player_name_norm"],
+                         how="inner")
+    if scored.height >= 5:
+        market = scored
     return devig_market(market, expected)
 
 
@@ -233,6 +326,56 @@ def _market_from_cache(season: int, week: int) -> pl.DataFrame | None:
     )
 
 
+def check_distribution_shift(week_df: pl.DataFrame, train_df: pl.DataFrame,
+                             feature_cols: list[str], threshold: float = 0.5,
+                             top_n: int = 15) -> list[str]:
+    """Warn when predict-time feature *values* sit far from their training range.
+
+    The nullness check below catches features that vanish. It is blind to the
+    opposite failure, which is the one that actually happened: carry-forward
+    filled week 1 of the predict season with the previous season's state, so
+    nine features arrived *more* populated than in any training week and with
+    means up to twice what the model had ever seen. Nothing was null, nothing
+    warned, and the board quietly scored rows from a distribution it had never
+    been fitted on.
+
+    Shift is measured in training standard deviations, which makes one threshold
+    meaningful across features on wildly different scales. Nulls are filled with
+    zero on both sides first, because that is what `prepare_data` feeds the
+    model — comparing the non-null values only would describe a matrix nobody
+    scores.
+    """
+    if train_df is None or train_df.height == 0 or week_df.height == 0:
+        return []
+
+    shifted = []
+    for c in feature_cols:
+        if c not in week_df.columns or c not in train_df.columns:
+            continue
+        try:
+            a = train_df[c].cast(pl.Float64).fill_null(0.0)
+            b = week_df[c].cast(pl.Float64).fill_null(0.0)
+        except Exception:
+            continue
+        sd = a.std()
+        if sd is None or sd == 0 or a.mean() is None or b.mean() is None:
+            continue
+        z = abs(b.mean() - a.mean()) / sd
+        if z > threshold:
+            shifted.append((c, float(a.mean()), float(b.mean()), float(z)))
+
+    if shifted:
+        print(f"\n  !! DISTRIBUTION SHIFT: {len(shifted)} feature(s) sit more than "
+              f"{threshold} training SDs from where the model was fitted.")
+        print("     The model has not seen inputs like this; treat the output with "
+              "suspicion:")
+        for c, was, now, z in sorted(shifted, key=lambda r: -r[3])[:top_n]:
+            print(f"       {c:45s} train={was:>9.3f} -> now={now:>9.3f}  ({z:.1f} SD)")
+        if len(shifted) > top_n:
+            print(f"       ... and {len(shifted) - top_n} more")
+    return [c for c, _, _, _ in shifted]
+
+
 def check_feature_skew(week_df: pl.DataFrame, feature_cols: list[str],
                        model_dir, threshold: float = 0.35) -> list[str]:
     """Warn when predict-time features are far more null than they were in training.
@@ -241,6 +384,10 @@ def check_feature_skew(week_df: pl.DataFrame, feature_cols: list[str],
     block of player_* features silently went 100% null at predict time while the
     model had been trained on populated values, and `prepare_data` turned them
     into 0.0 without complaint. Probabilities inflated ~2.7x with no error raised.
+
+    Only catches features going *missing*. For values drifting while staying
+    populated, see `check_distribution_shift` — the two failures are different
+    and this one is blind to the second.
     """
     path = model_dir / "train_null_rates.pkl"
     if not path.exists():
@@ -274,7 +421,7 @@ def predict(season: int, week: int, model_name: str = None,
     if target_type is None:
         target_type = cfg["target"]["type"]
     if model_name is None:
-        model_name = cfg["models"]["production"]
+        model_name = production_model(target_type)
 
     model_dir = get_path("models", target_type)
     feat_cols_path = model_dir / "feature_cols.pkl"
@@ -298,6 +445,12 @@ def predict(season: int, week: int, model_name: str = None,
         print(f"Filtered {before} -> {week_df.shape[0]} candidates (removed low-activity)")
 
     check_feature_skew(week_df, feature_cols, model_dir)
+    # Training rows are already in memory from the read above, so comparing
+    # against them costs nothing and cannot go stale the way a pickled summary
+    # written at training time can.
+    check_distribution_shift(
+        week_df, df.filter(pl.col("season") < season), feature_cols
+    )
 
     X, _ = prepare_data(week_df, feature_cols)
 
@@ -318,7 +471,7 @@ def predict(season: int, week: int, model_name: str = None,
 
             cal_path = model_dir / f"{name}_calibrator.pkl"
             if cal_path.exists():
-                cal = TemperatureScaler.load(cal_path)
+                cal = IsotonicCalibrator.load(cal_path)
                 p = cal.calibrate(p)
 
             probs += w * p
@@ -329,7 +482,7 @@ def predict(season: int, week: int, model_name: str = None,
 
         cal_path = model_dir / f"{model_name}_calibrator.pkl"
         if cal_path.exists():
-            cal = TemperatureScaler.load(cal_path)
+            cal = IsotonicCalibrator.load(cal_path)
             probs = cal.calibrate(probs)
 
     id_cols = ["game_id", "player_id", "player_name", "team"]
@@ -345,7 +498,9 @@ def predict(season: int, week: int, model_name: str = None,
         )
     else:
         result = _anchor_to_market(result, week_df, model_dir, cfg,
-                                   season=season, week=week)
+                                   season=season, week=week,
+                                   target_type=target_type,
+                                   model_name=model_name)
 
     result = result.with_columns(
         pl.col("probability")
@@ -363,10 +518,17 @@ def predict(season: int, week: int, model_name: str = None,
     ])
     result = result.join(game_labels, on="game_id", how="left")
 
-    result = result.select([
-        "game_id", "game_label", "player_name", "team",
-        "probability", "rank",
-    ])
+    # `prob_model` is the pre-blend view, carried alongside the published
+    # probability so closing-line value stays measurable. `probability` is
+    # blended with the market price, and scoring that against how the market
+    # then moves asks whether the price predicts itself — worth 4.4 points of
+    # imaginary skill when measured. Betting analysis ranks on this column too,
+    # for the reason in src/evaluation/rank_economics.py.
+    keep = ["game_id", "game_label", "player_name", "team", "probability", "rank"]
+    if "prob_calibrated" in result.columns:
+        result = result.with_columns(pl.col("prob_calibrated").alias("prob_model"))
+        keep.append("prob_model")
+    result = result.select(keep)
 
     output_dir = get_path("output", target_type)
     csv_path = output_dir / f"predictions_{season}_week{week}.csv"

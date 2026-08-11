@@ -22,7 +22,29 @@ models:
   - lr
   - lgbm
   - xgb
-  production: lr
+  # Chosen from walk-forward, not from a single season. Pooled over 1,130
+  # anytime-TD games (4 retrained folds, none scoring its own training years),
+  # re-measured after the week-1 carry-forward fix:
+  #   xgb   Top-1 52.1%  AUC 0.8408  Brier 0.09142   <- production
+  #   ens   Top-1 50.7%  AUC 0.8411  Brier 0.09131
+  #   lgbm  Top-1 49.6%  AUC 0.8369  Brier 0.09191   <- was production
+  #   lr    Top-1 49.2%  AUC 0.8250  Brier 0.09299
+  # xgb beats lgbm by 2.5 points of Top-1 against a 1.5-point standard error.
+  # The ensemble edges it on Brier and AUC but loses 1.4 points of Top-1, and
+  # Top-1 is what a card is built on. tests/test_leakage.py asserts this choice
+  # against the walk-forward file, so it fails rather than drifts.
+  # Re-check with `make walkforward` after any change to features or models.
+  production: xgb
+  # Per-market override; `production` above is the fallback. First TD and
+  # Anytime TD do not want the same model — see production_model() in
+  # src/utils/config.py for the walk-forward numbers behind each choice.
+  #
+  # first_td stays on the ensemble: Top-1 17.1% vs xgb's 17.0% is a tie, but it
+  # leads on AUC (0.8216 vs 0.8179) and Brier, and a tie broken toward the more
+  # stable estimator is the right way to break it.
+  production_by_target:
+    anytime_td: xgb
+    first_td: ensemble
 model:
   seed: 42
   lgbm:

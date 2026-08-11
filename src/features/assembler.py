@@ -72,39 +72,73 @@ def _build_game_context_features(schedules: pl.DataFrame) -> pl.DataFrame:
     return game_context.select(["game_id", "team", "is_dome", "is_divisional", "surface_turf"])
 
 
+def _carry_forward(feats: pl.DataFrame, key_col: str,
+                   predict_season: int) -> pl.DataFrame:
+    """Give week 1 of *every* season the prior season's last known state.
+
+    Carry-forward used to run for the predict season only, which made week 1
+    mean something different when serving than it ever meant in training. The
+    opening-drive features are the clearest case: only the team that receives
+    the kickoff has a row, so a played season's week 1 covers 16 teams, while a
+    projected week 1 covered all 32. Nine features drifted more than half a
+    standard deviation between the two, and the model had never seen the
+    combination it was being asked to score. Applying the projection to every
+    season's week 1 makes the two identical by construction.
+
+    No leakage: the value stamped onto week 1 of season S comes from season
+    S-1, which is over before the row it labels is played. That is the same
+    information a person has on opening weekend.
+
+    Real rows always win. A key with a genuine week-1 row keeps it, and the
+    projection only fills the gaps — otherwise this would overwrite measured
+    values with stale ones and fan out every downstream join.
+    """
+    if feats.height == 0 or "season" not in feats.columns:
+        return feats
+
+    seasons = sorted(feats["season"].unique().to_list())
+    # Every season that could have a week 1 needing a fill, including the
+    # predict season, which has no rows of its own yet.
+    targets = [s for s in seasons + [predict_season] if (s - 1) in seasons]
+    if not targets:
+        return feats
+
+    sort_cols = [key_col, "week"]
+    projections = []
+    for season in sorted(set(targets)):
+        last = (
+            feats.filter(pl.col("season") == season - 1)
+            .sort(sort_cols)
+            .group_by(key_col)
+            .last()
+            .with_columns([
+                pl.lit(season).alias("season").cast(feats["season"].dtype),
+                pl.lit(1).alias("week").cast(feats["week"].dtype),
+            ])
+        )
+        if last.height:
+            projections.append(last)
+    if not projections:
+        return feats
+
+    proj = pl.concat(projections, how="diagonal_relaxed")
+    # game_id belongs to the season it came from and must not travel forward.
+    if "game_id" in proj.columns:
+        proj = proj.drop("game_id")
+
+    # Real rows first, so `keep="first"` prefers them over the projection.
+    out = pl.concat([feats, proj], how="diagonal_relaxed")
+    return out.unique(subset=[key_col, "season", "week"], keep="first",
+                      maintain_order=True)
+
+
 def _carry_forward_player(player_feats: pl.DataFrame, predict_season: int) -> pl.DataFrame:
-    feat_cols = [c for c in player_feats.columns if c not in ("player_id", "season", "week")]
-    last = (
-        player_feats
-        .filter(pl.col("season") == predict_season - 1)
-        .sort(["player_id", "week"])
-        .group_by("player_id")
-        .last()
-        .with_columns([
-            pl.lit(predict_season).alias("season").cast(player_feats["season"].dtype),
-            pl.lit(1).alias("week").cast(player_feats["week"].dtype),
-        ])
-    )
-    return pl.concat([player_feats, last], how="diagonal_relaxed")
+    return _carry_forward(player_feats, "player_id", predict_season)
 
 
 def _carry_forward_team(team_feats: pl.DataFrame, predict_season: int,
                         team_col: str) -> pl.DataFrame:
-    last = (
-        team_feats
-        .filter(pl.col("season") == predict_season - 1)
-        .sort([team_col, "week"])
-        .group_by(team_col)
-        .last()
-        .with_columns([
-            pl.lit(predict_season).alias("season").cast(team_feats["season"].dtype),
-            pl.lit(1).alias("week").cast(team_feats["week"].dtype),
-        ])
-    )
-    # Drop game_id if present (won't match predict season)
-    if "game_id" in last.columns:
-        last = last.drop("game_id")
-    return pl.concat([team_feats, last], how="diagonal_relaxed")
+    return _carry_forward(team_feats, team_col, predict_season)
 
 
 def _load_optional_parquet(name: str) -> pl.DataFrame:
@@ -288,7 +322,10 @@ def assemble_features() -> pl.DataFrame:
     box_feats = build_box_features(pbp)
     print(f"  Box count features: {box_feats.shape}")
 
-    # === Carry forward for predict season ===
+    # === Carry forward into week 1 of every season, predict season included ===
+    # Gated on predict_season only because that is the caller's signal that a
+    # full build is happening; the projection itself now covers all seasons, so
+    # training rows and serving rows are constructed the same way.
     if predict_season:
         player_feats = _carry_forward_player(player_feats, predict_season)
         player_ftd_feats = _carry_forward_player(player_ftd_feats, predict_season)

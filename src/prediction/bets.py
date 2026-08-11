@@ -34,19 +34,64 @@ def _decimal_expr(col: str) -> pl.Expr:
     )
 
 
-def build_bet_card(predictions: pl.DataFrame, market: pl.DataFrame,
-                   bankroll: float | None = None) -> pl.DataFrame:
-    """Join model probabilities to live prices and rank by expected value.
+def board_for_week(season: int, week: int, target_type: str, model_name: str,
+                   bankroll: float | None = None) -> tuple[pl.DataFrame, str]:
+    """Every priced player for one week. Returns (board, status message).
+
+    Shared by the CLI (scripts/08_bets.py) and the app so both show exactly the
+    same numbers — a bet card that disagrees with itself depending on where you
+    read it is worse than no bet card.
+    """
+    from src.models.market_prior import load_prior, expected_scorers
+    from src.prediction.blend import devig_market
+    from src.prediction.predict import predict, _market_from_cache, _norm_name_expr
+    from src.utils.paths import get_path
+
+    result = predict(season, week, model_name=model_name, target_type=target_type)
+    if result is None:
+        return pl.DataFrame(), "No predictions for this week — run the pipeline."
+
+    market = _market_from_cache(season, week)
+    if market is None or market.height == 0:
+        return pl.DataFrame(), (
+            f"No sportsbook prices cached for week {week}. "
+            f"Run `make odds WEEK={week}` to fetch them."
+        )
+
+    prior = load_prior(get_path("models", target_type) / "scorer_rate_prior.json")
+    if prior is None:
+        return pl.DataFrame(), "No scorer-rate prior — run `make train`."
+
+    feats = pl.read_parquet(get_path("processed", target_type) / "features.parquet")
+    wk = feats.filter((pl.col("season") == season) & (pl.col("week") == week))
+    games = wk.group_by("game_id").agg(
+        [pl.col("total_line").first(), pl.col("spread_line").first()]
+    )
+    market = devig_market(market, expected_scorers(prior, games))
+
+    preds = result.with_columns(_norm_name_expr("player_name").alias("player_name_norm"))
+    board = build_board(preds, market, bankroll)
+    if board.height == 0:
+        return board, "No players could be matched to a sportsbook price."
+    return board, ""
+
+
+def build_board(predictions: pl.DataFrame, market: pl.DataFrame,
+                bankroll: float | None = None) -> pl.DataFrame:
+    """Every priced player, with the same numbers computed for all of them.
+
+    This is the single source the recommended / overvalued / full views all
+    filter. Computing the maths once means the three views can never disagree
+    about the same player — and it lets you inspect a player we did *not*
+    recommend on exactly the same terms as one we did.
 
     Args:
         predictions: needs player_name, team, game_label, probability.
-        market: needs player_name_norm, game_id, odds (American), fair_prob.
+        market: needs player_name_norm, game_id, odds (American), market_prob.
     """
     cfg = get_config()
     bcfg = cfg.get("betting", {})
     kelly_fraction = float(bcfg.get("kelly_fraction", 0.25))
-    min_edge = float(bcfg.get("min_edge_pp", 2.0)) / 100.0
-    min_ev = float(bcfg.get("min_ev_pct", 0.0)) / 100.0
     if bankroll is None:
         bankroll = float(bcfg.get("bankroll", 1000.0))
 
@@ -63,22 +108,70 @@ def build_bet_card(predictions: pl.DataFrame, market: pl.DataFrame,
         (pl.col("probability") - pl.col("market_prob")).alias("edge"),
     ])
 
-    # Kelly: f* = (p*b - q) / b, b = decimal odds - 1
+    # Kelly: f* = (p*b - q) / b, b = decimal odds - 1. Clipped at 0 because a
+    # negative Kelly means "bet the other side", which these markets don't offer.
     b = pl.col("decimal_odds") - 1.0
     df = df.with_columns(
         (((pl.col("probability") * b) - (1.0 - pl.col("probability"))) / b)
         .clip(lower_bound=0.0)
         .alias("kelly_full")
     )
-    df = df.with_columns([
+    # The same disagreement measured before the blend. `edge` above uses the
+    # published probability, which has already been pulled toward the price it
+    # is being compared against — so it comes out about 62% the size of the real
+    # one, and shrinks most exactly where the disagreement is largest. Every
+    # profitability figure in src/evaluation/rank_economics.py is measured on
+    # this column, so a betting rule expressed in edge points has to read it
+    # rather than `edge_pp`, or the threshold means something different on
+    # screen than it did in the backtest.
+    if "prob_model" in df.columns:
+        df = df.with_columns(
+            (pl.col("prob_model") - pl.col("market_prob")).alias("model_edge")
+        )
+    else:
+        # No pre-blend column (first_td publishes the model number directly).
+        df = df.with_columns(pl.col("edge").alias("model_edge"))
+
+    return df.with_columns([
         (pl.col("kelly_full") * kelly_fraction).alias("kelly_stake_frac"),
         (pl.col("kelly_full") * kelly_fraction * bankroll).round(2).alias("stake"),
         (pl.col("ev_per_unit") * 100).round(1).alias("ev_pct"),
         (pl.col("edge") * 100).round(1).alias("edge_pp"),
-    ])
+        (pl.col("model_edge") * 100).round(1).alias("model_edge_pp"),
+    ]).sort("ev_pct", descending=True)
 
-    df = df.filter((pl.col("edge") >= min_edge) & (pl.col("ev_per_unit") > min_ev))
-    return df.sort("ev_pct", descending=True)
+
+def build_bet_card(predictions: pl.DataFrame, market: pl.DataFrame,
+                   bankroll: float | None = None) -> pl.DataFrame:
+    """The recommended plays: we're above the fair price and the EV is positive."""
+    cfg = get_config()
+    bcfg = cfg.get("betting", {})
+    min_edge = float(bcfg.get("min_edge_pp", 2.0)) / 100.0
+    min_ev = float(bcfg.get("min_ev_pct", 0.0)) / 100.0
+
+    board = build_board(predictions, market, bankroll)
+    if board.height == 0:
+        return board
+    return board.filter(
+        (pl.col("edge") >= min_edge) & (pl.col("ev_per_unit") > min_ev)
+    )
+
+
+def build_fade_card(board: pl.DataFrame) -> pl.DataFrame:
+    """Players the market rates far *higher* than we do.
+
+    Carries a stake of 0 by construction. Sportsbooks do not post a "will not
+    score" price on these props — measured across a live slate, 0 of 142 quotes
+    carried the other side — so there is normally no way to bet against a player.
+    This is therefore a "don't back these" list, and a check on our own model: if
+    the book is confident and we are not, one of us is wrong, and the book is
+    right far more often than we are.
+    """
+    cfg = get_config()
+    min_edge = float(cfg.get("betting", {}).get("min_edge_pp", 2.0)) / 100.0
+    if board.height == 0:
+        return board
+    return board.filter(pl.col("edge") <= -min_edge).sort("edge_pp")
 
 
 def format_bet_card(card: pl.DataFrame, target_type: str, season: int,

@@ -15,8 +15,9 @@ sys.path.insert(0, ".")
 
 import polars as pl
 
-from src.ingest.odds_api import fetch_week_td_props, build_odds_parquet
-from src.ingest.odds_history import append_snapshot
+from src.ingest.odds_api import (fetch_week_td_props, build_odds_parquet,
+                                 load_cached_book_quotes)
+from src.ingest.odds_history import append_snapshot, append_book_quotes
 from src.utils.config import get_config
 
 
@@ -51,6 +52,12 @@ if __name__ == "__main__":
     ap.add_argument("--season", type=int, default=cfg["seasons"]["predict_season"])
     ap.add_argument("--week", type=int, required=True)
     ap.add_argument("--force-refresh", action="store_true")
+    ap.add_argument(
+        "--snapshot", choices=["open", "close"], default="close",
+        help="Which end of the market this fetch is. Run once early in the "
+             "week with --snapshot open and again near kickoff with the "
+             "default; the pair is what makes closing-line value measurable.",
+    )
     args = ap.parse_args()
 
     odds = fetch_week_td_props(force_refresh=args.force_refresh)
@@ -59,5 +66,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     print(f"Fetched {len(odds)} games")
-    append_snapshot(_to_rows(odds), season=args.season, week=args.week)
+    append_snapshot(_to_rows(odds), season=args.season, week=args.week,
+                    snapshot=args.snapshot)
+    # Same response, no extra credits, and unbuyable afterwards.
+    append_book_quotes(load_cached_book_quotes(), season=args.season,
+                       week=args.week, snapshot=args.snapshot)
     build_odds_parquet()

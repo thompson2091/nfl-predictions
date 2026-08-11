@@ -1,14 +1,15 @@
 import json
 import pickle
+from pathlib import Path
 import numpy as np
 import polars as pl
 from scipy.optimize import minimize
-from src.utils.config import get_config
+from src.utils.config import get_config, production_model
 from src.utils.paths import get_path
 from src.evaluation.metrics import evaluate_model, print_metrics, top_k_accuracy
 from src.evaluation.plots import plot_calibration, plot_feature_importance
 from src.models.registry import get_model, ensure_registered
-from src.models.calibration import TemperatureScaler
+from src.models.calibration import IsotonicCalibrator
 
 
 def get_feature_cols(df: pl.DataFrame) -> list[str]:
@@ -57,25 +58,31 @@ def prepare_data(df: pl.DataFrame, feature_cols: list[str]):
 
 def _filter_low_activity(df: pl.DataFrame) -> pl.DataFrame:
     """Remove candidates unlikely to score: no usage, not on depth chart.
+
     Keep a player if ANY of these are true:
       - Is DEF/ST
-      - Is target=1 (for training data integrity)
       - Has recent usage (carries/targets/receptions > 0)
       - Is a starter (is_starter == 1)
       - Has snap share > 0
       - Is on depth chart at rank 1-2 (depth_chart_rank feature)
+
+    Every criterion above is knowable before kickoff. That is not optional.
+    This function once also kept any row with `target == 1` — "for training
+    data integrity" — which made the surviving population a function of the
+    outcome. The damage was not subtle: it left 863 training rows with zero
+    carries, zero targets, zero receptions, no snaps and no starter role, of
+    which 100% scored, because the only way into that corner of the data was
+    to score. The model duly learned that no usage at all predicts a
+    touchdown, and priced backup tight ends at 6-13% against a true rate near
+    2%. It also silently skewed train against serve: a future week has no
+    `target` column, so the clause could only ever fire in training and
+    backtests, never in production.
     """
     is_defst = df.select(
         pl.col("position_DEFST").fill_null(0) == 1
         if "position_DEFST" in df.columns
         else pl.lit(False)
     ).to_series()
-
-    is_target = (
-        (df["target"] == 1)
-        if "target" in df.columns
-        else pl.Series([False] * df.shape[0])
-    )
 
     has_usage = (
         df.select(
@@ -105,43 +112,153 @@ def _filter_low_activity(df: pl.DataFrame) -> pl.DataFrame:
         else pl.Series([False] * df.shape[0])
     )
 
-    keep = is_defst | is_target | has_usage | is_starter | has_snaps | on_depth_chart
+    keep = is_defst | has_usage | is_starter | has_snaps | on_depth_chart
     return df.filter(keep)
+
+
+def _priced_only(df: pl.DataFrame, target_type: str) -> pl.DataFrame:
+    """Rows a sportsbook priced — the population production actually shows.
+
+    Falls back to the full frame when no archive covers it, since a fit on the
+    wrong population still beats no fit.
+    """
+    try:
+        from src.ingest.odds_history import load_graded_history
+        graded = load_graded_history(target_type)
+    except Exception:
+        graded = None
+    if graded is None or graded.height == 0:
+        return df
+    priced = graded.select(["game_id", "player_id"]).unique()
+    out = df.join(priced, on=["game_id", "player_id"], how="inner")
+    return out if out.height >= 1000 else df
+
+
+def _serving_population(val_df: pl.DataFrame, probs: np.ndarray,
+                        y: np.ndarray, target_type: str):
+    """Restrict a calibration fit to the players a sportsbook actually priced.
+
+    Production only ever scores priced players. They are a far stronger group
+    than the full candidate pool, so a calibrator fit over every candidate is
+    tuned for rows the app never shows. Falls back to the whole pool when the
+    odds archive cannot cover the validation season, since a calibrator fit on
+    the wrong population still beats no calibrator at all.
+    """
+    try:
+        from src.ingest.odds_history import load_graded_history
+        graded = load_graded_history(target_type)
+    except Exception:
+        graded = None
+    if graded is None or graded.height == 0:
+        print("  Calibration: no odds archive — fitting on all candidates")
+        return probs, y
+
+    priced = graded.select(["game_id", "player_id"]).unique().with_columns(
+        pl.lit(True).alias("_priced")
+    )
+    mask = (
+        val_df.select(["game_id", "player_id"])
+        .join(priced, on=["game_id", "player_id"], how="left")["_priced"]
+        .fill_null(False)
+        .to_numpy()
+    )
+    if mask.sum() < IsotonicCalibrator.MIN_ROWS:
+        print(f"  Calibration: only {int(mask.sum())} priced validation rows — "
+              "fitting on all candidates")
+        return probs, y
+    print(f"  Calibration: fitting on {int(mask.sum()):,} priced validation rows "
+          f"of {len(mask):,} candidates")
+    return probs[mask], y[mask]
 
 
 def _optimize_ensemble_weights(val_probs_dict: dict[str, np.ndarray],
                                val_df: pl.DataFrame) -> dict[str, float]:
-    """Find optimal ensemble weights on validation set using top-1 accuracy."""
+    """Weight the ensemble by validation log loss.
+
+    This used to minimise negative top-1 accuracy with L-BFGS-B, which never
+    ran. Top-1 is a step function of the weights — nudging a weight by 1e-8
+    cannot change which player ranks first in a game — so the numerical
+    gradient was exactly zero, the optimiser returned at iteration 0, and the
+    "learned weights" printed at every training run were the equal-weight
+    starting point echoed back unchanged.
+
+    Log loss is smooth in the weights, is a proper scoring rule, and is
+    measured over every candidate rather than one row per game, so it is far
+    less noisy than top-1 (~9,700 rows against 283 games). Fitting a
+    three-weight simplex to 283 coarse outcomes is how you overfit a
+    validation season; fitting it to the full likelihood is not.
+
+    The result is kept only if it genuinely beats equal weighting.
+    """
     names = list(val_probs_dict.keys())
-    probs_list = [val_probs_dict[n] for n in names]
+    P = np.column_stack([val_probs_dict[n] for n in names])
+    y = val_df["target"].to_numpy().astype(float)
 
-    def neg_top1(weights):
-        w = np.array(weights)
-        w = w / w.sum()
-        blended = sum(w_i * p for w_i, p in zip(w, probs_list))
-        eval_df = val_df.with_columns(pl.Series("prob", blended))
-        return -top_k_accuracy(eval_df, k=1)
+    def nll(w: np.ndarray) -> float:
+        w = np.maximum(np.asarray(w, dtype=float), 0.0)
+        total = w.sum()
+        if total <= 0:
+            return 1e9
+        p = np.clip(P @ (w / total), 1e-7, 1 - 1e-7)
+        return float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)))
 
-    n = len(probs_list)
-    bounds = [(0.0, 1.0)] * n
+    n = len(names)
+    equal = np.full(n, 1.0 / n)
     result = minimize(
-        neg_top1,
-        x0=[1.0 / n] * n,
-        method="L-BFGS-B",
-        bounds=bounds,
-        options={"maxiter": 500},
+        nll, x0=equal, method="L-BFGS-B",
+        bounds=[(0.0, 1.0)] * n, options={"maxiter": 500},
     )
-    weights = np.array(result.x)
-    weights = np.maximum(weights, 0.0)
+    weights = np.maximum(np.asarray(result.x, dtype=float), 0.0)
+
+    if weights.sum() <= 0 or nll(weights) >= nll(equal):
+        print("  Ensemble: fitted weights did not beat equal weighting — keeping equal")
+        weights = equal
     weights = weights / weights.sum()
+
+    # Shrink toward equal weighting by how much of the improvement is signal.
+    #
+    # Three free weights fitted to one validation season will happily collapse
+    # onto whichever model won that season — a corner solution that stops being
+    # an ensemble at all and throws away the variance reduction that motivated
+    # it. Same signal-to-noise weighting the rank calibration uses: compare the
+    # per-row log-loss gain against its own standard error, so a gain that is
+    # large relative to its noise is kept almost whole and a marginal one is
+    # pulled back toward equal.
+    def row_loss(w: np.ndarray) -> np.ndarray:
+        p = np.clip(P @ (w / w.sum()), 1e-7, 1 - 1e-7)
+        return -(y * np.log(p) + (1 - y) * np.log(1 - p))
+
+    diff = row_loss(equal) - row_loss(weights)
+    se = diff.std(ddof=1) / np.sqrt(len(diff)) if len(diff) > 1 else 0.0
+    d = float(diff.mean())
+    lam = (d ** 2) / (d ** 2 + se ** 2) if (d > 0 and se > 0) else (1.0 if d > 0 else 0.0)
+    weights = lam * weights + (1.0 - lam) * equal
+    weights = weights / weights.sum()
+    print(f"  Ensemble: gain {d:.5f} +/- {se:.5f} per row -> shrunk {lam:.0%} "
+          f"toward the fit")
+
+    def top1(w: np.ndarray) -> float:
+        return top_k_accuracy(val_df.with_columns(pl.Series("prob", P @ w)), k=1)
+
+    print(f"  Ensemble: log loss {nll(equal):.5f} (equal) -> {nll(weights):.5f} (fitted), "
+          f"val top-1 {top1(equal):.1%} -> {top1(weights):.1%}")
     return dict(zip(names, weights))
 
 
-def train_all(target_type: str = None):
+def train_all(target_type: str = None, splits: dict | None = None,
+              model_dir=None, output_dir=None):
+    """Train, calibrate and fit every artifact for one market.
+
+    `splits`, `model_dir` and `output_dir` exist so a walk-forward evaluation
+    can run the whole recipe on an earlier slice of history without touching
+    the artifacts production is serving. Default to the config and the standard
+    paths, so ordinary training is unchanged.
+    """
     ensure_registered()
     cfg = get_config()
     if target_type is None:
         target_type = cfg["target"]["type"]
+    splits = dict(cfg["splits"]) if splits is None else dict(splits)
     seed = cfg["model"]["seed"]
     active_models = cfg["models"]["active"]
 
@@ -151,9 +268,9 @@ def train_all(target_type: str = None):
     print(f"Features: {len(feature_cols)} columns")
 
     # Time-series split
-    train_df = df.filter(pl.col("season") <= cfg["splits"]["train_end"])
-    val_df = df.filter(pl.col("season") == cfg["splits"]["val_season"])
-    test_df = df.filter(pl.col("season") == cfg["splits"]["test_season"])
+    train_df = df.filter(pl.col("season") <= splits["train_end"])
+    val_df = df.filter(pl.col("season") == splits["val_season"])
+    test_df = df.filter(pl.col("season") == splits["test_season"])
 
     # Filter low-activity candidates consistently across all splits
     train_before = train_df.shape[0]
@@ -169,7 +286,8 @@ def train_all(target_type: str = None):
     X_val, y_val = prepare_data(val_df, feature_cols)
     X_test, y_test = prepare_data(test_df, feature_cols)
 
-    model_dir = get_path("models", target_type)
+    model_dir = Path(model_dir) if model_dir else get_path("models", target_type)
+    model_dir.mkdir(parents=True, exist_ok=True)
     all_metrics = []
     val_probs_dict = {}
     test_probs_dict = {}
@@ -196,8 +314,6 @@ def train_all(target_type: str = None):
         # Predict
         val_probs = model.predict_proba(X_val)
         test_probs = model.predict_proba(X_test)
-        val_probs_dict[name] = val_probs
-        test_probs_dict[name] = test_probs
 
         # Evaluate raw
         val_eval = val_df.with_columns(pl.Series("prob", val_probs))
@@ -208,12 +324,31 @@ def train_all(target_type: str = None):
         print_metrics(test_m)
         all_metrics.extend([val_m, test_m])
 
-        # Calibrate
-        calibrator = TemperatureScaler()
-        calibrator.fit(val_probs, y_val)
+        # Calibrate, on the population we actually serve.
+        #
+        # Two changes from the old single-temperature fit over every candidate.
+        # First, isotonic: the measured error is not a uniform stretch but a
+        # shape — near-perfect below 0.10, 5-8 points under between 0.20 and
+        # 0.45, over above 0.45 — and no single temperature can pull the middle
+        # up without pushing the tails further out. Second, the fit population:
+        # the app only ever scores players a sportsbook priced, a narrower and
+        # much stronger group than the full candidate pool, so calibrating
+        # against every candidate tunes for rows production never sees.
+        calibrator = IsotonicCalibrator()
+        fit_p, fit_y = _serving_population(val_df, val_probs, y_val, target_type)
+        calibrator.fit(fit_p, fit_y)
 
         cal_val_probs = calibrator.calibrate(val_probs)
         cal_test_probs = calibrator.calibrate(test_probs)
+
+        # Weight the ensemble on calibrated probabilities, because that is what
+        # production combines: predict.py loads each model's calibrator, applies
+        # it, and only then takes the weighted average. Fitting the weights on
+        # raw probabilities optimises a blend nobody serves, and it penalises
+        # whichever model happens to be worst calibrated rather than whichever
+        # is least informative.
+        val_probs_dict[name] = cal_val_probs
+        test_probs_dict[name] = cal_test_probs
         cal_val_eval = val_df.with_columns(pl.Series("prob", cal_val_probs))
         cal_test_eval = test_df.with_columns(pl.Series("prob", cal_test_probs))
         cal_val_m = evaluate_model(cal_val_eval, f"{name}-calibrated (val)")
@@ -265,6 +400,108 @@ def train_all(target_type: str = None):
           f"over {prior['n_games']:,} games (RMSE {prior['rmse']:.2f}) "
           f"-> {model_dir / 'scorer_rate_prior.json'}")
 
+    # --- Fit the team touchdown rate that sets the level in the joint model ---
+    # Predictions are published as 1 - exp(-lambda * share): this supplies the
+    # lambda, the model above supplies the share. The scorer-rate prior is kept
+    # because the market de-vig still normalises against it.
+    from src.models.joint import fit_team_rate, save_team_rate
+    try:
+        team_model = fit_team_rate(df, train_seasons)
+        save_team_rate(team_model, model_dir / "team_td_rate.json")
+        print(f"Team TD rate: {team_model['mean_team_tds']:.2f} TDs/team-game over "
+              f"{team_model['n_team_games']:,} team-games (RMSE "
+              f"{team_model['rmse']:.2f}) -> {model_dir / 'team_td_rate.json'}")
+    except ValueError as e:
+        team_model = None
+        print(f"Team TD rate NOT fitted ({e}) — prediction falls back to the "
+              "per-player level calibration.")
+
+    # --- Fit the count -> probability conversion the joint model publishes ---
+    # Poisson thinning understated the top of the board by 5-7 points because a
+    # lead back's goal-line carries are not independent arrivals. Fit the
+    # dispersion, and a level term that absorbs the scoring environment drifting
+    # away from the seasons the team rate was fitted on. Fitted on train+val
+    # only, like the calibrator, so the held-out season stays held out.
+    if team_model is not None:
+        try:
+            from src.models.joint import (apply_joint, fit_conversion,
+                                          save_conversion)
+            conv_src = _filter_low_activity(df.filter(
+                pl.col("season").is_in(train_seasons + [splits["val_season"]])
+                & pl.col("target").is_not_null()
+            ))
+            Xc, _ = prepare_data(conv_src, feature_cols)
+            prod_name = production_model(target_type)
+            from src.models.scoring import score as _score
+            conv_src = conv_src.with_columns(
+                pl.Series("_s", _score(prod_name, Xc, feature_cols, model_dir))
+            )
+            conv_src = apply_joint(conv_src, conv_src, team_model,
+                                   score_col="_s", out_col="_p")
+            conv_src = conv_src.with_columns(
+                (pl.col("team_lambda") * pl.col("share")).alias("_mu")
+            )
+            # Fit on the players we publish for. Over the full candidate pool
+            # thousands of near-zero rows, where every conversion agrees,
+            # swamp the top of the board where they differ by 5-7 points: the
+            # dispersion came out 3.05 on all candidates against 1.15 on the
+            # priced ones, i.e. almost back to the Poisson it was correcting.
+            conv_src = _priced_only(conv_src, target_type)
+            conv = fit_conversion(conv_src, "_mu")
+            save_conversion(conv, model_dir / "td_conversion.json")
+            print(f"TD conversion: level {conv['level']}, dispersion "
+                  f"{conv['dispersion']} (log loss {conv['poisson_log_loss']:.5f} "
+                  f"Poisson -> {conv['log_loss']:.5f}) -> "
+                  f"{model_dir / 'td_conversion.json'}")
+        except Exception as e:
+            print(f"TD conversion NOT fitted ({e}) — falling back to Poisson.")
+
+    # --- Fit the positional (per-rank) correction ---
+    # The model's error depends on where a player sits in its own ranking, which
+    # no feature encodes and the per-game level shift cannot fix (that moves a
+    # whole game together). Fit across several seasons and shrink each rank by
+    # how consistent its bias is — a single season taught the top ranks a bias
+    # that reversed the next year, and "correcting" it made them worse.
+    try:
+        from src.models.rank_calibration import fit_rank_calibration, save as save_rank
+        prod = production_model(target_type)
+        rank_src = df.filter(
+            pl.col("season").is_in(train_seasons + [splits["val_season"]])
+            & pl.col("target").is_not_null()
+        )
+        rank_src = _filter_low_activity(rank_src)
+        Xr, _ = prepare_data(rank_src, feature_cols)
+        rank_model = get_model(prod).load(model_dir / f"{prod}.pkl")
+        rank_model.feature_names = feature_cols
+        rank_probs = rank_model.predict_proba(Xr)
+
+        # Fit on the same quantity this correction is applied to. It used to be
+        # fitted on raw `predict_proba` and applied downstream of both the
+        # calibrator and the level step, so it was correcting a rank-conditional
+        # bias measured on numbers nobody publishes. Applying a stale correction
+        # cost more than applying none: on 2025 it dropped the bet card from
+        # 19.4% to 14.0% and squashed the top probability bucket from 583 rows
+        # to 192.
+        cal_path = model_dir / f"{prod}_calibrator.pkl"
+        if cal_path.exists():
+            rank_probs = IsotonicCalibrator.load(cal_path).calibrate(rank_probs)
+        rank_src = rank_src.with_columns(pl.Series("prob", rank_probs))
+
+        from src.models.joint import apply_joint, load_team_rate
+        _tm = load_team_rate(model_dir / "team_td_rate.json")
+        if _tm is not None:
+            rank_src = apply_joint(rank_src, rank_src, _tm,
+                                   score_col="prob", out_col="prob")
+
+        rank_calib = fit_rank_calibration(rank_src, "prob", season_col="season")
+        save_rank(rank_calib, model_dir / "rank_calibration.json")
+        kept = [d for d in rank_calib["diagnostics"] if abs(d["delta"]) > 0.02]
+        print(f"\nRank calibration: fitted over {len(rank_calib['seasons_used'])} "
+              f"seasons, {len(kept)} of {len(rank_calib['diagnostics'])} ranks kept "
+              f"a meaningful correction -> {model_dir / 'rank_calibration.json'}")
+    except Exception as e:
+        print(f"\nRank calibration skipped: {e}")
+
     # --- Record the training feature distribution for train/serve skew checks ---
     null_rates = {
         c: float(train_df[c].is_null().mean()) for c in feature_cols
@@ -274,7 +511,8 @@ def train_all(target_type: str = None):
         pickle.dump(null_rates, f)
 
     # Save metrics
-    output_dir = get_path("output", target_type)
+    output_dir = Path(output_dir) if output_dir else get_path("output", target_type)
+    output_dir.mkdir(parents=True, exist_ok=True)
     with open(output_dir / "metrics.json", "w") as f:
         json.dump(all_metrics, f, indent=2)
 

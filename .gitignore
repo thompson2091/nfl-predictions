@@ -7,3 +7,17 @@ __pycache__/
 *.egg-info/
 .ipynb_checkpoints/
 .env
+
+# Streamlit secrets must never be committed; config.toml is the theme and should be.
+.streamlit/secrets.toml
+
+# Browser-test artifacts. Regenerated on every UI check and worthless afterwards;
+# ~90 of them had accumulated untracked before this line existed.
+.playwright-mcp/
+
+# Screenshots taken while verifying the app.
+/*.png
+
+# Unattended cron output from scripts/weekly_odds.sh.
+logs/
+.claude/skills/*/.streamlit/

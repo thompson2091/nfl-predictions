@@ -31,6 +31,38 @@ def _design_matrix(df: pl.DataFrame) -> np.ndarray:
     return np.column_stack([np.ones(len(total)), total, spread])
 
 
+def _fit_priced_share(features: pl.DataFrame, train_seasons: list[int]) -> float:
+    """Share of a game's scorers who were priced by a sportsbook.
+
+    Returns 1.0 when there is no odds archive to measure against, which makes
+    the level calibration behave exactly as it did before — normalising across
+    every candidate. That is the honest default: without prices we have no
+    evidence about which candidates a book would have quoted.
+    """
+    try:
+        from src.ingest.odds_history import load_graded_history
+        graded = load_graded_history("anytime_td")
+    except Exception:
+        return 1.0
+    if graded is None or graded.height == 0:
+        return 1.0
+
+    priced = graded.select(["game_id", "player_id"]).unique().with_columns(
+        pl.lit(True).alias("_priced")
+    )
+    d = features.filter(pl.col("target").is_not_null()).join(
+        priced, on=["game_id", "player_id"], how="left"
+    ).with_columns(pl.col("_priced").fill_null(False))
+    # Only games the archive actually covers; elsewhere "unpriced" just means
+    # "we never bought that week", which says nothing about the market.
+    d = d.filter(pl.col("game_id").is_in(priced["game_id"].unique()))
+    total = d["target"].sum()
+    if total == 0:
+        return 1.0
+    on_priced = d.filter(pl.col("_priced"))["target"].sum()
+    return float(min(max(on_priced / total, 0.5), 1.0))
+
+
 def fit_scorer_rate_prior(features: pl.DataFrame, train_seasons: list[int]) -> dict:
     """Fit E[distinct scorers per game] ~ total_line + |spread|.
 
@@ -72,6 +104,14 @@ def fit_scorer_rate_prior(features: pl.DataFrame, train_seasons: list[int]) -> d
         # Guard rails for prediction time, derived from the fit — not chosen.
         "min_expected": float(np.percentile(y, 1)),
         "max_expected": float(np.percentile(y, 99)),
+        # What fraction of a game's scorers are players a sportsbook priced.
+        # The level calibration used to spread the full expected count across
+        # every candidate, but roughly five candidates a game are never priced
+        # and they account for well under 1% of scorers — so ~10% of the
+        # model's probability mass was being parked on players who essentially
+        # never score, leaving it short on the ones that matter. Measured, not
+        # assumed, and refitted whenever the archive grows.
+        "priced_share": _fit_priced_share(features, train_seasons),
         "fit_date": date.today().isoformat(),
         "source": "labels derived from nflverse play-by-play (see docs/DATA_SOURCES.md)",
     }
