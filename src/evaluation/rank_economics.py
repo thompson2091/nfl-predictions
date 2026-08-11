@@ -318,6 +318,98 @@ def fit_edge_rule(df: pl.DataFrame, max_rank: int = EDGE_MAX_RANK) -> dict | Non
     return None
 
 
+#: Quantile of |edge| above which a disagreement counts as large. Not a tuned
+#: parameter: it is the same top-decile cut the head-to-head accuracy figure
+#: uses, so "big disagreement" means one thing across the whole project.
+BIG_DISAGREEMENT_Q = 0.90
+
+#: Odds-on favourites are excluded from the highlights. An edge measured in
+#: probability points buys less return the shorter the price — five points on a
+#: 55% favourite is a far smaller edge *proportionally* than five points on a
+#: 20% shot — and the sub-+100 band measured near zero on its own. The exclusion
+#: is still tested rather than assumed; see `fit_highlight_tiers`.
+SHORT_PRICE = 100
+
+
+def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
+    """Which rows on the board are worth marking, and how strongly.
+
+    Two tiers rather than a letter grade. A grade beside a player's name reads
+    as a promise about that player, and none of this is: roughly half of even
+    the strongest tier loses. Two levels carry the one distinction the data
+    actually supports — a large disagreement pays about twice a small one — and
+    nothing finer.
+
+    Both tiers must clear the same bar the headline strategy does: a clustered
+    interval excluding zero *and* a profit in every season separately. The
+    short-price exclusion is applied only if it earns its place on the same
+    test, so a future season where favourites start paying will drop it.
+
+    Returns None when the market has no fitted edge rule to build on, which is
+    what keeps an unproven market unmarked.
+    """
+    rule = fit_edge_rule(df)
+    if rule is None:
+        return None
+
+    d = df.with_columns(
+        (pl.col("prob_calibrated") - pl.col("market_prob")).alias("_edge")
+    )
+    big = float(np.quantile(d["_edge"].abs().to_numpy(), BIG_DISAGREEMENT_Q))
+    cut, max_rank = rule["edge_cut"], rule["max_rank"]
+
+    def qualifies(sub: pl.DataFrame) -> tuple[bool, dict, list[dict]]:
+        if sub.height < MIN_BETS:
+            return False, {}, []
+        stats = _row(sub)
+        seasons = sorted(sub["season"].unique().to_list())
+        per = [_row(sub.filter(pl.col("season") == s), season=int(s))
+               for s in seasons]
+        ok = (stats["verdict"] == "positive"
+              and all((p["roi"] or 0) > 0 for p in per))
+        return ok, stats, per
+
+    base = d.filter((pl.col("_edge") >= cut) & (pl.col("rank") <= max_rank))
+    # Test the exclusion rather than assuming it: keep it only if it both
+    # qualifies and beats the unfiltered version.
+    kept_short = base.filter(pl.col("odds") >= SHORT_PRICE)
+    ok_short, s_short, _ = qualifies(kept_short)
+    ok_all, s_all, _ = qualifies(base)
+    exclude_short = bool(ok_short and ok_all
+                         and s_short["roi"] > s_all["roi"])
+    if exclude_short:
+        base = kept_short
+
+    tiers = []
+    for name, sub in (("strong", base.filter(pl.col("_edge") >= big)),
+                      ("standard", base.filter(pl.col("_edge") < big))):
+        ok, stats, per = qualifies(sub)
+        if not ok:
+            continue
+        weeks = max(sub.select(["season", "week"]).n_unique(), 1)
+        tiers.append({
+            "tier": name,
+            **stats,
+            "per_season": per,
+            "bets_per_week": sub.height / weeks,
+            # Season-over-season slope, in points of ROI per year. The strongest
+            # tier has been halving annually; a highlight that does not say so
+            # is quoting a three-year average of something that is fading.
+            "trend": (round((per[-1]["roi"] - per[0]["roi"]) / max(len(per) - 1, 1), 1)
+                      if len(per) > 1 else None),
+        })
+    if not tiers:
+        return None
+
+    return {
+        "edge_cut": cut,
+        "max_rank": max_rank,
+        "big_edge": big,
+        "exclude_below_odds": SHORT_PRICE if exclude_short else None,
+        "tiers": tiers,
+    }
+
+
 def by_season(df: pl.DataFrame, top_n: int = 3) -> list[dict]:
     """The headline strategy, season by season. Stability is the real test."""
     return [_row(df.filter((pl.col("rank") <= top_n) & (pl.col("season") == s)),
@@ -373,6 +465,7 @@ def measure(target_type: str, headline_n: int = 3,
         "blend_comparison": comparison,
         "edge_curve": edge_curve(df),
         "edge_rule": fit_edge_rule(df),
+        "highlight_tiers": fit_highlight_tiers(df),
     }
 
 

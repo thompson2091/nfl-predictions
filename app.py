@@ -822,25 +822,73 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
              "size — and shrinks most where the disagreement is biggest. This "
              "is the column every profitability figure was measured on.",
     ),
-    "InRange": st.column_config.CheckboxColumn(
+    "InRange": st.column_config.TextColumn(
         "Worth backing", width="small",
-        help=(
-            f"Ticked when **Bet edge** is at least "
-            f"{region['edge_cut'] * 100:.0f} points and **Bet #** is "
-            f"{region['max_rank']} or better — a rule fitted to "
-            f"{region['games']:,} games in {region['span']}, not chosen by "
-            f"hand. Bets meeting it returned "
-            f"\\${100 + region['kept']['roi']:,.0f} on every \\$100 staked and "
-            f"were profitable in each season separately; the ones failing it "
-            f"lost {abs(region['dropped']['roi']):.0f}%.\n\n"
-            f"**Still a fact about the group, not the player.** About "
-            f"{100 - region['kept']['hit_pct']:.0f}% of ticked bets lose. It "
-            f"describes roughly {region['bets_per_week']:.0f} bets a week held "
-            f"together, and it is not a recommendation to bet."
-            if region else "Measured profitability."
-        ),
+        help=_tier_help(region),
     ),
     }
+
+
+def _tier_summary(rule: dict | None) -> str:
+    """One sentence naming each tier and what it returned, for the board caption."""
+    h = (rule or {}).get("tiers") or {}
+    by = {t["tier"]: t for t in h.get("tiers", [])}
+    if not by:
+        return "."
+    bits = []
+    if "strong" in by:
+        bits.append(f"**Strong** (\\${100 + by['strong']['roi']:,.0f} per "
+                    f"\\$100, ~{by['strong']['bets_per_week']:.0f}/week)")
+    if "standard" in by:
+        bits.append(f"**Standard** (\\${100 + by['standard']['roi']:,.0f} per "
+                    f"\\$100, ~{by['standard']['bets_per_week']:.0f}/week)")
+    return ": " + " and ".join(bits) + "."
+
+
+def _tier_help(region: dict | None) -> str:
+    """The tooltip for the highlight column, written from the measured tiers."""
+    if not region or not region.get("tiers", {}).get("tiers"):
+        return "Measured profitability. Nothing is marked on this market."
+
+    h = region["tiers"]
+    by = {t["tier"]: t for t in h["tiers"]}
+    lines = [
+        f"Marked from a rule fitted to {region['games']:,} games in "
+        f"{region['span']} — thresholds measured, not chosen by hand. Both "
+        f"tiers need **Bet #** {h['max_rank']} or better and a positive "
+        f"**Bet edge**"
+        + (f", at a price of +{h['exclude_below_odds']} or longer"
+           if h.get("exclude_below_odds") else "") + ".\n",
+    ]
+    if "strong" in by:
+        t = by["strong"]
+        lines.append(
+            f"**Strong** — bet edge of {h['big_edge'] * 100:.0f} points or "
+            f"more. Returned \\${100 + t['roi']:,.0f} per \\$100 staked, about "
+            f"{t['bets_per_week']:.0f} a week."
+        )
+    if "standard" in by:
+        t = by["standard"]
+        lines.append(
+            f"**Standard** — a smaller disagreement. Returned "
+            f"\\${100 + t['roi']:,.0f} per \\$100, about "
+            f"{t['bets_per_week']:.0f} a week."
+        )
+    worst = min((t.get("trend") or 0) for t in h["tiers"])
+    if worst < -5:
+        lines.append(
+            f"\n:material/warning: **Fading.** The strongest tier has been "
+            f"losing roughly {abs(worst):.0f} points of return a year. Three "
+            f"seasons is a small sample and the trend may be noise, but it "
+            f"runs one way, so treat the headline as an average of something "
+            f"that was better in the past than it is now."
+        )
+    hit = by.get("strong", by.get("standard", {})).get("hit_pct", 0)
+    lines.append(
+        f"\n**A fact about the group, not the player.** About {100 - hit:.0f}% "
+        f"of even the marked bets lose. This is not a recommendation to bet."
+    )
+    return "\n\n".join(lines)
 
 
 @st.cache_data(show_spinner=False)
@@ -1112,10 +1160,46 @@ def betting_rule(tt: str, model: str | None = None) -> dict | None:
         return None
 
     seasons = econ.get("seasons") or []
-    return {**rule, "games": econ.get("games"),
+    return {**rule, "tiers": econ.get("highlight_tiers"),
+            "games": econ.get("games"),
             "span": f"{seasons[0]}-{seasons[-1]}" if seasons else "",
             "stale_for": econ.get("stale_for"),
             "measured_on": econ.get("measured_on")}
+
+
+#: How each tier reads on the board. Two levels and a blank — no letter grade,
+#: because a letter beside a player's name reads as a promise about that player
+#: and roughly half of even the strongest tier loses.
+_TIER_LABEL = {"strong": "Strong", "standard": "Standard"}
+
+
+def _highlight_tier(frame, rule: dict):
+    """Label each row with the measured tier it falls into, or blank.
+
+    Every threshold comes from `fit_highlight_tiers`, so a re-run on new seasons
+    moves the marks rather than leaving them describing a model that no longer
+    exists. A tier that stops clearing its bar simply disappears from the file
+    and stops being marked here.
+    """
+    h = rule.get("tiers")
+    if not h or not h.get("tiers"):
+        return ""
+
+    names = {t["tier"] for t in h["tiers"]}
+    edge = frame["model_edge_pp"]
+    eligible = ((frame["bet_rank"] <= h["max_rank"])
+                & (edge >= h["edge_cut"] * 100))
+    floor = h.get("exclude_below_odds")
+    if floor is not None:
+        eligible &= frame["odds"] >= floor
+
+    big = edge >= h["big_edge"] * 100
+    out = pd.Series("", index=frame.index, dtype="object")
+    if "standard" in names:
+        out[eligible & ~big] = _TIER_LABEL["standard"]
+    if "strong" in names:
+        out[eligible & big] = _TIER_LABEL["strong"]
+    return out
 
 
 def render_board(frame, tt: str, model: str):
@@ -1158,8 +1242,7 @@ def render_board(frame, tt: str, model: str):
         show = show.assign(
             BetRank=frame["bet_rank"],
             BetEdge=frame["model_edge_pp"],
-            InRange=((frame["bet_rank"] <= rule["max_rank"])
-                     & (frame["model_edge_pp"] >= rule["edge_cut"] * 100)),
+            InRange=_highlight_tier(frame, rule),
         )
         cols = cols + ["BetRank", "BetEdge", "InRange"]
 
@@ -1245,14 +1328,10 @@ with tab_board:
                 f"bookmaker because that predicts better. **Bet #** and **Bet "
                 f"edge** are strictly our own view, unblended, because backing "
                 f"someone only makes sense where we disagree with the price. "
-                f"**Worth backing** ticks the rule fitted to "
-                f"{_rule['games']:,} games in {_rule['span']}: bet edge of "
-                f"{_rule['edge_cut'] * 100:.0f} "
-                f"{'point' if abs(_rule['edge_cut'] * 100 - 1) < 1e-9 else 'points'}"
-                f" or more, ranked {_rule['max_rank']} or better. Those returned "
-                f"\\${100 + _rule['kept']['roi']:,.0f} per \\$100 staked and "
-                f"about {100 - _rule['kept']['hit_pct']:.0f}% of them still "
-                f"lost — see **Betting reality**."
+                f"**Worth backing** marks the two tiers that measured "
+                f"profitable across {_rule['games']:,} games in "
+                f"{_rule['span']}" + _tier_summary(_rule) + " Roughly half of "
+                f"even the marked bets lose — see **Betting reality**."
             )
         else:
             st.caption(

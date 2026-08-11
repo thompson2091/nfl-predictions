@@ -1443,3 +1443,48 @@ def test_per_book_cache_is_not_read_as_a_consensus_cache(tmp_path, monkeypatch):
     assert caches[0].name == "td_props_2026-09-10.json"
     assert isinstance(odds_api.load_cached_odds(), dict)
     assert isinstance(odds_api.load_cached_book_quotes(), list)
+
+
+def test_highlight_tiers_require_every_season_positive():
+    """A tier is only marked if it paid in each season, not just on average.
+
+    The board's highlights are the most action-shaped thing in the app, so the
+    bar for showing one is the same bar the headline strategy clears: a
+    clustered interval excluding zero AND a profit every season separately.
+    """
+    import polars as pl
+    from src.evaluation.rank_economics import fit_highlight_tiers
+
+    rows = []
+    for season, edge, wins in ((2023, 0.20, 55), (2024, 0.20, 55), (2025, 0.20, 5)):
+        for i in range(80):
+            won = i < wins
+            rows.append({
+                "season": season, "week": 1 + i % 18, "game_id": f"{season}_b{i}",
+                "rank": 1, "prob_calibrated": 0.50, "market_prob": 0.50 - edge,
+                "odds": 150, "dec": 2.5, "scored": int(won),
+                "pnl": 1.5 if won else -1.0, "breakeven": 0.4,
+            })
+        for i in range(80):
+            rows.append({
+                "season": season, "week": 1 + i % 18, "game_id": f"{season}_s{i}",
+                "rank": 1, "prob_calibrated": 0.42, "market_prob": 0.40,
+                "odds": 150, "dec": 2.5, "scored": 0,
+                "pnl": -1.0, "breakeven": 0.4,
+            })
+    out = fit_highlight_tiers(pl.DataFrame(rows))
+    names = {t["tier"] for t in (out or {}).get("tiers", [])}
+    assert "strong" not in names, (
+        "a tier that collapsed in its most recent season is still being marked"
+    )
+
+
+def test_unproven_market_gets_no_highlight_tiers():
+    """first_td is accurate and unprofitable; it must not be marked at all."""
+    import json
+    from pathlib import Path
+
+    p = Path("output/first_td/rank_economics.json")
+    if not p.exists():
+        pytest.skip("first_td economics not built")
+    assert json.loads(p.read_text()).get("highlight_tiers") is None
