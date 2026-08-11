@@ -1,10 +1,10 @@
 {
   "kind": "blend_weight",
   "source": "fitted",
-  "model_coef": 0.7107487631851718,
-  "market_coef": 0.3404179168167904,
-  "intercept": 0.17564101128471674,
-  "market_weight": 0.3238477049293029,
+  "model_coef": 0.7107487631851708,
+  "market_coef": 0.3404179168167916,
+  "intercept": 0.17564101128471737,
+  "market_weight": 0.323847704929304,
   "n_rows": 20957,
   "seasons": [
     2023,

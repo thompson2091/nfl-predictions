@@ -78,10 +78,14 @@ economics:
 
 # Everything the app reads, rebuilt in dependency order, for both markets.
 # Run this after `make train` or the app will quote a model that no longer exists.
+# --walk-forward retrains on earlier seasons before scoring each one. Without
+# it the backtest refuses any season at or before splits.val_season, because
+# scoring those with models/ measures the model against its own training data —
+# which silently doubled every profitability figure in this project.
 evaluate:
 	@for t in anytime_td first_td; do \
 		for s in 2023 2024 2025; do \
-			python scripts/10_backtest.py --season $$s --target $$t; \
+			python scripts/10_backtest.py --season $$s --target $$t --walk-forward; \
 		done; \
 		python scripts/14_rank_economics.py --target $$t; \
 		python scripts/11_walkforward.py --target $$t; \

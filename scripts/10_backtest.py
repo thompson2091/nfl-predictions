@@ -97,6 +97,25 @@ def main(season: int, target_type: str, model_name: str,
     blcfg = cfg.get("blend", {})
     min_edge = float(bcfg.get("min_edge_pp", 2.0)) / 100.0
 
+    # Refuse to score a season the model was fitted on. This is a hard stop
+    # rather than a warning because the failure is invisible in the output: the
+    # numbers look plausible, they are simply too good, and they get pooled with
+    # honest ones. It inflated the Strong tier from +27% to +56% and produced a
+    # three-season "decay" that was entirely an artifact of which seasons were
+    # in-sample.
+    splits = cfg["splits"]
+    if not walk_forward and season <= splits["val_season"]:
+        which = ("trained on" if season <= splits["train_end"]
+                 else "tuned on (validation season)")
+        print(
+            f"REFUSING: {season} is a season the model was {which} "
+            f"(train_end={splits['train_end']}, val_season={splits['val_season']}).\n"
+            f"Scoring it with models/ would measure the model against its own "
+            f"training data.\n"
+            f"Re-run with --walk-forward to retrain on earlier seasons first."
+        )
+        return 2
+
     model_dir = get_path("models", target_type)
     scratch = None
     if walk_forward:
@@ -188,8 +207,25 @@ def main(season: int, target_type: str, model_name: str,
         if mkt.height == 0:
             continue
 
+        # First TD has exactly one scorer per game, so its probabilities must
+        # sum to 1 within a game — which is what predict() does and what this
+        # script did not. It applied the anytime-TD joint model instead, whose
+        # team rate targets ~4.3 scorers a game, and produced first-TD
+        # probabilities summing to 2.7 per game. Every first_td figure built on
+        # this was structurally wrong, not merely noisy: the inflated numbers
+        # made every market edge look enormous, which is how the market came to
+        # read as a clear loser (-9.5%).
+        #
+        # Measured against outcomes, production's rule is simply better:
+        #   normalise within game   Brier 0.03520  AUC 0.7987  sum/game 1.000
+        #   joint model             Brier 0.04550  AUC 0.7843  sum/game 2.732
+        if target_type == "first_td":
+            res = res.with_columns(
+                (pl.col("raw_prob") / pl.col("raw_prob").sum().over("game_id"))
+                .alias("prob_calibrated")
+            )
         # Joint structure, same call the app and predict.py make.
-        if team_model is not None:
+        elif team_model is not None:
             res = apply_joint(res, wdf, team_model, score_col="raw_prob",
                               out_col="prob_calibrated", conversion=conversion)
         else:
@@ -241,7 +277,19 @@ def main(season: int, target_type: str, model_name: str,
         )
         if merged.height == 0:
             continue
-        merged = blend(merged, "prob_calibrated", "market_prob", weight, out_col="final")
+        if target_type == "first_td":
+            # predict() publishes the normalised number for this market without
+            # blending, so `final` has to be that too or the backtest measures a
+            # path nobody runs. Whether first TD *should* blend is a real
+            # question, but it has to be answered by changing both paths at
+            # once, not by leaving them disagreeing.
+            merged = merged.with_columns([
+                pl.col("prob_calibrated").alias("final"),
+                pl.col("market_prob").is_not_null().alias("has_market_price"),
+            ])
+        else:
+            merged = blend(merged, "prob_calibrated", "market_prob", weight,
+                           out_col="final")
         all_rows.append(merged.with_columns([
             pl.lit(wk).alias("week"),
             pl.lit(weight["market_weight"]).alias("w_market"),

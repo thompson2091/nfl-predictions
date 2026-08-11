@@ -1479,12 +1479,104 @@ def test_highlight_tiers_require_every_season_positive():
     )
 
 
-def test_unproven_market_gets_no_highlight_tiers():
-    """first_td is accurate and unprofitable; it must not be marked at all."""
+def test_tiers_require_a_qualifying_edge_rule():
+    """No fitted edge rule means no labels, whatever the headline says.
+
+    This used to assert first_td had no tiers, which was true only because its
+    backtest applied the wrong probability structure. Corrected, first_td does
+    have a validated rule (+15.5% [+1.2, +30.1], positive every season) even
+    though its naive top-3 strategy does not clear zero — so the gate is the
+    rule, not the headline.
+    """
     import json
     from pathlib import Path
 
-    p = Path("output/first_td/rank_economics.json")
-    if not p.exists():
-        pytest.skip("first_td economics not built")
-    assert json.loads(p.read_text()).get("highlight_tiers") is None
+    for target in ("anytime_td", "first_td"):
+        p = Path("output") / target / "rank_economics.json"
+        if not p.exists():
+            continue
+        econ = json.loads(p.read_text())
+        tiers = econ.get("highlight_tiers")
+        if tiers is not None:
+            assert econ.get("edge_rule"), (
+                f"{target}: tiers exist with no fitted edge rule behind them"
+            )
+
+
+
+def test_backtest_refuses_a_season_the_model_trained_on():
+    """Scoring an in-sample season looks fine and is worth roughly 2x.
+
+    The backtest used models/ for every season, but that model trains through
+    splits.train_end and tunes on val_season — so two of three backtested
+    seasons were scoring rows the model had been fitted on, and rank economics
+    pooled all three. The Strong tier read +56% and was really +27%, with a
+    three-season "decay" that was just the in-sample-to-holdout gradient.
+
+    The guard is a hard refusal rather than a warning because nothing in the
+    output looks wrong: the numbers are plausible, merely too good.
+    """
+    import inspect
+    from pathlib import Path
+
+    src = Path("scripts/10_backtest.py").read_text()
+    assert "REFUSING" in src, "the in-sample guard is gone"
+    assert 'season <= splits["val_season"]' in src, (
+        "the guard no longer covers the validation season, which is also tuned on"
+    )
+    # And the batch target must pass --walk-forward, or it would now just fail.
+    mk = Path("Makefile").read_text()
+    evaluate = mk.split("\nevaluate:", 1)[1].split("\n\n", 1)[0]
+    assert "--walk-forward" in evaluate, (
+        "make evaluate would be refused for every in-sample season"
+    )
+
+
+def test_served_path_matches_the_evaluated_path(capsys):
+    """Production and the backtest must produce the same number for a player.
+
+    Four separate bugs this session were this same disagreement, none of which
+    raised an error: a missing calibrator, ranking on the blended column while
+    measuring on the pre-blend one, week-1 carry-forward applied only when
+    serving, and the anytime-TD joint model applied to first TD — where
+    probabilities must sum to 1 per game and instead summed to 2.7.
+
+    Skips rather than fails when the inputs are absent, so a fresh checkout
+    still runs green.
+    """
+    from src.evaluation.parity import check
+    from src.utils.config import get_config
+
+    season = get_config()["splits"]["test_season"]
+    failures = []
+    for target in ("anytime_td", "first_td"):
+        with capsys.disabled() if False else __import__("contextlib").redirect_stdout(
+                __import__("io").StringIO()):
+            ok, msg = check(target, season)
+        if not ok:
+            failures.append(msg)
+    assert not failures, "\n".join(failures)
+
+
+def test_first_td_probabilities_sum_to_one_per_game():
+    """Exactly one player scores first, so a game's probabilities must sum to 1.
+
+    The backtest applied the anytime-TD joint model here, whose team rate
+    targets ~4.3 scorers a game. First-TD probabilities summed to 2.7, which
+    made every market edge look enormous and turned the market into an apparent
+    clear loser (-9.5%). Corrected, it is +0.8% and has a profitable subset.
+    """
+    import polars as pl
+    from src.evaluation.rank_economics import backtest_files
+
+    files = backtest_files("first_td")
+    if not files:
+        pytest.skip("no first_td backtest frames")
+    d = pl.concat([pl.read_csv(p) for p in files], how="diagonal_relaxed")
+    per_game = d.group_by("game_id").agg(
+        pl.col("prob_calibrated").sum().alias("s"))["s"].mean()
+    # Below 1.0 because only priced players are in the frame; a value near 2-3
+    # means the wrong structure is being applied.
+    assert 0.7 <= per_game <= 1.05, (
+        f"first_td probabilities sum to {per_game:.2f} per game, not ~1"
+    )

@@ -1222,20 +1222,22 @@ def rank_economics(tt: str, model: str | None = None) -> dict | None:
 def betting_rule(tt: str, model: str | None = None) -> dict | None:
     """The fitted rule for which rows have a measured edge behind them.
 
-    Two gates, both from measurement rather than from anybody's judgement: the
-    market has to have cleared its prices at all, and there has to be an edge
-    cut-off that separates a paying set of bets from a losing one in every
-    season. Both live in src/evaluation/rank_economics.py so they can be tested
-    without standing up Streamlit — they decide what the board is allowed to
-    claim, which makes them worth locking down.
+    The gate is the fitted edge rule: a cut-off that both pays and identifies
+    bets worth skipping, in every season separately. It lives in
+    src/evaluation/rank_economics.py so it can be tested without standing up
+    Streamlit — it decides what the board is allowed to claim.
 
-    Returns None when either gate fails, and the board then marks nothing.
+    It used to *also* require the headline top-N strategy to be profitable.
+    That asked the wrong question. "Would backing our top three blindly have
+    made money" is not the same as "is there a validated rule here", and on
+    first TD the answer is no to the first (+0.8%, spanning zero) and yes to
+    the second (+15.5% [+1.2, +30.1], positive every season). Gating on the
+    blunt version suppressed a rule that had already passed the sharper test.
+
+    Returns None when no rule qualifies, and the board then marks nothing.
     """
     econ = rank_economics(tt, model)
     if econ is None:
-        return None
-    from src.evaluation.rank_economics import profitable_region
-    if profitable_region(econ) is None:
         return None
     rule = econ.get("edge_rule")
     if not rule:
