@@ -1,7 +1,8 @@
 .PHONY: all ingest targets candidates features train predict clean \
 	docker-build docker-up docker-down docker-logs docker-shell \
 	docker-pipeline docker-prod docker-build-amd64 \
-	backtest walkforward longshot economics evaluate wager wager-report
+	backtest walkforward longshot economics evaluate wager wager-report \
+	odds-open odds-close odds-schedule-on odds-schedule-off odds-schedule-status
 
 # Defaults so the evaluation targets run without arguments. Override per call:
 #   make backtest SEASON=2024 TARGET=first_td
@@ -96,6 +97,38 @@ wager:
 
 wager-report:
 	python scripts/15_wager.py report
+
+# ── Weekly odds capture ───────────────────────────────────────────────────
+# The week number is derived from the schedule, so these take no arguments.
+# Run `odds-open` when the week's board goes up and `odds-close` before the
+# Sunday slate — closing-line value needs both ends.
+odds-open:
+	./scripts/weekly_odds.sh open
+
+odds-close:
+	./scripts/weekly_odds.sh close
+
+# Scheduling is via launchd, not cron: macOS blocks `crontab` behind Full Disk
+# Access and it hangs rather than failing, and launchd runs a missed job on wake
+# where cron would skip it. Currently DISABLED — run manually until the weekly
+# job has been watched through a live week.
+odds-schedule-on:
+	@for l in com.mthompson.nfl-odds-open com.mthompson.nfl-odds-close; do \
+		launchctl enable "gui/$$UID/$$l"; \
+		launchctl bootstrap "gui/$$UID" $$HOME/Library/LaunchAgents/$$l.plist 2>/dev/null; \
+		echo "enabled $$l"; \
+	done
+
+odds-schedule-off:
+	@for l in com.mthompson.nfl-odds-open com.mthompson.nfl-odds-close; do \
+		launchctl bootout "gui/$$UID/$$l" 2>/dev/null; \
+		launchctl disable "gui/$$UID/$$l"; \
+		echo "disabled $$l"; \
+	done
+
+odds-schedule-status:
+	@launchctl list | grep nfl-odds || echo "not loaded"
+	@launchctl print-disabled "gui/$$UID" 2>/dev/null | grep nfl-odds || true
 
 test:
 	python -m pytest tests/ -q
