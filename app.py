@@ -829,6 +829,67 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
     }
 
 
+def tier_legend(rule: dict | None) -> pd.DataFrame | None:
+    """Every value the Worth backing column can take, and what earns it.
+
+    Built from the fitted tiers rather than written out, so the legend cannot
+    drift from the rule it describes. The blank row is included deliberately:
+    it covers four quite different situations, and reading a blank as "we don't
+    like him" is wrong for three of them.
+    """
+    h = (rule or {}).get("tiers") or {}
+    if not (h.get("tiers") or h.get("fade")):
+        return None
+
+    by = {t["tier"]: t for t in h.get("tiers") or []}
+    floor = h.get("exclude_below_odds")
+    qualifier = (f", priced +{floor} or longer" if floor else "")
+    rows = []
+
+    if "strong" in by:
+        t = by["strong"]
+        rows.append({
+            "Label": "Strong",
+            "What earns it": (f"Bet edge of {h['big_edge'] * 100:.0f} points or "
+                              f"more, Bet # {h['max_rank']} or better{qualifier}"),
+            "What it means": "We disagree with the book by a lot, in the direction you can back",
+            "Historically": f"${100 + t['roi']:,.0f} per $100 staked",
+            "About": f"{t['bets_per_week']:.0f} a week",
+        })
+    if "standard" in by:
+        t = by["standard"]
+        rows.append({
+            "Label": "Standard",
+            "What earns it": (f"Bet edge between {h['edge_cut'] * 100:.0f} and "
+                              f"{h['big_edge'] * 100:.0f} points, Bet # "
+                              f"{h['max_rank']} or better{qualifier}"),
+            "What it means": "A real but modest disagreement — the same idea as Strong, weaker",
+            "Historically": f"${100 + t['roi']:,.0f} per $100 staked",
+            "About": f"{t['bets_per_week']:.0f} a week",
+        })
+    if h.get("fade"):
+        f = h["fade"]
+        rows.append({
+            "Label": "Fade",
+            "What earns it": (f"Bet edge of {abs(f['edge_at_most']) * 100:.0f} "
+                              f"points or more *below* the book, any rank or price"),
+            "What it means": "The book rates this player and we strongly do not. Not a bet — a warning",
+            "Historically": (f"book prices them ~{f['implied_pct']:.0f}%, "
+                             f"~{f['actual_pct']:.0f}% actually score"),
+            "About": f"{f['bets_per_week']:.0f} a week",
+        })
+    rows.append({
+        "Label": "(blank)",
+        "What earns it": "Everything else",
+        "What it means": ("Not a view — it covers four different things: we rate "
+                          "them slightly lower, the edge is too small, they are "
+                          "outside the top few, or the price is too short"),
+        "Historically": "—",
+        "About": "most of the board",
+    })
+    return pd.DataFrame(rows)
+
+
 def _tier_summary(rule: dict | None) -> str:
     """One sentence naming each tier and what it returned, for the board caption."""
     h = (rule or {}).get("tiers") or {}
@@ -842,20 +903,26 @@ def _tier_summary(rule: dict | None) -> str:
     if "standard" in by:
         bits.append(f"**Standard** (\\${100 + by['standard']['roi']:,.0f} per "
                     f"\\$100, ~{by['standard']['bets_per_week']:.0f}/week)")
-    return ": " + " and ".join(bits) + "."
+    if h.get("fade"):
+        f = h["fade"]
+        bits.append(f"**Fade** — a warning, not a bet (book prices them "
+                    f"~{f['implied_pct']:.0f}%, ~{f['actual_pct']:.0f}% score)")
+    if not bits:
+        return "."
+    return ": " + ", ".join(bits[:-1]) + (" and " if len(bits) > 1 else "") + bits[-1] + "."
 
 
 def _tier_help(region: dict | None) -> str:
     """The tooltip for the highlight column, written from the measured tiers."""
-    if not region or not region.get("tiers", {}).get("tiers"):
+    h = (region or {}).get("tiers") or {}
+    if not (h.get("tiers") or h.get("fade")):
         return "Measured profitability. Nothing is marked on this market."
 
-    h = region["tiers"]
-    by = {t["tier"]: t for t in h["tiers"]}
+    by = {t["tier"]: t for t in h.get("tiers") or []}
     lines = [
         f"Marked from a rule fitted to {region['games']:,} games in "
-        f"{region['span']} — thresholds measured, not chosen by hand. Both "
-        f"tiers need **Bet #** {h['max_rank']} or better and a positive "
+        f"{region['span']} — thresholds measured, not chosen by hand. The "
+        f"backing tiers need **Bet #** {h['max_rank']} or better and a positive "
         f"**Bet edge**"
         + (f", at a price of +{h['exclude_below_odds']} or longer"
            if h.get("exclude_below_odds") else "") + ".\n",
@@ -874,7 +941,20 @@ def _tier_help(region: dict | None) -> str:
             f"\\${100 + t['roi']:,.0f} per \\$100, about "
             f"{t['bets_per_week']:.0f} a week."
         )
-    worst = min((t.get("trend") or 0) for t in h["tiers"])
+    fade = h.get("fade")
+    if fade:
+        lines.append(
+            f"**Fade** — we rate them at least "
+            f"{abs(fade['edge_at_most']) * 100:.0f} points *below* the book. "
+            f"The book prices this group around "
+            f"{fade['implied_pct']:.0f}% and about "
+            f"{fade['actual_pct']:.0f}% of them actually score, in every "
+            f"season measured. **This is a warning, not a bet** — these "
+            f"markets only sell the Yes side, so there is nothing to back. It "
+            f"means: whatever else you do this week, not this one."
+        )
+
+    worst = min((t.get("trend") or 0) for t in h.get("tiers") or [{}]) if h.get("tiers") else 0
     if worst < -5:
         lines.append(
             f"\n:material/warning: **Fading.** The strongest tier has been "
@@ -883,11 +963,13 @@ def _tier_help(region: dict | None) -> str:
             f"runs one way, so treat the headline as an average of something "
             f"that was better in the past than it is now."
         )
-    hit = by.get("strong", by.get("standard", {})).get("hit_pct", 0)
-    lines.append(
-        f"\n**A fact about the group, not the player.** About {100 - hit:.0f}% "
-        f"of even the marked bets lose. This is not a recommendation to bet."
-    )
+    if by:
+        hit = by.get("strong", by.get("standard", {})).get("hit_pct", 0)
+        lines.append(
+            f"\n**A fact about the group, not the player.** About "
+            f"{100 - hit:.0f}% of even the marked bets lose. This is not a "
+            f"recommendation to bet."
+        )
     return "\n\n".join(lines)
 
 
@@ -1170,7 +1252,7 @@ def betting_rule(tt: str, model: str | None = None) -> dict | None:
 #: How each tier reads on the board. Two levels and a blank — no letter grade,
 #: because a letter beside a player's name reads as a promise about that player
 #: and roughly half of even the strongest tier loses.
-_TIER_LABEL = {"strong": "Strong", "standard": "Standard"}
+_TIER_LABEL = {"strong": "Strong", "standard": "Standard", "fade": "Fade"}
 
 
 def _highlight_tier(frame, rule: dict):
@@ -1182,10 +1264,10 @@ def _highlight_tier(frame, rule: dict):
     and stops being marked here.
     """
     h = rule.get("tiers")
-    if not h or not h.get("tiers"):
+    if not h or not (h.get("tiers") or h.get("fade")):
         return ""
 
-    names = {t["tier"] for t in h["tiers"]}
+    names = {t["tier"] for t in h.get("tiers") or []}
     edge = frame["model_edge_pp"]
     eligible = ((frame["bet_rank"] <= h["max_rank"])
                 & (edge >= h["edge_cut"] * 100))
@@ -1199,6 +1281,13 @@ def _highlight_tier(frame, rule: dict):
         out[eligible & ~big] = _TIER_LABEL["standard"]
     if "strong" in names:
         out[eligible & big] = _TIER_LABEL["strong"]
+
+    # Fade carries no rank or price filter, unlike the backing tiers. The point
+    # of it is a player the book rates and we do not, and those are often well
+    # down our own list — a rank filter would discard the clearest cases.
+    fade = h.get("fade")
+    if fade:
+        out[edge <= fade["edge_at_most"] * 100] = _TIER_LABEL["fade"]
     return out
 
 
@@ -1328,11 +1417,30 @@ with tab_board:
                 f"bookmaker because that predicts better. **Bet #** and **Bet "
                 f"edge** are strictly our own view, unblended, because backing "
                 f"someone only makes sense where we disagree with the price. "
-                f"**Worth backing** marks the two tiers that measured "
-                f"profitable across {_rule['games']:,} games in "
-                f"{_rule['span']}" + _tier_summary(_rule) + " Roughly half of "
-                f"even the marked bets lose — see **Betting reality**."
+                f"**Worth backing** carries the labels fitted across "
+                f"{_rule['games']:,} games in {_rule['span']}"
+                + _tier_summary(_rule)
+                + " Roughly half of even the backed bets lose — open **What "
+                  "the labels mean** below, or see **Betting reality**."
             )
+            _legend = tier_legend(_rule)
+            if _legend is not None:
+                with st.expander("What the labels mean"):
+                    st.dataframe(_legend, hide_index=True, column_config={
+                        "Label": st.column_config.TextColumn(width="small"),
+                        "Historically": st.column_config.TextColumn(
+                            "Historically",
+                            help="Measured on real closing prices across the "
+                                 "seasons named above. A description of the "
+                                 "group, not a forecast for any one player."),
+                        "About": st.column_config.TextColumn("How often", width="small"),
+                    })
+                    st.caption(
+                        "Every threshold here is fitted from the backtest, not "
+                        "chosen — re-running the evaluation moves them. A tier "
+                        "that stops paying in any season stops being shown at "
+                        "all, which is why **First TD** has no labels."
+                    )
         else:
             st.caption(
                 ":material/info: No betting markers on this market. Its "

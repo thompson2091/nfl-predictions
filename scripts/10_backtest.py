@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 sys.path.insert(0, ".")
 
@@ -70,7 +71,22 @@ def _clustered_roi(sel: pl.DataFrame, draws: int = 2000):
     return r["lo"], r["hi"], r["roi"], r["concentration"]
 
 
-def main(season: int, target_type: str, model_name: str) -> int:
+def main(season: int, target_type: str, model_name: str,
+         walk_forward: bool = False) -> int:
+    """Replay one season through the production betting path.
+
+    With `walk_forward`, the model is retrained from scratch on seasons before
+    this one before scoring it. Without it, the season is scored by whatever
+    model is in models/ — which trains through `splits.train_end`, so replaying
+    2023 or 2024 scores rows the model was fitted on.
+
+    That contamination is not academic. Measured on the Strong highlight tier:
+    +84.9% on the in-sample season, +53.7% on the validation season, and
+    +23.4% (interval spanning zero) on the only clean one. Reading those three
+    as a time trend suggested a fading market edge; they are the ordinary
+    in-sample-to-holdout gradient, and pooling them inflated every figure the
+    board was built on.
+    """
     ensure_registered()
     cfg = get_config()
     bcfg = cfg.get("betting", {})
@@ -82,6 +98,20 @@ def main(season: int, target_type: str, model_name: str) -> int:
     min_edge = float(bcfg.get("min_edge_pp", 2.0)) / 100.0
 
     model_dir = get_path("models", target_type)
+    scratch = None
+    if walk_forward:
+        import tempfile
+        from src.models.trainer import train_all
+
+        scratch = Path(tempfile.mkdtemp(prefix=f"bt_{target_type}_{season}_"))
+        model_dir = scratch / "models"
+        splits = {"train_end": season - 2, "val_season": season - 1,
+                  "test_season": season}
+        print(f"Walk-forward: retraining on seasons <= {splits['train_end']} "
+              f"(val {splits['val_season']}) before scoring {season}")
+        train_all(target_type, splits=splits, model_dir=model_dir,
+                  output_dir=scratch / "output")
+
     prior = load_prior(model_dir / "scorer_rate_prior.json")
     if prior is None:
         print("No scorer-rate prior — run `make train`.")
@@ -306,8 +336,12 @@ if __name__ == "__main__":
     ap.add_argument("--target", default=cfg["target"]["type"])
     # Resolved after parsing: the right model depends on --target.
     ap.add_argument("--model", default=None)
+    ap.add_argument("--walk-forward", action="store_true",
+                    help="Retrain on earlier seasons before scoring this one. "
+                         "Required for any season at or before splits.train_end, "
+                         "which the model was fitted on.")
     a = ap.parse_args()
     if a.model is None:
         from src.utils.config import production_model
         a.model = production_model(a.target)
-    sys.exit(main(a.season, a.target, a.model))
+    sys.exit(main(a.season, a.target, a.model, a.walk_forward))

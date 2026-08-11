@@ -380,6 +380,38 @@ def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
     if exclude_short:
         base = kept_short
 
+    # The fade group: players the book rates highly and we do not. It is the
+    # sharpest thing this model does — the book prices these near 33% and about
+    # 5% of them score — and it is deliberately *not* a bet, because these
+    # markets only sell the Yes side. It is a warning label.
+    #
+    # No rank or price filter, unlike the backing tiers. A player we rank 30th
+    # while the book prices them at 33% is the archetypal fade, and a rank
+    # filter would throw exactly those away.
+    fade = None
+    faded = d.filter(pl.col("_edge") <= -big)
+    if faded.height >= MIN_BETS:
+        seasons = sorted(faded["season"].unique().to_list())
+        implied = float((1.0 / faded["dec"]).mean() * 100)
+        actual = float(faded["scored"].mean() * 100)
+        per = [{"season": int(s),
+                "implied_pct": float((1.0 / faded.filter(pl.col("season") == s)["dec"]).mean() * 100),
+                "actual_pct": float(faded.filter(pl.col("season") == s)["scored"].mean() * 100)}
+               for s in seasons]
+        # Qualifies only if the book overstated these players in every season.
+        # A single year of it would be a coincidence about one season's tail.
+        if all(p["actual_pct"] < p["implied_pct"] for p in per) and actual < implied:
+            fade = {
+                "tier": "fade",
+                "n": int(faded.height),
+                "edge_at_most": -big,
+                "implied_pct": implied,
+                "actual_pct": actual,
+                "per_season": per,
+                "bets_per_week": faded.height / max(
+                    faded.select(["season", "week"]).n_unique(), 1),
+            }
+
     tiers = []
     for name, sub in (("strong", base.filter(pl.col("_edge") >= big)),
                       ("standard", base.filter(pl.col("_edge") < big))):
@@ -398,7 +430,7 @@ def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
             "trend": (round((per[-1]["roi"] - per[0]["roi"]) / max(len(per) - 1, 1), 1)
                       if len(per) > 1 else None),
         })
-    if not tiers:
+    if not tiers and fade is None:
         return None
 
     return {
@@ -407,6 +439,7 @@ def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
         "big_edge": big,
         "exclude_below_odds": SHORT_PRICE if exclude_short else None,
         "tiers": tiers,
+        "fade": fade,
     }
 
 
