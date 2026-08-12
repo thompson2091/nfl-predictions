@@ -1,15 +1,15 @@
 {
   "kind": "blend_weight",
   "source": "fitted",
-  "model_coef": 0.7346465821537774,
-  "market_coef": 0.3062948264961734,
-  "intercept": 0.15827813000091565,
-  "market_weight": 0.29424790286075997,
+  "market_weight": 0.2136207163868624,
+  "log_loss": 0.34165668439854413,
+  "log_loss_model_only": 0.34255531229983704,
+  "log_loss_market_only": 0.3752060211171337,
   "n_rows": 20957,
   "seasons": [
     2023,
     2024,
     2025
   ],
-  "fit_date": "2026-08-11"
+  "fit_date": "2026-08-12"
 }

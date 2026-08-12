@@ -142,8 +142,16 @@ def main(season: int, target_type: str, model_name: str,
         return 1
 
     # Stacker training data, computed once and sliced per fold below.
+    #
+    # `model_dir` has to be passed explicitly. It defaults to production, and
+    # under --walk-forward that would score the archive with a model trained on
+    # the seasons the archive covers — the stacker would then see in-sample
+    # predictions, conclude the model needs no market help, and drive the
+    # weight to ~0.01. The guard at the top of this function does not catch it:
+    # it checks the season being scored, not the one the stacker learned from.
     from src.prediction.blend import build_blend_training_frame
-    stack = build_blend_training_frame(target_type, model_name)
+    stack = build_blend_training_frame(target_type, model_name,
+                                       model_dir=model_dir)
     if stack is None:
         print("Could not build blend training frame.")
         return 1

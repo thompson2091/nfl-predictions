@@ -157,7 +157,8 @@ def calibrate_level(df: pl.DataFrame, prob_col: str, expected: pl.DataFrame,
 # --------------------------------------------------------------------------
 
 def build_blend_training_frame(target_type: str, model_name: str,
-                               before: tuple[int, int] | None = None) -> pl.DataFrame | None:
+                               before: tuple[int, int] | None = None,
+                               model_dir=None) -> pl.DataFrame | None:
     """Assemble (model_prob, market_prob, scored) rows to fit the stacker on.
 
     `load_graded_history` returns prices and outcomes but no model predictions,
@@ -169,6 +170,20 @@ def build_blend_training_frame(target_type: str, model_name: str,
     Args:
         before: optional (season, week). Only games strictly before this are
             included, which is what makes a walk-forward backtest honest.
+        model_dir: which trained model to score the archive with. Defaults to
+            production, which is right when serving and **wrong inside a
+            walk-forward backtest** — see below.
+
+    The `model_dir` argument is the whole reason this is not a two-line helper.
+    It used to read production unconditionally, so a walk-forward backtest that
+    had carefully retrained into a scratch directory still fitted its blend
+    weight against a model that had trained on the very seasons in the archive.
+    In-sample predictions look sharper than honest ones, so the stacker
+    concluded the model needed no help and drove the market weight toward zero:
+    measured at 0.010-0.015 across 2024 and 0.003-0.005 on first-TD 2025,
+    against an honest optimum of 0.23-0.33. The season guard in
+    scripts/10_backtest.py does not catch this, because it checks which season
+    is being *scored*, not which model produced the stacker's training rows.
     """
     import pickle
 
@@ -191,7 +206,7 @@ def build_blend_training_frame(target_type: str, model_name: str,
     if graded.height == 0:
         return None
 
-    model_dir = get_path("models", target_type)
+    model_dir = Path(model_dir) if model_dir is not None else get_path("models", target_type)
     prior = load_prior(model_dir / "scorer_rate_prior.json")
     fc_path = model_dir / "feature_cols.pkl"
     if prior is None or not fc_path.exists():
@@ -237,9 +252,28 @@ def build_blend_training_frame(target_type: str, model_name: str,
 def fit_blend_weight(history: pl.DataFrame, min_rows: int = 500) -> dict | None:
     """Learn how much to trust the model vs the market, from resolved history.
 
-    Fits logit(p_true) ~ a*logit(p_model) + b*logit(p_market) via unregularised
-    logistic regression and reports the normalised market share b/(a+b).
-    Returns None until enough resolved player-games exist to fit responsibly.
+    Fits the one number `blend` actually applies: the w minimising the log loss
+    of sigmoid((1-w)*logit(model) + w*logit(market)), searched directly on
+    [0, 1]. Returns None until enough resolved player-games exist to fit
+    responsibly.
+
+    This used to fit a different model than it served. The estimator was an
+    unregularised logistic regression of the outcome on both logits,
+
+        logit(p) = c + a*logit(model) + b*logit(market)
+
+    reporting |b|/(|a|+|b|). But `blend` applies no intercept and forces the
+    coefficients to sum to one, and the fit does not: measured on three seasons
+    it wanted a+b = 1.11 and c = 0.21 for anytime TD, and a+b = 1.25, c = 0.71
+    for first TD. The regression is free to spend signal on sharpening and on a
+    level shift, then the ratio handed to `blend` silently drops both. Fitting
+    the served parameter directly costs one line and removes the question.
+
+    The out-of-sample difference between the two is small — under 0.001 of log
+    loss either way across 2024 and 2025 — so this is a coherence fix rather
+    than an accuracy win, and it should not be sold as one. The accuracy
+    problem in this area was `build_blend_training_frame` scoring the archive
+    with a contaminated model; see its docstring.
     """
     need = {"model_prob", "market_prob", "scored"}
     if history is None or history.height < min_rows or not need <= set(history.columns):
@@ -249,26 +283,31 @@ def fit_blend_weight(history: pl.DataFrame, min_rows: int = 500) -> dict | None:
     if df.height < min_rows:
         return None
 
-    from sklearn.linear_model import LogisticRegression
-
-    X = np.column_stack([
-        _logit(df["model_prob"].to_numpy()),
-        _logit(df["market_prob"].to_numpy()),
-    ])
     y = df["scored"].to_numpy().astype(int)
     if len(np.unique(y)) < 2:
         return None
 
-    lr = LogisticRegression(C=np.inf, max_iter=1000).fit(X, y)
-    a, b = float(lr.coef_[0][0]), float(lr.coef_[0][1])
-    total = abs(a) + abs(b)
+    lm = _logit(df["model_prob"].to_numpy())
+    lk = _logit(df["market_prob"].to_numpy())
+
+    def nll(w: float) -> float:
+        p = np.clip(_sigmoid((1 - w) * lm + w * lk), 1e-9, 1 - 1e-9)
+        return float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)))
+
+    # Bounded scalar minimisation: the objective is smooth and one-dimensional,
+    # so this is exact to tolerance and cannot suffer the collinearity that made
+    # the two-coefficient split unstable.
+    from scipy.optimize import minimize_scalar
+    res = minimize_scalar(nll, bounds=(0.0, 1.0), method="bounded")
+    w = float(np.clip(res.x, 0.0, 1.0))
+
     return {
         "kind": "blend_weight",
         "source": "fitted",
-        "model_coef": a,
-        "market_coef": b,
-        "intercept": float(lr.intercept_[0]),
-        "market_weight": abs(b) / total if total > 0 else 0.5,
+        "market_weight": w,
+        "log_loss": nll(w),
+        "log_loss_model_only": nll(0.0),
+        "log_loss_market_only": nll(1.0),
         "n_rows": int(df.height),
         "seasons": sorted(set(df["season"].to_list())) if "season" in df.columns else [],
         "fit_date": date.today().isoformat(),

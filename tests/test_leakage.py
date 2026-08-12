@@ -1347,6 +1347,86 @@ def test_blend_weight_is_fitted_on_frames_that_contain_model_predictions():
     )
 
 
+def test_walkforward_fits_its_blend_weight_on_its_own_model():
+    """The stacker must not learn from a model that trained on the archive.
+
+    `build_blend_training_frame` replays the graded odds archive through a
+    trained model. It used to read production's model directory unconditionally,
+    so a --walk-forward backtest that had retrained into a scratch directory
+    still fitted its blend weight against a model that had seen 2015-2023 —
+    in-sample predictions, which look sharper than honest ones. The stacker read
+    that as "the model needs no help" and drove the market weight to 0.010-0.015
+    across 2024 and 0.003-0.005 on first-TD 2025, against an honest 0.23-0.33.
+
+    The season guard at the top of `main` cannot catch this: it checks which
+    season is being *scored*, not which model produced the stacker's rows.
+    """
+    import inspect
+
+    from src.prediction.blend import build_blend_training_frame
+
+    assert "model_dir" in inspect.signature(build_blend_training_frame).parameters, (
+        "build_blend_training_frame no longer takes model_dir, so a walk-forward "
+        "backtest cannot point it at the fold's model"
+    )
+
+    bt = Path(__file__).resolve().parents[1] / "scripts" / "10_backtest.py"
+    src = bt.read_text()
+    call = src[src.index("build_blend_training_frame(target_type"):]
+    call = call[:call.index(")") + 1]
+    assert "model_dir" in call, (
+        "scripts/10_backtest.py builds the stacker frame without passing "
+        f"model_dir, so --walk-forward fits the blend on production's model: {call!r}"
+    )
+
+
+def test_blend_weight_is_the_one_the_blend_applies():
+    """Fit the parameter that is served, not a proxy for it.
+
+    `blend` applies (1-w)*logit(model) + w*logit(market) — no intercept, and the
+    coefficients forced to sum to one. The weight used to come from an
+    unregularised two-coefficient regression with a free intercept, normalised
+    after the fact; on three seasons that fit wanted a+b = 1.11 and c = 0.21,
+    both of which the blend then silently discarded.
+
+    So: the returned weight must actually minimise the served blend's loss.
+    """
+    import numpy as np
+    import polars as pl
+
+    from src.prediction.blend import _logit, _sigmoid, blend, fit_blend_weight
+
+    rng = np.random.default_rng(0)
+    n = 4000
+    truth = rng.beta(2, 8, n)
+    # Two noisy readings of the same truth, market the weaker of the pair.
+    model_p = np.clip(_sigmoid(_logit(truth) + rng.normal(0, 0.5, n)), 1e-4, 1 - 1e-4)
+    market_p = np.clip(_sigmoid(_logit(truth) + rng.normal(0, 0.9, n)), 1e-4, 1 - 1e-4)
+    hist = pl.DataFrame({
+        "model_prob": model_p, "market_prob": market_p,
+        "scored": (rng.random(n) < truth).astype(int), "season": [2024] * n,
+    })
+
+    fit = fit_blend_weight(hist, min_rows=100)
+    assert fit is not None and 0.0 <= fit["market_weight"] <= 1.0
+    w = fit["market_weight"]
+
+    y = hist["scored"].to_numpy()
+    def nll(x):
+        p = np.clip(_sigmoid((1 - x) * _logit(model_p) + x * _logit(market_p)), 1e-9, 1 - 1e-9)
+        return -np.mean(y * np.log(p) + (1 - y) * np.log(1 - p))
+
+    for other in (0.0, 0.25, 0.5, 0.75, 1.0, max(0.0, w - 0.1), min(1.0, w + 0.1)):
+        assert nll(w) <= nll(other) + 1e-9, (
+            f"fitted w={w:.4f} is beaten by w={other:.4f} under the blend that "
+            f"is actually applied ({nll(w):.6f} vs {nll(other):.6f})"
+        )
+
+    # And the weight the fit reports is the weight blend() stamps on the rows.
+    out = blend(hist, "model_prob", "market_prob", fit, out_col="p")
+    assert abs(float(out["market_weight"][0]) - w) < 1e-12
+
+
 def test_distribution_shift_check_catches_an_over_populated_feature():
     """The nullness check is blind to features arriving *more* populated.
 
