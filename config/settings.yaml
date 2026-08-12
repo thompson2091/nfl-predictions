@@ -58,26 +58,40 @@ models:
   # first_td, pooled over 1,131 games, same four folds, same 2026-08-12
   # re-measurement over the corrected denominator (this market lost 16 games to
   # the old one, the most of either):
-  #   xgb   Top-1 16.8%  Top-3 37.1%  AUC 0.8220  Brier 0.02744
-  #   ens   Top-1 16.0%  Top-3 36.6%  AUC 0.8220  Brier 0.02741   <- production
+  #   xgb   Top-1 16.8%  Top-3 37.1%  AUC 0.8220  Brier 0.02744   <- production
+  #   ens   Top-1 16.0%  Top-3 36.6%  AUC 0.8220  Brier 0.02741   <- was production
   #
   # This used to read "ensemble Top-1 17.1% vs xgb's 17.0%, and it leads on AUC
   # (0.8216 vs 0.8179)". Neither holds now: xgb leads Top-1 by 0.8 points and
   # AUC is equal to four decimals, leaving the ensemble ahead only on Brier by
   # 0.00003, which is nothing.
   #
-  # It stays on the ensemble anyway. xgb's Top-1 lead is 0.7 unpaired standard
-  # errors, and switching production on a sub-error difference is how you end up
-  # chasing noise season to season — the same reasoning that killed the
-  # rank-calibration and game-script experiments. The right way to settle it is
-  # now available and cheap: `make gate` pairs the two per game, which resolves
-  # differences this table cannot. Until that is run, the ensemble stays.
+  # Settled 2026-08-12 by the strongest test available, and it changed the
+  # answer. Both models were scored on identical folds at five seeds; each
+  # game's outcome was averaged across seeds to strip seed noise, then paired
+  # across all 1,131 games:
+  #
+  #   Top-1  ensemble 16.4%  ->  xgb 16.8%   +0.42pp (1.02 se)
+  #   Top-3  ensemble 37.7%  ->  xgb 37.8%   +0.16pp (0.35 se)
+  #   AUC equal to four decimals; Brier 0.02741 -> 0.02744 (at the noise floor)
+  #   xgb ahead in 4 of the 5 seeds; of the 129 games they disagree on,
+  #   xgb wins 70 and loses 59.
+  #
+  # It clears the promotion rule of one paired standard error, but only just,
+  # and an 11-game edge over four seasons is the thinnest evidence anything in
+  # this project has been changed on. Two tiebreaks pointed the same way: xgb is
+  # one model rather than three, and nothing it gives up is above noise.
+  #
+  # The previous reasoning here — "xgb's lead is 0.7 unpaired standard errors,
+  # and switching on a sub-error difference is chasing noise" — used the wrong
+  # yardstick. The unpaired binomial error is 1.1 points; the relevant scale is
+  # the 0.42-point paired error, because both models rank the same games.
   #
   # Worth knowing before optimising this market at all: rank economics reports
   # NO EDGE DEMONSTRATED here, top 3 at -2.4% [-11.2, +6.7].
   production_by_target:
     anytime_td: xgb
-    first_td: ensemble
+    first_td: xgb
 # Hyperparameters. Every key here reaches the model, and every key the model
 # reads is declared here — tests/test_leakage.py asserts both directions
 # against DEFAULTS in each wrapper. That check exists because this block used
