@@ -1,0 +1,14 @@
+# Derive first TD from the joint model rather than normalising the classifier
+# within the game: P(team scores first) = lambda_t / (lambda_home + lambda_away),
+# scorer drawn from that team's shares.
+#
+# joint.first_td_probability has been written and never called. Unlike the
+# anytime-prior blend this has no free weight to fit, so nothing here can be
+# tuned on the season it is scored against.
+#
+#   make gate EXP=experiments/first-td-joint-path.yaml MARKET=first_td
+id: 2026.08.12-first-td-joint-path
+note: "First TD from competing-Poisson team rates x within-team shares"
+overlay:
+  first_td:
+    use_joint_path: true

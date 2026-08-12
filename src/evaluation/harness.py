@@ -185,6 +185,14 @@ def score_fold(target_type: str, model_dir: Path, test_season: int,
                                   model_name, active_models, val_season)
 
     team_model = load_team_rate(Path(model_dir) / "team_td_rate.json")
+    if (target_type == "first_td" and team_model is not None
+            and get_config().get("first_td", {}).get("use_joint_path")):
+        # Competing Poisson processes rather than a within-game normalisation:
+        # P(team scores first) = lambda_t / (lambda_home + lambda_away), scorer
+        # drawn from that team's shares. No parameter to fit.
+        from src.models.joint import apply_joint_first_td
+        scored = apply_joint_first_td(scored, scored, team_model,
+                                      score_col="prob", out_col="prob")
     if target_type != "first_td" and team_model is not None:
         # This fold's own conversion, not production's — otherwise the harness
         # scores a pipeline nobody runs.

@@ -202,6 +202,21 @@ first_td:
   # seasons it would be applied to, so its peak is optimistic by construction.
   use_anytime_prior: false
 
+  # Derive first-TD probabilities from the joint model instead of normalising
+  # the classifier's scores within the game. If both teams' touchdowns arrive as
+  # competing Poisson processes then P(team t scores first) = lambda_t /
+  # (lambda_home + lambda_away), and the scorer is drawn from that team's
+  # shares — the same two pieces anytime TD already uses, with nothing extra to
+  # fit. joint.first_td_probability has existed and gone uncalled since the
+  # joint model landed.
+  #
+  # It asserts something the current path cannot: that which *team* scores first
+  # is a separate question from which of its players would. It also assumes
+  # constant scoring rates through the game, which is wrong in detail — trailing
+  # teams throw more. Whether that trade is worth making is what the gate
+  # decides.
+  use_joint_path: false
+
 # App-only settings. Nothing here reaches the model.
 app:
   # Adds a "Model version" control to the sidebar, letting you price a week

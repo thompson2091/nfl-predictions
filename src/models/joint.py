@@ -281,6 +281,53 @@ def fit_conversion(df: pl.DataFrame, mu_col: str, target_col: str = "target") ->
     }
 
 
+def _game_lines(features: pl.DataFrame) -> pl.DataFrame:
+    """One row per team-game carrying the betting lines the rate model reads."""
+    games = features.group_by(["game_id", "team"]).agg([
+        pl.col("implied_team_total").first(),
+        pl.col("total_line").first(),
+        pl.col("spread_line").first(),
+    ])
+    # A week with no posted lines yet (early preseason) still has to produce a
+    # number, so fall back to the league mean rather than dropping the game.
+    return games.with_columns([
+        pl.col("implied_team_total").fill_null(games["implied_team_total"].mean()),
+        pl.col("total_line").fill_null(games["total_line"].mean()),
+        pl.col("spread_line").fill_null(0.0),
+    ])
+
+
+def apply_joint_first_td(df: pl.DataFrame, features: pl.DataFrame, model: dict,
+                         score_col: str = "raw_prob",
+                         out_col: str = "probability") -> pl.DataFrame:
+    """First-TD probabilities from the same two pieces as anytime TD.
+
+    The market's structure, rather than a second model of it: if each team's
+    touchdowns arrive as competing Poisson processes then the chance team t
+    scores the game's first is lambda_t / (lambda_home + lambda_away), and the
+    scorer is drawn from that team's shares. Both pieces already exist — the
+    fitted team rate and the model's own within-team shares — so this needs no
+    extra parameter and nothing to fit.
+
+    Production does not use it. `predict` normalises raw first-TD scores within
+    the game, which preserves whatever ordering the classifier produced and
+    cannot express the fact that the *team* likely to score first is a separate
+    question from which of its players would score. `first_td_probability` has
+    been written and uncalled since the joint model landed; this is the entry
+    point that lets it be measured.
+
+    The competing-risks step assumes constant rates through the game, which is
+    wrong in detail — trailing teams throw more, and the fourth quarter is not
+    the first. Whether that is wrong enough to matter against a classifier
+    trained directly on the label is exactly what the gate is for.
+    """
+    out = player_shares(df[score_col].to_numpy(), df)
+    out = out.join(team_rate(model, _game_lines(features)),
+                   on=["game_id", "team"], how="left")
+    out = out.with_columns(pl.col("team_lambda").fill_null(model["mean_team_tds"]))
+    return first_td_probability(out, out_col=out_col)
+
+
 def apply_joint(df: pl.DataFrame, features: pl.DataFrame, model: dict,
                 score_col: str = "raw_prob",
                 out_col: str = "probability",
@@ -297,22 +344,9 @@ def apply_joint(df: pl.DataFrame, features: pl.DataFrame, model: dict,
     from the team rate — so any ranker works as the share basis, including the
     existing calibrated ensemble.
     """
-    games = features.group_by(["game_id", "team"]).agg([
-        pl.col("implied_team_total").first(),
-        pl.col("total_line").first(),
-        pl.col("spread_line").first(),
-    ])
-    # A week with no posted lines yet (early preseason) still has to produce a
-    # number, so fall back to the league mean rather than dropping the game.
-    games = games.with_columns([
-        pl.col("implied_team_total").fill_null(
-            games["implied_team_total"].mean()),
-        pl.col("total_line").fill_null(games["total_line"].mean()),
-        pl.col("spread_line").fill_null(0.0),
-    ])
-
     out = player_shares(df[score_col].to_numpy(), df)
-    out = out.join(team_rate(model, games), on=["game_id", "team"], how="left")
+    out = out.join(team_rate(model, _game_lines(features)),
+                   on=["game_id", "team"], how="left")
     out = out.with_columns(
         pl.col("team_lambda").fill_null(model["mean_team_tds"])
     )
