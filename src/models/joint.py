@@ -194,7 +194,24 @@ def team_rate(model: dict, games: pl.DataFrame) -> pl.DataFrame:
 # --------------------------------------------------------------------------
 
 
-def player_shares(rates: np.ndarray, df: pl.DataFrame) -> pl.DataFrame:
+def _defst_mask(df: pl.DataFrame) -> pl.Expr:
+    """Rows that are a team's defence/special teams rather than a player.
+
+    A frame carrying neither identifier has no defences in it — the joint model
+    is exercised on synthetic team-share frames that are all offence — so the
+    mask is empty rather than an error. Guessing from a missing column is how a
+    unit test starts failing for a reason that has nothing to do with what it
+    is testing.
+    """
+    if "position_DEFST" in df.columns:
+        return pl.col("position_DEFST").fill_null(0) == 1
+    if "player_id" in df.columns:
+        return pl.col("player_id").cast(pl.Utf8).str.ends_with("_DEFST")
+    return pl.lit(False)
+
+
+def player_shares(rates: np.ndarray, df: pl.DataFrame,
+                  exclude_defst: bool | None = None) -> pl.DataFrame:
     """Normalise per-player touchdown rates to shares within each team-game.
 
     The share model does not have to be calibrated in absolute terms — only
@@ -202,10 +219,41 @@ def player_shares(rates: np.ndarray, df: pl.DataFrame) -> pl.DataFrame:
     level comes from the team rate. That is a strictly easier thing to learn
     than a calibrated probability, and it is the half of the problem a usage
     model is actually good at.
+
+    **A defence is not a share of its offence.** `team_lambda` is fitted on
+    offensive touchdowns alone — `td_counts` filters `td_team == posteam` and
+    contains no DEF/ST rows at all — so normalising the DEF/ST pseudo-player
+    into the same denominator hands it a slice of a rate it cannot contribute
+    to. Measured over four walk-forward folds, that published a defence as the
+    game's most likely scorer in 131 of 1,131 games at a mean probability of
+    **0.908**, against an actual rate of **0.153**. It does damage in both
+    directions: the defence is wildly overstated, and every real player on that
+    team is understated by whatever share it took.
+
+    With `exclude_defst`, DEF/ST rows are held out of the denominator and given
+    a share of zero; `combine` then leaves their probability as the calibrated
+    classifier's own, which is what it was before the joint model touched it
+    and is well calibrated (0.106 predicted against 0.103 actual over rows
+    ranked 11th or worse, where the joint step barely moves them).
     """
+    if exclude_defst is None:
+        from src.utils.config import get_config
+        exclude_defst = bool(
+            get_config().get("joint", {}).get("exclude_defst_from_shares", False))
+
     out = df.with_columns(pl.Series("_rate", np.maximum(rates, 1e-9)))
+    if not exclude_defst:
+        return out.with_columns(
+            (pl.col("_rate") / pl.col("_rate").sum().over(["game_id", "team"]))
+            .alias("share")
+        ).drop("_rate")
+
+    out = out.with_columns(_defst_mask(out).alias("_is_defst"))
+    offensive = pl.when(pl.col("_is_defst")).then(0.0).otherwise(pl.col("_rate"))
+    denom = offensive.sum().over(["game_id", "team"])
     return out.with_columns(
-        (pl.col("_rate") / pl.col("_rate").sum().over(["game_id", "team"]))
+        pl.when(pl.col("_is_defst")).then(0.0)
+        .otherwise(pl.col("_rate") / pl.when(denom > 0).then(denom).otherwise(1.0))
         .alias("share")
     ).drop("_rate")
 
@@ -213,7 +261,8 @@ def player_shares(rates: np.ndarray, df: pl.DataFrame) -> pl.DataFrame:
 def combine(df: pl.DataFrame, share_col: str = "share",
             lambda_col: str = "team_lambda",
             out_col: str = "probability",
-            conversion: dict | None = None) -> pl.DataFrame:
+            conversion: dict | None = None,
+            score_col: str | None = None) -> pl.DataFrame:
     """P(at least one touchdown) from a player's expected touchdown count.
 
     The obvious conversion is Poisson: thinning a Poisson process by a fixed
@@ -238,14 +287,38 @@ def combine(df: pl.DataFrame, share_col: str = "share",
     6.7 points low to 1.0 high on held-out 2025, and the published probabilities
     summed to 4.04 per game against 4.04 actual.
     """
+    # Stash the incoming score before anything writes over it. Every caller
+    # here passes score_col == out_col ("prob" -> "prob"), so reading it back
+    # after the formula has run returns the formula's own output — which for a
+    # held-out defence is 0, its share being zero. That published every defence
+    # at exactly 0.000, and the tell was a DEF/ST AUC of exactly 0.5000: not a
+    # weak ranking, an absent one.
+    df = df.with_columns(pl.col(score_col).alias("_score_in")) \
+        if score_col is not None else df
+
     mu = pl.col(lambda_col) * pl.col(share_col)
     if conversion:
         mu = mu * float(conversion.get("level", 1.0))
         r = float(conversion.get("dispersion", 0.0))
         if r > 0:
             q = (mu / r).clip(0.0, 1.0 - 1e-12)
-            return df.with_columns((1.0 - (1.0 - q) ** r).alias(out_col))
-    return df.with_columns((1.0 - (-mu).exp()).alias(out_col))
+            out = df.with_columns((1.0 - (1.0 - q) ** r).alias(out_col))
+        else:
+            out = df.with_columns((1.0 - (-mu).exp()).alias(out_col))
+    else:
+        out = df.with_columns((1.0 - (-mu).exp()).alias(out_col))
+
+    if score_col is not None and "_is_defst" in out.columns:
+        # Held out of the offensive share denominator, so its share is zero and
+        # this formula would publish it at 0. A defence still scores about 10%
+        # of the time; the calibrated classifier already says so, and that is
+        # the number to keep — including its ordering, which is the half a flat
+        # constant would throw away.
+        out = out.with_columns(
+            pl.when(pl.col("_is_defst")).then(pl.col("_score_in"))
+            .otherwise(pl.col(out_col)).alias(out_col)
+        ).drop("_is_defst")
+    return out.drop("_score_in") if "_score_in" in out.columns else out
 
 
 def fit_conversion(df: pl.DataFrame, mu_col: str, target_col: str = "target") -> dict:
@@ -350,7 +423,8 @@ def apply_joint(df: pl.DataFrame, features: pl.DataFrame, model: dict,
     out = out.with_columns(
         pl.col("team_lambda").fill_null(model["mean_team_tds"])
     )
-    return combine(out, out_col=out_col, conversion=conversion)
+    return combine(out, out_col=out_col, conversion=conversion,
+                   score_col=score_col)
 
 
 def first_td_probability(df: pl.DataFrame, share_col: str = "share",

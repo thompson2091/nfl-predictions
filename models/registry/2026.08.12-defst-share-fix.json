@@ -1,0 +1,328 @@
+{
+  "id": "2026.08.12-defst-share-fix",
+  "created": "2026-08-12T22:43:52+00:00",
+  "note": "Hold DEF/ST out of the offensive share denominator",
+  "verdict": "KEPT_WITH_JUSTIFICATION",
+  "justification": "Anytime TD xgb Top-1 50.8% -> 53.4% (+2.56pp, 3.6 se, p=0.000, 47 games won to 18 lost) with Brier also better (0.09121 -> 0.09019). Top-5 falls 94.8% -> 93.3% and AUC 0.8413 -> 0.8320. The Top-5 loss is the honest price of no longer covering defences by accident: the old path bought that coverage by publishing a 15%-likely defence as the game's most likely scorer in 131 of 1,131 games, at a mean probability of 0.908. AUC falls because the classifier's within-DEF/ST ranking is 0.54, barely better than chance, so restoring the honest number restores an honestly weak ordering; ranking defences properly is the follow-up. Top-1 is the objective and it is what improved.",
+  "parent": "2026.08.12-baseline-remeasured",
+  "git": {
+    "sha": "3c68f573b9caa708cc4bbca58e9ca4a45cfb52cd",
+    "short_sha": "3c68f57",
+    "branch": "app",
+    "dirty": true
+  },
+  "markets": [
+    "first_td",
+    "anytime_td"
+  ],
+  "config": {
+    "target": {
+      "type": "anytime_td"
+    },
+    "seasons": {
+      "start": 2015,
+      "end": 2025,
+      "predict_season": 2026
+    },
+    "splits": {
+      "train_end": 2023,
+      "val_season": 2024,
+      "test_season": 2025
+    },
+    "rolling_windows": {
+      "short": 3,
+      "medium": 5
+    },
+    "models": {
+      "active": [
+        "lr",
+        "lgbm",
+        "xgb"
+      ],
+      "production": "xgb",
+      "production_by_target": {
+        "anytime_td": "xgb",
+        "first_td": "ensemble"
+      }
+    },
+    "model": {
+      "seed": 42,
+      "lgbm": {
+        "n_estimators": 2000,
+        "learning_rate": 0.02,
+        "max_depth": 6,
+        "num_leaves": 31,
+        "min_child_samples": 20,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "reg_alpha": 0.1,
+        "reg_lambda": 1.0,
+        "early_stopping_rounds": 50
+      },
+      "xgb": {
+        "n_estimators": 2000,
+        "learning_rate": 0.02,
+        "max_depth": 6,
+        "min_child_weight": 20,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "reg_alpha": 0.1,
+        "reg_lambda": 1.0,
+        "early_stopping_rounds": 50
+      },
+      "logistic": {
+        "max_iter": 2000,
+        "C": 0.1
+      }
+    },
+    "clustering": {
+      "seed": 42,
+      "k_min": 2,
+      "k_max": 8,
+      "gap_reference_draws": 20,
+      "gap_sample_rows": 8000,
+      "silhouette_sample_rows": 8000,
+      "max_null_rate": 0.05,
+      "max_abs_corr": 0.9,
+      "min_cluster_rows": 50,
+      "explore_max_rows": 40000
+    },
+    "blend": {
+      "enabled": true,
+      "bootstrap_market_weight": 0.5,
+      "min_history_rows": 500
+    },
+    "betting": {
+      "bankroll": 1000.0,
+      "kelly_fraction": 0.25,
+      "min_edge_pp": 2.0,
+      "min_ev_pct": 0.0
+    },
+    "joint": {
+      "exclude_defst_from_shares": true
+    },
+    "first_td": {
+      "use_anytime_prior": false,
+      "use_joint_path": false
+    },
+    "app": {
+      "version_selector": true
+    },
+    "paths": {
+      "raw": "data/raw",
+      "processed": "data/processed",
+      "models": "models",
+      "output": "output",
+      "plots": "output/plots"
+    },
+    "ai_context": {
+      "enabled": true,
+      "max_adjustment": 0.1
+    },
+    "positions": {
+      "offensive": [
+        "QB",
+        "RB",
+        "WR",
+        "TE",
+        "FB"
+      ]
+    }
+  },
+  "features": {
+    "first_td": {
+      "n": 320,
+      "sha256": "3896d363ff597870f7bb20f14c7b42c6ff8ac0e47619fd229ed767c53331f929"
+    },
+    "anytime_td": {
+      "n": 319,
+      "sha256": "6a823bc7505e45f859ab06e02b8f2e402aa75829db2e381ec7e6573630d1a913"
+    }
+  },
+  "metrics": {
+    "first_td": {
+      "ensemble": {
+        "top1": 0.16004,
+        "top3": 0.36605,
+        "top5": 0.52697,
+        "auc": 0.82201,
+        "brier": 0.02741,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.0109
+      },
+      "lgbm": {
+        "top1": 0.1618,
+        "top3": 0.36958,
+        "top5": 0.51901,
+        "auc": 0.80641,
+        "brier": 0.02755,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01095
+      },
+      "lr": {
+        "top1": 0.15561,
+        "top3": 0.37135,
+        "top5": 0.51989,
+        "auc": 0.80933,
+        "brier": 0.02757,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01078
+      },
+      "xgb": {
+        "top1": 0.16799,
+        "top3": 0.37135,
+        "top5": 0.53227,
+        "auc": 0.822,
+        "brier": 0.02744,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01112
+      }
+    },
+    "anytime_td": {
+      "ensemble": {
+        "top1": 0.51813,
+        "top3": 0.83908,
+        "top5": 0.9328,
+        "auc": 0.83302,
+        "brier": 0.09147,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01486
+      },
+      "lgbm": {
+        "top1": 0.51105,
+        "top3": 0.83996,
+        "top5": 0.93192,
+        "auc": 0.82946,
+        "brier": 0.09135,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01486
+      },
+      "lr": {
+        "top1": 0.48364,
+        "top3": 0.82493,
+        "top5": 0.92396,
+        "auc": 0.8234,
+        "brier": 0.09351,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01486
+      },
+      "xgb": {
+        "top1": 0.53404,
+        "top3": 0.85765,
+        "top5": 0.9328,
+        "auc": 0.83145,
+        "brier": 0.09036,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01483
+      }
+    }
+  },
+  "experiment": null,
+  "artifacts": {
+    "first_td": {
+      "clusters_bet.json": "86ce38a2e7f5f8112e83bb4b4718ae2e5fce8eed6f3158cd46fc395dd1c46523",
+      "clusters_player.json": "f4223d10dfadbc36236c9fecff9c8d1f17066531c353f6637eee18fc251031af",
+      "ensemble_weights.pkl": "6869ddbeefe514a8fb7ab5a009e317e424d0d5b2b3ccf39cb5a2e35371ca802d",
+      "feature_cols.pkl": "ab7d7e1dfcea7bb396ef772f3c9f6776e304e5bc7bbb2bdb9d9f5af86c463323",
+      "lgbm.pkl": "bd741e794f1de9626ae0c7ec2c610e5bb0e14be7b43437ee4680d5ae5d078cc5",
+      "lgbm_calibrator.pkl": "2a02f41550a6cb042de28b2ba9e1b834c73c929ee3261a3403d40bfa4e867720",
+      "lr.pkl": "fc453156e1c1656f61b22e490189f5295fcb2c65660782f120a0bf1cd13f486e",
+      "lr_calibrator.pkl": "d721c048d25050d48e5d32458c60c49985102a881b50f01e70f66503f6b83eee",
+      "rank_calibration.json": "8deac08ef56b37eb41a1d2ca9fa7b14388cb696da249586dd8d05ca38630e02e",
+      "scorer_rate_prior.json": "c7dbdffc39f27118d5482f9b9efedf7ffc5a342f521444e79743bb4425c8aa5d",
+      "td_conversion.json": "1bd1f38548fcd1e45d71832df47b07677596fc69512afc8f92930e05eb38d999",
+      "team_td_rate.json": "b7758263d7d84062abb514f375e34cf73e04dd30c94c9f63d6064ea5b9d8de0d",
+      "train_null_rates.pkl": "a5b6b07bf1dbf0d8f12e6c89fba073ea7255543ce7ac19fece36c60febffb358",
+      "xgb.pkl": "74ca769ed66292565bdf66158b206bf1fa59eaad60d6127cc18c9ac3af3be319",
+      "xgb_calibrator.pkl": "7b764b5b3c1a298fb015e0f317c01e1511e9a88a5e5312b4d4a9bdfce2c1ba24"
+    },
+    "anytime_td": {
+      "clusters_bet.json": "8018aa837d5f5cab41e4e6b5a53d0bf0420201acd6f26dccb871b55c0649ff5d",
+      "clusters_player.json": "653f7c997eebf511eb056eda9235a68cf55f01adc0225eba56b33382b7bb50d3",
+      "ensemble_weights.pkl": "2732b2b890beebe6f7e5cce73821193a3983241d82e79c3d7a75fb5093da0536",
+      "feature_cols.pkl": "cd68a98fb1fe70fb450014709cb2acecfbd3b9432eeeedb97877ec1533acb48b",
+      "lgbm.pkl": "949d92913366957c6396e728a7992df56ca45cf4094924f2b9367083f4d64c01",
+      "lgbm_calibrator.pkl": "2dff1b4ef6d934cc1960eae987f4a4d850803194d8287015f2f2ff6e235632e1",
+      "lr.pkl": "d9dc2cf1f8087e9fb0ba7176e10516c63c386e2b4489fafdaf8ba6c1154cd93f",
+      "lr_calibrator.pkl": "51b79b7a029a1a194ced70dfc0c34572b498fc444871c27cb958b7115e64a498",
+      "rank_calibration.json": "16c25db3d53d42a496875003e76f9eee1bcc496af2b53a5d775f65768211b89c",
+      "scorer_rate_prior.json": "b3f2ddbdb6b8ce3c4bd5f5ee8f4958e2289ed41ab44d5ffe4ecbe4977a75af59",
+      "td_conversion.json": "3bfe154d34e7add01f83e66af163e38f7904a7060a79069b09bdec549791a502",
+      "team_td_rate.json": "31f54e0449e6876a53def592260c9aee2bfd895571ac861293251ae6553e3cea",
+      "train_null_rates.pkl": "0eed52064c0d65cefbfa6d37f7b197518082a42af87fdfb110c77c82c23a66a8",
+      "xgb.pkl": "aa04793c6496095c6915efb413323cdad510173f44a35db5ffd4433dcfa06c4d",
+      "xgb_calibrator.pkl": "c343d60503e62b59e3e17add07269b20452acc9179a1967928462609cd609564"
+    }
+  },
+  "runtime": {
+    "first_td": {},
+    "anytime_td": {
+      "blend_weight.json": {
+        "sha256": "d45410f6c4983848f9acf80f1537d1dcb6d91a2e022953cc48bcf268ac171671",
+        "value": {
+          "kind": "blend_weight",
+          "source": "fitted",
+          "market_weight": 0.42805409669909905,
+          "log_loss": 0.3523637655971925,
+          "log_loss_model_only": 0.35563464592780714,
+          "log_loss_market_only": 0.3762856349909563,
+          "n_rows": 6985,
+          "seasons": [
+            2025
+          ],
+          "fit_date": "2026-08-12",
+          "min_season": 2025,
+          "eligible_rows": 7624
+        }
+      }
+    }
+  }
+}

@@ -26,17 +26,20 @@ models:
   # anytime-TD games (4 retrained folds, none scoring its own training years),
   # re-measured 2026-08-12 over the corrected denominator — every played game
   # with a scorer in the pool, so a scorer the candidate filter removed counts
-  # as a miss rather than vanishing from the count (src/evaluation/ranking.py):
-  #   xgb   Top-1 50.8%  Top-3 86.0%  AUC 0.8409  Brier 0.09136   <- production
-  #   ens   Top-1 51.2%  Top-3 85.6%  AUC 0.8408  Brier 0.09132
-  #   lgbm  Top-1 49.7%  Top-3 84.6%  AUC 0.8373  Brier 0.09194   <- was production
-  #   lr    Top-1 48.5%  Top-3 82.1%  AUC 0.8248  Brier 0.09334
+  # as a miss rather than vanishing from the count (src/evaluation/ranking.py) —
+  # and again after holding DEF/ST out of the offensive share denominator
+  # (joint.exclude_defst_from_shares, below):
+  #   xgb   Top-1 53.4%  Top-3 85.8%  AUC 0.8315  Brier 0.09036   <- production
+  #   ens   Top-1 51.8%  Top-3 83.9%  AUC 0.8330  Brier 0.09147
+  #   lgbm  Top-1 51.1%  Top-3 84.0%  AUC 0.8295  Brier 0.09135   <- was production
+  #   lr    Top-1 48.4%  Top-3 82.5%  AUC 0.8234  Brier 0.09351
   #
-  # xgb beats lgbm by 1.1 points of Top-1 against a 1.5-point standard error,
-  # and by 1.4 on Top-3 where the error is 1.0 — that gap is the real one.
-  # Against the ensemble it is a tie in every direction: 0.4 points of Top-1
-  # behind, 0.4 ahead on Top-3, AUC equal to four decimals. xgb is kept because
-  # the headline strategy backs the top three, not because it wins.
+  # xgb now leads on Top-1 by 1.6 points over the ensemble and 2.3 over lgbm,
+  # against a 1.5-point unpaired standard error, and leads on Top-3 and Brier
+  # too. It was previously kept on a tie, for the reason that the headline
+  # strategy backs the top three; the DEF/ST fix turned that tie into a lead,
+  # because xgb was the model ranking defences highest and therefore had the
+  # most to gain from no longer inflating them.
   #
   # These numbers previously read "xgb Top-1 52.1%, ens 50.7%" and argued xgb
   # led the ensemble by 1.4 points. That was inverted — the artifact said the
@@ -184,6 +187,43 @@ betting:
   # Floors a play must clear. Edge is measured against the DE-VIGGED price.
   min_edge_pp: 2.0
   min_ev_pct: 0.0
+
+# The joint game model: team touchdown rate x within-team player share.
+joint:
+  # Hold a team's defence/special teams out of the offensive share denominator.
+  #
+  # `team_lambda` is fitted on OFFENSIVE touchdowns alone — td_counts filters
+  # td_team == posteam and contains no DEF/ST rows — but player_shares
+  # normalises the DEF/ST pseudo-player into the same denominator, handing it a
+  # slice of a rate it cannot contribute to. Measured over four walk-forward
+  # folds that published a defence as the game's most likely scorer in 131 of
+  # 1,131 games, at a mean probability of 0.908 against an actual rate of 0.153.
+  # It also understates every real player on that team by whatever share the
+  # defence took.
+  #
+  # With this on, DEF/ST rows are held out of the denominator and keep the
+  # calibrated classifier's own probability, which is what they had before the
+  # joint model touched them and is well calibrated (0.106 against 0.103).
+  #
+  # Gated 2026-08-12 on anytime TD, paired per game against the champion over
+  # 1,131 walk-forward games:
+  #
+  #   xgb   Top-1 50.8% -> 53.4%  (+2.56pp, 3.6 se, p=0.000; 47 games won, 18 lost)
+  #         Brier 0.09121 -> 0.09019 (better)
+  #         Top-5 94.8% -> 93.3%  (-1.50pp)   AUC 0.8413 -> 0.8320 (-0.0094)
+  #   lgbm  Top-1 49.7% -> 51.1%  (+1.41pp, p=0.033), Brier better
+  #   ens   Top-1 51.2% -> 51.8%  (not significant)
+  #   lr    unchanged — it never ranked a defence highly to begin with
+  #
+  # Promoted as KEPT_WITH_JUSTIFICATION: Top-1 is the objective, and the Top-5
+  # loss is the honest price of no longer covering defences by accident. The old
+  # path bought that coverage by publishing a 15%-likely defence as the game's
+  # most likely scorer 131 times.
+  #
+  # Getting Top-5 back means ranking defences properly rather than inflating
+  # them: within DEF/ST rows the classifier's AUC is 0.54, barely better than
+  # chance. That is the follow-up, not a reason to keep the inflation.
+  exclude_defst_from_shares: true
 
 # First-TD-only settings.
 first_td:

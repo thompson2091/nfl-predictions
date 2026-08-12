@@ -398,6 +398,26 @@ Re-ordered by measured effect rather than by expected effect:
 5. **3e/3f, feature ablation and pool thresholds — demoted.** The pool ceiling is
    99%+ and the losses are structural, not informational.
 
+---
+
+## Phase 3 — The experiments so far
+
+| experiment | verdict | Top-1 on the production model |
+| --- | --- | --- |
+| First TD from a blend with the anytime model | REJECTED | −0.35pp (xgb −1.41, p=0.026) |
+| First TD from competing-Poisson team rates | REJECTED | −0.62pp (all four models worse) |
+| **DEF/ST out of the offensive share denominator** | **KEPT_WITH_JUSTIFICATION** | **+2.56pp, p=0.000** |
+
+The pattern is worth naming. Both rejected experiments were *theoretically*
+motivated — sound arguments about likelihoods and generative structure — and
+both cost accuracy. The one that worked came from a measurement nobody was
+looking for: predicted-against-actual by position and board rank, which showed
+defences published at 0.908 against an actual 0.153.
+
+**Look for defects, not improvements.** A defect has a mechanism you can point
+at and a size you can measure before you write any code. An improvement has an
+argument.
+
 ### A note on reading these slices
 
 The RB misread is worth keeping as a warning. A slice of our own numbers with no

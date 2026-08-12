@@ -1,0 +1,13 @@
+# A defence is not a share of its own offence.
+#
+# team_lambda is fitted on offensive touchdowns only, but the DEF/ST
+# pseudo-player is normalised into the same share denominator. Over four folds
+# that made a defence the game's top pick 131 times at a mean 0.908 against a
+# 0.153 actual rate — and took share away from every real player on that team.
+#
+#   make gate EXP=experiments/exclude-defst-from-shares.yaml MARKET=anytime_td
+id: 2026.08.12-exclude-defst-from-shares
+note: "Hold DEF/ST out of the offensive share denominator; keep its classifier probability"
+overlay:
+  joint:
+    exclude_defst_from_shares: true

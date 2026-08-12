@@ -2361,3 +2361,95 @@ def test_cluster_labels_do_not_leak_into_the_board():
     cols = src[src.index("def board_columns("):]
     cols = cols[:cols.index("\ndef ")]
     assert "cluster" not in cols
+
+
+def test_defence_is_not_a_share_of_its_own_offence():
+    """`team_lambda` counts offensive touchdowns; DEF/ST cannot contribute one.
+
+    `td_counts` filters `td_team == posteam`, so the fitted team rate contains
+    no defensive or special-teams scores at all. Normalising the DEF/ST
+    pseudo-player into the same share denominator therefore hands it a slice of
+    a rate it can never earn: measured over four walk-forward folds it published
+    a defence as the game's most likely scorer in 131 of 1,131 games at a mean
+    probability of 0.908, against an actual rate of 0.153. It also understates
+    every real player on that team by whatever share the defence took.
+    """
+    import numpy as np
+    from src.models.joint import combine, player_shares
+
+    df = pl.DataFrame({
+        "game_id": ["g", "g", "g"],
+        "team": ["KC", "KC", "KC"],
+        "player_id": ["a", "b", "KC_DEFST"],
+        "position_DEFST": [0, 0, 1],
+        "raw_prob": [0.30, 0.20, 0.50],
+        "team_lambda": [2.4, 2.4, 2.4],
+    })
+    rates = df["raw_prob"].to_numpy()
+
+    shared = player_shares(rates, df, exclude_defst=False)
+    assert shared["share"].sum() == pytest.approx(1.0)
+    naive = combine(shared, score_col="raw_prob")
+    defence = naive.filter(pl.col("player_id") == "KC_DEFST")["probability"][0]
+    assert defence > 0.6, (
+        "the unfixed path is expected to blow the defence up — if this stops "
+        "being true the measurement behind the fix no longer applies"
+    )
+
+    fixed = player_shares(rates, df, exclude_defst=True)
+    assert fixed.filter(pl.col("player_id") == "KC_DEFST")["share"][0] == 0.0
+    offence = fixed.filter(pl.col("player_id") != "KC_DEFST")
+    assert offence["share"].sum() == pytest.approx(1.0), (
+        "the offensive shares must still sum to one, or the team's expected "
+        "touchdowns no longer add up to its rate"
+    )
+    # And the real players get the share the defence was taking.
+    assert offence["share"][0] == pytest.approx(0.30 / 0.50)
+
+    out = combine(fixed, score_col="raw_prob")
+    assert out.filter(pl.col("player_id") == "KC_DEFST")["probability"][0] == \
+        pytest.approx(0.50), "a held-out defence keeps the classifier's number"
+    assert out.filter(pl.col("player_id") == "a")["probability"][0] > \
+        naive.filter(pl.col("player_id") == "a")["probability"][0]
+
+
+def test_held_out_defence_keeps_its_probability_when_score_and_out_are_one_column():
+    """Production calls the joint step with score_col == out_col.
+
+    `apply_joint(..., score_col="prob", out_col="prob")` is what predict, the
+    backtest and the harness all pass. Reading the score back after the formula
+    has written the same column returns the formula's own output — zero, for a
+    defence whose share was held out — so every defence published at exactly
+    0.000. The tell was a DEF/ST AUC of exactly 0.5000: not a weak ranking, an
+    absent one, and it cost 0.03 of overall AUC in a gate run.
+    """
+    from src.models.joint import combine, player_shares
+
+    df = pl.DataFrame({
+        "game_id": ["g", "g", "g", "g"],
+        "team": ["KC", "KC", "KC", "KC"],
+        "player_id": ["a", "b", "KC_DEFST", "c"],
+        "position_DEFST": [0, 0, 1, 0],
+        "prob": [0.30, 0.20, 0.12, 0.10],
+        "team_lambda": [2.4, 2.4, 2.4, 2.4],
+    })
+    shared = player_shares(df["prob"].to_numpy(), df, exclude_defst=True)
+    out = combine(shared, out_col="prob", score_col="prob")
+
+    defence = out.filter(pl.col("player_id") == "KC_DEFST")["prob"][0]
+    assert defence == pytest.approx(0.12), (
+        f"a held-out defence must keep the classifier's own number, got {defence}"
+    )
+    assert "_score_in" not in out.columns, "scratch column leaked into the output"
+
+    # And two defences with different scores must stay different, or the
+    # ordering within DEF/ST is gone even when the level is right.
+    two = pl.DataFrame({
+        "game_id": ["g", "g"], "team": ["KC", "BUF"],
+        "player_id": ["KC_DEFST", "BUF_DEFST"],
+        "position_DEFST": [1, 1], "prob": [0.05, 0.20],
+        "team_lambda": [2.4, 2.4],
+    })
+    out2 = combine(player_shares(two["prob"].to_numpy(), two, exclude_defst=True),
+                   out_col="prob", score_col="prob")
+    assert out2["prob"].to_list() == pytest.approx([0.05, 0.20])
