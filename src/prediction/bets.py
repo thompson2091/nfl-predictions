@@ -9,6 +9,10 @@ price*, and a stake. This module does the last mile:
   the book's margin, not a mispricing. On anytime-TD props the overround runs
   ~1.23x; comparing a model number to the raw price manufactures roughly 5
   points of fake edge on every single line.
+- EV comes in two bases, for the same reason `edge` and `model_edge` do:
+  `ev_per_unit` uses the published (blended) probability, `ev_model_per_unit`
+  the pre-blend one. The second is the betting number — see `prob_bet`.
+  Both are per unit staked, so the `*_pct` versions are also dollars per $100.
 - Stakes are Kelly, scaled by a fraction set in config. Full Kelly is famously
   correct and famously unusable — it assumes your probabilities are exact, and
   a model that is even slightly overconfident goes broke on full Kelly.
@@ -116,26 +120,36 @@ def build_board(predictions: pl.DataFrame, market: pl.DataFrame,
         .clip(lower_bound=0.0)
         .alias("kelly_full")
     )
-    # The same disagreement measured before the blend. `edge` above uses the
-    # published probability, which has already been pulled toward the price it
-    # is being compared against — so it comes out about 62% the size of the real
-    # one, and shrinks most exactly where the disagreement is largest. Every
-    # profitability figure in src/evaluation/rank_economics.py is measured on
-    # this column, so a betting rule expressed in edge points has to read it
-    # rather than `edge_pp`, or the threshold means something different on
-    # screen than it did in the backtest.
-    if "prob_model" in df.columns:
-        df = df.with_columns(
-            (pl.col("prob_model") - pl.col("market_prob")).alias("model_edge")
-        )
-    else:
-        # No pre-blend column (first_td publishes the model number directly).
-        df = df.with_columns(pl.col("edge").alias("model_edge"))
+    # `prob_bet` is the number a *bet* is judged on, as opposed to the number we
+    # publish. `probability` has already been pulled toward the price it is
+    # being compared against, so a disagreement measured on it comes out about
+    # 62% the size of the real one, and shrinks most exactly where the
+    # disagreement is largest. Every profitability figure in
+    # src/evaluation/rank_economics.py is measured pre-blend, so a betting rule
+    # — or an EV — expressed in these terms has to read this column, or the
+    # threshold means something different on screen than it did in the backtest.
+    # first_td publishes the model number directly and has no pre-blend column;
+    # there the two bases coincide and every pair below is equal by definition.
+    df = df.with_columns(
+        (pl.col("prob_model") if "prob_model" in df.columns
+         else pl.col("probability")).alias("prob_bet")
+    )
+    df = df.with_columns([
+        (pl.col("prob_bet") - pl.col("market_prob")).alias("model_edge"),
+        # Judged pre-blend, but still paid at the raw price — the two choices are
+        # independent, and mixing them up in either direction is what makes a
+        # board disagree with its own backtest.
+        (pl.col("prob_bet") * b - (1.0 - pl.col("prob_bet")))
+        .alias("ev_model_per_unit"),
+    ])
 
     return df.with_columns([
         (pl.col("kelly_full") * kelly_fraction).alias("kelly_stake_frac"),
         (pl.col("kelly_full") * kelly_fraction * bankroll).round(2).alias("stake"),
+        # Per unit staked x100. That is a percentage of stake and also dollars
+        # per $100 staked, which is how both the CLI card and the app render it.
         (pl.col("ev_per_unit") * 100).round(1).alias("ev_pct"),
+        (pl.col("ev_model_per_unit") * 100).round(1).alias("ev_model_pct"),
         (pl.col("edge") * 100).round(1).alias("edge_pp"),
         (pl.col("model_edge") * 100).round(1).alias("model_edge_pp"),
     ]).sort("ev_pct", descending=True)

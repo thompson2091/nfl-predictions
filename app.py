@@ -421,10 +421,12 @@ with st.sidebar:
         season = None
         week = None
 
-    # No bankroll control: the board shows estimates, not stakes. Kelly sizing
+    # No bankroll control, even though the board is now denominated in dollars.
+    # Everything on screen is quoted per $100 flat, which is a unit rather than
+    # a stake — it makes rows comparable without implying a plan. Kelly sizing
     # still exists in src/prediction/bets.py for the CLI, where it reads the
-    # config value — but nothing on screen is denominated in dollars, so asking
-    # for a bankroll here would be a setting that changes nothing you can see.
+    # config value; putting a bankroll box here would turn a unit into a
+    # recommendation, and the sizing evidence lives in Betting reality.
 
 
 # ── The board ─────────────────────────────────────────────────────────────
@@ -857,6 +859,22 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
              "compared against, so **Difference** comes out around 62% the "
              "size — and shrinks most where the disagreement is biggest. This "
              "is the column every profitability figure was measured on.",
+    ),
+    "EV": st.column_config.NumberColumn(
+        "Expected on \\$100", format="$%+.2f", width="small",
+        help="What a flat \\$100 bet on this player returns **on average**, if "
+             "our number is right — \\$100 risked, won at the price in "
+             "**Odds**.\n\n"
+             "This is the column that separates a good estimate from a good "
+             "bet, because probability points and money are not the same "
+             "thing. A +3 point **Bet edge** at -185 still loses: you risk "
+             "\\$185 to win \\$100, so 43% has to clear a 65% break-even. The "
+             "same +3 points at +170 makes money. Both rows look identical in "
+             "**Difference**.\n\n"
+             "Measured on our number *before* the blend, like **Bet edge**, "
+             "but paid at the raw price, because that is what a book actually "
+             "pays. It is what the model **expects**, not what it has "
+             "**returned** — for the second, see **Betting reality**.",
     ),
     "Best": st.column_config.TextColumn(
         "Best price", width="small",
@@ -1393,6 +1411,86 @@ def _highlight_tier(frame, rule: dict):
     return out
 
 
+def _money(x: float, places: int = 2, escape: bool = True) -> str:
+    """A signed dollar amount, sign outside the symbol.
+
+    `escape` because Streamlit reads a matched pair of dollar signs in markdown
+    as LaTeX — but a metric value is plain text, where the escape would print.
+    """
+    sym = "\\$" if escape else "$"
+    return f"{'+' if x >= 0 else '-'}{sym}{abs(x):,.{places}f}"
+
+
+def slate_expectation(frame, rule: dict | None) -> str | None:
+    """Flat $100 a bet across everything we'd back this week, added up.
+
+    A per-row EV column cannot show this, and row-by-row is exactly where the
+    reading goes wrong. Ten bets we rate 40-50% win four or five of themselves,
+    which reads like a good afternoon — and still lose money whenever the
+    winners are priced short and the losers long. One favourite at -185 we rate
+    43% costs about a third of its stake, more than several modest longshots
+    make back. Expected winners and expected profit move independently, and the
+    only way to see that is to add the payouts up rather than leaving it as an
+    exercise for the reader.
+
+    Deliberately computed over the whole week's marked plays, not the filtered
+    view, so narrowing the board to one game does not quietly re-scope the
+    slate. Returns None where no rule was fitted — a market with no measured
+    edge has no plays to total up.
+    """
+    if not rule or "ev_model_pct" not in frame.columns:
+        return None
+    tiers = _highlight_tier(frame, rule)
+    if not isinstance(tiers, pd.Series):
+        return None
+
+    marked = frame[tiers.isin([_TIER_LABEL["strong"], _TIER_LABEL["standard"]])]
+    # A player who is Out is not a bad bet, it is a settled loss, and including
+    # one in a total of expected money overstates it by the whole stake.
+    dropped = 0
+    if "is_blocked" in marked.columns:
+        out = marked["is_blocked"].fillna(False).astype(bool)
+        dropped, marked = int(out.sum()), marked[~out]
+
+    n = len(marked)
+    if n == 0:
+        return ("**Nothing on this week's board clears the bar.** That is the "
+                "position the measured rule takes most weeks — no play is a "
+                "result, not a gap.")
+
+    staked = n * 100
+    winners = float(marked["prob_bet"].sum()) if "prob_bet" in marked.columns else None
+    profit = float(marked["ev_model_pct"].sum())
+
+    parts = [
+        f"**A flat \\$100 on each of the {n} marked "
+        f"{'play' if n == 1 else 'plays'}** — \\${staked:,} staked, "
+        f"expected return **{_money(profit)}** "
+        f"(\\${staked + profit:,.2f} back, {profit / staked * 100:+.1f}% on "
+        f"turnover) if our numbers are right."
+    ]
+    if winners is not None:
+        parts.append(
+            f"We expect **{winners:.1f} of the {n}** to score"
+            + (f" — and the two numbers move independently. A slate can win "
+               f"half its bets and still lose money, when the winners are "
+               f"priced short and the losers long."
+               if profit < 0 and winners / n >= 0.35 else ".")
+        )
+    if dropped:
+        parts.append(
+            f"Excludes {dropped} marked "
+            f"{'player' if dropped == 1 else 'players'} ruled out by the "
+            f"injury report."
+        )
+    parts.append(
+        "Priced at the consensus in **Odds** and measured on our pre-blend "
+        "number, the same basis as **Expected on \\$100**. What sets like this "
+        "have *actually* returned is in **Betting reality**."
+    )
+    return " ".join(parts)
+
+
 @st.cache_data(show_spinner=False)
 def best_prices(tt: str, season: int, week: int) -> pd.DataFrame | None:
     """Best available price per player, from the per-book archive."""
@@ -1479,6 +1577,13 @@ def render_board(frame, tt: str, model: str):
             show = show.assign(BetRank=frame["bet_rank"],
                                BetEdge=frame["model_edge_pp"])
             cols = cols + ["BetRank", "BetEdge"]
+        # EV last before the label, because it is the column the label is
+        # really about: "worth backing" is a claim about money, and until now
+        # the board made it without ever showing the money. `ev_model_pct` is a
+        # percentage of stake, which is dollars per $100 with no conversion.
+        if "ev_model_pct" in frame.columns:
+            show = show.assign(EV=frame["ev_model_pct"])
+            cols = cols + ["EV"]
         show = show.assign(InRange=_highlight_tier(frame, rule))
         cols = cols + ["InRange"]
 
@@ -1763,6 +1868,12 @@ with tab_board:
             f"{len(overvalued)}, and close to them on {agree}."
         )
 
+        # The whole week's marked plays as one wager, because that is how they
+        # get placed. Reads the full board rather than `shown` on purpose.
+        _slate = slate_expectation(board, betting_rule(target_type, selected_model))
+        if _slate:
+            st.info(_slate, icon=":material/functions:")
+
         with st.expander("How to read this — and how the number is built"):
             st.markdown(
                 how_to_read(
@@ -1794,6 +1905,22 @@ def _score_week(season: int, week: int, tt: str, model: str):
 def _played(season: int, tt: str):
     from src.evaluation.weekly_review import played_weeks
     return played_weeks(season, tt)
+
+
+@st.cache_data(show_spinner=False)
+def _week_money(tt: str, season: int, week: int, model: str, tiers: dict | None):
+    """Expected vs realised money for the plays this week's board would mark.
+
+    `tiers` is passed in rather than looked up so the cache key includes it: a
+    rebuilt rule has to invalidate this, or the page grades one week's bets
+    against another rule's selection.
+    """
+    from src.evaluation.rank_economics import week_pnl
+    try:
+        return week_pnl(tt, season, week, tiers or {}, model=model)
+    except Exception as e:
+        _SECTION_ERRORS[f"money:{tt}"] = f"{type(e).__name__}: {e}"
+        return None
 
 
 with tab_results:
@@ -1882,6 +2009,79 @@ with tab_results:
                     "to grade against. Run `make odds WEEK=n` during the week to "
                     "capture them."
                 )
+
+            # Accuracy and money are different questions, so they get different
+            # sections. Everything above grades the probability; this grades the
+            # bet — the same plays the Full board marks, at the prices it showed,
+            # against what they actually paid.
+            st.markdown("**And did the money follow?**")
+            _rule = betting_rule(target_type, selected_model)
+            money = _week_money(target_type, season, wk, selected_model,
+                                (_rule or {}).get("tiers"))
+            if money is None:
+                st.caption(
+                    "No graded prices for this week, so there is nothing to "
+                    "settle. This needs a backtest frame — `make backtest` "
+                    "builds one per season, so the current season only appears "
+                    "here once its prices have been archived and rebuilt."
+                    if _rule else
+                    "This market has no fitted betting rule, so there is no set "
+                    "of plays to settle. Run `scripts/14_rank_economics.py`."
+                )
+            else:
+                w, ytd = money["week_stats"], money["to_date"]
+                if w["bets"] == 0:
+                    st.caption(
+                        f"The rule marked nothing in week {wk} — no stake, no "
+                        f"result. Season to date it has backed "
+                        f"{ytd['bets']} plays for "
+                        f"{_money(ytd['actual_profit'])} against "
+                        f"{_money(ytd['expected_profit'])} expected."
+                    )
+                else:
+                    gap = w["actual_profit"] - w["expected_profit"]
+                    m = st.container(horizontal=True)
+                    m.metric(
+                        "Plays", w["bets"],
+                        help=f"Players the fitted rule would have backed in week "
+                             f"{wk}, at a flat \\$100 each. Same rule that draws "
+                             f"**Worth backing** on the Full board.",
+                    )
+                    m.metric("Staked", f"${w['staked']:,.0f}")
+                    m.metric(
+                        "Expected", _money(w["expected_profit"], 0, escape=False),
+                        help="What our own numbers said these bets were worth "
+                             "before they were settled — the total of the "
+                             "board's **Expected on \\$100** column.",
+                    )
+                    m.metric(
+                        "Actual", _money(w["actual_profit"], 0, escape=False),
+                        delta=f"{_money(gap, 0, escape=False)} vs expected",
+                        delta_color="off",
+                        help="What they returned at the closing price.",
+                    )
+                    m.metric(
+                        "Winners", f"{w['actual_winners']} of {w['bets']}",
+                        help=f"We expected {w['expected_winners']:.1f}.",
+                    )
+                    st.caption(
+                        f":material/functions: Season to date, the rule has "
+                        f"backed **{ytd['bets']} plays** across "
+                        f"{ytd.get('weeks', 0)} weeks for "
+                        f"**{_money(ytd['actual_profit'], 0)}** on "
+                        f"\\${ytd['staked']:,.0f} staked, against "
+                        f"**{_money(ytd['expected_profit'], 0)}** expected.\n\n"
+                        f"Read the week as an anecdote and the season as a "
+                        f"sketch. A dozen bets at these prices is a handful of "
+                        f"coin flips: one +700 winner swings a week by more "
+                        f"than the whole edge is worth, so expected and actual "
+                        f"are supposed to disagree here. What the gap is good "
+                        f"for is direction over many weeks — if actual keeps "
+                        f"landing below expected, the model is overconfident "
+                        f"and the board's EV column is quoting a price it "
+                        f"cannot pay. The only figures with intervals around "
+                        f"them are in **Betting reality**."
+                    )
 
 
 # ── Tab 2: Model Performance ──────────────────────────────────────────────

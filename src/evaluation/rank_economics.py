@@ -474,6 +474,84 @@ def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
     }
 
 
+def week_pnl(target_type: str, season: int, week: int, tiers: dict,
+             model: str | None = None, stake: float = 100.0) -> dict | None:
+    """What the marked plays expected, and what they returned — one week.
+
+    The calibration test the rest of this module cannot run. Everything else
+    here pools thousands of bets and reports a rate; this asks the narrower,
+    more legible question a reader actually has on a Monday: the board said it
+    expected X, did it get X?
+
+    One week settles nothing and the return field says so — a dozen bets at
+    these prices is a handful of coin flips, which is the whole reason
+    `clustered_roi` exists. So the season-to-date figure is returned alongside
+    it, and neither is a rate. The pooled evidence in `measure` remains the only
+    thing entitled to claim one.
+
+    Expected profit is computed on `prob_calibrated` at the raw price — exactly
+    how src/prediction/bets.py builds `ev_model_per_unit` for the live board, so
+    the number graded here is the number that board displayed. Realised profit
+    is `pnl`, the same flat-stake figure every ROI in this module uses.
+
+    Returns None when there are no backtest frames covering the week, which is
+    the normal case for the current season: prices are archived weekly but the
+    frames are rebuilt per season.
+    """
+    if not tiers:
+        return None
+    df = load_bets(target_type, rank_by=BET_RANK_COL, model=model)
+    if df is None or df.height == 0:
+        return None
+    if not {"prob_calibrated", "market_prob", "week"} <= set(df.columns):
+        return None
+
+    df = df.filter(pl.col("season") == season)
+    if df.height == 0 or df.filter(pl.col("week") == week).height == 0:
+        return None
+
+    df = df.with_columns(
+        (pl.col("prob_calibrated") - pl.col("market_prob")).alias("_edge")
+    )
+    eligible = df.filter((pl.col("rank") <= tiers["max_rank"])
+                         & (pl.col("_edge") >= tiers["edge_cut"]))
+    floor = tiers.get("exclude_below_odds")
+    if floor is not None:
+        eligible = eligible.filter(pl.col("odds") >= floor)
+
+    def summarise(sub: pl.DataFrame, **label) -> dict:
+        out = {"bets": int(sub.height), "stake": stake,
+               "staked": float(sub.height) * stake, **label}
+        if sub.height == 0:
+            return {**out, "expected_winners": 0.0, "actual_winners": 0,
+                    "expected_profit": 0.0, "actual_profit": 0.0,
+                    "median_odds": None}
+        p = sub["prob_calibrated"].to_numpy()
+        dec = sub["dec"].to_numpy()
+        return {
+            **out,
+            "expected_winners": float(p.sum()),
+            "actual_winners": int(sub["scored"].sum()),
+            # Per unit staked, scaled to the stake. p*(dec-1) is the profit on a
+            # winner; (1-p) is the whole stake lost on a loser.
+            "expected_profit": float((p * (dec - 1.0) - (1.0 - p)).sum()) * stake,
+            "actual_profit": float(sub["pnl"].sum()) * stake,
+            "median_odds": float(sub["odds"].median()),
+        }
+
+    # Season to date stops at this week rather than running the whole season,
+    # so scrolling back to week 4 shows what was known by week 4 instead of
+    # quietly including results that had not happened yet.
+    return {
+        "season": season,
+        "week": week,
+        "week_stats": summarise(eligible.filter(pl.col("week") == week)),
+        "to_date": summarise(eligible.filter(pl.col("week") <= week),
+                             weeks=int(df.filter(pl.col("week") <= week)["week"]
+                                       .n_unique())),
+    }
+
+
 def by_season(df: pl.DataFrame, top_n: int = 3) -> list[dict]:
     """The headline strategy, season by season. Stability is the real test."""
     return [_row(df.filter((pl.col("rank") <= top_n) & (pl.col("season") == s)),

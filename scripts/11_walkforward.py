@@ -207,7 +207,15 @@ if __name__ == "__main__":
     cfg = get_config()
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", default=cfg["target"]["type"])
-    ap.add_argument("--first-test", type=int, default=cfg["splits"]["val_season"])
+    # Four folds by default, not two. This defaulted to `val_season`, which
+    # gives two, and two folds put the standard error on Top-1 at +/-2.1% —
+    # wider than the gaps between the models it exists to choose between. So a
+    # plain `make walkforward` quietly replaced a four-fold artifact with one
+    # too thin to answer the question, and
+    # tests/test_leakage.py::test_each_market_serves_its_best_walkforward_model
+    # reads whatever it finds.
+    ap.add_argument("--first-test", type=int,
+                    default=cfg["splits"]["test_season"] - 3)
     ap.add_argument("--last-test", type=int, default=cfg["splits"]["test_season"])
     # Resolved after parsing: the right model depends on --target.
     ap.add_argument("--model", default=None)
