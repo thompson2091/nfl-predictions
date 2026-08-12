@@ -177,6 +177,25 @@ def test_a_refit_blend_weight_is_recorded_but_does_not_fail_verification(sandbox
     assert len(drift) == 1 and "blend_weight.json" in drift[0]
 
 
+def test_registry_side_files_are_not_mistaken_for_manifests(sandbox):
+    """The registry holds more than manifests, and will hold more over time.
+
+    `CHAMPION.json`, `noise_floor.json` and the ledger live beside them. Reading
+    every `*.json` as a version made `verify` raise KeyError the moment the
+    experiment runner wrote its first side-file — a failure with no relationship
+    to what the command was asked to do.
+    """
+    V.lock("2026.01.01-one", "first")
+    V.promote("2026.01.01-one")
+    (V.registry_root() / "noise_floor.json").write_text(
+        '{"measured": "2026-01-01", "spread": {}}')
+    (V.registry_root() / "CHAMPION.json").write_text('{"run": "some-run"}')
+    (V.registry_root() / "ledger.jsonl").write_text('{"id": "x"}\n')
+
+    assert [v["id"] for v in V.list_versions()] == ["2026.01.01-one"]
+    assert V.verify_current() == []
+
+
 def test_rollback_needs_somewhere_to_go(sandbox):
     V.lock("2026.01.01-one", "first")
     V.promote("2026.01.01-one")

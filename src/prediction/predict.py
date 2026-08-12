@@ -1,5 +1,6 @@
 import json
 import pickle
+from pathlib import Path
 import numpy as np
 import polars as pl
 from src.utils.config import get_config, production_model
@@ -130,7 +131,8 @@ def blend_weight_needs_fit(stored: dict | None, eligible: int, min_rows: int,
 def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
                       model_dir, cfg: dict, season: int, week: int,
                       target_type: str = "anytime_td",
-                      model_name: str | None = None) -> pl.DataFrame:
+                      model_name: str | None = None,
+                      persist: bool = True) -> pl.DataFrame:
     """Level-calibrate anytime-TD probabilities, then blend with the market."""
     from src.models.market_prior import load_prior, expected_scorers
     from src.prediction.blend import (
@@ -257,7 +259,12 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
             stored = json.loads(weight_path.read_text())
         except Exception:
             stored = None
-    needs_fit = blend_weight_needs_fit(stored, eligible, min_rows, first_clean)
+    # `persist` also gates the refit, not just the save. Refitting writes back
+    # into `model_dir`, and when that is a locked version snapshot the write
+    # edits the record itself — the manifest's hashes would stop describing the
+    # files they name.
+    needs_fit = persist and blend_weight_needs_fit(
+        stored, eligible, min_rows, first_clean)
     if needs_fit:
         print(f"  Fitting blend weight on {eligible:,} graded player-games from "
               f"{first_clean} on (replaying the archive through the model)...")
@@ -498,8 +505,20 @@ def check_feature_skew(week_df: pl.DataFrame, feature_cols: list[str],
 
 
 def predict(season: int, week: int, model_name: str = None,
-            target_type: str = None) -> pl.DataFrame | None:
-    """Generate predictions for a given season/week."""
+            target_type: str = None, model_dir=None,
+            persist: bool = True) -> pl.DataFrame | None:
+    """Generate predictions for a given season/week.
+
+    `model_dir` loads from somewhere other than `models/<target_type>/` — a
+    locked version snapshot, so the app can show what an earlier version would
+    have said without promoting it.
+
+    `persist=False` makes this read-only. It must be passed whenever
+    `model_dir` points at a snapshot: prediction otherwise writes the week's
+    CSV and TXT over the published ones, and the blend-weight refit writes back
+    into the model directory, which would edit a locked snapshot and leave its
+    manifest describing files that no longer exist.
+    """
     ensure_registered()
     cfg = get_config()
     if target_type is None:
@@ -507,7 +526,7 @@ def predict(season: int, week: int, model_name: str = None,
     if model_name is None:
         model_name = production_model(target_type)
 
-    model_dir = get_path("models", target_type)
+    model_dir = Path(model_dir) if model_dir else get_path("models", target_type)
     feat_cols_path = model_dir / "feature_cols.pkl"
     if not feat_cols_path.exists():
         print(f"No trained model for target_type={target_type}")
@@ -574,7 +593,7 @@ def predict(season: int, week: int, model_name: str = None,
         result = _anchor_to_market(result, week_df, model_dir, cfg,
                                    season=season, week=week,
                                    target_type=target_type,
-                                   model_name=model_name)
+                                   model_name=model_name, persist=persist)
 
     result = result.with_columns(
         pl.col("probability")
@@ -603,6 +622,13 @@ def predict(season: int, week: int, model_name: str = None,
         result = result.with_columns(pl.col("prob_calibrated").alias("prob_model"))
         keep.append("prob_model")
     result = result.select(keep)
+
+    if not persist:
+        # A read-only score: the caller is looking at a version other than the
+        # one being served, and the published CSV/TXT describe the served one.
+        # Overwriting them would leave `make bets` and the exported site
+        # quoting numbers from a model nobody promoted.
+        return result
 
     output_dir = get_path("output", target_type)
     csv_path = output_dir / f"predictions_{season}_week{week}.csv"

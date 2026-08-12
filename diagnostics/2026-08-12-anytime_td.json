@@ -1,0 +1,201 @@
+{
+  "target_type": "anytime_td",
+  "model": "xgb",
+  "seasons": [
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "generated": "2026-08-12",
+  "pool": {
+    "played_games": 1139,
+    "games_with_a_scorer_in_pool": 1131,
+    "games_with_no_scorer_anywhere": 8,
+    "games_whose_scorer_the_filter_removed": 1,
+    "ceiling": 0.9991158267020336,
+    "pool_per_game": 33.030728709394204
+  },
+  "winnability": {
+    "games": 1131,
+    "rank_histogram": [
+      {
+        "rank": 1,
+        "games": 575
+      },
+      {
+        "rank": 2,
+        "games": 274
+      },
+      {
+        "rank": 3,
+        "games": 124
+      },
+      {
+        "rank": 4,
+        "games": 65
+      },
+      {
+        "rank": 5,
+        "games": 34
+      },
+      {
+        "rank": 6,
+        "games": 18
+      },
+      {
+        "rank": 7,
+        "games": 11
+      },
+      {
+        "rank": 8,
+        "games": 8
+      },
+      {
+        "rank": 9,
+        "games": 5
+      },
+      {
+        "rank": 10,
+        "games": 7
+      }
+    ],
+    "median_rank": 1.0,
+    "coin_flip_games": 181,
+    "coin_flip_share": 0.16003536693191867,
+    "top1_in_coin_flips": 0.48066298342541436,
+    "top1_in_decided": 0.5136842105263157
+  },
+  "team_vs_player": {
+    "games": 1139,
+    "hit": 575,
+    "right_team_wrong_player": 440,
+    "wrong_team": 124,
+    "hit_share": 0.504828797190518,
+    "of_misses_right_team": 0.7801418439716312,
+    "of_misses_wrong_team": 0.2198581560283688
+  },
+  "slices": {
+    "by_scorer_position": [
+      {
+        "scorer_position": "WR",
+        "top1": 0.5245046923879041,
+        "games": 959
+      },
+      {
+        "scorer_position": "RB",
+        "top1": 0.5923159018143009,
+        "games": 937
+      },
+      {
+        "scorer_position": "TE",
+        "top1": 0.5008849557522124,
+        "games": 565
+      },
+      {
+        "scorer_position": "QB",
+        "top1": 0.5380116959064327,
+        "games": 342
+      },
+      {
+        "scorer_position": "DEF/ST",
+        "top1": 0.5670995670995671,
+        "games": 231
+      }
+    ],
+    "by_pick_position": [
+      {
+        "pick_position": "RB",
+        "top1": 0.5803237858032378,
+        "games": 803
+      },
+      {
+        "pick_position": "WR",
+        "top1": 0.44155844155844154,
+        "games": 154
+      },
+      {
+        "pick_position": "DEF/ST",
+        "top1": 0.16260162601626016,
+        "games": 123
+      },
+      {
+        "pick_position": "TE",
+        "top1": 0.41304347826086957,
+        "games": 46
+      },
+      {
+        "pick_position": "QB",
+        "top1": 0.4,
+        "games": 5
+      }
+    ],
+    "by_side": [
+      {
+        "side": "pick on favourite",
+        "top1": 0.5616224648985959,
+        "games": 641
+      },
+      {
+        "side": "close game",
+        "top1": 0.4778156996587031,
+        "games": 293
+      },
+      {
+        "side": "pick on underdog",
+        "top1": 0.38071065989847713,
+        "games": 197
+      }
+    ],
+    "by_total": [
+      {
+        "total_band": "mid total",
+        "top1": 0.5145929339477726,
+        "games": 651
+      },
+      {
+        "total_band": "low total",
+        "top1": 0.44140625,
+        "games": 256
+      },
+      {
+        "total_band": "high total",
+        "top1": 0.5669642857142857,
+        "games": 224
+      }
+    ]
+  },
+  "market": {
+    "available": true,
+    "games": 844,
+    "min_priced_per_game": 8,
+    "games_dropped_thin": 0,
+    "top1": {
+      "market": 0.5225118483412322,
+      "model": 0.5592417061611374,
+      "delta": 0.03672985781990521,
+      "se": 0.015987671781248384,
+      "se_multiple": 2.297386281283615,
+      "model_wins": 107,
+      "market_wins": 76
+    },
+    "top3": {
+      "market": 0.8424170616113744,
+      "model": 0.8850710900473934,
+      "delta": 0.04265402843601896,
+      "se": 0.011522565909272416,
+      "se_multiple": 3.701782117965105,
+      "model_wins": 66,
+      "market_wins": 30
+    },
+    "top5": {
+      "market": 0.9312796208530806,
+      "model": 0.957345971563981,
+      "delta": 0.026066350710900472,
+      "se": 0.008334798318803464,
+      "se_multiple": 3.1274122916800864,
+      "model_wins": 36,
+      "market_wins": 14
+    }
+  }
+}

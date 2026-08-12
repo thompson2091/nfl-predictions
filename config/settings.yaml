@@ -185,6 +185,25 @@ betting:
   min_edge_pp: 2.0
   min_ev_pct: 0.0
 
+# App-only settings. Nothing here reaches the model.
+app:
+  # Adds a "Model version" control to the sidebar, letting you price a week
+  # against any locked version in models/versions/ without promoting it — the
+  # way to see what a change actually did to the board before adopting it.
+  #
+  # A control that silently changes which model produced the board is a good
+  # way to read last month's model and believe it is this month's, so the
+  # preview is loud rather than subtle: the served version is labelled
+  # "(serving)", anything else raises a standing banner, and the banner says
+  # that only the board follows the selector — every other tab reads artifacts
+  # the pipeline wrote for the served version and does not move.
+  #
+  # Previewing is read-only by construction. `predict(persist=False)` neither
+  # republishes the week's CSV nor lets the blend-weight refit write back into
+  # the snapshot, which would edit the very record the manifest's hashes
+  # describe. Turn this off if you would rather the control not exist.
+  version_selector: true
+
 paths:
   raw: data/raw
   processed: data/processed

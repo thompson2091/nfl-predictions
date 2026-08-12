@@ -1,16 +1,18 @@
 {
   "first_td": {
-    "version": "2026.08.12-baseline",
-    "promoted_at": "2026-08-12T19:15:13+00:00",
+    "version": "2026.08.12-baseline-remeasured",
+    "promoted_at": "2026-08-12T22:01:25+00:00",
     "history": [
-      "2026.08.12-baseline"
+      "2026.08.12-baseline",
+      "2026.08.12-baseline-remeasured"
     ]
   },
   "anytime_td": {
-    "version": "2026.08.12-baseline",
-    "promoted_at": "2026-08-12T19:15:13+00:00",
+    "version": "2026.08.12-baseline-remeasured",
+    "promoted_at": "2026-08-12T22:01:26+00:00",
     "history": [
-      "2026.08.12-baseline"
+      "2026.08.12-baseline",
+      "2026.08.12-baseline-remeasured"
     ]
   }
 }

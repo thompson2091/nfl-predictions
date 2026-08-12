@@ -4,24 +4,25 @@ from sklearn.metrics import log_loss, roc_auc_score, brier_score_loss
 
 
 def top_k_accuracy(df: pl.DataFrame, k: int) -> float:
-    """Per game, check if any actual scorer is in top-K predicted players.
+    """Per game, check if any actual scorer is in the top-K predicted players.
 
-    For first_td (one scorer per game): equivalent to checking if THE scorer is in top K.
-    For anytime_td (multiple scorers): checks if at least one scorer is in top K.
+    Delegates to `src.evaluation.ranking`, which is the one definition of this
+    metric. There used to be three, and they disagreed about which games count —
+    the question that decides whether a filtered-out scorer is a miss or is
+    simply not measured. Two of them are gone; this is the third, kept as a
+    name because the trainer and the app both call it.
+
+    The old body scored one game per Python-level loop iteration, filtering the
+    whole frame each time. On a walk-forward that is four models by four folds
+    by ~1,100 games of quadratic-ish filtering, for a number a single grouped
+    rank computes at once.
+
+    Behaviour is unchanged: with no wider frame to hand, the games that count
+    are those with a scorer in `df` — exactly what the loop did.
     """
-    games_with_target = df.filter(pl.col("target") == 1).select("game_id").unique()
+    from src.evaluation.ranking import top_k_accuracy as _top_k
 
-    correct = 0
-    total = 0
-    for game_id in games_with_target["game_id"].to_list():
-        game_df = df.filter(pl.col("game_id") == game_id).sort("prob", descending=True)
-        top_k_ids = set(game_df.head(k)["player_id"].to_list())
-        actual_ids = set(game_df.filter(pl.col("target") == 1)["player_id"].to_list())
-        if top_k_ids & actual_ids:
-            correct += 1
-        total += 1
-
-    return correct / total if total > 0 else 0.0
+    return _top_k(df, k)
 
 
 def evaluate_model(df: pl.DataFrame, label: str) -> dict:

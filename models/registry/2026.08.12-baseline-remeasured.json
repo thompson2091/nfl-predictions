@@ -1,0 +1,318 @@
+{
+  "id": "2026.08.12-baseline-remeasured",
+  "created": "2026-08-12T22:01:25+00:00",
+  "note": "Same artifacts as 2026.08.12-baseline; walk-forward re-measured over the corrected denominator.",
+  "verdict": "PROMOTED",
+  "justification": null,
+  "parent": "2026.08.12-baseline",
+  "git": {
+    "sha": "d87757cd9c874f1d9be895dda025b21292006c76",
+    "short_sha": "d87757c",
+    "branch": "app",
+    "dirty": true
+  },
+  "markets": [
+    "first_td",
+    "anytime_td"
+  ],
+  "config": {
+    "target": {
+      "type": "anytime_td"
+    },
+    "seasons": {
+      "start": 2015,
+      "end": 2025,
+      "predict_season": 2026
+    },
+    "splits": {
+      "train_end": 2023,
+      "val_season": 2024,
+      "test_season": 2025
+    },
+    "rolling_windows": {
+      "short": 3,
+      "medium": 5
+    },
+    "models": {
+      "active": [
+        "lr",
+        "lgbm",
+        "xgb"
+      ],
+      "production": "xgb",
+      "production_by_target": {
+        "anytime_td": "xgb",
+        "first_td": "ensemble"
+      }
+    },
+    "model": {
+      "seed": 42,
+      "lgbm": {
+        "n_estimators": 2000,
+        "learning_rate": 0.02,
+        "max_depth": 6,
+        "num_leaves": 31,
+        "min_child_samples": 20,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "reg_alpha": 0.1,
+        "reg_lambda": 1.0,
+        "early_stopping_rounds": 50
+      },
+      "xgb": {
+        "n_estimators": 2000,
+        "learning_rate": 0.02,
+        "max_depth": 6,
+        "min_child_weight": 20,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "reg_alpha": 0.1,
+        "reg_lambda": 1.0,
+        "early_stopping_rounds": 50
+      },
+      "logistic": {
+        "max_iter": 2000,
+        "C": 0.1
+      }
+    },
+    "clustering": {
+      "seed": 42,
+      "k_min": 2,
+      "k_max": 8,
+      "gap_reference_draws": 20,
+      "gap_sample_rows": 8000,
+      "silhouette_sample_rows": 8000,
+      "max_null_rate": 0.05,
+      "max_abs_corr": 0.9,
+      "min_cluster_rows": 50,
+      "explore_max_rows": 40000
+    },
+    "blend": {
+      "enabled": true,
+      "bootstrap_market_weight": 0.5,
+      "min_history_rows": 500
+    },
+    "betting": {
+      "bankroll": 1000.0,
+      "kelly_fraction": 0.25,
+      "min_edge_pp": 2.0,
+      "min_ev_pct": 0.0
+    },
+    "paths": {
+      "raw": "data/raw",
+      "processed": "data/processed",
+      "models": "models",
+      "output": "output",
+      "plots": "output/plots"
+    },
+    "ai_context": {
+      "enabled": true,
+      "max_adjustment": 0.1
+    },
+    "positions": {
+      "offensive": [
+        "QB",
+        "RB",
+        "WR",
+        "TE",
+        "FB"
+      ]
+    }
+  },
+  "features": {
+    "first_td": {
+      "n": 320,
+      "sha256": "3896d363ff597870f7bb20f14c7b42c6ff8ac0e47619fd229ed767c53331f929"
+    },
+    "anytime_td": {
+      "n": 319,
+      "sha256": "6a823bc7505e45f859ab06e02b8f2e402aa75829db2e381ec7e6573630d1a913"
+    }
+  },
+  "metrics": {
+    "first_td": {
+      "ensemble": {
+        "top1": 0.16004,
+        "top3": 0.36605,
+        "top5": 0.52697,
+        "auc": 0.82201,
+        "brier": 0.02741,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.0109
+      },
+      "lgbm": {
+        "top1": 0.1618,
+        "top3": 0.36958,
+        "top5": 0.51901,
+        "auc": 0.80641,
+        "brier": 0.02755,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01095
+      },
+      "lr": {
+        "top1": 0.15561,
+        "top3": 0.37135,
+        "top5": 0.51989,
+        "auc": 0.80933,
+        "brier": 0.02757,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01078
+      },
+      "xgb": {
+        "top1": 0.16799,
+        "top3": 0.37135,
+        "top5": 0.53227,
+        "auc": 0.822,
+        "brier": 0.02744,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01112
+      }
+    },
+    "anytime_td": {
+      "ensemble": {
+        "top1": 0.51194,
+        "top3": 0.85588,
+        "top5": 0.95049,
+        "auc": 0.84079,
+        "brier": 0.09132,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01486
+      },
+      "lgbm": {
+        "top1": 0.49691,
+        "top3": 0.84615,
+        "top5": 0.93988,
+        "auc": 0.83729,
+        "brier": 0.09194,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01487
+      },
+      "lr": {
+        "top1": 0.48453,
+        "top3": 0.8214,
+        "top5": 0.92485,
+        "auc": 0.82478,
+        "brier": 0.09334,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01486
+      },
+      "xgb": {
+        "top1": 0.5084,
+        "top3": 0.8603,
+        "top5": 0.94783,
+        "auc": 0.84087,
+        "brier": 0.09136,
+        "games": 1131,
+        "folds": [
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "top1_se": 0.01487
+      }
+    }
+  },
+  "experiment": null,
+  "artifacts": {
+    "first_td": {
+      "clusters_bet.json": "86ce38a2e7f5f8112e83bb4b4718ae2e5fce8eed6f3158cd46fc395dd1c46523",
+      "clusters_player.json": "f4223d10dfadbc36236c9fecff9c8d1f17066531c353f6637eee18fc251031af",
+      "ensemble_weights.pkl": "6869ddbeefe514a8fb7ab5a009e317e424d0d5b2b3ccf39cb5a2e35371ca802d",
+      "feature_cols.pkl": "ab7d7e1dfcea7bb396ef772f3c9f6776e304e5bc7bbb2bdb9d9f5af86c463323",
+      "lgbm.pkl": "bd741e794f1de9626ae0c7ec2c610e5bb0e14be7b43437ee4680d5ae5d078cc5",
+      "lgbm_calibrator.pkl": "2a02f41550a6cb042de28b2ba9e1b834c73c929ee3261a3403d40bfa4e867720",
+      "lr.pkl": "fc453156e1c1656f61b22e490189f5295fcb2c65660782f120a0bf1cd13f486e",
+      "lr_calibrator.pkl": "d721c048d25050d48e5d32458c60c49985102a881b50f01e70f66503f6b83eee",
+      "rank_calibration.json": "8deac08ef56b37eb41a1d2ca9fa7b14388cb696da249586dd8d05ca38630e02e",
+      "scorer_rate_prior.json": "6ba5853b26f3d291a49eb836b994eb95d41578045f13bd079d9348d7f103760e",
+      "td_conversion.json": "aca63f94c23ea30ae01b6d7a2bd1748a7beb74f8cb2ca28da59595bdd7a614ec",
+      "team_td_rate.json": "ba9cc94cd90201cf21854adb3f4f66e1f679908b895585d1053811aa10339092",
+      "train_null_rates.pkl": "a5b6b07bf1dbf0d8f12e6c89fba073ea7255543ce7ac19fece36c60febffb358",
+      "xgb.pkl": "74ca769ed66292565bdf66158b206bf1fa59eaad60d6127cc18c9ac3af3be319",
+      "xgb_calibrator.pkl": "7b764b5b3c1a298fb015e0f317c01e1511e9a88a5e5312b4d4a9bdfce2c1ba24"
+    },
+    "anytime_td": {
+      "clusters_bet.json": "8018aa837d5f5cab41e4e6b5a53d0bf0420201acd6f26dccb871b55c0649ff5d",
+      "clusters_player.json": "653f7c997eebf511eb056eda9235a68cf55f01adc0225eba56b33382b7bb50d3",
+      "ensemble_weights.pkl": "2732b2b890beebe6f7e5cce73821193a3983241d82e79c3d7a75fb5093da0536",
+      "feature_cols.pkl": "cd68a98fb1fe70fb450014709cb2acecfbd3b9432eeeedb97877ec1533acb48b",
+      "lgbm.pkl": "949d92913366957c6396e728a7992df56ca45cf4094924f2b9367083f4d64c01",
+      "lgbm_calibrator.pkl": "2dff1b4ef6d934cc1960eae987f4a4d850803194d8287015f2f2ff6e235632e1",
+      "lr.pkl": "d9dc2cf1f8087e9fb0ba7176e10516c63c386e2b4489fafdaf8ba6c1154cd93f",
+      "lr_calibrator.pkl": "51b79b7a029a1a194ced70dfc0c34572b498fc444871c27cb958b7115e64a498",
+      "rank_calibration.json": "b8a3e7b3e8681372c5256a00ed9ff41b1cb382c61e4379183cb5b93e4b1eca44",
+      "scorer_rate_prior.json": "5e78c4194a35ff210fefa33d5941486cae7291e86240ac714fd1897ecd1bf1e7",
+      "td_conversion.json": "dda100461ee4ca37d5c345402ebb1c72bcfdb52913d04d1e0989d282584239d2",
+      "team_td_rate.json": "aeae18f2347c1ce2d233e92e6835a1bf06467c6749ef64d51ccf8fbf4f1ee2c0",
+      "train_null_rates.pkl": "0eed52064c0d65cefbfa6d37f7b197518082a42af87fdfb110c77c82c23a66a8",
+      "xgb.pkl": "aa04793c6496095c6915efb413323cdad510173f44a35db5ffd4433dcfa06c4d",
+      "xgb_calibrator.pkl": "c343d60503e62b59e3e17add07269b20452acc9179a1967928462609cd609564"
+    }
+  },
+  "runtime": {
+    "first_td": {},
+    "anytime_td": {
+      "blend_weight.json": {
+        "sha256": "d45410f6c4983848f9acf80f1537d1dcb6d91a2e022953cc48bcf268ac171671",
+        "value": {
+          "kind": "blend_weight",
+          "source": "fitted",
+          "market_weight": 0.42805409669909905,
+          "log_loss": 0.3523637655971925,
+          "log_loss_model_only": 0.35563464592780714,
+          "log_loss_market_only": 0.3762856349909563,
+          "n_rows": 6985,
+          "seasons": [
+            2025
+          ],
+          "fit_date": "2026-08-12",
+          "min_season": 2025,
+          "eligible_rows": 7624
+        }
+      }
+    }
+  }
+}

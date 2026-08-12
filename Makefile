@@ -5,7 +5,7 @@
 	odds-open odds-close odds-schedule-on odds-schedule-off odds-schedule-status \
 	decay shop site \
 	lock versions version-show promote rollback version-diff version-verify \
-	champion screen gate noise-floor experiments
+	champion screen gate noise-floor experiments diagnose
 
 # Defaults so the evaluation targets run without arguments. Override per call:
 #   make backtest SEASON=2024 TARGET=first_td
@@ -131,6 +131,14 @@ noise-floor:
 # What has been tried, and what came of it.
 experiments:
 	python scripts/23_experiment.py ledger
+
+# Where is Top-1 actually lost? Headroom against the book, whether the misses
+# are the wrong team or the wrong player on the right team, how many games were
+# coin flips, and what the candidate pool cannot reach. Changes nothing — it
+# exists to order the model work by evidence rather than by hunch.
+# Writes a dated snapshot to diagnostics/, which is committed.
+diagnose:
+	python scripts/24_diagnose.py --target $(TARGET) $(if $(REUSE),--reuse)
 
 # ── Model versions ────────────────────────────────────────────────────────
 # `models/` holds one state and every `make train` overwrites it. Lock a state

@@ -317,15 +317,31 @@ def load_manifest(version_id: str) -> dict:
     return json.loads(path.read_text())
 
 
+def is_manifest(payload) -> bool:
+    """Does this JSON describe a locked version?
+
+    The registry holds more than manifests — `CURRENT.json`, `CHAMPION.json`,
+    `noise_floor.json`, `ledger.jsonl` — and it will hold more over time. This
+    identifies a manifest by its own shape rather than by a list of filenames
+    to exclude, which would have to be updated every time something new is
+    written beside them and would fail loudly the first time it was not.
+    """
+    return (isinstance(payload, dict) and isinstance(payload.get("id"), str)
+            and isinstance(payload.get("artifacts"), dict))
+
+
 def list_versions() -> list[dict]:
     """Every locked version, newest first, with its artifacts' presence noted."""
     out = []
     for path in sorted(registry_root().glob("*.json")):
-        if path.name == "CURRENT.json":
+        try:
+            payload = json.loads(path.read_text())
+        except ValueError:
             continue
-        m = json.loads(path.read_text())
-        m["_artifacts_present"] = version_dir(m["id"]).exists()
-        out.append(m)
+        if not is_manifest(payload):
+            continue
+        payload["_artifacts_present"] = version_dir(payload["id"]).exists()
+        out.append(payload)
     return sorted(out, key=lambda m: m["id"], reverse=True)
 
 
@@ -340,6 +356,79 @@ def _read_current() -> dict:
 
 def _current_version(market: str) -> str | None:
     return (_read_current().get(market) or {}).get("version")
+
+
+def market_dir(market: str, version_id: str | None = None) -> Path:
+    """Where to load this market's artifacts from.
+
+    `None`, or the version already being served, resolves to `models/<market>/`
+    — the live directory, which is what the pipeline writes and the app reads
+    by default. Any other version resolves into its snapshot.
+
+    A snapshot is a record of what produced a set of numbers, so **nothing may
+    write into one**. Callers pointed at a version other than the served one
+    must pass `persist=False` down the prediction path, or the blend weight
+    refit will rewrite the snapshot and the manifest's hashes will stop
+    describing it.
+    """
+    if version_id is None or version_id == _current_version(market):
+        return models_root() / market
+    directory = version_dir(version_id) / market
+    if not directory.exists():
+        raise VersionError(
+            f"Version '{version_id}' has no {market} artifacts on this machine "
+            f"({directory}). Weights are gitignored, so a version locked "
+            "elsewhere has a manifest here but no files.")
+    return directory
+
+
+def available_versions(market: str) -> list[dict]:
+    """Versions whose artifacts are actually on disk, newest first.
+
+    A manifest without weights cannot be loaded, so it is not offered. That is
+    the normal state for a version locked on another machine.
+    """
+    served = _current_version(market)
+    out = []
+    for manifest in list_versions():
+        if not (version_dir(manifest["id"]) / market).exists():
+            continue
+        out.append({
+            "id": manifest["id"],
+            "served": manifest["id"] == served,
+            "note": manifest.get("note"),
+            "created": manifest.get("created"),
+            "metrics": (manifest.get("metrics") or {}).get(market),
+        })
+    return out
+
+
+def current_version(market: str) -> dict | None:
+    """What this market is serving, for anything that wants to display it.
+
+    Returns the version id, when it was promoted, its git SHA, its recorded
+    walk-forward metrics, and any mismatch between the manifest and the
+    artifacts actually on disk. None when nothing has been promoted.
+    """
+    version_id = _current_version(market)
+    if not version_id:
+        return None
+    try:
+        manifest = load_manifest(version_id)
+    except VersionError:
+        return {"id": version_id, "known": False, "problems": [
+            f"CURRENT.json names {version_id}, which has no manifest"]}
+    entry = _read_current().get(market) or {}
+    return {
+        "id": version_id,
+        "known": True,
+        "promoted_at": entry.get("promoted_at"),
+        "note": manifest.get("note"),
+        "git": (manifest.get("git") or {}).get("short_sha"),
+        "dirty": (manifest.get("git") or {}).get("dirty"),
+        "metrics": (manifest.get("metrics") or {}).get(market),
+        "problems": verify_current(markets=(market,)),
+    }
 
 
 def unlocked_markets(markets=MARKETS) -> list[str]:

@@ -39,19 +39,27 @@ def _decimal_expr(col: str) -> pl.Expr:
 
 
 def board_for_week(season: int, week: int, target_type: str, model_name: str,
-                   bankroll: float | None = None) -> tuple[pl.DataFrame, str]:
+                   bankroll: float | None = None, model_dir=None,
+                   persist: bool = True) -> tuple[pl.DataFrame, str]:
     """Every priced player for one week. Returns (board, status message).
 
     Shared by the CLI (scripts/08_bets.py) and the app so both show exactly the
     same numbers — a bet card that disagrees with itself depending on where you
     read it is worse than no bet card.
+
+    `model_dir` and `persist` pass straight through to `predict`, so the app can
+    price a week against a locked version without writing anything. Pass both
+    together: a snapshot must never be written into.
     """
+    from pathlib import Path
+
     from src.models.market_prior import load_prior, expected_scorers
     from src.prediction.blend import devig_market
     from src.prediction.predict import predict, _market_from_cache, _norm_name_expr
     from src.utils.paths import get_path
 
-    result = predict(season, week, model_name=model_name, target_type=target_type)
+    result = predict(season, week, model_name=model_name, target_type=target_type,
+                     model_dir=model_dir, persist=persist)
     if result is None:
         return pl.DataFrame(), "No predictions for this week — run the pipeline."
 
@@ -62,7 +70,8 @@ def board_for_week(season: int, week: int, target_type: str, model_name: str,
             f"Run `make odds WEEK={week}` to fetch them."
         )
 
-    prior = load_prior(get_path("models", target_type) / "scorer_rate_prior.json")
+    prior_dir = Path(model_dir) if model_dir else get_path("models", target_type)
+    prior = load_prior(prior_dir / "scorer_rate_prior.json")
     if prior is None:
         return pl.DataFrame(), "No scorer-rate prior — run `make train`."
 

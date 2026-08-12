@@ -98,8 +98,18 @@ def feature_matrix_hash(target_type: str) -> str:
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
+#: Player-level columns kept when `keep_rows` is on. Enough to decompose an
+#: error — whose team, which position, what the game looked like — without
+#: carrying 319 feature columns into every saved run.
+ROW_COLS = ("game_id", "season", "week", "player_id", "player_name", "team",
+            "is_home", "spread_line", "total_line", "implied_team_total",
+            "position_QB", "position_WR", "position_TE", "position_FB",
+            "position_DEFST")
+
+
 def score_fold(target_type: str, model_dir: Path, test_season: int,
-               model_name: str, active_models: list[str]) -> tuple[pl.DataFrame, dict]:
+               model_name: str, active_models: list[str],
+               keep_rows: bool = False) -> tuple[pl.DataFrame, dict, pl.DataFrame | None]:
     """Score one fold's held-out season through the path production serves.
 
     The universe is built from the **unfiltered** labelled frame, so the
@@ -145,13 +155,24 @@ def score_fold(target_type: str, model_dir: Path, test_season: int,
                  "label_gap_games": int(universe.height
                                         - scored.filter(pl.col("target") == 1)
                                         ["game_id"].n_unique())})
-    return outcomes, rows
+
+    player_rows = None
+    if keep_rows:
+        keep = [c for c in ROW_COLS if c in scored.columns]
+        player_rows = scored.select([*keep, "prob", "target"]).with_columns([
+            pl.col("prob").rank(descending=True, method="ordinal")
+            .over("game_id").alias("rank"),
+            pl.lit(model_name).alias("model"),
+            pl.lit(target_type).alias("target_type"),
+            pl.lit(test_season).alias("test_season"),
+        ])
+    return outcomes, rows, player_rows
 
 
 def run(overlay: dict | None = None, *, markets=MARKETS,
         first_test: int | None = None, last_test: int | None = None,
         models: list[str] | None = None, seed: int | None = None,
-        progress=print) -> dict:
+        keep_rows: bool = False, progress=print) -> dict:
     """Train and score every (market, fold, model) and return the per-game rows.
 
     `models` restricts what is *trained*; the ensemble is scored additionally
@@ -174,7 +195,7 @@ def run(overlay: dict | None = None, *, markets=MARKETS,
                         "model": {**base_overlay.get("model", {}), "seed": seed}}
 
     started = datetime.now(timezone.utc)
-    all_outcomes, all_rows = [], []
+    all_outcomes, all_rows, all_players = [], [], []
     folds_run: list[int] = []
 
     for market in markets:
@@ -198,16 +219,20 @@ def run(overlay: dict | None = None, *, markets=MARKETS,
                               model_dir=scratch / "models",
                               output_dir=scratch / "output")
                     for name in to_score:
-                        outcomes, rows = score_fold(
+                        outcomes, rows, players = score_fold(
                             market, scratch / "models", fold["test_season"],
-                            name, active)
+                            name, active, keep_rows=keep_rows)
                         all_outcomes.append(outcomes)
                         all_rows.append(rows)
+                        if players is not None:
+                            all_players.append(players)
                 finally:
                     shutil.rmtree(scratch, ignore_errors=True)
 
     return {
         "outcomes": pl.concat(all_outcomes, how="diagonal_relaxed"),
+        "players": (pl.concat(all_players, how="diagonal_relaxed")
+                    if all_players else None),
         "row_metrics": all_rows,
         "meta": {
             "started": started.isoformat(timespec="seconds"),
@@ -250,6 +275,8 @@ def save(result: dict, experiment_id: str) -> Path:
     directory = get_path("output") / "experiments" / experiment_id
     directory.mkdir(parents=True, exist_ok=True)
     result["outcomes"].write_parquet(directory / "outcomes.parquet")
+    if result.get("players") is not None:
+        result["players"].write_parquet(directory / "players.parquet")
     (directory / "meta.json").write_text(json.dumps(
         {**result["meta"], "row_metrics": result["row_metrics"],
          "summary": summarise(result)}, indent=2) + "\n")
@@ -264,7 +291,9 @@ def load(experiment_id: str) -> dict:
         raise FileNotFoundError(
             f"No saved outcomes for '{experiment_id}' at {path}")
     meta = json.loads((directory / "meta.json").read_text())
+    players = directory / "players.parquet"
     return {"outcomes": pl.read_parquet(path),
+            "players": pl.read_parquet(players) if players.exists() else None,
             "row_metrics": meta.get("row_metrics", []),
             "meta": meta}
 

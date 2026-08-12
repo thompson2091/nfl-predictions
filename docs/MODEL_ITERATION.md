@@ -291,10 +291,83 @@ rows, before Phase 2 even starts:
 
 ---
 
-## Phase 2 — Diagnose where Top-1 is lost
+## Phase 2 — Diagnose where Top-1 is lost — **DONE (2026-08-12)**
 
 Measurement only, no model change. Its job is to **order Phase 3** so we spend
 effort where the loss actually is.
+
+Shipped as `src/evaluation/diagnose.py`, `scripts/24_diagnose.py`,
+`tests/test_diagnose.py`, and dated snapshots in `diagnostics/`. Run with
+`make diagnose TARGET=...`.
+
+### What it found
+
+Four folds, 2022–2025, production model per market.
+
+**The two markets are not the same problem.** Against the book, over the games
+it priced 8+ players in and one of them scored:
+
+| | book Top-1 | model Top-1 | |
+| --- | --- | --- | --- |
+| anytime_td (844 games) | 52.3% | **55.9%** | +3.7pp, 2.3 se — we lead |
+| first_td (795 games) | 18.9% | 18.5% | −0.4pp, 0.3 se — level |
+
+So there is no gap to the market to close on anytime TD; we are already ahead of
+it. On first TD we are level with the price at the top and slightly ahead at
+Top-5 (+1.5pp).
+
+**First TD's ranking has collapsed onto running backs.** 1,039 of its 1,131
+top-1 picks are RBs — 92%. Top-1 broken down by who actually scored first:
+
+| scorer was | RB | WR | QB | DEF/ST |
+| --- | --- | --- | --- | --- |
+| games | 563 | 415 | 87 | 50 |
+| our Top-1 | **30.4%** | **2.2%** | 1.1% | 0.0% |
+
+The model is competent when a back scores first and blind otherwise, and 46% of
+first touchdowns are not scored by backs. The median rank of the actual first
+scorer is 5. This is what a pointwise binary log-loss objective does to a
+one-winner-per-game problem: it learns the position base rate. It is direct
+evidence for the conditional-logit rewrite in 3a, which was previously argued
+from theory alone.
+
+**Anytime TD's misses are the share, not the rate.** 78.0% of its 564 misses are
+the right team and the wrong player. The market-driven Poisson half is doing its
+job; the usage half is where the error lives.
+
+**Anytime TD over-rates DEF/ST at the very top.** When its top pick is a
+defence, it hits 16.3% over 123 games — against 58.0% when the pick is a back.
+Those 123 games are 11% of the slate. Bringing them merely to the WR pick rate
+(44.2%) would be worth about 3 points of Top-1 on its own, which is larger than
+anything else on the Phase 3 list.
+
+**Confidence does not discriminate.** In coin-flip games (top two within a
+point) anytime TD hits 48.1% against 51.4% in decided games — a 3-point spread
+across a distinction that ought to separate a near-certainty from a toss-up. On
+first TD it is 12.9% against 17.3%. The probability *gap* is not carrying the
+information its size implies.
+
+**The pool is not the constraint.** 99.9% ceiling on anytime, 98.6% on first TD.
+Widening the candidate pool cannot be where the wins are.
+
+### What that changes about Phase 3
+
+Re-ordered by measured effect rather than by expected effect:
+
+1. **3a, conditional logit / listwise objective — first TD.** Was "largest
+   expected"; is now the only explanation for a 2.2% hit rate on WR-scored games
+   that does not require the features to be broken.
+2. **Position-conditional shape at the top of the board — anytime TD.** New, and
+   not previously on the list: the DEF/ST pick problem is worth ~3 points and is
+   a shape problem, so it belongs with 3c (calibration) rather than with
+   features.
+3. **3a, multinomial shares within team-game — anytime TD.** 78% of misses are
+   share errors, which is exactly what this fixes.
+4. **3d, market features — first TD only.** We already beat the book on anytime,
+   so there is little of the book's information left to import there. On first
+   TD we are level with it, so its information is worth more.
+5. **3e/3f, feature ablation and pool thresholds — demoted.** The pool ceiling is
+   99%+ and the losses are structural, not informational.
 
 `scripts/24_diagnose.py --target ...` produces a report and a dated JSON
 snapshot (committed), so the diagnosis itself is trackable over time.

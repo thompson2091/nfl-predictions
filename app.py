@@ -37,6 +37,53 @@ st.set_page_config(
 cfg = get_config()
 active_models = cfg["models"]["active"]
 
+
+@st.cache_data(show_spinner=False)
+def version_options(tt: str) -> list[dict]:
+    """Locked versions with artifacts on disk. Empty when the flag is off."""
+    if not cfg.get("app", {}).get("version_selector", False):
+        return []
+    from src.models.versioning import available_versions
+    try:
+        return available_versions(tt)
+    except Exception:                                        # noqa: BLE001
+        return []
+
+
+def selected_model_dir(tt: str, version_id: str | None):
+    """Where to load artifacts from, and whether writing back is allowed.
+
+    Returns (model_dir, persist). `persist` is False for anything but the
+    served version: a snapshot is the record of what produced a set of numbers,
+    so scoring against one must not rewrite its blend weight, and must not
+    overwrite the published predictions with a model nobody promoted.
+    """
+    from src.models.versioning import market_dir
+    if not version_id:
+        return None, True
+    served = (served_version(tt) or {}).get("id")
+    if version_id == served:
+        return None, True
+    return market_dir(tt, version_id), False
+
+
+@st.cache_data(show_spinner=False)
+def served_version(tt: str) -> dict | None:
+    """The locked version this market is serving, or None if nothing is locked.
+
+    Hashes every artifact in the market's model directory, so it is cached like
+    everything else here and cleared by the same "Reload artifacts" button —
+    which is exactly when it can change.
+    """
+    from src.models.versioning import current_version
+    try:
+        return current_version(tt)
+    except Exception:                                        # noqa: BLE001
+        # A missing or malformed registry must not take the page down; the
+        # board is still correct, it is just unlabelled.
+        return None
+
+
 # ── Sidebar ────────────────────────────────────────────────────────────────
 
 with st.sidebar:
@@ -79,6 +126,57 @@ with st.sidebar:
                       "startup."):
         st.cache_data.clear()
         st.rerun()
+
+    # Which locked version is on screen. Without this the board is a number
+    # from an unidentified model: `models/` holds one state, every `make train`
+    # overwrites it, and nothing on the page said which one you were looking
+    # at. The id resolves to a committed manifest carrying the config, the
+    # feature-set hash and the walk-forward metrics behind it.
+    # Optional version control, off unless `app.version_selector` is set. See
+    # the note beside that flag in config/settings.yaml for why it defaults off.
+    _versions = version_options(target_type)
+    selected_version = None
+    if _versions:
+        _ids = [v["id"] for v in _versions]
+        _served_id = next((v["id"] for v in _versions if v["served"]), _ids[0])
+        selected_version = st.selectbox(
+            "Model version", _ids, index=_ids.index(_served_id),
+            key="sidebar_version",
+            format_func=lambda i: f"{i}  (serving)" if i == _served_id else i,
+            help="Price this week against any locked version without promoting "
+                 "it. Anything but the served version is read-only — nothing "
+                 "is written and no prediction file is republished.")
+        if selected_version != _served_id:
+            # Say exactly how far the preview reaches. The board is priced from
+            # the snapshot; the evaluation tabs read artifacts written by the
+            # pipeline for the served version and do not move. Leaving that
+            # implicit is how you end up reading one model's board beside
+            # another model's accuracy and believing they describe each other.
+            _preview = next((v for v in _versions if v["id"] == selected_version), {})
+            _recorded = (_preview.get("metrics") or {}).get(selected_model)
+            st.info(
+                f"Previewing **{selected_version}** — the board below is priced "
+                "from it, read-only. Every other tab describes the served "
+                "version.",
+                icon=":material/history:")
+            if _recorded:
+                st.caption(
+                    f"Its recorded walk-forward Top-1 for {selected_model}: "
+                    f"{_recorded['top1']:.1%} over {_recorded['games']} games.")
+
+    _version = served_version(target_type)
+    if _version is None:
+        st.caption("No locked version — `make lock ID=... NOTE=\"...\"`")
+    else:
+        _dirty = " · uncommitted tree" if _version.get("dirty") else ""
+        st.caption(f"Serving **{_version['id']}**"
+                   + (f" · `{_version['git']}`{_dirty}" if _version.get("git") else ""))
+        if _version.get("problems"):
+            # The served weights are not the ones the record claims. Everything
+            # below is then being described by a manifest that does not fit it.
+            st.warning("Served artifacts do not match the version record:\n\n"
+                       + "\n\n".join(f"- {p}" for p in _version["problems"]),
+                       icon=":material/warning:")
 
 st.title("First TD Scorer" if target_type == "first_td" else "Anytime TD Scorer")
 
@@ -258,10 +356,21 @@ with st.sidebar:
 
 
 @st.cache_data(show_spinner="Pricing this week's board...", max_entries=32)
-def load_board(season: int, week: int, tt: str, model: str):
-    """Every priced player for the week, with identical maths for each."""
+def load_board(season: int, week: int, tt: str, model: str,
+               version: str | None = None):
+    """Every priced player for the week, with identical maths for each.
+
+    `version` prices the week against a locked snapshot instead of what is
+    served. It is part of the cache key on purpose: without it, switching
+    version would hand back the served version's board from cache and nothing
+    on screen would move.
+
+    A snapshot is scored read-only — see `selected_model_dir`.
+    """
     from src.prediction.bets import board_for_week
-    board, msg = board_for_week(season, week, tt, model)
+    model_dir, persist = selected_model_dir(tt, version)
+    board, msg = board_for_week(season, week, tt, model,
+                                model_dir=model_dir, persist=persist)
     return (board.to_pandas() if board.height else None), msg
 
 
@@ -1079,7 +1188,8 @@ def render_board(frame, tt: str, model: str):
                  column_config=board_columns(market_headtohead(tt, model), rule))
 
 
-def week_board(season, week, tt: str, model: str):
+def week_board(season, week, tt: str, model: str,
+               version: str | None = None):
     """(board, we're-higher, we're-lower, problems) for one season/week.
 
     Takes its inputs rather than reading the sidebar out of module scope: the
@@ -1090,7 +1200,7 @@ def week_board(season, week, tt: str, model: str):
     if week is None:
         st.info("Select a season and week in the sidebar.")
         return None, None, None, []
-    board, msg = load_board(season, week, tt, model)
+    board, msg = load_board(season, week, tt, model, version)
     if board is None:
         st.info(msg or "Nothing to show for this week.")
         st.caption("Players appear here once a bookmaker has posted a price for them.")
@@ -1143,7 +1253,7 @@ if tab_board.open:
     with tab_board:
         render_accuracy_strip(target_type, selected_model)
         board, backing, overvalued, problems = week_board(
-            season, week, target_type, selected_model)
+            season, week, target_type, selected_model, selected_version)
         for _problem in problems:
             # A column that is absent because something broke reads exactly like a
             # column that is absent because there is no data. Say which.
