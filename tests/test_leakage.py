@@ -1772,3 +1772,22 @@ def test_each_market_reads_its_own_prices():
     from src.prediction import bets
     assert "_market_from_cache(season, week, target_type)" in inspect.getsource(
         bets.board_for_week)
+
+
+def test_board_prose_cannot_describe_columns_that_are_not_drawn():
+    """The caption and the renderer must ask the same question.
+
+    First TD is not blended, so Bet # is its # and Bet edge is its Difference.
+    Hiding those duplicate columns left the caption still explaining "the last
+    three columns... Bet # and Bet edge", describing a table that ended at Our
+    read. One shared helper now decides both.
+    """
+    from pathlib import Path
+
+    src = Path("app.py").read_text()
+    assert "def preblend_columns_differ(" in src
+    # The renderer gates the pre-blend pair on it...
+    assert "if preblend_columns_differ(frame):" in src
+    # ...and so does the prose that describes what the renderer drew.
+    assert "_preblend = preblend_columns_differ(board)" in src
+    assert "if _rule and _preblend:" in src

@@ -601,6 +601,35 @@ def render_accuracy_strip(tt: str, model: str):
                  f"their {h2h['auc_market']:.3f}.",
         )
 
+        # The two directional figures were buried in a banner. They are the most
+        # informative numbers the model produces and they belong beside the rest
+        # of the track record — particularly because they disagree so sharply
+        # that quoting only their average misleads.
+        hi, lo = h2h.get("disagree_higher_pct"), h2h.get("disagree_lower_pct")
+        if hi is not None:
+            strip.metric(
+                "Closer — backable", f"{hi:+.0f}%",
+                delta=f"{h2h.get('disagree_higher_n', 0):,} players",
+                delta_color="off",
+                help=f"On the tenth of players we differ from the book on most, "
+                     f"taking only those we rate **higher** — the direction "
+                     f"these markets let you bet. Our estimate landed this much "
+                     f"closer to what happened than the book's, measured by "
+                     f"Brier score across {h2h['span']}.")
+        if lo is not None:
+            strip.metric(
+                "Closer — fade", f"{lo:+.0f}%",
+                delta=f"{h2h.get('disagree_lower_n', 0):,} players",
+                delta_color="off",
+                help=f"The same comparison for players we rate **lower** than "
+                     f"the book. This is the model's sharpest skill by a wide "
+                     f"margin — and there is no way to bet it, because these "
+                     f"markets only sell the Yes side. Useful as a veto: a big "
+                     f"disagreement downward is a player to leave alone. The "
+                     f"**vs bookmaker** figure blends this with the backable "
+                     f"half, which is why it reads higher than what you can "
+                     f"actually act on.")
+
 
 @st.cache_data(show_spinner=False)
 def model_recipe(tt: str) -> dict:
@@ -1308,6 +1337,22 @@ def betting_rule(tt: str, model: str | None = None) -> dict | None:
 _TIER_LABEL = {"strong": "Strong", "standard": "Standard", "fade": "Fade"}
 
 
+def preblend_columns_differ(frame) -> bool:
+    """Do Bet # / Bet edge say anything the # / Difference columns do not?
+
+    False for a market that is not blended: there the published number *is* the
+    model's, so the two pairs are identical and showing both reads as a
+    distinction the market does not have. The renderer and the caption that
+    describes it both ask this, so the prose cannot end up describing columns
+    that were not drawn — which is exactly what it did on the First TD board.
+    """
+    needed = {"bet_rank", "model_edge_pp", "game_rank", "edge_pp"}
+    if not needed <= set(frame.columns):
+        return False
+    return bool(not frame["bet_rank"].equals(frame["game_rank"])
+                or (frame["model_edge_pp"] - frame["edge_pp"]).abs().max() > 0.05)
+
+
 def _highlight_tier(frame, rule: dict):
     """Label each row with the measured tier it falls into, or blank.
 
@@ -1418,13 +1463,20 @@ def render_board(frame, tt: str, model: str):
     # They appear only where a rule was fitted. On a market that has not cleared
     # its prices they would be a tick box implying evidence that does not exist.
     rule = betting_rule(tt, model)
-    if rule and {"bet_rank", "model_edge_pp"} <= set(frame.columns):
-        show = show.assign(
-            BetRank=frame["bet_rank"],
-            BetEdge=frame["model_edge_pp"],
-            InRange=_highlight_tier(frame, rule),
-        )
-        cols = cols + ["BetRank", "BetEdge", "InRange"]
+    # Only where the pre-blend view actually differs. First TD is not blended,
+    # so its Bet # is its # and its Bet edge is its Difference — two columns
+    # repeating two others, which reads as a distinction the market does not
+    # have. Anytime TD blends, so there they genuinely disagree.
+    # Two separate decisions. The labels apply wherever a rule was fitted; the
+    # pre-blend pair only where it says something the columns to its left do
+    # not. Gating both on the second hid the labels on a market that has them.
+    if rule:
+        if preblend_columns_differ(frame):
+            show = show.assign(BetRank=frame["bet_rank"],
+                               BetEdge=frame["model_edge_pp"])
+            cols = cols + ["BetRank", "BetEdge"]
+        show = show.assign(InRange=_highlight_tier(frame, rule))
+        cols = cols + ["InRange"]
 
     st.dataframe(show[cols], hide_index=True,
                  column_config=board_columns(market_headtohead(tt, model), rule))
@@ -1485,15 +1537,19 @@ with tab_board:
     if board is not None:
         h2h = market_headtohead(target_type, selected_model)
         if h2h and h2h["disagree_better_pct"] > 0:
+            # The numbers themselves now sit in the strip above as metrics.
+            # What a banner can add is the reading of them, which is not
+            # obvious: the headline figure averages two halves that point in
+            # opposite directions for a bettor.
             _hi = h2h.get("disagree_higher_pct")
             _lo = h2h.get("disagree_lower_pct")
             if _hi is not None and _lo is not None:
                 st.success(
-                    f"**Where we disagree with the bookmaker is where this model "
-                    f"is worth reading.** On the tenth of players we differ from "
-                    f"the book on most across {h2h['span']}, our estimate landed "
-                    f"**{h2h['disagree_better_pct']:.0f}% closer** to what "
-                    f"actually happened.\n\n"
+                    f"**Where we disagree with the bookmaker is where this "
+                    f"model is worth reading.** On the tenth of players we "
+                    f"differ from the book on most across {h2h['span']}, our "
+                    f"estimate landed **{h2h['disagree_better_pct']:.0f}% "
+                    f"closer** to what actually happened.\n\n"
                     f"Read that in two halves. Where we rate a player **lower** "
                     f"than the book we are **{_lo:.0f}% closer** — our sharpest "
                     f"skill, and not something these markets let you bet. Where "
@@ -1503,21 +1559,17 @@ with tab_board:
                 )
             else:
                 st.success(
-                    f"**Where we disagree with the bookmaker is where this model "
-                    f"is worth reading.** On the players we differed from the "
-                    f"book on most across {h2h['span']}, our estimate landed "
-                    f"**{h2h['disagree_better_pct']:.0f}% closer** to what "
-                    f"actually happened than theirs.",
+                    f"**Where we disagree with the bookmaker is where this "
+                    f"model is worth reading.** On the players we differed from "
+                    f"the book on most across {h2h['span']}, our estimate "
+                    f"landed **{h2h['disagree_better_pct']:.0f}% closer** to "
+                    f"what actually happened.",
                     icon=":material/trending_up:",
                 )
-        st.caption(
-            "Every player a bookmaker priced this week. **Our estimate** is the "
-            "number we're trying to get right; the bookmaker's is shown beside it "
-            "as the best available second opinion."
-        )
 
         _rule = betting_rule(target_type, selected_model)
-        if _rule:
+        _preblend = preblend_columns_differ(board)
+        if _rule and _preblend:
             st.caption(
                 f":material/payments: The last three columns answer a different "
                 f"question from the rest of the table. Everything to their left "
@@ -1549,6 +1601,19 @@ with tab_board:
                         "that stops paying in any season stops being shown at "
                         "all, which is why **First TD** has no labels."
                     )
+        elif _rule:
+            _t = (_rule.get("tiers") or {})
+            _names = [t["tier"] for t in (_t.get("tiers") or [])]
+            _has_fade = bool(_t.get("fade"))
+            st.caption(
+                f":material/payments: **Worth backing** carries the labels "
+                f"fitted across {_rule['games']:,} games in {_rule['span']}"
+                + _tier_summary(_rule) +
+                " There is no separate **Bet #** or **Bet edge** on this "
+                "market: it is not blended with the bookmaker, so the number "
+                "on the board already *is* our own view. See **Betting "
+                "reality**."
+            )
         else:
             st.caption(
                 ":material/info: No betting markers on this market. Its "
@@ -1579,9 +1644,12 @@ with tab_board:
         )
         only_calls = filters.checkbox(
             "Only where we differ",
-            help="Hide players we price the same as the bookmaker. What's left is "
-                 "where the model is expressing an opinion — historically its most "
-                 "accurate ground relative to the book.",
+            help="Hide players we price the same as the bookmaker, measured on "
+                 "**Bet edge** — our own number, before the blend. What is left "
+                 "is where the model is expressing an opinion, and that is the "
+                 "ground the accuracy figures above are measured on. Filtering "
+                 "on **Difference** instead would use a number already pulled "
+                 "toward the price it is being compared against.",
         )
         ls = longshot_skill(target_type)
         longshots_only = filters.checkbox(
@@ -1608,7 +1676,9 @@ with tab_board:
             shown = shown[shown["game_rank"] <= n]
         if only_calls:
             floor = float(cfg.get("betting", {}).get("min_edge_pp", 2.0))
-            shown = shown[shown["edge_pp"].abs() >= floor]
+            diff_col = ("model_edge_pp" if "model_edge_pp" in shown.columns
+                        else "edge_pp")
+            shown = shown[shown[diff_col].abs() >= floor]
             shown = shown.sort_values(["game_label", "probability"],
                                       ascending=[True, False])
 
@@ -2432,7 +2502,15 @@ with tab_bet:
         st.dataframe(_roi_rows(econ["by_odds_bucket"], "bucket", "Price band"),
                      hide_index=True, column_config=_ROI_COLS)
 
-        if econ.get("blend_comparison"):
+        _bc = econ.get("blend_comparison") or []
+        _by = {}
+        for _r in _bc:
+            _by.setdefault(_r["ranked_by"], {})[_r["top_n"]] = round(_r["roi"], 4)
+        # If the published number *is* the model number, the two rows are the
+        # same row and the section's whole premise — that blending costs you
+        # money — does not apply to this market.
+        _blends = _by.get("model only (pre-blend)") != _by.get("blended (published)")
+        if _bc and _blends:
             st.markdown("##### Which of our numbers should you bet on?")
             st.caption(
                 "The board shows a figure that mixes our estimate with the "
@@ -2450,6 +2528,18 @@ with tab_bet:
             } for r in econ["blend_comparison"]]), hide_index=True,
                 column_config={"ROI": _ROI_COLS["ROI"],
                                "95% interval": _ROI_COLS["95% interval"]})
+
+        elif _bc and not _blends:
+            st.markdown("##### Which of our numbers should you bet on?")
+            st.caption(
+                "Only one, on this market. Anytime TD publishes a number "
+                "blended with the bookmaker's, so it has a separate pre-blend "
+                "view worth betting instead. This market is not blended — the "
+                "number on the board *is* the model's own — so there is no "
+                "choice to make here. For contrast, simply believing the "
+                "bookmaker returned "
+                f"{_by.get('market only', {}).get(n, 0):+.1f}% over the same games."
+            )
 
         st.markdown(f"##### Top {n}, season by season")
         st.caption(
