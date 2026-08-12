@@ -1,5 +1,11 @@
 data/
 models/*.pkl
+
+# Locked version snapshots. Weights are regenerable and ~3.3 MB a version; the
+# manifests under models/registry/ are neither, so those stay in git and carry
+# the metrics, config and git SHA that make a version identifiable.
+# `models/*.pkl` above does not cover nested paths.
+models/versions/
 output/
 __pycache__/
 *.pyc

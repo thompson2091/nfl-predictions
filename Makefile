@@ -3,7 +3,8 @@
 	docker-pipeline docker-prod docker-build-amd64 \
 	backtest walkforward longshot economics clusters evaluate wager wager-report \
 	odds-open odds-close odds-schedule-on odds-schedule-off odds-schedule-status \
-	decay shop site
+	decay shop site \
+	lock versions version-show promote rollback version-diff version-verify
 
 # Defaults so the evaluation targets run without arguments. Override per call:
 #   make backtest SEASON=2024 TARGET=first_td
@@ -100,6 +101,37 @@ evaluate:
 		python scripts/21_clusters.py --target $$t; \
 	done
 	python scripts/12_longshot.py --target anytime_td
+
+# ── Model versions ────────────────────────────────────────────────────────
+# `models/` holds one state and every `make train` overwrites it. Lock a state
+# you like and it survives; promote a version and it is what the app serves;
+# roll back and you are on the previous one. Manifests under models/registry/
+# are committed, the weights under models/versions/ are not.
+# See docs/MODEL_ITERATION.md.
+#   make lock ID=2026.08.12-baseline NOTE="baseline lock"
+lock:
+	python scripts/22_version.py lock $(ID) --note "$(NOTE)"
+
+versions:
+	python scripts/22_version.py list
+
+version-show:
+	python scripts/22_version.py show $(ID)
+
+# Make a version the default the app and pipeline read. Per-market with
+# MARKET=first_td; both markets otherwise.
+promote:
+	python scripts/22_version.py promote $(ID) $(if $(MARKET),--market $(MARKET))
+
+rollback:
+	python scripts/22_version.py rollback $(if $(MARKET),--market $(MARKET))
+
+version-diff:
+	python scripts/22_version.py diff $(A) $(B)
+
+# Does models/ actually hold what CURRENT.json claims? Run after any retrain.
+version-verify:
+	python scripts/22_version.py verify
 
 # ── Betting ───────────────────────────────────────────────────────────────
 # Log a bet you actually placed, at the price you actually got. The only

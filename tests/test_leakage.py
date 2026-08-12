@@ -1480,6 +1480,38 @@ def test_walkforward_fits_its_blend_weight_on_its_own_model():
     )
 
 
+def test_blend_weight_refit_guard_compares_like_with_like():
+    """A settled blend weight must not be refitted on every prediction run.
+
+    The guard compared the stored `n_rows` — archive rows that survived the
+    join with model predictions — against `eligible`, the rows going in. The
+    join always loses some (6,985 of 7,624 on anytime TD), so the condition was
+    permanently true: every `make predict` replayed the entire archive through
+    the model and rewrote `blend_weight.json` with a value differing in the
+    eleventh decimal. Nothing looked wrong, it was just the most expensive step
+    in prediction, run every time, mutating a served artifact.
+    """
+    from src.prediction.predict import blend_weight_needs_fit
+
+    settled = {"source": "fitted", "n_rows": 6985, "eligible_rows": 7624,
+               "min_season": 2025}
+    assert not blend_weight_needs_fit(settled, eligible=7624, min_rows=500,
+                                      first_clean=2025)
+    assert blend_weight_needs_fit(settled, eligible=8100, min_rows=500,
+                                  first_clean=2025), "new graded weeks must refit"
+    assert blend_weight_needs_fit(settled, eligible=7624, min_rows=500,
+                                  first_clean=2026), "a moved rule must refit"
+
+    # Written before `eligible_rows` existed: refit once, then settle.
+    legacy = {"source": "fitted", "n_rows": 6985, "min_season": 2025}
+    assert blend_weight_needs_fit(legacy, 7624, 500, 2025)
+
+    assert not blend_weight_needs_fit(None, eligible=100, min_rows=500,
+                                      first_clean=2025), "too little history"
+    assert blend_weight_needs_fit(
+        {"source": "bootstrap", "min_season": 2025}, 7624, 500, 2025)
+
+
 def test_blend_weight_is_the_one_the_blend_applies():
     """Fit the parameter that is served, not a proxy for it.
 

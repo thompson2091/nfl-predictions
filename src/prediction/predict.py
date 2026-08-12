@@ -98,6 +98,35 @@ def _game_pick_lines(result: pl.DataFrame, top_n: int = 5):
     return lines
 
 
+def blend_weight_needs_fit(stored: dict | None, eligible: int, min_rows: int,
+                           first_clean: int) -> bool:
+    """Should the blend weight be refitted, given what is already stored.
+
+    Refitting replays the whole odds archive through the model, so it should
+    happen when the eligible rows have grown or the eligibility rule has moved,
+    and not otherwise.
+
+    The comparison has to be like for like, and it was not. `eligible` counts
+    the archive rows going *in*; the stored `n_rows` counts what survived the
+    join with model predictions, which is always fewer — 6,985 of 7,624 on
+    anytime TD. Comparing the two made the condition permanently true, so every
+    `make predict` replayed the entire archive and rewrote `blend_weight.json`.
+    The weight it landed on differed only in the eleventh decimal, so nothing
+    looked wrong; it just did the most expensive step in prediction every time,
+    and made the served artifacts impossible to match against a locked version.
+
+    Artifacts written before `eligible_rows` existed fall back to `n_rows`, so
+    they refit exactly once and then settle.
+    """
+    if eligible < min_rows:
+        return False
+    if stored is None or stored.get("source") != "fitted":
+        return True
+    if int(stored.get("min_season", -1)) != first_clean:
+        return True
+    return int(stored.get("eligible_rows", stored.get("n_rows", 0))) < eligible
+
+
 def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
                       model_dir, cfg: dict, season: int, week: int,
                       target_type: str = "anytime_td",
@@ -228,11 +257,7 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
             stored = json.loads(weight_path.read_text())
         except Exception:
             stored = None
-    needs_fit = eligible >= min_rows and (
-        stored is None or stored.get("source") != "fitted"
-        or int(stored.get("n_rows", 0)) < eligible
-        or int(stored.get("min_season", -1)) != first_clean
-    )
+    needs_fit = blend_weight_needs_fit(stored, eligible, min_rows, first_clean)
     if needs_fit:
         print(f"  Fitting blend weight on {eligible:,} graded player-games from "
               f"{first_clean} on (replaying the archive through the model)...")
@@ -241,6 +266,7 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
         fitted = fit_blend_weight(history, min_rows=min_rows)
         if fitted is not None:
             fitted["min_season"] = first_clean
+            fitted["eligible_rows"] = eligible
             save_blend_weight(fitted, weight_path)
             print(f"  Blend weight FITTED on {fitted['n_rows']:,} graded "
                   f"player-games: market={fitted['market_weight']:.2f}")

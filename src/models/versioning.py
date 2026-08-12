@@ -1,0 +1,565 @@
+"""Locked model versions: snapshot, promote, roll back.
+
+`models/` holds exactly one state. Every `make train` overwrites it, so the
+model that was working on Tuesday is gone on Wednesday and there is no way
+back — and the evidence for why a choice was made has, twice, survived only as
+a code comment that later went stale. `production_model()` still describes
+anytime TD as serving `lgbm` at 54.6% Top-1; `settings.yaml` records the
+re-derived truth, `xgb` at 50.9%. Neither the weights nor the reasoning was
+recoverable.
+
+A **version** fixes both. It is a snapshot of every artifact both markets serve,
+plus a manifest recording what produced it:
+
+    models/
+      anytime_td/                     what the pipeline and app read
+      first_td/
+      versions/2026.08.12-baseline/   the snapshot            (gitignored)
+        anytime_td/*.pkl, *.json
+        first_td/*.pkl, *.json
+      registry/                       the record              (COMMITTED)
+        2026.08.12-baseline.json
+        CURRENT.json
+
+The weights are too big and too regenerable to live in git; the manifest is
+neither, so it does. What is committed is the full history of what was tried,
+what won, and why — queryable forever, whether or not the weights survive.
+
+Reproducing a version from its git SHA and config snapshot is *not* guaranteed
+to be bit-identical, because nflverse revises historical play-by-play. That is
+precisely why the weights are kept on disk and hashed: the manifest proves which
+artifacts produced the metrics it claims.
+
+`promote` and `rollback` are the same operation — copy a version over `models/`
+and repoint `CURRENT.json`. One code path, so the rollback we hope never to need
+cannot rot from disuse.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import pickle
+import re
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+from src.utils.config import get_config
+from src.utils.paths import PROJECT_ROOT, get_path
+
+#: Both markets are snapshotted together. A version is a state of the *code and
+#: config*, and those are shared; promotion is still per-market, so first TD can
+#: move to a new version while anytime TD stays put.
+MARKETS = ("first_td", "anytime_td")
+
+#: Date-prefixed so `ls` sorts chronologically, slugged so it says what changed.
+ID_PATTERN = re.compile(r"^\d{4}\.\d{2}\.\d{2}-[a-z0-9][a-z0-9._-]*$")
+
+#: Artifacts that live in `models/` but are not fitted at training time.
+#:
+#: `blend_weight.json` is refit during *prediction*, from graded odds history
+#: that grows every week the season is live (see `predict._anchor_to_market`).
+#: So it changes without a retrain, and enforcing it byte-for-byte would fail
+#: verification after every `make predict` — training an operator to ignore the
+#: check, which is worse than not having one.
+#:
+#: They are still recorded, with their contents inlined, so a manifest says what
+#: weight the version was serving. Drift is *reported* rather than failed.
+RUNTIME_ARTIFACTS = frozenset({"blend_weight.json"})
+
+#: The three outcomes an experiment can have. `KEPT_WITH_JUSTIFICATION` is the
+#: one that matters: a candidate may be promoted despite tripping a guard
+#: metric, but only with a written reason, and the reason ships inside the
+#: manifest. Nothing degrades silently.
+VERDICTS = ("PROMOTED", "REJECTED", "KEPT_WITH_JUSTIFICATION")
+
+
+class VersionError(RuntimeError):
+    """A versioning operation that would lose or misrepresent artifacts."""
+
+
+# --------------------------------------------------------------------------
+# Locations
+# --------------------------------------------------------------------------
+
+def models_root() -> Path:
+    return get_path("models")
+
+
+def versions_root() -> Path:
+    p = models_root() / "versions"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def registry_root() -> Path:
+    p = models_root() / "registry"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def version_dir(version_id: str) -> Path:
+    return versions_root() / version_id
+
+
+def manifest_path(version_id: str) -> Path:
+    return registry_root() / f"{version_id}.json"
+
+
+def current_path() -> Path:
+    return registry_root() / "CURRENT.json"
+
+
+# --------------------------------------------------------------------------
+# Hashing — what makes a claim about artifacts checkable
+# --------------------------------------------------------------------------
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def hash_tree(root: Path) -> dict[str, str]:
+    """Every file under `root`, by path relative to it, hashed.
+
+    Sorted so the mapping is stable across filesystems and comparable between
+    a live directory and a snapshot of it.
+    """
+    if not root.exists():
+        return {}
+    return {
+        str(p.relative_to(root)): _sha256(p)
+        for p in sorted(root.rglob("*")) if p.is_file()
+    }
+
+
+def _is_runtime(relpath: str) -> bool:
+    return Path(relpath).name in RUNTIME_ARTIFACTS
+
+
+def split_runtime(hashes: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    """(fitted, runtime). Only the fitted half is enforced by `verify_current`."""
+    return ({k: v for k, v in hashes.items() if not _is_runtime(k)},
+            {k: v for k, v in hashes.items() if _is_runtime(k)})
+
+
+def _runtime_record(market_dir: Path, hashes: dict[str, str]) -> dict:
+    """Runtime artifacts with their contents inlined — they are a few hundred
+    bytes each, and the value is the whole point: a manifest that records a
+    market weight of 0.42 tells you what the version was actually serving."""
+    out = {}
+    for rel, sha in hashes.items():
+        entry: dict = {"sha256": sha}
+        try:
+            entry["value"] = json.loads((market_dir / rel).read_text())
+        except (OSError, ValueError):
+            entry["value"] = None
+        out[rel] = entry
+    return out
+
+
+def live_hashes(markets=MARKETS) -> dict[str, dict[str, str]]:
+    """Hashes of the artifacts currently being served out of `models/`."""
+    return {m: hash_tree(models_root() / m) for m in markets}
+
+
+# --------------------------------------------------------------------------
+# Provenance
+# --------------------------------------------------------------------------
+
+def git_state() -> dict:
+    """The commit a version was built from, and whether the tree was dirty.
+
+    A dirty tree is recorded rather than refused. Refusing would push people to
+    commit noise just to lock a model; recording means the manifest never
+    claims a clean provenance it does not have.
+    """
+    def run(*args: str) -> str | None:
+        try:
+            out = subprocess.run(args, cwd=PROJECT_ROOT, capture_output=True,
+                                 text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return out.stdout.strip() if out.returncode == 0 else None
+
+    sha = run("git", "rev-parse", "HEAD")
+    status = run("git", "status", "--porcelain")
+    return {
+        "sha": sha,
+        "short_sha": sha[:7] if sha else None,
+        "branch": run("git", "rev-parse", "--abbrev-ref", "HEAD"),
+        "dirty": bool(status) if status is not None else None,
+    }
+
+
+def _feature_summary(market_dir: Path) -> dict | None:
+    """How many features the snapshot trains on, and a hash of exactly which.
+
+    The count alone cannot tell two feature sets apart; the hash can, so a
+    version diff can say "same 319 columns" rather than guessing.
+    """
+    path = market_dir / "feature_cols.pkl"
+    if not path.exists():
+        return None
+    cols = pickle.loads(path.read_bytes())
+    digest = hashlib.sha256("\n".join(cols).encode()).hexdigest()
+    return {"n": len(cols), "sha256": digest}
+
+
+def pooled_walkforward(market: str) -> dict | None:
+    """Games-weighted walk-forward metrics per model, from the saved folds.
+
+    Read from `output/<market>/walkforward.json` rather than recomputed: this
+    module records what was measured, it does not measure. A missing file is
+    reported as missing rather than filled with a default, because a manifest
+    that invents its own accuracy is worse than one that admits it has none.
+
+    Standard errors are the binomial ones on the pooled games. They are wide —
+    +/-1.5% on anytime TD — which is the whole reason the iteration plan puts
+    paired testing ahead of any modelling change. See docs/MODEL_ITERATION.md.
+    """
+    path = get_path("output", market) / "walkforward.json"
+    if not path.exists():
+        return None
+    rows = json.loads(path.read_text())
+    if not rows:
+        return None
+
+    out: dict[str, dict] = {}
+    for name in sorted({r["model"] for r in rows}):
+        sub = [r for r in rows if r["model"] == name]
+        total = sum(r["games"] for r in sub)
+        if total <= 0:
+            continue
+        agg = {k: sum(r[k] * r["games"] for r in sub) / total
+               for k in ("top1", "top3", "top5", "auc", "brier")}
+        agg["games"] = total
+        agg["folds"] = sorted(r["test_season"] for r in sub)
+        agg["top1_se"] = (agg["top1"] * (1 - agg["top1"]) / total) ** 0.5
+        out[name] = {k: (round(v, 5) if isinstance(v, float) else v)
+                     for k, v in agg.items()}
+    return out or None
+
+
+# --------------------------------------------------------------------------
+# Lock
+# --------------------------------------------------------------------------
+
+def lock(version_id: str, note: str, *, verdict: str = "PROMOTED",
+         justification: str | None = None, parent: str | None = None,
+         markets=MARKETS, experiment: dict | None = None) -> dict:
+    """Snapshot what `models/` currently serves, and record what made it.
+
+    Refuses to overwrite an existing version: a version id is a claim that a
+    specific set of weights produced a specific set of numbers, and silently
+    rebinding it makes every ledger row that references it a lie. Pick a new id.
+    """
+    if not ID_PATTERN.match(version_id):
+        raise VersionError(
+            f"'{version_id}' is not a valid version id. Use YYYY.MM.DD-slug, "
+            "e.g. 2026.08.12-baseline.")
+    if verdict not in VERDICTS:
+        raise VersionError(f"verdict must be one of {VERDICTS}, got '{verdict}'")
+    if verdict == "KEPT_WITH_JUSTIFICATION" and not justification:
+        raise VersionError(
+            "KEPT_WITH_JUSTIFICATION requires a written justification — that is "
+            "the entire point of the verdict. What guard was tripped, and why is "
+            "the change still worth it?")
+    if manifest_path(version_id).exists() or version_dir(version_id).exists():
+        raise VersionError(f"Version '{version_id}' already exists.")
+
+    dest = version_dir(version_id)
+    copied: dict[str, list[str]] = {}
+    for market in markets:
+        src = models_root() / market
+        if not src.exists():
+            raise VersionError(
+                f"No artifacts for {market} at {src} — run `make train` first.")
+        files = [p for p in sorted(src.iterdir()) if p.is_file()]
+        if not files:
+            raise VersionError(f"{src} holds no artifacts to lock.")
+        (dest / market).mkdir(parents=True, exist_ok=True)
+        for p in files:
+            shutil.copy2(p, dest / market / p.name)
+        copied[market] = [p.name for p in files]
+
+    manifest = {
+        "id": version_id,
+        "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "note": note,
+        "verdict": verdict,
+        "justification": justification,
+        "parent": parent or _current_version(markets[0]),
+        "git": git_state(),
+        "markets": list(markets),
+        "config": get_config(),
+        "features": {m: _feature_summary(dest / m) for m in markets},
+        "metrics": {m: pooled_walkforward(m) for m in markets},
+        "experiment": experiment,
+        "artifacts": {m: split_runtime(hash_tree(dest / m))[0] for m in markets},
+        "runtime": {
+            m: _runtime_record(dest / m, split_runtime(hash_tree(dest / m))[1])
+            for m in markets
+        },
+    }
+    manifest_path(version_id).write_text(json.dumps(manifest, indent=2) + "\n")
+    return manifest
+
+
+def load_manifest(version_id: str) -> dict:
+    path = manifest_path(version_id)
+    if not path.exists():
+        raise VersionError(f"No manifest for '{version_id}' at {path}")
+    return json.loads(path.read_text())
+
+
+def list_versions() -> list[dict]:
+    """Every locked version, newest first, with its artifacts' presence noted."""
+    out = []
+    for path in sorted(registry_root().glob("*.json")):
+        if path.name == "CURRENT.json":
+            continue
+        m = json.loads(path.read_text())
+        m["_artifacts_present"] = version_dir(m["id"]).exists()
+        out.append(m)
+    return sorted(out, key=lambda m: m["id"], reverse=True)
+
+
+# --------------------------------------------------------------------------
+# Promote / roll back — one operation, two names
+# --------------------------------------------------------------------------
+
+def _read_current() -> dict:
+    path = current_path()
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def _current_version(market: str) -> str | None:
+    return (_read_current().get(market) or {}).get("version")
+
+
+def unlocked_markets(markets=MARKETS) -> list[str]:
+    """Markets whose live artifacts match no locked version.
+
+    Promotion overwrites `models/`. If what is there right now was never
+    locked — a retrain nobody snapshotted — overwriting it destroys the only
+    copy. This is what lets `promote` refuse instead.
+    """
+    live = live_hashes(markets)
+    known = [m for m in list_versions() if m["_artifacts_present"]]
+    out = []
+    for market in markets:
+        fitted, _ = split_runtime(live[market])
+        if not any(v.get("artifacts", {}).get(market) == fitted for v in known):
+            out.append(market)
+    return out
+
+
+def verify_current(markets=MARKETS) -> list[str]:
+    """Problems with the claim that `models/` is the version CURRENT names.
+
+    Returns a list of human-readable problems; empty means the served state is
+    exactly the version the registry says it is. A retrain that lands without a
+    lock shows up here, which is the point — the committed record should never
+    quietly disagree with the weights on disk.
+
+    Runtime artifacts are excluded; see `RUNTIME_ARTIFACTS` and `runtime_drift`.
+    """
+    current = _read_current()
+    live = live_hashes(markets)
+    problems = []
+    for market in markets:
+        entry = current.get(market)
+        if not entry:
+            problems.append(f"{market}: CURRENT.json names no version")
+            continue
+        try:
+            manifest = load_manifest(entry["version"])
+        except VersionError as e:
+            problems.append(f"{market}: {e}")
+            continue
+        expected = manifest.get("artifacts", {}).get(market, {})
+        fitted, _ = split_runtime(live[market])
+        if expected != fitted:
+            missing = sorted(set(expected) - set(fitted))
+            extra = sorted(set(fitted) - set(expected))
+            changed = sorted(f for f in set(expected) & set(fitted)
+                             if expected[f] != fitted[f])
+            problems.append(
+                f"{market}: served artifacts differ from {entry['version']} — "
+                f"{len(changed)} changed{' ' + str(changed) if changed else ''}, "
+                f"{len(missing)} missing, {len(extra)} unexpected")
+    return problems
+
+
+def runtime_drift(markets=MARKETS) -> list[str]:
+    """Runtime artifacts that have moved since the served version was locked.
+
+    Informational, never a failure: `blend_weight.json` is *supposed* to move as
+    graded odds history accumulates. Worth surfacing anyway, because "the model
+    is identical but its market weight went from 0.50 to 0.31" is exactly the
+    kind of change that alters every published probability while every hash the
+    gate checks stays put.
+    """
+    current = _read_current()
+    live = live_hashes(markets)
+    notes = []
+    for market in markets:
+        entry = current.get(market)
+        if not entry:
+            continue
+        try:
+            manifest = load_manifest(entry["version"])
+        except VersionError:
+            continue
+        recorded = (manifest.get("runtime") or {}).get(market, {})
+        _, live_runtime = split_runtime(live[market])
+        for rel, sha in sorted(live_runtime.items()):
+            was = recorded.get(rel, {})
+            if was.get("sha256") != sha:
+                notes.append(
+                    f"{market}: {rel} has changed since {entry['version']} was "
+                    f"locked (expected, it is refit at predict time)")
+    return notes
+
+
+def promote(version_id: str, markets=MARKETS, *, force: bool = False) -> dict:
+    """Serve `version_id`: copy its artifacts over `models/` and repoint CURRENT.
+
+    The live market directory is cleared before copying rather than merged into.
+    A merge leaves artifacts from the previous version behind — a stale
+    calibrator or rank calibration is exactly the kind of thing that keeps being
+    loaded and quietly changes what is served.
+
+    Refuses when the live artifacts belong to no locked version, so an
+    un-snapshotted retrain cannot be destroyed by a promotion. `force` overrides,
+    for when you know the live state is scrap.
+    """
+    manifest = load_manifest(version_id)
+    src_root = version_dir(version_id)
+    if not src_root.exists():
+        raise VersionError(
+            f"Manifest for '{version_id}' exists but its artifacts do not, at "
+            f"{src_root}. Weights are gitignored — this version was locked on "
+            "another machine or the directory was cleaned. Retrain from "
+            f"git {manifest.get('git', {}).get('short_sha')} with its config "
+            "snapshot, or pick another version.")
+
+    unlocked = unlocked_markets(markets)
+    if unlocked and not force:
+        raise VersionError(
+            f"Live artifacts for {', '.join(unlocked)} match no locked version. "
+            "Promoting would overwrite them and they are the only copy. Lock "
+            "them first (`make lock ID=... NOTE=...`), or pass --force if they "
+            "are scrap.")
+
+    current = _read_current()
+    for market in markets:
+        src = src_root / market
+        if not src.exists():
+            raise VersionError(f"Version '{version_id}' holds no {market} artifacts.")
+        dest = models_root() / market
+        dest.mkdir(parents=True, exist_ok=True)
+        for p in dest.iterdir():
+            if p.is_file():
+                p.unlink()
+        for p in sorted(src.iterdir()):
+            if p.is_file():
+                shutil.copy2(p, dest / p.name)
+
+        entry = current.get(market, {})
+        history = [v for v in entry.get("history", []) if v != version_id]
+        history.append(version_id)
+        current[market] = {
+            "version": version_id,
+            "promoted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "history": history,
+        }
+
+    current_path().write_text(json.dumps(current, indent=2) + "\n")
+    return current
+
+
+def rollback(markets=MARKETS, *, force: bool = False) -> dict:
+    """Promote the version served before the current one, per market."""
+    current = _read_current()
+    targets = {}
+    for market in markets:
+        history = (current.get(market) or {}).get("history", [])
+        if len(history) < 2:
+            raise VersionError(
+                f"{market} has no earlier version to roll back to "
+                f"(history: {history or 'empty'}).")
+        targets[market] = history[-2]
+
+    distinct = set(targets.values())
+    if len(distinct) > 1:
+        # Per-market promotion is allowed, so the markets can genuinely sit on
+        # different versions. Roll each back to its own predecessor.
+        for market, version_id in targets.items():
+            promote(version_id, markets=(market,), force=force)
+        return _read_current()
+    return promote(distinct.pop(), markets=markets, force=force)
+
+
+# --------------------------------------------------------------------------
+# Diff
+# --------------------------------------------------------------------------
+
+def _flatten(d: dict, prefix: str = "") -> dict:
+    out = {}
+    for k, v in (d or {}).items():
+        key = f"{prefix}.{k}" if prefix else str(k)
+        if isinstance(v, dict):
+            out.update(_flatten(v, key))
+        else:
+            out[key] = v
+    return out
+
+
+def diff(version_a: str, version_b: str) -> dict:
+    """What changed between two versions: config, features, and measured metrics.
+
+    Metric deltas here are *unpaired* — two pooled numbers subtracted. They
+    describe the versions; they do not decide between them. Promotion decisions
+    need the paired comparison built in Phase 1 of docs/MODEL_ITERATION.md,
+    because these pooled figures carry +/-1.5% of standard error and almost every
+    change worth making is smaller than that.
+    """
+    a, b = load_manifest(version_a), load_manifest(version_b)
+    fa, fb = _flatten(a.get("config", {})), _flatten(b.get("config", {}))
+    config_changes = {
+        k: (fa.get(k), fb.get(k))
+        for k in sorted(set(fa) | set(fb)) if fa.get(k) != fb.get(k)
+    }
+
+    metrics = {}
+    for market in MARKETS:
+        ma = (a.get("metrics") or {}).get(market) or {}
+        mb = (b.get("metrics") or {}).get(market) or {}
+        rows = {}
+        for model in sorted(set(ma) | set(mb)):
+            ra, rb = ma.get(model), mb.get(model)
+            rows[model] = {
+                k: (None if not ra or not rb else round(rb[k] - ra[k], 5))
+                for k in ("top1", "top3", "top5", "auc", "brier")
+            }
+            rows[model]["a"] = ra
+            rows[model]["b"] = rb
+        if rows:
+            metrics[market] = rows
+
+    return {
+        "a": version_a,
+        "b": version_b,
+        "git": {"a": a.get("git"), "b": b.get("git")},
+        "config_changes": config_changes,
+        "features": {m: ((a.get("features") or {}).get(m),
+                         (b.get("features") or {}).get(m)) for m in MARKETS},
+        "metrics": metrics,
+        "unpaired": True,
+    }

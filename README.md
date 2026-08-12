@@ -115,6 +115,33 @@ python scripts/run_all.py   # targets -> candidates -> features -> train, x2
 > end to end including ingest; `run_all.py` covers both target types but
 > assumes raw data is already on disk.
 
+## Model versions
+
+`models/` holds exactly one state and every `make train` overwrites it. Lock a
+state you like and it survives:
+
+```bash
+make lock ID=2026.08.12-baseline NOTE="baseline lock"   # snapshot models/
+make versions                                           # what exists, what is served
+make version-show ID=2026.08.12-baseline                # metrics, config, git SHA
+make promote ID=2026.08.12-baseline                     # make it the default
+make rollback                                           # back to the previous one
+make version-verify                                     # does models/ match the record?
+```
+
+Weights live in `models/versions/<id>/` and are gitignored (~3.3 MB a version).
+The manifest in `models/registry/<id>.json` **is** committed: it carries the git
+SHA, the full config snapshot, the feature-set hash and the walk-forward metrics
+for every model on both markets. `CURRENT.json` names what is being served.
+
+`make test` asserts that `models/` holds exactly what `CURRENT.json` claims, so
+a retrain that lands without a lock fails rather than silently making the
+committed record wrong. Promotion is per-market with `MARKET=first_td`.
+
+Read [`docs/MODEL_ITERATION.md`](docs/MODEL_ITERATION.md) before changing the
+model: it is the phased plan for measuring whether a change is real, and the
+promotion gate a new version has to clear.
+
 ## Running the app
 
 ```bash
