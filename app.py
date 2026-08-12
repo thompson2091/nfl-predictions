@@ -286,17 +286,10 @@ def format_vegas(info: dict) -> str:
     return f"{odds_str} ({info['implied_prob']*100:.0f}%)"
 
 
-def edge_color(our_prob: float, vegas_info: dict | None) -> str | None:
-    """Return color based on edge: green = value, red = overpriced."""
-    if vegas_info is None:
-        return None
-    vegas_prob = vegas_info.get("fair_prob", vegas_info["implied_prob"])
-    diff = our_prob - vegas_prob
-    if diff > 0.02:
-        return "#2ecc71"
-    elif diff < -0.02:
-        return "#e74c3c"
-    return None
+# `edge_color` lived here: it painted a row green or red at a hand-picked
+# +/-2pp. It had no callers — `confidence_cuts` replaced it and reads the
+# thresholds off the backtest instead, so "unusually far from the market" means
+# unusually far *for this model* rather than for a number someone typed.
 
 
 def _prob_to_american(p: float) -> str:
@@ -723,11 +716,17 @@ had already finished, so it can never peek forward.
             f"**{h2h['disagree_better_pct']:.1f}% more accurate** on the tenth of "
             f"players we disagree with them on most.\n"
         )
-        if h2h["disagree_better_pct"] < 5:
+        # "Thin" used to mean "under 5%", a number nobody measured. The
+        # bootstrap already answers the question it was standing in for: an
+        # interval touching zero means we cannot tell ourselves apart from the
+        # bookmaker, whatever the point estimate reads.
+        if h2h.get("overall_lo") is not None and h2h["overall_lo"] <= 0:
             parts.append(
-                "\n:material/warning: **That margin is thin.** On this market we are "
-                "barely distinguishable from the bookmaker. Treat these as a second "
-                "opinion, not an edge.\n"
+                f"\n:material/warning: **That margin is not established.** The "
+                f"range around it is {h2h['overall_lo']:+.1f}% to "
+                f"{h2h['overall_hi']:+.1f}%, which includes zero — on this "
+                f"market we cannot be told apart from the bookmaker. Treat "
+                f"these as a second opinion, not an edge.\n"
             )
 
     parts.append("""
@@ -776,10 +775,14 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
     ),
     "AtRank": st.column_config.NumberColumn(
         "Typical at #", format="%.0f%%",
-        help="What actually happened to players in this slot across the whole "
-             "2025 season. A second opinion on the row: if our estimate sits well "
-             "above or below it, the model may be running hot or cold at this "
-             "rank rather than knowing something specific about this player.",
+        # The season is read from config rather than written here: it said
+        # "2025" while rank_hit_rates has always used splits.test_season, so it
+        # was correct only until that config changed.
+        help=f"What actually happened to players in this slot across the whole "
+             f"{cfg['splits']['test_season']} season. A second opinion on the "
+             f"row: if our estimate sits well above or below it, the model may "
+             f"be running hot or cold at this rank rather than knowing "
+             f"something specific about this player.",
     ),
     "Confidence": st.column_config.TextColumn(
         "Our read", width="small",
@@ -829,6 +832,20 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
     }
 
 
+def _ex_top10(tier: dict) -> str:
+    """What a tier returned with its ten largest wins removed.
+
+    The honest companion to the headline. A tier can read +21.7% and be almost
+    entirely ten lucky afternoons — first TD's strong tier drops to +1.2% this
+    way — and no confidence interval conveys that, because the interval is wide
+    for the same reason the number is high.
+    """
+    v = tier.get("roi_ex_top10")
+    if v is None:
+        return "—"
+    return f"${100 + v:,.0f} per $100"
+
+
 def tier_legend(rule: dict | None) -> pd.DataFrame | None:
     """Every value the Worth backing column can take, and what earns it.
 
@@ -854,6 +871,7 @@ def tier_legend(rule: dict | None) -> pd.DataFrame | None:
                               f"more, Bet # {h['max_rank']} or better{qualifier}"),
             "What it means": "We disagree with the book by a lot, in the direction you can back",
             "Historically": f"${100 + t['roi']:,.0f} per $100 staked",
+            "Without the 10 biggest wins": _ex_top10(t),
             "About": f"{t['bets_per_week']:.0f} a week",
         })
     if "standard" in by:
@@ -865,6 +883,7 @@ def tier_legend(rule: dict | None) -> pd.DataFrame | None:
                               f"{h['max_rank']} or better{qualifier}"),
             "What it means": "A real but modest disagreement — the same idea as Strong, weaker",
             "Historically": f"${100 + t['roi']:,.0f} per $100 staked",
+            "Without the 10 biggest wins": _ex_top10(t),
             "About": f"{t['bets_per_week']:.0f} a week",
         })
     if h.get("fade"):
@@ -876,6 +895,7 @@ def tier_legend(rule: dict | None) -> pd.DataFrame | None:
             "What it means": "The book rates this player and we strongly do not. Not a bet — a warning",
             "Historically": (f"book prices them ~{f['implied_pct']:.0f}%, "
                              f"~{f['actual_pct']:.0f}% actually score"),
+            "Without the 10 biggest wins": "—",
             "About": f"{f['bets_per_week']:.0f} a week",
         })
     rows.append({
@@ -885,6 +905,7 @@ def tier_legend(rule: dict | None) -> pd.DataFrame | None:
                           "them slightly lower, the edge is too small, they are "
                           "outside the top few, or the price is too short"),
         "Historically": "—",
+        "Without the 10 biggest wins": "—",
         "About": "most of the board",
     })
     return pd.DataFrame(rows)
@@ -954,15 +975,27 @@ def _tier_help(region: dict | None) -> str:
             f"means: whatever else you do this week, not this one."
         )
 
-    worst = min((t.get("trend") or 0) for t in h.get("tiers") or [{}]) if h.get("tiers") else 0
-    if worst < -5:
-        lines.append(
-            f"\n:material/warning: **Fading.** The strongest tier has been "
-            f"losing roughly {abs(worst):.0f} points of return a year. Three "
-            f"seasons is a small sample and the trend may be noise, but it "
-            f"runs one way, so treat the headline as an average of something "
-            f"that was better in the past than it is now."
-        )
+    # "Fading" is not a picked slope any more. The question it is really asking
+    # is whether the most recent season sits below what the pooled estimate
+    # says to expect, and the bootstrap interval already answers that. The
+    # picked version (-5 points a year) fired on a decline that turned out to be
+    # in-sample contamination rather than a fading edge — a warning built on a
+    # threshold nobody measured, describing an artifact.
+    for t in h.get("tiers") or []:
+        per = t.get("per_season") or []
+        if len(per) < 2 or t.get("lo") is None:
+            continue
+        latest = per[-1]
+        if (latest.get("roi") or 0) < t["lo"]:
+            lines.append(
+                f"\n:material/warning: **The most recent season is below the "
+                f"range.** The {t['tier']} group returned "
+                f"{latest['roi']:+.0f}% in {latest['season']}, under the "
+                f"{t['lo']:+.0f}% floor of its own interval. One season is not "
+                f"a trend, but it is the first thing that would show if this "
+                f"stopped working."
+            )
+            break
     if by:
         hit = by.get("strong", by.get("standard", {})).get("hit_pct", 0)
         lines.append(

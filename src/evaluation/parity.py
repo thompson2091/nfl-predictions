@@ -49,6 +49,18 @@ def compare(season: int, week: int, target_type: str,
               if p.stem.endswith(str(season))]
     if not frames:
         return None
+
+    # Artifacts of different vintages are not a parity failure, they are a
+    # staleness one, and conflating the two turns this check into noise during
+    # any rebuild. If the features moved after the backtest frame was written,
+    # the two paths are being asked about different inputs.
+    from src.utils.paths import get_path
+
+    feats = get_path("processed", target_type) / "features.parquet"
+    if feats.exists() and feats.stat().st_mtime > frames[0].stat().st_mtime:
+        return {"stale": True, "target_type": target_type, "season": season,
+                "week": week, "n": 0}
+
     bt = pl.read_csv(frames[0]).filter(pl.col("week") == week)
     if bt.height == 0:
         return None
@@ -102,6 +114,11 @@ def check(target_type: str, season: int, week: int | None = None,
     res = compare(season, week, target_type, model_name)
     if res is None:
         return True, f"{target_type} {season} wk{week}: not comparable — skipped"
+    if res.get("stale"):
+        return True, (
+            f"{target_type} {season} wk{week}: features are newer than the "
+            f"backtest frame — re-run `make evaluate` before trusting parity"
+        )
 
     if res["agrees_with_some_stage"]:
         return True, (f"{target_type} {season} wk{week}: served output matches "

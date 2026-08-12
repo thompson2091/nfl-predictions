@@ -126,10 +126,38 @@ def _carry_forward(feats: pl.DataFrame, key_col: str,
     if "game_id" in proj.columns:
         proj = proj.drop("game_id")
 
-    # Real rows first, so `keep="first"` prefers them over the projection.
-    out = pl.concat([feats, proj], how="diagonal_relaxed")
-    return out.unique(subset=[key_col, "season", "week"], keep="first",
-                      maintain_order=True)
+    # A real row wins over the projection *value by value*, not wholesale.
+    #
+    # Preferring the whole real row worked for feature families whose week-1
+    # rows simply do not exist — opening-drive stats, where only the receiving
+    # team has a row. It silently did nothing for families where the week-1 row
+    # exists with null values: personnel groupings, box counts and coverage
+    # rates are season-to-date, so week 1 is null by construction and the
+    # projection was deduped away behind it.
+    #
+    # The result was the same skew this function exists to remove, inverted:
+    # those 17 features were 100% null in week 1 of every season 2015-2025 and
+    # 0% null in the predict season, because only the predict season had no
+    # week-1 rows to lose the tie-break against. Coalescing fills the nulls
+    # instead, so week 1 means one thing everywhere.
+    keys = [key_col, "season", "week"]
+    value_cols = [c for c in feats.columns if c not in keys]
+
+    existing = feats.join(proj.select(keys), on=keys, how="semi")
+    if existing.height:
+        filled = feats.join(proj, on=keys, how="left", suffix="_proj")
+        filled = filled.with_columns([
+            pl.coalesce([pl.col(c), pl.col(f"{c}_proj")]).alias(c)
+            for c in value_cols if f"{c}_proj" in filled.columns
+        ]).select(feats.columns)
+    else:
+        filled = feats
+
+    # Whole rows the projection adds that were not there at all.
+    missing = proj.join(feats.select(keys), on=keys, how="anti")
+    if missing.height == 0:
+        return filled
+    return pl.concat([filled, missing], how="diagonal_relaxed")
 
 
 def _carry_forward_player(player_feats: pl.DataFrame, predict_season: int) -> pl.DataFrame:

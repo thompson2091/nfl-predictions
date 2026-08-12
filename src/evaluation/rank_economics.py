@@ -323,12 +323,11 @@ def fit_edge_rule(df: pl.DataFrame, max_rank: int = EDGE_MAX_RANK) -> dict | Non
 #: uses, so "big disagreement" means one thing across the whole project.
 BIG_DISAGREEMENT_Q = 0.90
 
-#: Odds-on favourites are excluded from the highlights. An edge measured in
-#: probability points buys less return the shorter the price — five points on a
-#: 55% favourite is a far smaller edge *proportionally* than five points on a
-#: 20% shot — and the sub-+100 band measured near zero on its own. The exclusion
-#: is still tested rather than assumed; see `fit_highlight_tiers`.
-SHORT_PRICE = 100
+#: Candidate price floors, loosest first. `fit_highlight_tiers` picks whichever
+#: earns its place by measurement, or none at all — the boundary is not
+#: declared here, only the shortlist to test. -200 through +150 spans "exclude
+#: nothing much" to "underdogs only".
+SHORT_PRICE_GRID = [-200, -150, -110, 100, 120, 150]
 
 
 def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
@@ -370,15 +369,24 @@ def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
         return ok, stats, per
 
     base = d.filter((pl.col("_edge") >= cut) & (pl.col("rank") <= max_rank))
-    # Test the exclusion rather than assuming it: keep it only if it both
-    # qualifies and beats the unfiltered version.
-    kept_short = base.filter(pl.col("odds") >= SHORT_PRICE)
-    ok_short, s_short, _ = qualifies(kept_short)
+    # Where to stop excluding short prices is fitted, not declared. An edge
+    # measured in probability points buys less return the shorter the price —
+    # five points on a 55% favourite is proportionally far less than five on a
+    # 20% shot — so *some* floor should help, but which one is a question for
+    # the data. Each candidate must beat keeping everything and still qualify
+    # on its own; the loosest that does wins, so the rule discards as few bets
+    # as the evidence allows.
     ok_all, s_all, _ = qualifies(base)
-    exclude_short = bool(ok_short and ok_all
-                         and s_short["roi"] > s_all["roi"])
-    if exclude_short:
-        base = kept_short
+    exclude_below = None
+    if ok_all:
+        for floor in SHORT_PRICE_GRID:
+            trial = base.filter(pl.col("odds") >= floor)
+            ok, stats, _ = qualifies(trial)
+            if ok and stats["roi"] > s_all["roi"]:
+                exclude_below = floor
+                break
+    if exclude_below is not None:
+        base = base.filter(pl.col("odds") >= exclude_below)
 
     # The fade group: players the book rates highly and we do not. It is the
     # sharpest thing this model does — the book prices these near 33% and about
@@ -419,10 +427,19 @@ def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
         if not ok:
             continue
         weeks = max(sub.select(["season", "week"]).n_unique(), 1)
+        # What is left after removing the ten biggest wins. `concentration`
+        # says how much of the profit they carry; this says what the rest of
+        # the bets did on their own, which is the number to judge a tier by
+        # when concentration is high. First TD's strong tier reads +21.7% with
+        # 94% concentration — take those ten results away and there is almost
+        # nothing there, and no interval width conveys that.
+        pnl = np.sort(sub["pnl"].to_numpy())
+        ex_top = pnl[:-10] if len(pnl) > 10 else pnl
         tiers.append({
             "tier": name,
             **stats,
             "per_season": per,
+            "roi_ex_top10": float(ex_top.mean() * 100) if len(ex_top) else None,
             "bets_per_week": sub.height / weeks,
             # Season-over-season slope, in points of ROI per year. The strongest
             # tier has been halving annually; a highlight that does not say so
@@ -437,7 +454,7 @@ def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
         "edge_cut": cut,
         "max_rank": max_rank,
         "big_edge": big,
-        "exclude_below_odds": SHORT_PRICE if exclude_short else None,
+        "exclude_below_odds": exclude_below,
         "tiers": tiers,
         "fade": fade,
     }
