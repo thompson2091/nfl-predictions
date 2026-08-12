@@ -4,12 +4,14 @@
 	backtest walkforward longshot economics clusters evaluate wager wager-report \
 	odds-open odds-close odds-schedule-on odds-schedule-off odds-schedule-status \
 	decay shop site \
-	lock versions version-show promote rollback version-diff version-verify
+	lock versions version-show promote rollback version-diff version-verify \
+	champion screen gate noise-floor experiments
 
 # Defaults so the evaluation targets run without arguments. Override per call:
 #   make backtest SEASON=2024 TARGET=first_td
 TARGET ?= anytime_td
 SEASON ?= 2025
+SEEDS ?= 5
 
 all: ingest targets candidates features train
 
@@ -101,6 +103,34 @@ evaluate:
 		python scripts/21_clusters.py --target $$t; \
 	done
 	python scripts/12_longshot.py --target anytime_td
+
+# ── Experiments ───────────────────────────────────────────────────────────
+# An experiment is a config overlay in a YAML file, scored on the same folds
+# the walk-forward uses and compared to the champion PER GAME — pooled Top-1
+# carries +/-1.5% and cannot resolve the changes worth making.
+# See docs/MODEL_ITERATION.md.
+#
+# Run `make champion` once before the first experiment: comparison needs the
+# champion's per-game rows, which a version manifest does not carry.
+#   make screen EXP=experiments/depth4.yaml     # minutes, never promotes
+#   make gate   EXP=experiments/depth4.yaml     # both markets, every model
+champion:
+	python scripts/23_experiment.py baseline --id $(ID)
+
+screen:
+	python scripts/23_experiment.py screen $(EXP) $(if $(MARKET),--market $(MARKET))
+
+gate:
+	python scripts/23_experiment.py gate $(EXP) $(if $(MARKET),--market $(MARKET))
+
+# What is the random seed alone worth? Every guard band in the gate is this
+# number. Without it, a 0.4-point difference has no scale to be read on.
+noise-floor:
+	python scripts/23_experiment.py noise-floor --seeds $(SEEDS)
+
+# What has been tried, and what came of it.
+experiments:
+	python scripts/23_experiment.py ledger
 
 # ── Model versions ────────────────────────────────────────────────────────
 # `models/` holds one state and every `make train` overwrites it. Lock a state

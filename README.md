@@ -115,6 +115,31 @@ python scripts/run_all.py   # targets -> candidates -> features -> train, x2
 > end to end including ingest; `run_all.py` covers both target types but
 > assumes raw data is already on disk.
 
+## Changing the model
+
+Pooled Top-1 carries ±1.5% of standard error over the walk-forward's 1,131
+games, and almost every change worth making is worth one to two points. So a
+change is not judged by comparing two percentages — it is scored on the same
+folds and compared to the champion **per game**, where only the games the two
+disagree about carry any information.
+
+```bash
+make noise-floor SEEDS=5                      # once: what is the random seed alone worth?
+make screen EXP=experiments/my-idea.yaml      # fast: production model, one market
+make gate   EXP=experiments/my-idea.yaml      # both markets, every model, verdict
+make experiments                              # the ledger: what has been tried
+```
+
+An experiment is a config overlay in a YAML file — see
+[`experiments/`](experiments/). Overlays are merged over `config/settings.yaml`
+for the length of a run and never written to it, so nothing an experiment does
+reaches the app. A fold costs about 13 seconds per model, so a full gate is a
+few minutes.
+
+Every run appends to `models/registry/ledger.jsonl`, committed, whether it won
+or lost. `PROMOTED` means: adopt the overlay into `config/settings.yaml`,
+`make train`, then lock and promote the result.
+
 ## Model versions
 
 `models/` holds exactly one state and every `make train` overwrites it. Lock a

@@ -22,48 +22,56 @@ models:
   - lr
   - lgbm
   - xgb
-  # Chosen from walk-forward, not from a single season. Pooled over 1,130
+  # Chosen from walk-forward, not from a single season. Pooled over 1,131
   # anytime-TD games (4 retrained folds, none scoring its own training years),
-  # re-measured after routing every caller through src/models/scoring.py:
-  #   xgb   Top-1 50.9%  Top-3 86.1%  AUC 0.8409  Brier 0.09135   <- production
-  #   ens   Top-1 51.2%  Top-3 85.7%  AUC 0.8408  Brier 0.09132
-  #   lgbm  Top-1 49.7%  Top-3 84.7%  AUC 0.8373  Brier 0.09194   <- was production
-  #   lr    Top-1 48.5%  Top-3 82.2%  AUC 0.8248  Brier 0.09333
+  # re-measured 2026-08-12 over the corrected denominator — every played game
+  # with a scorer in the pool, so a scorer the candidate filter removed counts
+  # as a miss rather than vanishing from the count (src/evaluation/ranking.py):
+  #   xgb   Top-1 50.8%  Top-3 86.0%  AUC 0.8409  Brier 0.09136   <- production
+  #   ens   Top-1 51.2%  Top-3 85.6%  AUC 0.8408  Brier 0.09132
+  #   lgbm  Top-1 49.7%  Top-3 84.6%  AUC 0.8373  Brier 0.09194   <- was production
+  #   lr    Top-1 48.5%  Top-3 82.1%  AUC 0.8248  Brier 0.09334
   #
-  # xgb beats lgbm by 1.2 points of Top-1 against a 1.5-point standard error,
+  # xgb beats lgbm by 1.1 points of Top-1 against a 1.5-point standard error,
   # and by 1.4 on Top-3 where the error is 1.0 — that gap is the real one.
-  # Against the ensemble it is a tie in every direction: 0.3 points of Top-1
-  # behind (0.24 standard errors), 0.4 ahead on Top-3, AUC equal to four
-  # decimals. xgb is kept because the headline strategy backs the top three,
-  # not because it wins.
+  # Against the ensemble it is a tie in every direction: 0.4 points of Top-1
+  # behind, 0.4 ahead on Top-3, AUC equal to four decimals. xgb is kept because
+  # the headline strategy backs the top three, not because it wins.
   #
   # These numbers previously read "xgb Top-1 52.1%, ens 50.7%" and argued xgb
   # led the ensemble by 1.4 points. That was inverted — the artifact said the
   # opposite even then. The choice survived re-derivation; the reason given for
   # it did not. tests/test_leakage.py asserts the choice against the file, so it
   # fails rather than drifts, but no test can check a comment.
+  #
+  # These are UNPAIRED standard errors and cannot resolve a one-point change.
+  # To compare two recipes, use `make gate EXP=...`, which pairs by game.
   # Re-check with `make walkforward` after any change to features or models.
   production: xgb
   # Per-market override; `production` above is the fallback. First TD and
   # Anytime TD do not want the same model — see production_model() in
   # src/utils/config.py for the walk-forward numbers behind each choice.
   #
-  # first_td, pooled over 1,115 games, same four folds:
-  #   xgb   Top-1 17.0%  AUC 0.8221  Brier 0.02744
-  #   ens   Top-1 16.2%  AUC 0.8221  Brier 0.02740   <- production
+  # first_td, pooled over 1,131 games, same four folds, same 2026-08-12
+  # re-measurement over the corrected denominator (this market lost 16 games to
+  # the old one, the most of either):
+  #   xgb   Top-1 16.8%  Top-3 37.1%  AUC 0.8220  Brier 0.02744
+  #   ens   Top-1 16.0%  Top-3 36.6%  AUC 0.8220  Brier 0.02741   <- production
   #
   # This used to read "ensemble Top-1 17.1% vs xgb's 17.0%, and it leads on AUC
   # (0.8216 vs 0.8179)". Neither holds now: xgb leads Top-1 by 0.8 points and
   # AUC is equal to four decimals, leaving the ensemble ahead only on Brier by
-  # 0.00004, which is nothing.
+  # 0.00003, which is nothing.
   #
-  # It stays on the ensemble anyway. xgb's Top-1 lead is 0.7 standard errors,
-  # and switching production on a sub-error difference is how you end up chasing
-  # noise season to season — the same reasoning that killed the rank-calibration
-  # and game-script experiments. Revisit if xgb clears a full standard error, or
-  # if first TD ever demonstrates an edge worth optimising for: rank economics
-  # currently reports NO EDGE DEMONSTRATED on this market, top 3 at
-  # -2.4% [-11.2, +6.7].
+  # It stays on the ensemble anyway. xgb's Top-1 lead is 0.7 unpaired standard
+  # errors, and switching production on a sub-error difference is how you end up
+  # chasing noise season to season — the same reasoning that killed the
+  # rank-calibration and game-script experiments. The right way to settle it is
+  # now available and cheap: `make gate` pairs the two per game, which resolves
+  # differences this table cannot. Until that is run, the ensemble stays.
+  #
+  # Worth knowing before optimising this market at all: rank economics reports
+  # NO EDGE DEMONSTRATED here, top 3 at -2.4% [-11.2, +6.7].
   production_by_target:
     anytime_td: xgb
     first_td: ensemble

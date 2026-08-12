@@ -174,10 +174,17 @@ Two further safeguards, both learned from this project's own history:
 
 ---
 
-## Phase 1 — Make the measurement trustworthy
+## Phase 1 — Make the measurement trustworthy — **DONE (2026-08-12)**
 
 **Nothing in Phase 3 is worth starting until this is done.** This phase changes
 no model; it changes what we can see.
+
+Shipped as `src/evaluation/ranking.py` (the denominator and per-game rows),
+`src/evaluation/harness.py` (folds, overlays, execution),
+`src/evaluation/compare.py` (paired tests and the gate),
+`src/utils/config.py::config_overlay`, `scripts/23_experiment.py`, and
+`tests/test_evaluation_harness.py`. `scripts/11_walkforward.py` is now a report
+over the shared harness rather than its own private copy of it.
 
 ### 1a. Fix the metric denominator
 
@@ -192,14 +199,17 @@ scored on a *different* denominator, so pool changes are not comparable.
 Loosening the filter adds hard games and can lower measured Top-1 while strictly
 improving the product.
 
-Fix: denominator = every played game in the fold; a filtered-out scorer counts
-as a miss.
+Fix: denominator = every played game whose scorer exists in the candidate pool
+at all; a filtered-out scorer counts as a miss. The eight games per four-season
+window with no scorer anywhere in the pool are excluded and reported — the label
+is not in the data and no ranking can win them.
 
-> **This will move the headline numbers down by roughly 0.8–2 points.** That is
-> a re-baseline, not a regression. It has to be done before the baseline lock's
-> metrics are treated as a target, and it means updating the walk-forward
-> comments in `settings.yaml`, the `production_model()` docstring, and
-> `tests/test_leakage.py::test_each_market_serves_its_best_walkforward_model`.
+> **Measured, the re-baseline is smaller than expected**: first TD 1,115 → 1,131
+> games, about −0.2 points of Top-1 (ensemble 16.2% → 16.0%, xgb 17.0% → 16.8%);
+> anytime TD 1,130 → 1,131 games, about −0.05. The correction matters for
+> comparability, not for the headline. `production_model()`'s stale docstring
+> was removed at the same time, and the walk-forward comments in
+> `settings.yaml` were re-derived.
 
 ### 1b. Per-game outcome records
 
@@ -234,14 +244,18 @@ currently know what a real improvement looks like.
 
 ### 1e. `src/evaluation/compare.py` + the gate
 
-- **Top-1**: McNemar on the games where champion and candidate disagree. Two
-  variants agree on most games; testing only the discordant ones is several
-  times more powerful than comparing two independent ±1.5% figures. This is the
+- **Top-1 / Top-3 / Top-5**: the paired per-game difference of the hit
+  indicators, with its own standard error, plus McNemar's exact test on the
+  discordant games. Two variants agree on most games; the information about
+  which is better lives entirely in the ones where they disagree. This is the
   highest-leverage change in the whole plan.
-- **Top-3 / Top-5 / AUC / Brier**: game-level paired bootstrap of the
-  difference.
-- `gate(candidate, champion) -> {verdict, per_metric_deltas, guards_tripped}`,
-  implementing the rule in [Ground rules](#ground-rules).
+- **AUC / Brier**: pooled, compared against the measured seed noise (1d) rather
+  than bootstrapped. A difference smaller than what the random seed produces on
+  its own is not a difference, and that band is the honest test.
+- `gate(comparison) -> {verdict, top_k, row, guards_tripped}`, implementing the
+  rule in [Ground rules](#ground-rules). `GUARD_TRIPPED` is the verdict that
+  forces the conversation: Top-1 improved, something else regressed, and
+  promoting it means writing down why.
 
 ### 1f. Ledger
 
@@ -249,17 +263,31 @@ currently know what a real improvement looks like.
 timestamp, git SHA, tier, overlay diff, per-market/per-model metrics, paired
 deltas vs champion, verdict, justification. Committed.
 
-### Deliverables
+### Delivered
 
 ```bash
-make screen EXP=experiments/condlogit.yaml     # fast tier, ledger row, no promotion
-make gate   EXP=experiments/condlogit.yaml     # full tier, ledger row, gate verdict
-make noise-floor                               # 1d, refreshes the guard bands
+make noise-floor SEEDS=5                       # 1d; also records the champion run
+make screen EXP=experiments/example-depth4.yaml  # fast tier, ledger row, never promotes
+make gate   EXP=experiments/example-depth4.yaml  # full tier, ledger row, verdict
+make experiments                               # the ledger
+make walkforward TARGET=first_td               # the report, over the same harness
 ```
 
-Plus a re-locked `2026.08.12-baseline` manifest carrying the *corrected*
-metrics, and a rewrite of the stale walk-forward comments in `settings.yaml` and
-`production_model()`.
+A fold costs about **13 seconds** per model on this data, so a full gate — two
+markets, four folds, three models plus the ensemble — is a few minutes, and the
+whole five-seed noise floor is around half an hour. There is no budget reason to
+skip the gate before promoting.
+
+Two things worth knowing about the diagnostics that came free with the per-game
+rows, before Phase 2 even starts:
+
+- **Coin flips.** Games where the top two probabilities sit within a point:
+  **16.0%** of anytime-TD games, **29.5%** of first-TD games. Nearly a third of
+  the first-TD market is a coin flip by the model's own reckoning, which caps
+  how much Top-1 is available to win there.
+- **Unranked games.** 16 first-TD games and 1 anytime game per four-season
+  window have their scorer removed by the candidate filter. Now counted as
+  misses and reported rather than dropped.
 
 ---
 

@@ -1,0 +1,15 @@
+# A worked example, and a real question: is the tree too deep?
+#
+# `scripts/19_tune.py` searched 60 configurations around the served setting and
+# found nothing beating it by a standard error — but that search compared pooled
+# figures. This asks the same question paired, per game, which is a stronger
+# test on the same data.
+#
+#   make screen EXP=experiments/example-depth4.yaml
+#   make gate   EXP=experiments/example-depth4.yaml
+id: 2026.08.13-xgb-depth4
+note: "xgb max_depth 6 -> 4"
+overlay:
+  model:
+    xgb:
+      max_depth: 4

@@ -15,12 +15,18 @@ This retrains from scratch for each test season, always predicting forward:
 
 Nothing from the test season, or after it, touches the fit. Averaging the folds
 gives an out-of-sample estimate over several times the games, and it is the
-evidence for whether rolling the production split forward is safe: if a model
-trained through 2023 predicts 2025 as well as one trained through 2022 predicts
-2024, the recipe travels and the extra season is free accuracy.
+evidence for whether rolling the production split forward is safe.
 
-Each fold writes its artifacts to a scratch directory, so nothing production
-serves is touched.
+The mechanics now live in `src/evaluation/harness.py`, which the experiment
+runner shares, so a model choice and an experiment are measured by the same
+code over the same folds. This script is the report over it.
+
+**The denominator changed.** It used to count only games whose scorer survived
+`_filter_low_activity`, so a game whose scorer was filtered out vanished from
+the measurement instead of counting as a miss — 16 games on first TD, 1 on
+anytime, worth about 0.2 points of Top-1. It is now every played game with a
+scorer anywhere in the candidate pool, which is also what makes candidate-pool
+experiments comparable at all. See `src/evaluation/ranking`.
 
     python scripts/11_walkforward.py --target anytime_td
 """
@@ -28,147 +34,66 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, ".")
 
-import numpy as np
 import polars as pl
 
+from src.evaluation.harness import run, save, summarise
+from src.evaluation.ranking import pooled
 from src.utils.config import get_config
 from src.utils.paths import get_path
 
 
-def _fold_metrics(model_dir: Path, output_dir: Path, target_type: str,
-                  test_season: int, model_name: str) -> dict | None:
-    """Score the fold's saved model on its held-out season, joint path included."""
-    import pickle
+def _fold_rows(result: dict, market: str) -> list[dict]:
+    """One row per (model, test season), in the shape this file has always had.
 
-    from src.models.joint import apply_joint, load_team_rate, load_conversion
-    from src.models.registry import ensure_registered
-    from src.models.scoring import score
-    from src.models.trainer import prepare_data, _filter_low_activity
-    from sklearn.metrics import brier_score_loss, roc_auc_score
-
-    ensure_registered()
-    fc = pickle.loads((model_dir / "feature_cols.pkl").read_bytes())
-    feats = pl.read_parquet(get_path("processed", target_type) / "features.parquet")
-    te = _filter_low_activity(
-        feats.filter((pl.col("season") == test_season) & pl.col("target").is_not_null())
-    )
-    if te.height == 0:
-        return None
-    X, _ = prepare_data(te, fc)
-
-    # Through src.models.scoring.score, which is the whole point of that module:
-    # this function used to load each model and apply its calibrator by hand,
-    # making it a fifth private copy of the scoring path alongside the four the
-    # module was written to replace. The copy silently skipped the tie-break
-    # that resolves players sharing an isotonic step, so the table used to
-    # choose which model to serve described a pipeline production does not run.
-    probs = score(model_name, X, fc, model_dir)
-
-    ev = te.with_columns(pl.Series("prob", probs))
-    team_model = load_team_rate(model_dir / "team_td_rate.json")
-    if target_type != "first_td" and team_model is not None:
-        # Each fold fits its own conversion, so apply that fold's — otherwise
-        # the walk-forward scores a different pipeline than production runs.
-        ev = apply_joint(ev, te, team_model, score_col="prob", out_col="prob",
-                         conversion=load_conversion(model_dir / "td_conversion.json"))
-    probs = ev["prob"].to_numpy()
-
-    ev = ev.with_columns(
-        pl.col("prob").rank(descending=True, method="ordinal")
-        .over("game_id").alias("r")
-    )
-    best = (
-        ev.filter(pl.col("target") == 1).group_by("game_id")
-        .agg(pl.col("r").min().alias("b"))["b"].to_list()
-    )
-    y = ev["target"].to_numpy().astype(float)
-    n, games = len(best), ev["game_id"].n_unique()
-    return {
-        "test_season": test_season,
-        "games": n,
-        "brier": float(brier_score_loss(y, probs)),
-        "auc": float(roc_auc_score(y, probs)),
-        "top1": sum(r == 1 for r in best) / n,
-        "top3": sum(r <= 3 for r in best) / n,
-        "top5": sum(r <= 5 for r in best) / n,
-        "median_rank": float(np.median(best)),
-        "sum_per_game": float(probs.sum() / games),
-        "actual_per_game": float(y.sum() / games),
-    }
+    `tests/test_leakage.py` and the app's Model performance strip read this
+    artifact, so the schema is kept even though the numbers behind it are now
+    measured over the corrected denominator.
+    """
+    outcomes = result["outcomes"].filter(pl.col("target_type") == market)
+    rows = []
+    for r in result["row_metrics"]:
+        if r["target_type"] != market:
+            continue
+        sub = outcomes.filter((pl.col("model") == r["model"])
+                              & (pl.col("test_season") == r["test_season"]))
+        stats = pooled(sub)
+        rows.append({
+            "test_season": r["test_season"],
+            "games": stats["games"],
+            "brier": r["brier"],
+            "auc": r["auc"],
+            "top1": stats["top1"],
+            "top3": stats["top3"],
+            "top5": stats["top5"],
+            "median_rank": stats["median_rank"],
+            "sum_per_game": r["sum_per_game"],
+            "actual_per_game": r["actual_per_game"],
+            "unranked_games": stats["unranked_games"],
+            "model": r["model"],
+        })
+    return sorted(rows, key=lambda r: (r["model"], r["test_season"]))
 
 
 def main(target_type: str, first_test: int, last_test: int, model_name: str) -> int:
-    from src.models.trainer import train_all
+    result = run({}, markets=(target_type,), first_test=first_test,
+                 last_test=last_test)
+    summary = summarise(result)[target_type]
+    rows = _fold_rows(result, target_type)
+    save(result, f"walkforward-{target_type}")
 
-    feats = pl.read_parquet(get_path("processed", target_type) / "features.parquet")
-    played = sorted(
-        feats.filter(pl.col("target").is_not_null())["season"].unique().to_list()
-    )
-    tests = [s for s in range(first_test, last_test + 1) if s in played]
-    if not tests:
-        print("No completed seasons in that range.")
-        return 1
-
-    cfg_models = list(get_config()["models"]["active"])
-    scored_models = cfg_models + (["ensemble"] if len(cfg_models) > 1 else [])
-    print(f"Scoring models per fold: {', '.join(scored_models)}")
-
-    rows = []
-    scratch = Path(tempfile.mkdtemp(prefix="walkforward_"))
-    try:
-        for test_season in tests:
-            splits = {
-                "train_end": test_season - 2,
-                "val_season": test_season - 1,
-                "test_season": test_season,
-            }
-            print(f"\n{'=' * 72}")
-            print(f"FOLD: train <={splits['train_end']}  val {splits['val_season']}  "
-                  f"test {test_season}")
-            print("=" * 72)
-            fold_models = scratch / f"{test_season}_models"
-            fold_output = scratch / f"{test_season}_output"
-            train_all(target_type, splits=splits,
-                      model_dir=fold_models, output_dir=fold_output)
-            # Score every model from this one fold. Training dominates the
-            # cost and it already fits all of them, so scoring each is nearly
-            # free — and the app lets you switch model, which needs a
-            # walk-forward figure per model or the strip silently keeps showing
-            # the production model's numbers whatever you pick.
-            for name in scored_models:
-                m = _fold_metrics(fold_models, fold_output, target_type,
-                                  test_season, name)
-                if m:
-                    m["model"] = name
-                    rows.append(m)
-    finally:
-        shutil.rmtree(scratch, ignore_errors=True)
-
-    if not rows:
-        print("No folds produced metrics.")
-        return 1
-
-    print(f"\n{'=' * 72}")
+    print(f"\n{'=' * 78}")
     print(f"WALK-FORWARD — {target_type}")
-    print("=" * 72)
-    for name in scored_models:
-        sub = [r for r in rows if r["model"] == name]
-        if not sub:
-            continue
-        tot = sum(r["games"] for r in sub)
+    print("=" * 78)
+    for name, s in summary.items():
         line = f"  {name:10s}"
-        for k, lab in [("top1", "Top-1"), ("top3", "Top-3"), ("top5", "Top-5")]:
-            p = sum(r[k] * r["games"] for r in sub) / tot
-            se = np.sqrt(p * (1 - p) / tot)
-            line += f"  {lab} {p:5.1%} +/-{se:.1%}"
-        line += f"  AUC {sum(r['auc'] * r['games'] for r in sub) / tot:.4f}"
+        for k in (1, 3, 5):
+            line += f"  Top-{k} {s[f'top{k}']:5.1%} +/-{s[f'top{k}_se']:.1%}"
+        line += f"  AUC {s['auc']:.4f}"
         print(line)
 
     print(f"\nPer fold ({model_name}):")
@@ -181,19 +106,34 @@ def main(target_type: str, first_test: int, last_test: int, model_name: str) -> 
 
     prod = [r for r in rows if r["model"] == model_name]
     total = sum(r["games"] for r in prod)
-    print("-" * 72)
+    stats = summary[model_name]
+    print("-" * 78)
     for k, label in [("top1", "Top-1"), ("top3", "Top-3"), ("top5", "Top-5")]:
-        # Weight by games so a short season does not count as much as a full one,
-        # and report the binomial standard error on the pooled figure.
-        pooled = sum(r[k] * r["games"] for r in prod) / total
-        se = np.sqrt(pooled * (1 - pooled) / total)
-        print(f"  pooled {label}: {pooled:.1%}  +/- {se:.1%} (1se over {total} games)")
-    print(f"  pooled AUC:   {sum(r['auc'] * r['games'] for r in prod) / total:.4f}")
-    print(f"  pooled Brier: {sum(r['brier'] * r['games'] for r in prod) / total:.5f}")
+        print(f"  pooled {label}: {stats[k]:.1%}  +/- {stats[k + '_se']:.1%} "
+              f"(1se over {stats['games']} games)")
+    # Row-weighted, matching the table above. These used to be weighted by games
+    # up here and by rows there, so the same model printed two different AUCs a
+    # dozen lines apart. AUC is not exactly poolable across folds either way —
+    # this is the average of per-fold AUCs, not one AUC over concatenated
+    # seasons, which would rank players from different years against each other.
+    print(f"  pooled AUC:   {stats['auc']:.4f}  (row-weighted mean of per-fold AUCs)")
+    print(f"  pooled Brier: {stats['brier']:.5f}")
+
+    unranked = sum(r["unranked_games"] for r in prod)
+    if unranked:
+        print(f"\n  {unranked} of {total} games had no ranked scorer and count as "
+              f"misses (the filter removed every scorer).")
+    print(f"  Coin flips (top two within a point): "
+          f"{summary[model_name]['coin_flip_share']:.1%} of games.")
+    print("\n  These pooled standard errors are unpaired. To compare two "
+          "recipes, use\n  `python scripts/23_experiment.py`, which pairs by "
+          "game — far more power.")
 
     out = get_path("output", target_type) / "walkforward.json"
     out.write_text(json.dumps(rows, indent=2))
     print(f"\nSaved per-fold detail: {out}")
+    print(f"Saved per-game rows:   "
+          f"{get_path('output') / 'experiments' / f'walkforward-{target_type}'}")
     return 0
 
 
