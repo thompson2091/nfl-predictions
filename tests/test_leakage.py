@@ -1347,6 +1347,41 @@ def test_blend_weight_is_fitted_on_frames_that_contain_model_predictions():
     )
 
 
+def test_calibration_ties_are_broken_without_reordering():
+    """Isotonic flattens players onto steps; the tie-break must not reorder them.
+
+    Two properties, and the second is the one that makes the first safe:
+      * players sharing a calibrated step come out distinct, ordered by the
+        model's own pre-calibration opinion;
+      * players on *different* steps keep the order calibration gave them.
+
+    Without this the game's headline pick was decided by `rank("ordinal")`
+    falling back to row order — whoever the assembler happened to list first.
+    """
+    import numpy as np
+    from src.models.scoring import _break_ties
+
+    raw = np.array([0.90, 0.75, 0.80, 0.30, 0.10, 0.31])
+    # A plausible isotonic output: three players collapsed onto 0.6, two onto 0.2.
+    cal = np.array([0.60, 0.60, 0.60, 0.20, 0.05, 0.20])
+    out = _break_ties(cal, raw)
+
+    assert len(np.unique(out)) == len(out), "ties survived the tie-break"
+    # Within the 0.6 step, order follows the raw score.
+    assert out[0] > out[2] > out[1]
+    assert out[5] > out[3]
+    # Across steps, calibration still wins: every 0.6 player beats every 0.2.
+    assert min(out[0], out[1], out[2]) > max(out[3], out[5]) > out[4]
+    # And the nudge is small enough to leave the calibration itself intact.
+    assert np.allclose(out, cal, atol=0.075)
+
+    # Degenerate inputs must pass through rather than divide by zero.
+    flat = np.full(4, 0.3)
+    assert np.array_equal(_break_ties(flat, np.arange(4.0)), flat)
+    assert np.array_equal(_break_ties(np.array([0.1, 0.2]), np.full(2, 0.5)),
+                          np.array([0.1, 0.2]))
+
+
 def test_declared_hyperparameters_reach_the_model():
     """Every knob config declares must be read, and every knob read declared.
 
