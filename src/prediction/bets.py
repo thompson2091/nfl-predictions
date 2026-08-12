@@ -51,7 +51,7 @@ def board_for_week(season: int, week: int, target_type: str, model_name: str,
     if result is None:
         return pl.DataFrame(), "No predictions for this week — run the pipeline."
 
-    market = _market_from_cache(season, week)
+    market = _market_from_cache(season, week, target_type)
     if market is None or market.height == 0:
         return pl.DataFrame(), (
             f"No sportsbook prices cached for week {week}. "

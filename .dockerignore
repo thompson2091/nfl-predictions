@@ -23,7 +23,18 @@ notebooks
 
 **/.DS_Store
 
-# Raw pulls are large and only schedules.parquet is read at serve time.
-# The pipeline entrypoint regenerates the rest via `ingest`.
+# Raw pulls are large; the pipeline entrypoint regenerates them via `ingest`.
+# Only what the *app* reads at serve time is baked in. That list grew without
+# this file noticing: load_graded_history resolves player ids through rosters,
+# and the availability check reads injuries. Excluding them did not fail the
+# build or the bind-mounted dev container — only `docker compose --profile prod`
+# and any real deploy, where the app died on a missing rosters.parquet.
+#
+# pbp.parquet (135M) and the other feature-building pulls stay out.
 data/raw/*
 !data/raw/schedules.parquet
+!data/raw/rosters.parquet
+!data/raw/injuries.parquet
+!data/raw/player_td_odds.parquet
+!data/raw/odds_cache
+!data/raw/odds_cache/**

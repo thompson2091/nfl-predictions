@@ -133,7 +133,7 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
     # well under 1% of actual scorers, so normalising the total across all of
     # them hands ~10% of the probability mass to players who essentially never
     # score and leaves every priced player short.
-    market = _load_market(week_df, expected, season, week)
+    market = _load_market(week_df, expected, season, week, target_type)
     if market is not None and market.height > 0:
         result = result.with_columns(
             _norm_name_expr("player_name").alias("player_name_norm")
@@ -251,7 +251,8 @@ def _norm_name_expr(col: str) -> pl.Expr:
 
 
 def _load_market(week_df: pl.DataFrame, expected: pl.DataFrame,
-                 season: int, week: int) -> pl.DataFrame | None:
+                 season: int, week: int,
+                 target_type: str = "anytime_td") -> pl.DataFrame | None:
     """De-vigged market probabilities for this slate.
 
     Reads the odds cache directly rather than relying on `sbook_*` columns baked
@@ -260,7 +261,7 @@ def _load_market(week_df: pl.DataFrame, expected: pl.DataFrame,
     """
     from src.prediction.blend import devig_market
 
-    market = _market_from_cache(season, week)
+    market = _market_from_cache(season, week, target_type)
     if market is None and "sbook_anytime_td_implied" in week_df.columns:
         market = (
             week_df.select(["game_id", "player_name", "sbook_anytime_td_implied"])
@@ -284,8 +285,23 @@ def _load_market(week_df: pl.DataFrame, expected: pl.DataFrame,
     return devig_market(market, expected)
 
 
-def _market_from_cache(season: int, week: int) -> pl.DataFrame | None:
-    """Anytime-TD prices from the odds cache, keyed to this week's game_ids."""
+def _market_from_cache(season: int, week: int,
+                       target_type: str = "anytime_td") -> pl.DataFrame | None:
+    """Sportsbook prices for one market, keyed to this week's game_ids.
+
+    `target_type` used to be absent and the anytime-TD list read unconditionally,
+    so the First TD board was built on anytime-TD prices: the same 75 players at
+    the same odds, with Marquez Valdes-Scantling quoted +1000 to score first and
+    +1000 to score at all. The de-vig hid it — it rescales whatever it is given
+    to the market's expected scorer count, so `market_prob` came out plausibly
+    small for first TD while the American price underneath was wrong.
+
+    Everything downstream inherited it: the Odds column, Bookmaker says, the
+    edge, the highlight labels, EV and Kelly. Only the live board was affected;
+    the backtests read `load_graded_history(target_type)`, which filters by
+    market properly, which is why the two never disagreed on anything that would
+    have exposed it.
+    """
     try:
         from src.ingest.odds_api import load_cached_odds
         from src.features.odds_features import TEAM_ABBREV
@@ -309,7 +325,7 @@ def _market_from_cache(season: int, week: int) -> pl.DataFrame | None:
                        TEAM_ABBREV.get(game.get("away_team", ""))))
         if gid is None:
             continue
-        for p in game.get("anytime_td", []):
+        for p in game.get(target_type, []):
             rows.append({
                 "game_id": gid,
                 "player_name_norm": p["player"],

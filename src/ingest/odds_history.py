@@ -282,7 +282,14 @@ def _resolve_player_id(hist: pl.DataFrame) -> pl.Expr:
     Matching is done per season so that two players sharing a name in different
     eras don't collide.
     """
-    rosters = pl.read_parquet(get_path("raw") / "rosters.parquet")
+    roster_path = get_path("raw") / "rosters.parquet"
+    if not roster_path.exists():
+        # Without rosters we cannot map book names to player ids, but that is a
+        # reason to return unresolved rows — not to take down every page that
+        # touches the odds archive. A missing optional input killed the whole
+        # app in the production image with a bare FileNotFoundError.
+        return pl.lit(None, dtype=pl.Utf8)
+    rosters = pl.read_parquet(roster_path)
     name_col = "player_name" if "player_name" in rosters.columns else "full_name"
     lookup = (
         rosters.select(["season", name_col, "player_id"])

@@ -1737,3 +1737,38 @@ def test_injury_status_blocks_out_and_doubtful_only():
     blocked = s.filter(pl.col("is_blocked"))
     assert blocked.height > 0
     assert set(blocked["report_status"].unique().to_list()) <= set(BLOCKING)
+
+
+def test_each_market_reads_its_own_prices():
+    """First TD and anytime TD must not share a price list.
+
+    `_market_from_cache` hardcoded the anytime-TD entry, so the live First TD
+    board was built on anytime-TD prices — the same 75 players at the same odds,
+    Marquez Valdes-Scantling quoted +1000 to score first and +1000 to score at
+    all. The de-vig hid it: it rescales whatever it is given to the market's
+    expected scorer count, so `market_prob` looked plausibly small while the
+    American price underneath was wrong.
+
+    The backtests were unaffected — they read load_graded_history(target_type),
+    which filters by market — so the two paths never disagreed on anything that
+    would have surfaced it. Even the parity check passed, because first TD's
+    published probability does not touch the market at all.
+    """
+    import inspect
+    from src.prediction import predict as predict_mod
+
+    src = inspect.getsource(predict_mod._market_from_cache)
+    assert 'game.get("anytime_td"' not in src, (
+        "the market cache is hardcoded to anytime TD again"
+    )
+    assert "game.get(target_type" in src
+
+    # And the callers must actually pass it through.
+    for fn in (inspect.getsource(predict_mod._load_market),
+               inspect.getsource(predict_mod._anchor_to_market)):
+        pass
+    whole = inspect.getsource(predict_mod)
+    assert "_market_from_cache(season, week, target_type)" in whole
+    from src.prediction import bets
+    assert "_market_from_cache(season, week, target_type)" in inspect.getsource(
+        bets.board_for_week)
