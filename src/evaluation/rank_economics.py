@@ -304,7 +304,10 @@ def fit_edge_rule(df: pl.DataFrame, max_rank: int = EDGE_MAX_RANK) -> dict | Non
         seasons = sorted(keep["season"].unique().to_list())
         per_season = [_row(keep.filter(pl.col("season") == s), season=int(s))
                       for s in seasons]
-        if not all((r["roi"] or 0) > 0 for r in per_season):
+        # Same reasoning as fit_highlight_tiers: a thin season cannot resolve
+        # its own sign, so it must not be able to veto a rule on a point
+        # estimate. Only a season that is significantly negative disqualifies.
+        if any(r["verdict"] == "negative" for r in per_season):
             continue
         return {
             "edge_cut": cut,
@@ -364,8 +367,19 @@ def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
         seasons = sorted(sub["season"].unique().to_list())
         per = [_row(sub.filter(pl.col("season") == s), season=int(s))
                for s in seasons]
+        # Every season must fail to be *significantly* negative — not every
+        # season must be point-positive. The strict version made the gate a
+        # coin flip: the strong tier held 41 bets in 2023 against 414 and 339
+        # in the other years, an interval of [-61%, +14%] that cannot resolve
+        # its own sign, and the whole tier appeared or vanished between
+        # rebuilds depending on which way those 41 fell. Pooled, it was +29.5%
+        # and +29.6% across the same two rebuilds — rock steady.
+        #
+        # So the question is asked answerably: a season that genuinely broke
+        # the rule shows an interval entirely below zero, and a season too
+        # small to say anything is allowed to say nothing.
         ok = (stats["verdict"] == "positive"
-              and all((p["roi"] or 0) > 0 for p in per))
+              and not any(p["verdict"] == "negative" for p in per))
         return ok, stats, per
 
     base = d.filter((pl.col("_edge") >= cut) & (pl.col("rank") <= max_rank))

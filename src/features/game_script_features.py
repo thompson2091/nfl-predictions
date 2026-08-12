@@ -1,4 +1,27 @@
-"""Who gets the ball when a team is losing.
+"""Who gets the ball when a team is losing. MEASURED, AND NOT IN THE MODEL.
+
+Built to close the underdog residual, wired in, rebuilt end to end, and
+removed again because it did not work. Kept here rather than deleted so the
+next person to have this idea can read the result instead of repeating it.
+
+    big underdog gap    +4.5pp  ->  +4.4pp     unchanged
+    xgb Top-1            52.1%  ->   50.4%
+    Strong tier         +29.5%  ->  +21.3%
+    edge rule           +13.9%  ->  +13.9%
+
+Twenty of these features survived importance selection, so the model did find
+them worth splitting on — they simply did not carry the information the
+residual is made of. The declines are inside noise (1.1 SE on Top-1, heavily
+overlapping tier intervals), so the honest reading is "no effect" rather than
+"harmful". Either way they did not earn twenty features.
+
+What that suggests about the residual: it is probably not a usage-mix effect at
+all. Splitting a player's share by game state assumes the model is missing
+*who* gets the ball when behind. It may instead be missing something about the
+scoring environment of trailing games — more possessions, longer fields, more
+red-zone trips per drive — which is a team-rate question, not a share question,
+and would belong in the joint model's lambda rather than in player features.
+
 
 The one residual that survived every fix this project made: players on underdog
 teams score more often than the model says, and the gap scales with the spread.

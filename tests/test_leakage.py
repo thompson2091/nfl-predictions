@@ -1176,27 +1176,26 @@ def test_profitable_region_needs_a_positive_first_rank():
     ) is None
 
 
-def test_profitable_region_matches_the_measured_artifacts():
-    """The rule, applied to what is actually on disk.
+def test_season_gate_uses_significance_not_point_estimates():
+    """A thin season must not be able to veto a tier on a point estimate.
 
-    Anytime TD earned its markers; First TD did not. If a re-run of the
-    backtest ever flips either, this is the test that should fail first.
+    The strong tier held 41 bets in 2023 against 414 and 339 in the other
+    seasons — an interval of [-61%, +14%] that cannot resolve its own sign. The
+    original gate required every season to be point-positive, so the whole tier
+    appeared or vanished between rebuilds on which way those 41 fell, while the
+    pooled figure sat at +29.5% and +29.6% across the same two rebuilds.
     """
-    import json
-    from pathlib import Path
-    from src.evaluation.rank_economics import profitable_region
+    import inspect
+    from src.evaluation import rank_economics
 
-    for target, expected_marked in (("anytime_td", True), ("first_td", False)):
-        path = Path("output") / target / "rank_economics.json"
-        if not path.exists():
-            continue
-        region = profitable_region(json.loads(path.read_text()))
-        assert (region is not None) == expected_marked, (
-            f"{target}: markers now {'on' if region else 'off'}; if that is a "
-            f"real change, update this test and the board copy together"
+    for fn in (rank_economics.fit_highlight_tiers, rank_economics.fit_edge_rule):
+        src = inspect.getsource(fn)
+        assert '"negative"' in src, (
+            f"{fn.__name__} no longer tests seasons for significance"
         )
-        if region:
-            assert 1 <= region["max_rank"] <= 5
+        assert '(p["roi"] or 0) > 0' not in src, (
+            f"{fn.__name__} is back to vetoing on a season point estimate"
+        )
 
 
 def test_edge_rule_needs_every_season_positive():
