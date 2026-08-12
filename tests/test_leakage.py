@@ -1580,3 +1580,39 @@ def test_first_td_probabilities_sum_to_one_per_game():
     assert 0.7 <= per_game <= 1.05, (
         f"first_td probabilities sum to {per_game:.2f} per game, not ~1"
     )
+
+
+def test_distribution_shift_ignores_time_indices():
+    """Season and week shift by definition and must not fill the warning list.
+
+    2026 is always further from the training mean than 2020; week 1 is always
+    further than week 9. Flagging them every run is how a guardrail teaches you
+    to skim past it — and this one was skimmed past, on a week where it was
+    right.
+    """
+    import polars as pl
+    from src.prediction.predict import check_distribution_shift
+
+    train = pl.DataFrame({"season": list(range(2015, 2025)),
+                          "week": list(range(1, 11)),
+                          "real": [0.0] * 5 + [1.0] * 5})
+    week = pl.DataFrame({"season": [2026] * 8, "week": [1] * 8,
+                         "real": [0.0] * 4 + [1.0] * 4})
+    out = check_distribution_shift(week, train, ["season", "week", "real"])
+    assert "season" not in out and "week" not in out
+    assert out == [], f"nothing real shifted, got {out}"
+
+
+def test_shift_baseline_is_week_matched():
+    """Week 1 must be compared with week 1, not with a season average.
+
+    Season-to-date features are thin in week 1 by construction, so an all-weeks
+    baseline flagged a dozen families every run for a reason that was not a
+    defect. Week-matched, the live board went from 35 flagged features to 12.
+    """
+    from pathlib import Path
+
+    src = Path("src/prediction/predict.py").read_text()
+    call = src.split("check_distribution_shift(\n", 1)[1].split(")", 1)[0]
+    assert "prior" in call, "the shift check no longer uses a week-matched baseline"
+    assert 'pl.col("week") == week' in src, "week matching was removed"

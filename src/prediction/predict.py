@@ -328,7 +328,8 @@ def _market_from_cache(season: int, week: int) -> pl.DataFrame | None:
 
 def check_distribution_shift(week_df: pl.DataFrame, train_df: pl.DataFrame,
                              feature_cols: list[str], threshold: float = 0.5,
-                             top_n: int = 15) -> list[str]:
+                             top_n: int = 15,
+                             is_live: bool = True) -> list[str]:
     """Warn when predict-time feature *values* sit far from their training range.
 
     The nullness check below catches features that vanish. It is blind to the
@@ -348,8 +349,15 @@ def check_distribution_shift(week_df: pl.DataFrame, train_df: pl.DataFrame,
     if train_df is None or train_df.height == 0 or week_df.height == 0:
         return []
 
+    # A season or week index shifts by definition — 2026 is always further from
+    # the mean than 2020, and week 1 is always further than week 9. Flagging
+    # them every single run is what teaches you to skim the list.
+    time_indices = {"season", "season_right", "week", "week_num"}
+
     shifted = []
     for c in feature_cols:
+        if c in time_indices:
+            continue
         if c not in week_df.columns or c not in train_df.columns:
             continue
         try:
@@ -367,12 +375,33 @@ def check_distribution_shift(week_df: pl.DataFrame, train_df: pl.DataFrame,
     if shifted:
         print(f"\n  !! DISTRIBUTION SHIFT: {len(shifted)} feature(s) sit more than "
               f"{threshold} training SDs from where the model was fitted.")
-        print("     The model has not seen inputs like this; treat the output with "
-              "suspicion:")
-        for c, was, now, z in sorted(shifted, key=lambda r: -r[3])[:top_n]:
-            print(f"       {c:45s} train={was:>9.3f} -> now={now:>9.3f}  ({z:.1f} SD)")
-        if len(shifted) > top_n:
-            print(f"       ... and {len(shifted) - top_n} more")
+        if is_live:
+            print("     This is the board you would bet. Nothing downstream will "
+                  "fail; the model will simply score rows unlike anything it was")
+            print("     fitted on. Explain each family below before trusting the "
+                  "output.")
+        else:
+            print("     This is a replay of a past week, so some drift is normal "
+                  "— but it is not automatically noise. The last time these were")
+            print("     waved through, the cause was carry-forward filling week 1 "
+                  "of the predict season and no other season.")
+
+        # Grouped by family rather than listed one by one. Seventeen individual
+        # lines read as noise; "every personnel feature at once" reads as a
+        # broken join, which is what it usually is.
+        families: dict[str, list] = {}
+        for c, was, now, z in shifted:
+            fam = c.rsplit("_szn", 1)[0].rsplit("_avg_", 1)[0]
+            fam = fam.rsplit("_", 1)[0] if "_" in fam else fam
+            families.setdefault(fam, []).append((c, was, now, z))
+        ranked = sorted(families.items(), key=lambda kv: -max(x[3] for x in kv[1]))
+        for fam, items in ranked[:top_n]:
+            worst = max(items, key=lambda x: x[3])
+            extra = f"  (+{len(items) - 1} more in this family)" if len(items) > 1 else ""
+            print(f"       {fam:38s} worst {worst[3]:.1f} SD: "
+                  f"{worst[1]:.3f} -> {worst[2]:.3f}{extra}")
+        if len(ranked) > top_n:
+            print(f"       ... and {len(ranked) - top_n} more families")
     return [c for c, _, _, _ in shifted]
 
 
@@ -448,8 +477,17 @@ def predict(season: int, week: int, model_name: str = None,
     # Training rows are already in memory from the read above, so comparing
     # against them costs nothing and cannot go stale the way a pickled summary
     # written at training time can.
+    # Baseline is the *same week* in earlier seasons, not every week. Season-to-
+    # date features are null or thin in week 1 by construction, so comparing
+    # week 1 against a season average flags a dozen families every run for a
+    # reason that is not a defect. Week-matched, the same check went from 17
+    # families to 6 — and those 6 were the real ones.
+    prior = df.filter((pl.col("season") < season) & (pl.col("week") == week))
+    if prior.height < 200:
+        prior = df.filter(pl.col("season") < season)
     check_distribution_shift(
-        week_df, df.filter(pl.col("season") < season), feature_cols
+        week_df, prior, feature_cols,
+        is_live=(season == cfg["seasons"].get("predict_season")),
     )
 
     X, _ = prepare_data(week_df, feature_cols)
