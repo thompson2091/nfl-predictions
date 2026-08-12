@@ -1,9 +1,9 @@
 .PHONY: all ingest targets candidates features train predict clean \
 	docker-build docker-up docker-down docker-logs docker-shell \
 	docker-pipeline docker-prod docker-build-amd64 \
-	backtest walkforward longshot economics evaluate wager wager-report \
+	backtest walkforward longshot economics clusters evaluate wager wager-report \
 	odds-open odds-close odds-schedule-on odds-schedule-off odds-schedule-status \
-	decay shop
+	decay shop site
 
 # Defaults so the evaluation targets run without arguments. Override per call:
 #   make backtest SEASON=2024 TARGET=first_td
@@ -77,6 +77,13 @@ longshot:
 economics:
 	python scripts/14_rank_economics.py --target $(TARGET)
 
+# What kinds of player, and what kinds of bet, are these? Fits both groupings on
+# the training seasons and scores them on the seasons after. The Player types tab
+# reads the JSON this writes; leaving it stale makes the tab describe roles fitted
+# from a feature set that no longer exists.
+clusters:
+	python scripts/21_clusters.py --target $(TARGET)
+
 # Everything the app reads, rebuilt in dependency order, for both markets.
 # Run this after `make train` or the app will quote a model that no longer exists.
 # --walk-forward retrains on earlier seasons before scoring each one. Without
@@ -90,6 +97,7 @@ evaluate:
 		done; \
 		python scripts/14_rank_economics.py --target $$t; \
 		python scripts/11_walkforward.py --target $$t; \
+		python scripts/21_clusters.py --target $$t; \
 	done
 	python scripts/12_longshot.py --target anytime_td
 
@@ -114,6 +122,14 @@ decay:
 # Usage: make shop WEEK=1
 shop:
 	python scripts/18_shop.py --week $(WEEK) --target $(TARGET)
+
+# ── Publishing ────────────────────────────────────────────────────────────
+# One self-contained site/index.html, for sending to someone who does not have
+# the repo. It runs app.py against a recording Streamlit, so it always matches
+# what the live app would show — but only at the moment you build it. Rebuild
+# after `make predict` or `make odds`, or the board goes stale silently.
+site:
+	python scripts/20_export_html.py
 
 # ── Weekly odds capture ───────────────────────────────────────────────────
 # The week number is derived from the schedule, so these take no arguments.

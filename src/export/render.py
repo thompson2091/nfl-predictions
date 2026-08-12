@@ -82,6 +82,13 @@ def md(text: str) -> str:
             out.append("<ul>" + "".join(f"<li>{b}</li>" for b in bullets) + "</ul>")
             bullets.clear()
 
+    # A blockquote is one wrapped paragraph in the source; joining its lines
+    # first means the continuation's "> " does not survive into the middle of
+    # the sentence, which is how it read before.
+    def quote(block: str) -> str:
+        body = " ".join(re.sub(r"^>\s?", "", ln).strip() for ln in block.split("\n"))
+        return f"<blockquote>{_inline(esc(body))}</blockquote>"
+
     for block in re.split(r"\n\s*\n", text.strip()):
         block = block.strip()
         if not block:
@@ -89,6 +96,10 @@ def md(text: str) -> str:
         if re.fullmatch(r"-{3,}", block):
             flush()
             out.append("<hr>")
+            continue
+        if block.startswith(">"):
+            flush()
+            out.append(quote(block))
             continue
         lines = block.split("\n")
         # A block can mix a heading, some bullets and a paragraph.
@@ -131,13 +142,18 @@ def plain(text: str) -> str:
 
 
 def fmt_cell(value: Any, spec: str | None) -> str:
-    """Apply a column_config format the way Streamlit would."""
+    """Apply a column_config format the way Streamlit would.
+
+    Text cells additionally get inline markdown, which Streamlit's TextColumn
+    does not: the tier legend's rules are written with emphasis in them, and
+    left raw they publish as a literal `*below*`.
+    """
     if value is None or value == "":
         return ""
     if spec is None:
-        return esc(value)
+        return plain(value)
     if not isinstance(value, (int, float)) or isinstance(value, bool):
-        return esc(value)
+        return plain(value)
     try:
         if spec == "percent":
             return esc(f"{value * 100:.1f}%")
@@ -197,7 +213,7 @@ def callout(node: dict) -> str:
     return f'<div class="callout {tone}">{md(node["body"])}</div>'
 
 
-def table(node: dict, index: int, controls: list[dict]) -> str:
+def table(node: dict, tid: str, controls: list[dict]) -> str:
     """A sortable, filterable table.
 
     Streamlit ships sorting for free and the export has to earn it, but the
@@ -206,7 +222,6 @@ def table(node: dict, index: int, controls: list[dict]) -> str:
     trust.
     """
     cols = node["columns"]
-    tid = f"tbl{index}"
 
     head = []
     for c in cols:
@@ -284,7 +299,7 @@ def _control_bar(tid: str, controls: list[dict], keys: list[str],
 RAMP = ["--ramp-1", "--ramp-2", "--ramp-3"]
 
 
-def chart(node: dict, index: int) -> str:
+def chart(node: dict, fid: str) -> str:
     series = [s for s in node["series"] if s["x"] and s["y"]]
     if not series:
         return ""
@@ -355,7 +370,7 @@ def chart(node: dict, index: int) -> str:
     if node.get("x_title"):
         axis = f'<p class="axis-note">{esc(node["x_title"])} →</p>'
     return (
-        f'<figure class="figure" id="fig{index}" data-chart=\'{esc(data)}\'>'
+        f'<figure class="figure" id="{fid}" data-chart=\'{esc(data)}\'>'
         f'<figcaption>{esc(node.get("title") or "")}</figcaption>'
         f'<div class="legend">{legend}</div>'
         f'{"".join(parts)}<div class="tip chart-tip" hidden></div>{axis}</figure>'
@@ -366,7 +381,16 @@ def chart(node: dict, index: int) -> str:
 
 
 class Renderer:
-    def __init__(self):
+    """Walks one pane's nodes.
+
+    `prefix` scopes the element ids it mints. Every market and every pane gets
+    its own Renderer, so without it each one restarted at 1 and the page ended
+    up with several `tbl1`s — at which point a filter in one market drove the
+    other market's table, since getElementById returns whichever came first.
+    """
+
+    def __init__(self, prefix: str = "t"):
+        self.prefix = prefix
         self.n = 0
 
     def nodes(self, children: list[dict]) -> str:
@@ -392,11 +416,11 @@ class Renderer:
 
             if node["t"] == "table":
                 self.n += 1
-                out.append(table(node, self.n, pending))
+                out.append(table(node, f"{self.prefix}-t{self.n}", pending))
                 pending = []
             elif node["t"] == "chart":
                 self.n += 1
-                out.append(chart(node, self.n))
+                out.append(chart(node, f"{self.prefix}-f{self.n}"))
             elif node["t"] == "callout":
                 out.append(callout(node))
             elif node["t"] == "divider":

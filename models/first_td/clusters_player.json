@@ -1,0 +1,2410 @@
+{
+  "kind": "player_archetypes",
+  "version": 1,
+  "target_type": "first_td",
+  "lens": "player",
+  "seasons_used": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+  ],
+  "split": {
+    "train_end": 2023,
+    "val_season": 2024,
+    "test_season": 2025
+  },
+  "population": "_filter_low_activity",
+  "n_rows_fit": 71070,
+  "seed": 42,
+  "k_range": [
+    2,
+    8
+  ],
+  "criterion": "gap_statistic_1se",
+  "candidate_features": [
+    "player_gl_carries_avg_5g",
+    "player_rz_carries_avg_5g",
+    "player_rz_targets_avg_5g",
+    "player_i5_touches_avg_5g",
+    "player_i10_touch_share_avg_5g",
+    "player_i5_touch_share_avg_5g",
+    "player_endzone_td_rate_avg_5g",
+    "player_td_market_share_avg_5g",
+    "player_carries_avg_5g",
+    "player_targets_avg_5g",
+    "player_receptions_avg_5g",
+    "player_rush_share_avg_5g",
+    "player_target_share_avg_5g",
+    "player_air_yards_share_avg_5g",
+    "player_wopr_avg_5g",
+    "player_rushing_yards_avg_5g",
+    "player_receiving_yards_avg_5g",
+    "player_receiving_yac_per_rec_avg_5g",
+    "player_od_touch_share_avg_5g",
+    "player_h1_touch_share_avg_5g",
+    "snap_pct_filled",
+    "is_starter",
+    "is_high_usage"
+  ],
+  "features_by_stratum": {
+    "RB": [
+      "player_gl_carries_avg_5g",
+      "player_rz_carries_avg_5g",
+      "player_rz_targets_avg_5g",
+      "player_i10_touch_share_avg_5g",
+      "player_endzone_td_rate_avg_5g",
+      "player_td_market_share_avg_5g",
+      "player_carries_avg_5g",
+      "player_targets_avg_5g",
+      "player_air_yards_share_avg_5g",
+      "player_receiving_yac_per_rec_avg_5g",
+      "player_od_touch_share_avg_5g",
+      "snap_pct_filled"
+    ],
+    "WR": [
+      "player_gl_carries_avg_5g",
+      "player_rz_carries_avg_5g",
+      "player_rz_targets_avg_5g",
+      "player_i5_touches_avg_5g",
+      "player_i10_touch_share_avg_5g",
+      "player_endzone_td_rate_avg_5g",
+      "player_td_market_share_avg_5g",
+      "player_carries_avg_5g",
+      "player_targets_avg_5g",
+      "player_rushing_yards_avg_5g",
+      "player_receiving_yac_per_rec_avg_5g",
+      "player_od_touch_share_avg_5g",
+      "snap_pct_filled"
+    ],
+    "TE": [
+      "player_gl_carries_avg_5g",
+      "player_rz_carries_avg_5g",
+      "player_rz_targets_avg_5g",
+      "player_i5_touches_avg_5g",
+      "player_i10_touch_share_avg_5g",
+      "player_endzone_td_rate_avg_5g",
+      "player_td_market_share_avg_5g",
+      "player_carries_avg_5g",
+      "player_targets_avg_5g",
+      "player_rushing_yards_avg_5g",
+      "player_receiving_yac_per_rec_avg_5g",
+      "player_od_touch_share_avg_5g",
+      "snap_pct_filled"
+    ],
+    "QB": [
+      "player_gl_carries_avg_5g",
+      "player_rz_carries_avg_5g",
+      "player_rz_targets_avg_5g",
+      "player_i10_touch_share_avg_5g",
+      "player_endzone_td_rate_avg_5g",
+      "player_td_market_share_avg_5g",
+      "player_carries_avg_5g",
+      "player_targets_avg_5g",
+      "player_air_yards_share_avg_5g",
+      "player_rushing_yards_avg_5g",
+      "player_receiving_yards_avg_5g",
+      "player_receiving_yac_per_rec_avg_5g",
+      "player_od_touch_share_avg_5g",
+      "snap_pct_filled"
+    ]
+  },
+  "strata_col": "position",
+  "strata": {
+    "RB": {
+      "features": [
+        "player_gl_carries_avg_5g",
+        "player_rz_carries_avg_5g",
+        "player_rz_targets_avg_5g",
+        "player_i10_touch_share_avg_5g",
+        "player_endzone_td_rate_avg_5g",
+        "player_td_market_share_avg_5g",
+        "player_carries_avg_5g",
+        "player_targets_avg_5g",
+        "player_air_yards_share_avg_5g",
+        "player_receiving_yac_per_rec_avg_5g",
+        "player_od_touch_share_avg_5g",
+        "snap_pct_filled"
+      ],
+      "transforms": {
+        "player_gl_carries_avg_5g": "log1p",
+        "player_rz_carries_avg_5g": "log1p",
+        "player_rz_targets_avg_5g": "log1p",
+        "player_i10_touch_share_avg_5g": "none",
+        "player_endzone_td_rate_avg_5g": "none",
+        "player_td_market_share_avg_5g": "none",
+        "player_carries_avg_5g": "log1p",
+        "player_targets_avg_5g": "log1p",
+        "player_air_yards_share_avg_5g": "none",
+        "player_receiving_yac_per_rec_avg_5g": "signed_log1p",
+        "player_od_touch_share_avg_5g": "none",
+        "snap_pct_filled": "none"
+      },
+      "impute": {
+        "player_gl_carries_avg_5g": 0.0,
+        "player_rz_carries_avg_5g": 0.4,
+        "player_rz_targets_avg_5g": 0.0,
+        "player_i10_touch_share_avg_5g": 0.05,
+        "player_endzone_td_rate_avg_5g": 0.0,
+        "player_td_market_share_avg_5g": 0.0,
+        "player_carries_avg_5g": 3.2,
+        "player_targets_avg_5g": 1.0,
+        "player_air_yards_share_avg_5g": 1.1461457634376857e-05,
+        "player_receiving_yac_per_rec_avg_5g": 2.9666666666666663,
+        "player_od_touch_share_avg_5g": 0.0,
+        "snap_pct_filled": 0.08
+      },
+      "impute_method": "fit-set median, within this position",
+      "scaler": {
+        "mean": [
+          0.19314892934016592,
+          0.48932841809048283,
+          0.1599028792656668,
+          0.10682145770676905,
+          0.06795520424777826,
+          0.07857154286676597,
+          1.4183788954094196,
+          0.7841013115872056,
+          0.0034828615210819418,
+          1.2432117465079662,
+          0.0399024473459277,
+          0.21497574532592456
+        ],
+        "scale": [
+          0.269508182196013,
+          0.48447067261468424,
+          0.21540372035386252,
+          0.13691659473347273,
+          0.12327137742279573,
+          0.11758236995478,
+          0.9568703016665072,
+          0.5767424462024677,
+          0.01754977658635182,
+          0.8001458085884569,
+          0.06431869574003292,
+          0.26200414447286335
+        ]
+      },
+      "dropped": [
+        {
+          "col": "is_starter",
+          "reason": "null rate 0.173 > 0.05 (training run)"
+        },
+        {
+          "col": "is_high_usage",
+          "reason": "binary (2 distinct values); a flag standardises into a split plane and would define groups instead of describing them"
+        },
+        {
+          "col": "player_i5_touches_avg_5g",
+          "reason": "|rho| 0.96 with player_gl_carries_avg_5g"
+        },
+        {
+          "col": "player_i5_touch_share_avg_5g",
+          "reason": "|rho| 0.92 with player_gl_carries_avg_5g"
+        },
+        {
+          "col": "player_receptions_avg_5g",
+          "reason": "|rho| 0.98 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_rush_share_avg_5g",
+          "reason": "|rho| 0.99 with player_carries_avg_5g"
+        },
+        {
+          "col": "player_target_share_avg_5g",
+          "reason": "|rho| 0.99 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_wopr_avg_5g",
+          "reason": "|rho| 0.98 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_rushing_yards_avg_5g",
+          "reason": "|rho| 0.98 with player_carries_avg_5g"
+        },
+        {
+          "col": "player_receiving_yards_avg_5g",
+          "reason": "|rho| 0.93 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_h1_touch_share_avg_5g",
+          "reason": "|rho| 0.94 with player_carries_avg_5g"
+        }
+      ],
+      "pca_display": {
+        "components": [
+          [
+            0.3219837298553984,
+            0.35023190868768606,
+            0.2408577201527853,
+            0.3453970147195476,
+            0.2725491354419473,
+            0.31490626472709393,
+            0.33814428700992294,
+            0.3058591078893125,
+            0.022492655056867164,
+            0.2718950821679639,
+            0.2738874799559632,
+            0.25605663882222657
+          ],
+          [
+            -0.2777661067589174,
+            -0.15745361844860106,
+            0.4293841558153818,
+            -0.1552105850743071,
+            -0.3521237921920259,
+            -0.1541409384160964,
+            -0.04049096757704095,
+            0.41128779312054803,
+            0.507031731247375,
+            0.30055171565044103,
+            -0.018358293188211038,
+            0.15263017604437468
+          ]
+        ],
+        "explained_variance_ratio": [
+          0.5603264248419506,
+          0.11742546689723615
+        ]
+      },
+      "n": 19790,
+      "k": 8,
+      "k_unresolved": true,
+      "k_reason": "gap still rising at k=8, the largest k that keeps every group measurable; the elbow is outside the range we allow, so this is the biggest gap available and not a settled k",
+      "centroids": [
+        [
+          0.77127901792801,
+          0.6867218507474028,
+          -0.215184224178267,
+          0.4657223907427892,
+          0.8562468216238247,
+          0.4679858119998088,
+          0.6213111808273707,
+          -0.036508368539167856,
+          -0.07748165036537656,
+          0.12130327144104587,
+          -0.03044240076930252,
+          -0.20187550372611823
+        ],
+        [
+          -0.6360177674436153,
+          -0.8447952546051104,
+          -0.6306536908574623,
+          -0.7052615405399902,
+          -0.4923157221668209,
+          -0.6074610840737771,
+          -1.0283752708312879,
+          -1.086220815179278,
+          -0.11435677378459173,
+          -1.2982638080910396,
+          -0.5669305217326326,
+          -0.6357890232560973
+        ],
+        [
+          -0.2243412725365317,
+          -0.05323449524835194,
+          1.3151413381350667,
+          0.011258342273663404,
+          -0.25610887761224893,
+          0.1814478232047996,
+          0.10389949068546254,
+          1.291263386274777,
+          2.210339635340023,
+          0.7395875593015755,
+          -0.02006270332790599,
+          0.35806862389156224
+        ],
+        [
+          2.0578877132726414,
+          1.7783291144912656,
+          0.2908631377311916,
+          2.0124722741444696,
+          2.366107130275725,
+          2.009314508002259,
+          1.3925738602079203,
+          0.7613894756118809,
+          -0.5695712447195673,
+          0.8519149916334026,
+          1.144786096131709,
+          0.9042934945380167
+        ],
+        [
+          0.8600220674413276,
+          1.1667762072930805,
+          0.78129378653096,
+          0.9919514042397943,
+          0.26631638802171614,
+          0.6216042604540746,
+          1.2246131236254345,
+          1.0634960863515526,
+          -0.37214968501095935,
+          0.9034433499913965,
+          1.3543669304051147,
+          1.1939800552069832
+        ],
+        [
+          -0.5834641613804716,
+          -0.5971182774823567,
+          -0.3962571900377629,
+          -0.5847280095394775,
+          -0.49139600736502625,
+          -0.5439957893566375,
+          -0.4599776293589305,
+          -0.2818241074793342,
+          -0.06479298554528173,
+          0.11384295735953569,
+          -0.47458903629312627,
+          -0.38563299923043
+        ],
+        [
+          1.7336893043607844,
+          1.6975678844065485,
+          2.3309919973589626,
+          2.1046125311028696,
+          1.3539279210843698,
+          2.080639203189445,
+          1.3737948316775426,
+          1.7679349974402967,
+          1.1998707366729806,
+          1.0525623902223464,
+          1.662848347991501,
+          1.5345917490040697
+        ],
+        [
+          -0.2814105326243179,
+          0.136173931824807,
+          0.3412663335364892,
+          -0.14775729279037172,
+          -0.43491958786871515,
+          -0.2282337650485742,
+          0.5137350770340404,
+          0.669607622696643,
+          -0.3255264398471771,
+          0.7236314746244626,
+          0.09240236564690132,
+          0.3433198768670974
+        ]
+      ],
+      "sizes": [
+        2155,
+        5313,
+        1089,
+        1276,
+        1903,
+        4989,
+        731,
+        2334
+      ],
+      "inertia": 85837.35931842582,
+      "outlier_distance_p95": 3.4507822084926882,
+      "selection": [
+        {
+          "k": 2,
+          "log_wk": 10.9410772292199,
+          "gap": 1.5914774128288922,
+          "gap_se": 0.0037207606771718395,
+          "silhouette": 0.4094092023487472,
+          "silhouette_se": 0.0012752660145310564,
+          "split_half_ari": 0.9924289621937534,
+          "inertia": 139786.77971163602,
+          "smallest_cluster": 6648
+        },
+        {
+          "k": 3,
+          "log_wk": 10.767474994237029,
+          "gap": 1.651174044628359,
+          "gap_se": 0.0033421777205849576,
+          "silhouette": 0.2960305025029032,
+          "silhouette_se": 0.0006830489686827008,
+          "split_half_ari": 0.8915111185640042,
+          "inertia": 117221.45606444897,
+          "smallest_cluster": 3775
+        },
+        {
+          "k": 4,
+          "log_wk": 10.682110196591228,
+          "gap": 1.6923030262114267,
+          "gap_se": 0.0034150598617822847,
+          "silhouette": 0.21336166128931225,
+          "silhouette_se": 0.0010347096333292055,
+          "split_half_ari": 0.9216070970919935,
+          "inertia": 107582.65623253249,
+          "smallest_cluster": 2532
+        },
+        {
+          "k": 5,
+          "log_wk": 10.601630719187241,
+          "gap": 1.7333980589242408,
+          "gap_se": 0.0034804979277597197,
+          "silhouette": 0.21458012432925355,
+          "silhouette_se": 0.0005435650399167603,
+          "split_half_ari": 0.8962774340822367,
+          "inertia": 99356.97634842311,
+          "smallest_cluster": 1660
+        },
+        {
+          "k": 6,
+          "log_wk": 10.543430681438105,
+          "gap": 1.7531895526205616,
+          "gap_se": 0.0029943154658604947,
+          "silhouette": 0.22007836771227463,
+          "silhouette_se": 0.0018580870695985355,
+          "split_half_ari": 0.9103383766600212,
+          "inertia": 93607.08660952472,
+          "smallest_cluster": 1226
+        },
+        {
+          "k": 7,
+          "log_wk": 10.496662663518727,
+          "gap": 1.771430422321119,
+          "gap_se": 0.003822002978974231,
+          "silhouette": 0.20582162270831367,
+          "silhouette_se": 0.003938394064793191,
+          "split_half_ari": 0.6960809344245962,
+          "inertia": 89392.00739852972,
+          "smallest_cluster": 1019
+        },
+        {
+          "k": 8,
+          "log_wk": 10.459335380789167,
+          "gap": 1.7809102093151221,
+          "gap_se": 0.002834789649844353,
+          "silhouette": 0.19607647376400525,
+          "silhouette_se": 0.001894373219271089,
+          "split_half_ari": 0.7831112604298386,
+          "inertia": 85837.35931842582,
+          "smallest_cluster": 731
+        }
+      ],
+      "clusters": [
+        {
+          "id": 0,
+          "label": "end-zone finishing back",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_endzone_td_rate_avg_5g",
+              "z": 0.8562468216238247,
+              "definition": "5-game avg TD rate on inside-5 touches"
+            },
+            {
+              "col": "player_gl_carries_avg_5g",
+              "z": 0.77127901792801,
+              "definition": "5-game avg goal line carries"
+            },
+            {
+              "col": "player_rz_carries_avg_5g",
+              "z": 0.6867218507474028,
+              "definition": "5-game avg red zone carries"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Justice Hill",
+              "season": 2023,
+              "week": 5
+            },
+            {
+              "player_name": "Joshua Kelley",
+              "season": 2020,
+              "week": 13
+            },
+            {
+              "player_name": "Justice Hill",
+              "season": 2023,
+              "week": 4
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "label": "back \u2014 5-game avg YAC per reception low",
+          "label_source": "generated",
+          "top_features": [
+            {
+              "col": "player_receiving_yac_per_rec_avg_5g",
+              "z": -1.2982638080910396,
+              "definition": "5-game avg YAC per reception"
+            },
+            {
+              "col": "player_targets_avg_5g",
+              "z": -1.086220815179278,
+              "definition": "5-game avg receiving targets"
+            },
+            {
+              "col": "player_carries_avg_5g",
+              "z": -1.0283752708312879,
+              "definition": "5-game avg carries"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Trenton Cannon",
+              "season": 2020,
+              "week": 17
+            },
+            {
+              "player_name": "Michael Burton",
+              "season": 2020,
+              "week": 7
+            },
+            {
+              "player_name": "Jacquizz Rodgers",
+              "season": 2019,
+              "week": 5
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "label": "deep back",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_air_yards_share_avg_5g",
+              "z": 2.210339635340023,
+              "definition": "5-game avg air yards share"
+            },
+            {
+              "col": "player_rz_targets_avg_5g",
+              "z": 1.3151413381350667,
+              "definition": "5-game avg red zone targets"
+            },
+            {
+              "col": "player_targets_avg_5g",
+              "z": 1.291263386274777,
+              "definition": "5-game avg receiving targets"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Shane Vereen",
+              "season": 2015,
+              "week": 14
+            },
+            {
+              "player_name": "Nyheim Hines",
+              "season": 2020,
+              "week": 10
+            },
+            {
+              "player_name": "Chase Edmonds",
+              "season": 2020,
+              "week": 7
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "label": "end-zone finishing back, goal-line",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_endzone_td_rate_avg_5g",
+              "z": 2.366107130275725,
+              "definition": "5-game avg TD rate on inside-5 touches"
+            },
+            {
+              "col": "player_gl_carries_avg_5g",
+              "z": 2.0578877132726414,
+              "definition": "5-game avg goal line carries"
+            },
+            {
+              "col": "player_i10_touch_share_avg_5g",
+              "z": 2.0124722741444696,
+              "definition": "5-game avg inside-10 touch share"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Jonathan Taylor",
+              "season": 2020,
+              "week": 9
+            },
+            {
+              "player_name": "James Robinson",
+              "season": 2021,
+              "week": 11
+            },
+            {
+              "player_name": "Ryan Mathews",
+              "season": 2016,
+              "week": 3
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "label": "script-opening back",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_od_touch_share_avg_5g",
+              "z": 1.3543669304051147,
+              "definition": "5-game avg opening drive touch share"
+            },
+            {
+              "col": "player_carries_avg_5g",
+              "z": 1.2246131236254345,
+              "definition": "5-game avg carries"
+            },
+            {
+              "col": "snap_pct_filled",
+              "z": 1.1939800552069832,
+              "definition": "Snap pct (null filled as 0)"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Jamaal Williams",
+              "season": 2020,
+              "week": 12
+            },
+            {
+              "player_name": "Phillip Lindsay",
+              "season": 2018,
+              "week": 6
+            },
+            {
+              "player_name": "Melvin Gordon",
+              "season": 2021,
+              "week": 8
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "label": "back \u2014 5-game avg red zone carries low",
+          "label_source": "generated",
+          "top_features": [
+            {
+              "col": "player_rz_carries_avg_5g",
+              "z": -0.5971182774823567,
+              "definition": "5-game avg red zone carries"
+            },
+            {
+              "col": "player_i10_touch_share_avg_5g",
+              "z": -0.5847280095394775,
+              "definition": "5-game avg inside-10 touch share"
+            },
+            {
+              "col": "player_gl_carries_avg_5g",
+              "z": -0.5834641613804716,
+              "definition": "5-game avg goal line carries"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Cam Akers",
+              "season": 2023,
+              "week": 7
+            },
+            {
+              "player_name": "Raheem Blackshear",
+              "season": 2023,
+              "week": 9
+            },
+            {
+              "player_name": "Peyton Barber",
+              "season": 2017,
+              "week": 12
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "label": "red-zone back",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_rz_targets_avg_5g",
+              "z": 2.3309919973589626,
+              "definition": "5-game avg red zone targets"
+            },
+            {
+              "col": "player_i10_touch_share_avg_5g",
+              "z": 2.1046125311028696,
+              "definition": "5-game avg inside-10 touch share"
+            },
+            {
+              "col": "player_td_market_share_avg_5g",
+              "z": 2.080639203189445,
+              "definition": "5-game avg share of team TDs"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Javonte Williams",
+              "season": 2021,
+              "week": 15
+            },
+            {
+              "player_name": "Damien Williams",
+              "season": 2019,
+              "week": 3
+            },
+            {
+              "player_name": "Melvin Gordon",
+              "season": 2017,
+              "week": 12
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "label": "after-catch back",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_receiving_yac_per_rec_avg_5g",
+              "z": 0.7236314746244626,
+              "definition": "5-game avg YAC per reception"
+            },
+            {
+              "col": "player_targets_avg_5g",
+              "z": 0.669607622696643,
+              "definition": "5-game avg receiving targets"
+            },
+            {
+              "col": "player_carries_avg_5g",
+              "z": 0.5137350770340404,
+              "definition": "5-game avg carries"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Le'Veon Bell",
+              "season": 2020,
+              "week": 13
+            },
+            {
+              "player_name": "Ronald Jones",
+              "season": 2021,
+              "week": 18
+            },
+            {
+              "player_name": "Ty Johnson",
+              "season": 2021,
+              "week": 3
+            }
+          ]
+        }
+      ]
+    },
+    "WR": {
+      "features": [
+        "player_gl_carries_avg_5g",
+        "player_rz_carries_avg_5g",
+        "player_rz_targets_avg_5g",
+        "player_i5_touches_avg_5g",
+        "player_i10_touch_share_avg_5g",
+        "player_endzone_td_rate_avg_5g",
+        "player_td_market_share_avg_5g",
+        "player_carries_avg_5g",
+        "player_targets_avg_5g",
+        "player_rushing_yards_avg_5g",
+        "player_receiving_yac_per_rec_avg_5g",
+        "player_od_touch_share_avg_5g",
+        "snap_pct_filled"
+      ],
+      "transforms": {
+        "player_gl_carries_avg_5g": "none",
+        "player_rz_carries_avg_5g": "none",
+        "player_rz_targets_avg_5g": "log1p",
+        "player_i5_touches_avg_5g": "none",
+        "player_i10_touch_share_avg_5g": "none",
+        "player_endzone_td_rate_avg_5g": "none",
+        "player_td_market_share_avg_5g": "none",
+        "player_carries_avg_5g": "log1p",
+        "player_targets_avg_5g": "log1p",
+        "player_rushing_yards_avg_5g": "signed_log1p",
+        "player_receiving_yac_per_rec_avg_5g": "signed_log1p",
+        "player_od_touch_share_avg_5g": "none",
+        "snap_pct_filled": "none"
+      },
+      "impute": {
+        "player_gl_carries_avg_5g": 0.0,
+        "player_rz_carries_avg_5g": 0.0,
+        "player_rz_targets_avg_5g": 0.2,
+        "player_i5_touches_avg_5g": 0.0,
+        "player_i10_touch_share_avg_5g": 0.014285714285714285,
+        "player_endzone_td_rate_avg_5g": 0.0,
+        "player_td_market_share_avg_5g": 0.0,
+        "player_carries_avg_5g": 0.0,
+        "player_targets_avg_5g": 2.6666666666666665,
+        "player_rushing_yards_avg_5g": 0.0,
+        "player_receiving_yac_per_rec_avg_5g": 2.2500000000000004,
+        "player_od_touch_share_avg_5g": 0.0,
+        "snap_pct_filled": 0.23
+      },
+      "impute_method": "fit-set median, within this position",
+      "scaler": {
+        "mean": [
+          0.002885307238451594,
+          0.01889600422123044,
+          0.3102238546409662,
+          0.1112857965174804,
+          0.04412910567887073,
+          0.00109128411761884,
+          0.06422142859997827,
+          0.09318234823023483,
+          1.2533831245135736,
+          0.26302417884396534,
+          1.09090682970182,
+          0.01913769198561625,
+          0.36038962440639377
+        ],
+        "scale": [
+          0.02660310645699682,
+          0.08060164395208963,
+          0.3051805516180064,
+          0.18939001414006335,
+          0.0669365146971909,
+          0.0153997644638696,
+          0.09687300650942868,
+          0.1967810795852373,
+          0.7119331510642727,
+          0.6322146851752565,
+          0.6581502293242483,
+          0.031118304745236185,
+          0.3657010725185116
+        ]
+      },
+      "dropped": [
+        {
+          "col": "is_starter",
+          "reason": "null rate 0.173 > 0.05 (training run)"
+        },
+        {
+          "col": "is_high_usage",
+          "reason": "binary (2 distinct values); a flag standardises into a split plane and would define groups instead of describing them"
+        },
+        {
+          "col": "player_i5_touch_share_avg_5g",
+          "reason": "|rho| 0.96 with player_i5_touches_avg_5g"
+        },
+        {
+          "col": "player_receptions_avg_5g",
+          "reason": "|rho| 0.97 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_rush_share_avg_5g",
+          "reason": "|rho| 0.99 with player_carries_avg_5g"
+        },
+        {
+          "col": "player_target_share_avg_5g",
+          "reason": "|rho| 0.99 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_air_yards_share_avg_5g",
+          "reason": "|rho| 0.93 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_wopr_avg_5g",
+          "reason": "|rho| 0.98 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_receiving_yards_avg_5g",
+          "reason": "|rho| 0.95 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_h1_touch_share_avg_5g",
+          "reason": "|rho| 0.95 with player_targets_avg_5g"
+        }
+      ],
+      "pca_display": {
+        "components": [
+          [
+            0.12210638889679595,
+            0.16245728997548134,
+            0.3849683458327393,
+            0.3220852980419194,
+            0.34096893283195384,
+            0.10598183646490075,
+            0.3286102388754835,
+            0.19577764268123465,
+            0.3893937718438267,
+            0.16533360398677358,
+            0.30612534470275926,
+            0.2740560074198626,
+            0.2918397212537797
+          ],
+          [
+            0.37793755025785686,
+            0.4729975097425257,
+            -0.18480525460368302,
+            -0.1257317256006169,
+            -0.13684087066425907,
+            0.32370927343736855,
+            -0.11789846439587247,
+            0.47527982026982774,
+            -0.14964600720604868,
+            0.4204016401187266,
+            -0.035892492433978976,
+            -0.060149765324861944,
+            -0.12701696778661223
+          ]
+        ],
+        "explained_variance_ratio": [
+          0.36975511751692125,
+          0.19036019340859664
+        ]
+      },
+      "n": 27796,
+      "k": 8,
+      "k_unresolved": true,
+      "k_reason": "gap still rising at k=8, the largest k that keeps every group measurable; the elbow is outside the range we allow, so this is the biggest gap available and not a settled k",
+      "centroids": [
+        [
+          -0.10845753081940254,
+          -0.20380886315697253,
+          -0.8498063925963898,
+          -0.5209261649418542,
+          -0.5902218011907032,
+          -0.07086368886869449,
+          -0.6008188401390182,
+          -0.3499704474158746,
+          -1.1810049820718986,
+          -0.3211040625159867,
+          -1.1771499608344966,
+          -0.5346110870795087,
+          -0.765717414343491
+        ],
+        [
+          -0.10845753081940343,
+          -0.11037000965536514,
+          1.7651136601546178,
+          1.9997875654259307,
+          2.0636767376841165,
+          -0.07086368886869486,
+          1.731699422638558,
+          -0.027141727844936212,
+          1.2649651210501625,
+          -0.0622520177907954,
+          0.6553205354095873,
+          1.0742334163942429,
+          0.9266927301356049
+        ],
+        [
+          -0.10845753081940336,
+          0.14168826086435243,
+          -0.048635823957387164,
+          -0.2409598532458306,
+          -0.22150699822075898,
+          -0.07086368886869487,
+          -0.0403824393158879,
+          1.401610394839123,
+          0.25389629187558144,
+          1.917519826779904,
+          0.5339589948617344,
+          0.08821870498355534,
+          0.09582916060861287
+        ],
+        [
+          -0.10845753081940303,
+          3.336189393954203,
+          0.6311710069578828,
+          0.3342450822246588,
+          0.5428154083071232,
+          -0.07086368886869499,
+          0.558340719972089,
+          2.981534583234833,
+          0.7882461924040401,
+          2.4263793816188666,
+          0.941430130890186,
+          0.6977578835548086,
+          0.5526486465086033
+        ],
+        [
+          -0.10845753081940253,
+          -0.2024815133456823,
+          -0.3178604830363295,
+          -0.37127873223646235,
+          -0.37380917813256165,
+          -0.07086368886869444,
+          -0.3667689680171477,
+          -0.34576479895802803,
+          -0.017201255495415325,
+          -0.4056189585967122,
+          0.2558039798640235,
+          -0.3008994576588961,
+          -0.17001596632901128
+        ],
+        [
+          9.063219409752442,
+          4.489533736004608,
+          0.7663501993733178,
+          1.5470901171806422,
+          1.3813556956131656,
+          13.656428005721958,
+          1.4571497101936963,
+          2.8779401137192266,
+          0.7358108259705133,
+          2.10780397398694,
+          0.7875390613192267,
+          1.050680549953478,
+          0.4028726599412489
+        ],
+        [
+          7.746375636906542,
+          3.692511711971999,
+          0.5525077522910601,
+          1.4841573096088052,
+          0.7464726473916016,
+          0.38609375704205867,
+          0.32530361590655404,
+          2.312760755009588,
+          0.4566475919679145,
+          1.5401571916023635,
+          0.5974696150197036,
+          0.530613336745736,
+          0.2789446989889331
+        ],
+        [
+          -0.10845753081940274,
+          -0.1815270511296753,
+          0.7509037347136284,
+          0.3128658110602453,
+          0.3818925622797737,
+          -0.07086368886869453,
+          0.4713958542484887,
+          -0.2550346539914046,
+          0.8786040653187916,
+          -0.30872429189121714,
+          0.6069716903440223,
+          0.5116311882332313,
+          0.7763733405393695
+        ]
+      ],
+      "sizes": [
+        8027,
+        2613,
+        2624,
+        810,
+        7869,
+        136,
+        225,
+        5492
+      ],
+      "inertia": 140516.82046006553,
+      "outlier_distance_p95": 3.7708037725013153,
+      "selection": [
+        {
+          "k": 2,
+          "log_wk": 11.183906785887485,
+          "gap": 2.3922096057624564,
+          "gap_se": 0.004301365507976843,
+          "silhouette": 0.3363847088375164,
+          "silhouette_se": 0.0015111040530501692,
+          "split_half_ari": 0.9713074087235903,
+          "inertia": 269019.8069857809,
+          "smallest_cluster": 10286
+        },
+        {
+          "k": 3,
+          "log_wk": 11.037201741718249,
+          "gap": 2.4573217984147533,
+          "gap_se": 0.0038383063071032748,
+          "silhouette": 0.33333158026341997,
+          "silhouette_se": 0.0019260366770224248,
+          "split_half_ari": 0.9786023574959953,
+          "inertia": 226020.1642426359,
+          "smallest_cluster": 388
+        },
+        {
+          "k": 4,
+          "log_wk": 10.89292938213138,
+          "gap": 2.5248021368687965,
+          "gap_se": 0.0031652315134167663,
+          "silhouette": 0.3221788411399043,
+          "silhouette_se": 0.019133882153350063,
+          "split_half_ari": 0.9575199756110627,
+          "inertia": 195339.3923484111,
+          "smallest_cluster": 163
+        },
+        {
+          "k": 5,
+          "log_wk": 10.76323795742535,
+          "gap": 2.5987658142114913,
+          "gap_se": 0.0038291519786330564,
+          "silhouette": 0.24861597168652017,
+          "silhouette_se": 0.0019909093343315784,
+          "split_half_ari": 0.9624146101972688,
+          "inertia": 172028.24726503735,
+          "smallest_cluster": 160
+        },
+        {
+          "k": 6,
+          "log_wk": 10.693819516885036,
+          "gap": 2.6124999547749734,
+          "gap_se": 0.003076262081817992,
+          "silhouette": 0.23140215284362414,
+          "silhouette_se": 0.0113450822877819,
+          "split_half_ari": 0.9204080934424881,
+          "inertia": 158673.93617671335,
+          "smallest_cluster": 136
+        },
+        {
+          "k": 7,
+          "log_wk": 10.624468614302772,
+          "gap": 2.6408472894665618,
+          "gap_se": 0.0021014113730837393,
+          "silhouette": 0.20702197055559907,
+          "silhouette_se": 0.0016086767087667953,
+          "split_half_ari": 0.8973691813602254,
+          "inertia": 148697.37747888902,
+          "smallest_cluster": 136
+        },
+        {
+          "k": 8,
+          "log_wk": 10.565199485291764,
+          "gap": 2.661419862307401,
+          "gap_se": 0.0035547037664524633,
+          "silhouette": 0.21046724020178503,
+          "silhouette_se": 0.001465928419715204,
+          "split_half_ari": 0.9110274644431144,
+          "inertia": 140516.82046006553,
+          "smallest_cluster": 136
+        }
+      ],
+      "clusters": [
+        {
+          "id": 0,
+          "label": "WR \u2014 5-game avg receiving targets low",
+          "label_source": "generated",
+          "top_features": [
+            {
+              "col": "player_targets_avg_5g",
+              "z": -1.1810049820718986,
+              "definition": "5-game avg receiving targets"
+            },
+            {
+              "col": "player_receiving_yac_per_rec_avg_5g",
+              "z": -1.1771499608344966,
+              "definition": "5-game avg YAC per reception"
+            },
+            {
+              "col": "player_rz_targets_avg_5g",
+              "z": -0.8498063925963898,
+              "definition": "5-game avg red zone targets"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Kendall Hinton",
+              "season": 2021,
+              "week": 17
+            },
+            {
+              "player_name": "Noah Brown",
+              "season": 2021,
+              "week": 18
+            },
+            {
+              "player_name": "James Proche",
+              "season": 2022,
+              "week": 7
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "label": "inside-10 WR",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_i10_touch_share_avg_5g",
+              "z": 2.0636767376841165,
+              "definition": "5-game avg inside-10 touch share"
+            },
+            {
+              "col": "player_i5_touches_avg_5g",
+              "z": 1.9997875654259307,
+              "definition": "5-game avg inside-5 touches"
+            },
+            {
+              "col": "player_rz_targets_avg_5g",
+              "z": 1.7651136601546178,
+              "definition": "5-game avg red zone targets"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Kenny Golladay",
+              "season": 2019,
+              "week": 8
+            },
+            {
+              "player_name": "Eric Decker",
+              "season": 2015,
+              "week": 10
+            },
+            {
+              "player_name": "Julio Jones",
+              "season": 2017,
+              "week": 11
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "label": "ground-yardage WR",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_rushing_yards_avg_5g",
+              "z": 1.917519826779904,
+              "definition": "5-game avg rushing yards"
+            },
+            {
+              "col": "player_carries_avg_5g",
+              "z": 1.401610394839123,
+              "definition": "5-game avg carries"
+            },
+            {
+              "col": "player_receiving_yac_per_rec_avg_5g",
+              "z": 0.5339589948617344,
+              "definition": "5-game avg YAC per reception"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Devin Duvernay",
+              "season": 2021,
+              "week": 16
+            },
+            {
+              "player_name": "Kalif Raymond",
+              "season": 2022,
+              "week": 2
+            },
+            {
+              "player_name": "Tyler Lockett",
+              "season": 2016,
+              "week": 10
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "label": "red-zone running WR",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_rz_carries_avg_5g",
+              "z": 3.336189393954203,
+              "definition": "5-game avg red zone carries"
+            },
+            {
+              "col": "player_carries_avg_5g",
+              "z": 2.981534583234833,
+              "definition": "5-game avg carries"
+            },
+            {
+              "col": "player_rushing_yards_avg_5g",
+              "z": 2.4263793816188666,
+              "definition": "5-game avg rushing yards"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Ted Ginn",
+              "season": 2018,
+              "week": 2
+            },
+            {
+              "player_name": "Tyler Lockett",
+              "season": 2018,
+              "week": 17
+            },
+            {
+              "player_name": "Tyler Lockett",
+              "season": 2018,
+              "week": 15
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "label": "WR \u2014 5-game avg rushing yards low",
+          "label_source": "generated",
+          "top_features": [
+            {
+              "col": "player_rushing_yards_avg_5g",
+              "z": -0.4056189585967122,
+              "definition": "5-game avg rushing yards"
+            },
+            {
+              "col": "player_i10_touch_share_avg_5g",
+              "z": -0.37380917813256165,
+              "definition": "5-game avg inside-10 touch share"
+            },
+            {
+              "col": "player_i5_touches_avg_5g",
+              "z": -0.37127873223646235,
+              "definition": "5-game avg inside-5 touches"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "David Bell",
+              "season": 2022,
+              "week": 3
+            },
+            {
+              "player_name": "Keelan Cole",
+              "season": 2017,
+              "week": 2
+            },
+            {
+              "player_name": "Adam Humphries",
+              "season": 2015,
+              "week": 2
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "label": "end-zone finishing WR",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_endzone_td_rate_avg_5g",
+              "z": 13.656428005721958,
+              "definition": "5-game avg TD rate on inside-5 touches"
+            },
+            {
+              "col": "player_gl_carries_avg_5g",
+              "z": 9.063219409752442,
+              "definition": "5-game avg goal line carries"
+            },
+            {
+              "col": "player_rz_carries_avg_5g",
+              "z": 4.489533736004608,
+              "definition": "5-game avg red zone carries"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Curtis Samuel",
+              "season": 2023,
+              "week": 7
+            },
+            {
+              "player_name": "Julian Edelman",
+              "season": 2020,
+              "week": 4
+            },
+            {
+              "player_name": "Julian Edelman",
+              "season": 2020,
+              "week": 3
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "label": "goal-line WR",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_gl_carries_avg_5g",
+              "z": 7.746375636906542,
+              "definition": "5-game avg goal line carries"
+            },
+            {
+              "col": "player_rz_carries_avg_5g",
+              "z": 3.692511711971999,
+              "definition": "5-game avg red zone carries"
+            },
+            {
+              "col": "player_carries_avg_5g",
+              "z": 2.312760755009588,
+              "definition": "5-game avg carries"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Percy Harvin",
+              "season": 2015,
+              "week": 6
+            },
+            {
+              "player_name": "Martavis Bryant",
+              "season": 2017,
+              "week": 17
+            },
+            {
+              "player_name": "Percy Harvin",
+              "season": 2015,
+              "week": 7
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "label": "high-target WR",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_targets_avg_5g",
+              "z": 0.8786040653187916,
+              "definition": "5-game avg receiving targets"
+            },
+            {
+              "col": "snap_pct_filled",
+              "z": 0.7763733405393695,
+              "definition": "Snap pct (null filled as 0)"
+            },
+            {
+              "col": "player_rz_targets_avg_5g",
+              "z": 0.7509037347136284,
+              "definition": "5-game avg red zone targets"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "DeSean Jackson",
+              "season": 2016,
+              "week": 13
+            },
+            {
+              "player_name": "Noah Brown",
+              "season": 2022,
+              "week": 19
+            },
+            {
+              "player_name": "Tre'Quan Smith",
+              "season": 2018,
+              "week": 10
+            }
+          ]
+        }
+      ]
+    },
+    "TE": {
+      "features": [
+        "player_gl_carries_avg_5g",
+        "player_rz_carries_avg_5g",
+        "player_rz_targets_avg_5g",
+        "player_i5_touches_avg_5g",
+        "player_i10_touch_share_avg_5g",
+        "player_endzone_td_rate_avg_5g",
+        "player_td_market_share_avg_5g",
+        "player_carries_avg_5g",
+        "player_targets_avg_5g",
+        "player_rushing_yards_avg_5g",
+        "player_receiving_yac_per_rec_avg_5g",
+        "player_od_touch_share_avg_5g",
+        "snap_pct_filled"
+      ],
+      "transforms": {
+        "player_gl_carries_avg_5g": "none",
+        "player_rz_carries_avg_5g": "none",
+        "player_rz_targets_avg_5g": "log1p",
+        "player_i5_touches_avg_5g": "none",
+        "player_i10_touch_share_avg_5g": "none",
+        "player_endzone_td_rate_avg_5g": "none",
+        "player_td_market_share_avg_5g": "none",
+        "player_carries_avg_5g": "none",
+        "player_targets_avg_5g": "log1p",
+        "player_rushing_yards_avg_5g": "signed_log1p",
+        "player_receiving_yac_per_rec_avg_5g": "signed_log1p",
+        "player_od_touch_share_avg_5g": "none",
+        "snap_pct_filled": "none"
+      },
+      "impute": {
+        "player_gl_carries_avg_5g": 0.0,
+        "player_rz_carries_avg_5g": 0.0,
+        "player_rz_targets_avg_5g": 0.2,
+        "player_i5_touches_avg_5g": 0.0,
+        "player_i10_touch_share_avg_5g": 0.0,
+        "player_endzone_td_rate_avg_5g": 0.0,
+        "player_td_market_share_avg_5g": 0.0,
+        "player_carries_avg_5g": 0.0,
+        "player_targets_avg_5g": 1.4,
+        "player_rushing_yards_avg_5g": 0.0,
+        "player_receiving_yac_per_rec_avg_5g": 2.2800000000000002,
+        "player_od_touch_share_avg_5g": 0.0,
+        "snap_pct_filled": 0.28
+      },
+      "impute_method": "fit-set median, within this position",
+      "scaler": {
+        "mean": [
+          0.002484552845528455,
+          0.005046070460704637,
+          0.25913968766362616,
+          0.10002601626016898,
+          0.037916813381280424,
+          0.001131707317073169,
+          0.046093493353982495,
+          0.0167089430894307,
+          0.9470132457664383,
+          0.026277949752876367,
+          1.0811470236853615,
+          0.012136913176934423,
+          0.3336637398373997
+        ],
+        "scale": [
+          0.0230730054939446,
+          0.041360693916690616,
+          0.2762190738586976,
+          0.1735389630050696,
+          0.061297802484800365,
+          0.015217252281663915,
+          0.07808542210055133,
+          0.16481951482593593,
+          0.6382824989894103,
+          0.19463819716908906,
+          0.6745803088472447,
+          0.02273758871540587,
+          0.31532181228561773
+        ]
+      },
+      "dropped": [
+        {
+          "col": "is_starter",
+          "reason": "null rate 0.173 > 0.05 (training run)"
+        },
+        {
+          "col": "is_high_usage",
+          "reason": "binary (2 distinct values); a flag standardises into a split plane and would define groups instead of describing them"
+        },
+        {
+          "col": "player_i5_touch_share_avg_5g",
+          "reason": "|rho| 0.96 with player_i5_touches_avg_5g"
+        },
+        {
+          "col": "player_receptions_avg_5g",
+          "reason": "|rho| 0.97 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_rush_share_avg_5g",
+          "reason": "|rho| 1.00 with player_carries_avg_5g"
+        },
+        {
+          "col": "player_target_share_avg_5g",
+          "reason": "|rho| 0.99 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_air_yards_share_avg_5g",
+          "reason": "|rho| 0.92 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_wopr_avg_5g",
+          "reason": "|rho| 0.98 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_receiving_yards_avg_5g",
+          "reason": "|rho| 0.94 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_h1_touch_share_avg_5g",
+          "reason": "|rho| 0.94 with player_targets_avg_5g"
+        }
+      ],
+      "pca_display": {
+        "components": [
+          [
+            0.14195313633995219,
+            0.15794877805370303,
+            0.40416574959039525,
+            0.3446759211367122,
+            0.36648456467122986,
+            0.11317390810543347,
+            0.33891391243773167,
+            0.12327819616117651,
+            0.39901355787840187,
+            0.11316851879278096,
+            0.28933257951145347,
+            0.25427693932756573,
+            0.2741926094434071
+          ],
+          [
+            0.4117295852318612,
+            0.5183650136624636,
+            -0.15879050600586708,
+            -0.06728099662001692,
+            -0.06422753505233954,
+            0.38556604550646606,
+            -0.07496078606231654,
+            0.44253579604668564,
+            -0.15658447692503086,
+            0.3518271545338372,
+            -0.11750717203638092,
+            -0.06138984947940396,
+            -0.10915222322623483
+          ]
+        ],
+        "explained_variance_ratio": [
+          0.34844766827197066,
+          0.21016752656466045
+        ]
+      },
+      "n": 15375,
+      "k": 2,
+      "k_unresolved": false,
+      "k_reason": "gap 1-SE rule: gap(2)=3.669 clears gap(3)-se=3.650",
+      "centroids": [
+        [
+          0.20266294229370366,
+          0.20423513782804967,
+          1.1397929065961196,
+          0.88199813798735,
+          0.9750728429215078,
+          0.1622688521360485,
+          0.909359790877085,
+          0.15203145815298702,
+          1.111945313535794,
+          0.18174155190280397,
+          0.7171727148794133,
+          0.7025679239782787,
+          0.7620898781002727
+        ],
+        [
+          -0.09288317719464828,
+          -0.09360373574742838,
+          -0.5223825594870197,
+          -0.40423171798875895,
+          -0.44688911856177627,
+          -0.07437001740694274,
+          -0.4167719348874489,
+          -0.0696780807924893,
+          -0.5096196296124895,
+          -0.08329462001274363,
+          -0.32868998940501637,
+          -0.3219964155044347,
+          -0.34927613496922993
+        ]
+      ],
+      "sizes": [
+        4827,
+        10548
+      ],
+      "inertia": 151640.10531272378,
+      "outlier_distance_p95": 4.600714136521446,
+      "selection": [
+        {
+          "k": 2,
+          "log_wk": 11.260641968649782,
+          "gap": 3.6686484617937474,
+          "gap_se": 0.004350765669279984,
+          "silhouette": 0.38990421177422596,
+          "silhouette_se": 0.0014188911980557112,
+          "split_half_ari": 0.9548722053682741,
+          "inertia": 151640.10531272378,
+          "smallest_cluster": 4827
+        },
+        {
+          "k": 3,
+          "log_wk": 11.026178614211734,
+          "gap": 3.653043106131115,
+          "gap_se": 0.0033120653345105767,
+          "silhouette": 0.3862682270088455,
+          "silhouette_se": 0.0015116221572160887,
+          "split_half_ari": 0.9805988032893116,
+          "inertia": 121279.48970380459,
+          "smallest_cluster": 190
+        },
+        {
+          "k": 4,
+          "log_wk": 10.911438595028605,
+          "gap": 3.561105175272562,
+          "gap_se": 0.004644460822124392,
+          "silhouette": 0.3618920400118871,
+          "silhouette_se": 0.026040865990975843,
+          "split_half_ari": 0.9463882365534151,
+          "inertia": 108428.14195538062,
+          "smallest_cluster": 190
+        },
+        {
+          "k": 5,
+          "log_wk": 10.741539675630463,
+          "gap": 3.6666782456505764,
+          "gap_se": 0.0026066306618838892,
+          "silhouette": 0.254806236799492,
+          "silhouette_se": 0.001338319762465482,
+          "split_half_ari": 0.9325868566206913,
+          "inertia": 90890.49652148387,
+          "smallest_cluster": 12
+        },
+        {
+          "k": 6,
+          "log_wk": 10.66488339038491,
+          "gap": 3.686345679880855,
+          "gap_se": 0.004161771356570407,
+          "silhouette": 0.2502340857553308,
+          "silhouette_se": 0.008033188389322175,
+          "split_half_ari": 0.45837327695254315,
+          "inertia": 82767.24552672575,
+          "smallest_cluster": 12
+        },
+        {
+          "k": 7,
+          "log_wk": 10.601796634130219,
+          "gap": 3.7018438607522963,
+          "gap_se": 0.0032855679899251333,
+          "silhouette": 0.22395016189373146,
+          "silhouette_se": 0.001321253332290944,
+          "split_half_ari": 0.9077011344209451,
+          "inertia": 74630.3420424083,
+          "smallest_cluster": 12
+        },
+        {
+          "k": 8,
+          "log_wk": 10.46118843217918,
+          "gap": 3.7955018014093262,
+          "gap_se": 0.004927951629967626,
+          "silhouette": 0.22919641000735833,
+          "silhouette_se": 0.000752078448473829,
+          "split_half_ari": 0.9125358057743891,
+          "inertia": 68492.38601823522,
+          "smallest_cluster": 12
+        }
+      ],
+      "clusters": [
+        {
+          "id": 0,
+          "label": "red-zone TE",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_rz_targets_avg_5g",
+              "z": 1.1397929065961196,
+              "definition": "5-game avg red zone targets"
+            },
+            {
+              "col": "player_targets_avg_5g",
+              "z": 1.111945313535794,
+              "definition": "5-game avg receiving targets"
+            },
+            {
+              "col": "player_i10_touch_share_avg_5g",
+              "z": 0.9750728429215078,
+              "definition": "5-game avg inside-10 touch share"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Darren Waller",
+              "season": 2023,
+              "week": 2
+            },
+            {
+              "player_name": "Geoff Swaim",
+              "season": 2021,
+              "week": 11
+            },
+            {
+              "player_name": "Rob Gronkowski",
+              "season": 2020,
+              "week": 17
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "label": "TE \u2014 5-game avg red zone targets low",
+          "label_source": "generated",
+          "top_features": [
+            {
+              "col": "player_rz_targets_avg_5g",
+              "z": -0.5223825594870197,
+              "definition": "5-game avg red zone targets"
+            },
+            {
+              "col": "player_targets_avg_5g",
+              "z": -0.5096196296124895,
+              "definition": "5-game avg receiving targets"
+            },
+            {
+              "col": "player_i10_touch_share_avg_5g",
+              "z": -0.44688911856177627,
+              "definition": "5-game avg inside-10 touch share"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Charles Clay",
+              "season": 2019,
+              "week": 3
+            },
+            {
+              "player_name": "Gavin Escobar",
+              "season": 2015,
+              "week": 15
+            },
+            {
+              "player_name": "Gavin Escobar",
+              "season": 2015,
+              "week": 14
+            }
+          ]
+        }
+      ]
+    },
+    "QB": {
+      "features": [
+        "player_gl_carries_avg_5g",
+        "player_rz_carries_avg_5g",
+        "player_rz_targets_avg_5g",
+        "player_i10_touch_share_avg_5g",
+        "player_endzone_td_rate_avg_5g",
+        "player_td_market_share_avg_5g",
+        "player_carries_avg_5g",
+        "player_targets_avg_5g",
+        "player_air_yards_share_avg_5g",
+        "player_rushing_yards_avg_5g",
+        "player_receiving_yards_avg_5g",
+        "player_receiving_yac_per_rec_avg_5g",
+        "player_od_touch_share_avg_5g",
+        "snap_pct_filled"
+      ],
+      "transforms": {
+        "player_gl_carries_avg_5g": "none",
+        "player_rz_carries_avg_5g": "log1p",
+        "player_rz_targets_avg_5g": "none",
+        "player_i10_touch_share_avg_5g": "none",
+        "player_endzone_td_rate_avg_5g": "none",
+        "player_td_market_share_avg_5g": "none",
+        "player_carries_avg_5g": "log1p",
+        "player_targets_avg_5g": "none",
+        "player_air_yards_share_avg_5g": "none",
+        "player_rushing_yards_avg_5g": "signed_log1p",
+        "player_receiving_yards_avg_5g": "signed_log1p",
+        "player_receiving_yac_per_rec_avg_5g": "signed_log1p",
+        "player_od_touch_share_avg_5g": "none",
+        "snap_pct_filled": "none"
+      },
+      "impute": {
+        "player_gl_carries_avg_5g": 0.0,
+        "player_rz_carries_avg_5g": 0.2,
+        "player_rz_targets_avg_5g": 0.0,
+        "player_i10_touch_share_avg_5g": 0.016666666666666666,
+        "player_endzone_td_rate_avg_5g": 0.0,
+        "player_td_market_share_avg_5g": 0.0,
+        "player_carries_avg_5g": 1.6,
+        "player_targets_avg_5g": 0.0,
+        "player_air_yards_share_avg_5g": 0.0,
+        "player_rushing_yards_avg_5g": 4.4,
+        "player_receiving_yards_avg_5g": 0.0,
+        "player_receiving_yac_per_rec_avg_5g": 0.0,
+        "player_od_touch_share_avg_5g": 0.0,
+        "snap_pct_filled": 0.7
+      },
+      "impute_method": "fit-set median, within this position",
+      "scaler": {
+        "mean": [
+          0.14116619394089247,
+          0.30128439815945834,
+          0.007000452172483273,
+          0.04801349010128507,
+          0.053128211452294814,
+          0.04078236605613593,
+          0.9871738036528299,
+          0.022888148970279826,
+          0.00024665872503913113,
+          1.6057109524529962,
+          0.03222171865334658,
+          0.034920486586585676,
+          0.007604688655363803,
+          0.5175323714391417
+        ],
+        "scale": [
+          0.23971720404065514,
+          0.3152657271017009,
+          0.04218392201140697,
+          0.07355116366615375,
+          0.11210353923708855,
+          0.07968097216673516,
+          0.586265430650241,
+          0.14773135106791388,
+          0.003336833609357426,
+          1.3116660162507765,
+          0.2838078228458292,
+          0.21047775575119126,
+          0.01743799400667728,
+          0.47607421130967226
+        ]
+      },
+      "dropped": [
+        {
+          "col": "is_starter",
+          "reason": "null rate 0.173 > 0.05 (training run)"
+        },
+        {
+          "col": "is_high_usage",
+          "reason": "binary (2 distinct values); a flag standardises into a split plane and would define groups instead of describing them"
+        },
+        {
+          "col": "player_i5_touches_avg_5g",
+          "reason": "|rho| 0.99 with player_gl_carries_avg_5g"
+        },
+        {
+          "col": "player_i5_touch_share_avg_5g",
+          "reason": "|rho| 0.95 with player_gl_carries_avg_5g"
+        },
+        {
+          "col": "player_receptions_avg_5g",
+          "reason": "|rho| 0.92 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_rush_share_avg_5g",
+          "reason": "|rho| 0.98 with player_carries_avg_5g"
+        },
+        {
+          "col": "player_target_share_avg_5g",
+          "reason": "|rho| 1.00 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_wopr_avg_5g",
+          "reason": "|rho| 0.98 with player_targets_avg_5g"
+        },
+        {
+          "col": "player_h1_touch_share_avg_5g",
+          "reason": "|rho| 0.91 with player_carries_avg_5g"
+        }
+      ],
+      "pca_display": {
+        "components": [
+          [
+            0.33867395735808964,
+            0.37318520344963346,
+            0.14320606440593112,
+            0.36117403444377183,
+            0.29908077936325467,
+            0.3384583391713931,
+            0.35504947089998085,
+            0.15563469360197138,
+            0.13251899207150222,
+            0.3199647855913043,
+            0.15177502079325242,
+            0.144048581882506,
+            0.20330319445545916,
+            0.18903931570821766
+          ],
+          [
+            -0.12564389061262707,
+            -0.12106702974728702,
+            0.36537955853592774,
+            -0.08594189052820152,
+            -0.12318238999310771,
+            -0.06720954074485594,
+            -0.1421003825900651,
+            0.4548640797428199,
+            0.4186114889487494,
+            -0.11445654311568965,
+            0.4569592970904046,
+            0.3997690378484546,
+            -0.06238314165166656,
+            -0.14501263823713947
+          ]
+        ],
+        "explained_variance_ratio": [
+          0.38192122669895695,
+          0.23347268240855734
+        ]
+      },
+      "n": 8109,
+      "k": 4,
+      "k_unresolved": true,
+      "k_reason": "gap still rising at k=4, the largest k that keeps every group measurable; the elbow is outside the range we allow, so this is the biggest gap available and not a settled k",
+      "centroids": [
+        [
+          1.687391203101788,
+          1.6015173889047871,
+          0.20129185157413054,
+          1.7206190980893092,
+          1.6534873127641596,
+          1.7569389498980723,
+          1.3261879697295027,
+          0.03476729894587581,
+          0.009601331861011957,
+          1.132472290729989,
+          0.10695981633855821,
+          0.13055858864308156,
+          0.8348309144106566,
+          0.5609691146413265
+        ],
+        [
+          0.7963937278562753,
+          1.3259507563409878,
+          6.364302633314343,
+          1.7818517735106298,
+          0.4966553275048237,
+          1.5308039234278374,
+          0.7479915531979242,
+          9.730427557380526,
+          8.480797888416426,
+          0.9287942897078646,
+          8.239604134318258,
+          7.140822774547257,
+          0.6589478412305404,
+          -0.5354015318409684
+        ],
+        [
+          -0.5056439144612195,
+          -0.7175663451735603,
+          -0.11936352514739099,
+          -0.550765354284815,
+          -0.4309374857988732,
+          -0.468030647933804,
+          -0.8744195102943414,
+          -0.11684541982415271,
+          -0.06235015792373036,
+          -0.8208986131131151,
+          -0.09718771036100722,
+          -0.1381538885990836,
+          -0.35788796047457944,
+          -0.747423087087689
+        ],
+        [
+          -0.05833371699357396,
+          0.1838281135942195,
+          -0.043645415893561634,
+          -0.03797849002186711,
+          -0.12010423344932655,
+          -0.13277399688194488,
+          0.4502866240838151,
+          -0.042447364868411254,
+          -0.07118758841060997,
+          0.4574411209410672,
+          -0.0641366102214378,
+          -0.012154041557957615,
+          0.07945657541025214,
+          0.5980264633649173
+        ]
+      ],
+      "sizes": [
+        1149,
+        53,
+        3530,
+        3377
+      ],
+      "inertia": 58824.34630913319,
+      "outlier_distance_p95": 5.533558959643628,
+      "selection": [
+        {
+          "k": 2,
+          "log_wk": 11.341798258976896,
+          "gap": 2.8585659918163895,
+          "gap_se": 0.003540628719189821,
+          "silhouette": 0.40187691343056714,
+          "silhouette_se": 0.000917763345743263,
+          "split_half_ari": 0.9292737343224619,
+          "inertia": 85077.64154907648,
+          "smallest_cluster": 2209
+        },
+        {
+          "k": 3,
+          "log_wk": 11.120216395108685,
+          "gap": 2.918812099519247,
+          "gap_se": 0.0034419299159787154,
+          "silhouette": 0.38477800357548037,
+          "silhouette_se": 0.0012909484722332914,
+          "split_half_ari": 0.8832698015683916,
+          "inertia": 68290.76485422644,
+          "smallest_cluster": 114
+        },
+        {
+          "k": 4,
+          "log_wk": 10.97010278954725,
+          "gap": 2.935730645503634,
+          "gap_se": 0.00412976751086872,
+          "silhouette": 0.274776090239909,
+          "silhouette_se": 0.0005050036344270741,
+          "split_half_ari": 0.816134964470994,
+          "inertia": 58824.34630913319,
+          "smallest_cluster": 53
+        },
+        {
+          "k": 5,
+          "log_wk": 10.844133127647048,
+          "gap": 3.016665095757876,
+          "gap_se": 0.0032590928275168653,
+          "silhouette": 0.28667423559723726,
+          "silhouette_se": 0.00035300971473964073,
+          "split_half_ari": 0.8781513464486261,
+          "inertia": 51839.87238013361,
+          "smallest_cluster": 38
+        },
+        {
+          "k": 6,
+          "log_wk": 10.761492496391343,
+          "gap": 3.058314967074546,
+          "gap_se": 0.003561977097230615,
+          "silhouette": 0.2741343602356959,
+          "silhouette_se": 0.00037366318538056576,
+          "split_half_ari": 0.9125611154865609,
+          "inertia": 47689.90519842725,
+          "smallest_cluster": 38
+        },
+        {
+          "k": 7,
+          "log_wk": 10.698817872403264,
+          "gap": 3.0833760323345487,
+          "gap_se": 0.003626020893578254,
+          "silhouette": 0.281213974477143,
+          "silhouette_se": 0.0006731001903724663,
+          "split_half_ari": 0.8837530541742424,
+          "inertia": 44796.90474567417,
+          "smallest_cluster": 36
+        },
+        {
+          "k": 8,
+          "log_wk": 10.637377264970143,
+          "gap": 3.110661258398194,
+          "gap_se": 0.003993722533205559,
+          "silhouette": 0.286018891012252,
+          "silhouette_se": 0.003568731159472659,
+          "split_half_ari": 0.8570206501173593,
+          "inertia": 42056.05974593157,
+          "smallest_cluster": 36
+        }
+      ],
+      "clusters": [
+        {
+          "id": 0,
+          "label": "primary scoring QB",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_td_market_share_avg_5g",
+              "z": 1.7569389498980723,
+              "definition": "5-game avg share of team TDs"
+            },
+            {
+              "col": "player_i10_touch_share_avg_5g",
+              "z": 1.7206190980893092,
+              "definition": "5-game avg inside-10 touch share"
+            },
+            {
+              "col": "player_gl_carries_avg_5g",
+              "z": 1.687391203101788,
+              "definition": "5-game avg goal line carries"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Tyrod Taylor",
+              "season": 2017,
+              "week": 11
+            },
+            {
+              "player_name": "Patrick Mahomes",
+              "season": 2022,
+              "week": 14
+            },
+            {
+              "player_name": "Deshaun Watson",
+              "season": 2020,
+              "week": 16
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "label": "high-target QB",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "player_targets_avg_5g",
+              "z": 9.730427557380526,
+              "definition": "5-game avg receiving targets"
+            },
+            {
+              "col": "player_air_yards_share_avg_5g",
+              "z": 8.480797888416426,
+              "definition": "5-game avg air yards share"
+            },
+            {
+              "col": "player_receiving_yards_avg_5g",
+              "z": 8.239604134318258,
+              "definition": "5-game avg receiving yards"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Taysom Hill",
+              "season": 2020,
+              "week": 9
+            },
+            {
+              "player_name": "Taysom Hill",
+              "season": 2023,
+              "week": 18
+            },
+            {
+              "player_name": "Taysom Hill",
+              "season": 2019,
+              "week": 5
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "label": "QB \u2014 5-game avg carries low",
+          "label_source": "generated",
+          "top_features": [
+            {
+              "col": "player_carries_avg_5g",
+              "z": -0.8744195102943414,
+              "definition": "5-game avg carries"
+            },
+            {
+              "col": "player_rushing_yards_avg_5g",
+              "z": -0.8208986131131151,
+              "definition": "5-game avg rushing yards"
+            },
+            {
+              "col": "snap_pct_filled",
+              "z": -0.747423087087689,
+              "definition": "Snap pct (null filled as 0)"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Blaine Gabbert",
+              "season": 2020,
+              "week": 7
+            },
+            {
+              "player_name": "Trey Lance",
+              "season": 2021,
+              "week": 12
+            },
+            {
+              "player_name": "Brock Purdy",
+              "season": 2022,
+              "week": 12
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "label": "every-down QB",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "snap_pct_filled",
+              "z": 0.5980264633649173,
+              "definition": "Snap pct (null filled as 0)"
+            },
+            {
+              "col": "player_rushing_yards_avg_5g",
+              "z": 0.4574411209410672,
+              "definition": "5-game avg rushing yards"
+            },
+            {
+              "col": "player_carries_avg_5g",
+              "z": 0.4502866240838151,
+              "definition": "5-game avg carries"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Dak Prescott",
+              "season": 2022,
+              "week": 14
+            },
+            {
+              "player_name": "Dak Prescott",
+              "season": 2022,
+              "week": 12
+            },
+            {
+              "player_name": "Derek Carr",
+              "season": 2021,
+              "week": 18
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "pooled_evidence": {
+    "selection": [
+      {
+        "k": 2,
+        "silhouette": 0.5078466950535583,
+        "silhouette_se": 0.0032023730602759
+      },
+      {
+        "k": 3,
+        "silhouette": 0.36848191210487224,
+        "silhouette_se": 0.0022616125036314973
+      },
+      {
+        "k": 4,
+        "silhouette": 0.3645586360211338,
+        "silhouette_se": 0.002808504257424105
+      },
+      {
+        "k": 5,
+        "silhouette": 0.24149196528462508,
+        "silhouette_se": 0.003406239925263147
+      },
+      {
+        "k": 6,
+        "silhouette": 0.24840108394768962,
+        "silhouette_se": 0.004866234900922747
+      },
+      {
+        "k": 7,
+        "silhouette": 0.24220760951675277,
+        "silhouette_se": 0.008781066411308465
+      },
+      {
+        "k": 8,
+        "silhouette": 0.2143604101728708,
+        "silhouette_se": 0.001302614518477533
+      }
+    ],
+    "silhouette_best_k": 2,
+    "composition": [
+      {
+        "cluster": 0,
+        "n": 8413,
+        "top_positions": [
+          {
+            "position": "RB",
+            "share": 0.8571258766195174
+          },
+          {
+            "position": "QB",
+            "share": 0.12563889219065733
+          },
+          {
+            "position": "WR",
+            "share": 0.014620230595506954
+          }
+        ]
+      },
+      {
+        "cluster": 1,
+        "n": 62657,
+        "top_positions": [
+          {
+            "position": "WR",
+            "share": 0.4416585537130728
+          },
+          {
+            "position": "TE",
+            "share": 0.24503247841422346
+          },
+          {
+            "position": "RB",
+            "share": 0.20075969165456373
+          }
+        ]
+      }
+    ]
+  },
+  "fit_date": "2026-08-12",
+  "source": "data/processed/first_td/features.parquet; position from candidates.parquet"
+}

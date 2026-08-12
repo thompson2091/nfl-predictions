@@ -112,6 +112,10 @@ li { max-width: 72ch; }
 hr { border: 0; border-top: 1px solid var(--border); margin: 30px 0; }
 code { font: 500 .88em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--plane); border: 1px solid var(--border); border-radius: 4px; padding: .1em .35em; }
 a { color: var(--accent); }
+blockquote {
+  margin: 0 0 14px; padding: 2px 0 2px 16px;
+  border-left: 3px solid var(--accent); color: var(--ink-2); max-width: 72ch;
+}
 .cols { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
 .cols > .col { flex: 1 1 280px; min-width: 0; }
 .panel { border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; background: var(--surface); margin: 0 0 18px; }
@@ -490,11 +494,11 @@ JS = r"""
 """
 
 
-def _pane(capture, tab_label: str, pane_id: str) -> str:
+def _pane(capture, tab_label: str, pane_id: str, prefix: str) -> str:
     tabs = next(c for c in capture.root["children"]
                 if c["t"] == "group" and c["kind"] == "tabs")
     tab = next(t for t in tabs["children"] if t["label"] == tab_label)
-    body = Renderer().nodes(tab["children"])
+    body = Renderer(prefix).nodes(tab["children"])
     return f'<section class="pane" data-pane="{pane_id}">{body}</section>'
 
 
@@ -514,7 +518,8 @@ def build_page(markets: list[dict], *, panes: list[tuple[str, str]],
     blocks = []
     for i, m in enumerate(markets):
         meta = " ".join(f"<span>{v}</span>" for v in m["meta"])
-        body = "".join(_pane(m["capture"], label, pid) for pid, label in panes)
+        body = "".join(_pane(m["capture"], label, pid, f'{m["key"]}-{pid}')
+                       for pid, label in panes)
         blocks.append(
             f'<div class="marketpane" data-market="{esc(m["key"])}"'
             f'{"" if i == 0 else " hidden"}>'

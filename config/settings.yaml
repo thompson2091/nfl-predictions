@@ -107,6 +107,54 @@ model:
   logistic:
     max_iter: 2000
     C: 0.1
+# Unsupervised grouping behind the Player types tab. Nothing here is a cluster
+# count: k is fitted per position on the training seasons and persisted with the
+# curve that chose it (src/clustering/core.py:choose_k). These are the bounds and
+# budgets that fitting runs inside.
+#
+# The criterion is the GAP STATISTIC, not silhouette, and that is a measured
+# choice rather than a stylistic one. On anytime TD, served population, seasons
+# <= train_end (75,986 player-games, 20 usage features, standardised):
+#
+#   k            2     3     4     5     6     7     8
+#   silhouette  .465  .483  .355  .366  .304  .299  .292
+#
+# Silhouette's argmax is k=3 with a sampling error near .003, so a 1-SE rule
+# agrees — and those three groups are running backs, receivers, and everyone with
+# no usage. The obvious criterion, applied honestly, rediscovers the position
+# dummies and calls it a finding. Split-half ARI is .95-.99 at every k and
+# separates nothing; GMM BIC falls monotonically to the top of the range.
+#
+# So position became the stratifier rather than the answer, and selection moved
+# to the gap statistic, which is the one standard criterion tested here with an
+# interior optimum: WR settles at 4, TE at 5, RB does not resolve inside this
+# range and says so on screen instead of quietly taking the endpoint. Silhouette
+# is still computed and still displayed — as a diagnostic beside the gap curve,
+# so a disagreement between them is visible rather than resolved in private.
+clustering:
+  seed: 42
+  k_min: 2
+  # Also the number of categorical colours the theme provides. A position that
+  # wanted more groups than this would be drawing beyond its palette.
+  k_max: 8
+  # Reference draws for the gap statistic. 20 is where the standard error of the
+  # gap stopped moving the chosen k on this data; below ~8 the selection wobbles.
+  gap_reference_draws: 20
+  gap_sample_rows: 8000
+  silhouette_sample_rows: 8000
+  # A feature this null in training cannot be imputed into a cluster boundary
+  # without inventing one. Above this line the column is dropped and the drop is
+  # recorded in the artifact rather than silently zero-filled.
+  max_null_rate: 0.05
+  # Greedy |Spearman| pruning. Rank correlation because these columns are heavy
+  # tailed and Pearson understates how duplicated they are.
+  max_abs_corr: 0.90
+  # Same reasoning as rank_economics.MIN_BETS: a group this small cannot resolve
+  # its own sign, so a k that produces one is rejected before selection runs.
+  min_cluster_rows: 50
+  # Row cap for the in-app exploratory refit only. The served clustering is
+  # always fitted on every eligible row by scripts/20_clusters.py.
+  explore_max_rows: 40000
 # Market anchoring. Nothing here is a probability — the expected scorer count is
 # refit from labels on every training run (src/models/market_prior.py) and the
 # blend weight is learned from graded odds history as soon as enough exists

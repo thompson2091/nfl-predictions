@@ -185,6 +185,43 @@ Written by `make train` into `models/<target_type>/`, refit every run.
 The scorer-rate prior tracks league scoring environment automatically: a
 higher-scoring era shifts the fit without anyone editing a threshold.
 
+### Clusterings (the Player types tab)
+
+Written by `make clusters` (`scripts/21_clusters.py`), not by `make train`, and
+included in `make evaluate`.
+
+| Artifact | Fit by | What it holds |
+|---|---|---|
+| `models/<target>/clusters_player.json` | `src/clustering/archetypes.py` | Player archetypes: per-position feature set, transforms, fit-set impute medians, scaler, centroids, names, and the full curve that chose `k` |
+| `models/<target>/clusters_bet[_<model>].json` | `src/clustering/bet_shapes.py` | The same, for kinds of bet rather than kinds of player |
+| `output/<target>/clusters_*_report[_<model>].json` | `measure()` in each | What each group did **out of fit**: TD rate, our calibration against the book's, and returns with a game-clustered interval |
+
+Three things about these are load-bearing and easy to undo by accident.
+
+**They are fitted on the training seasons and scored on the seasons after.** A
+segmentation draws its own boundaries; scored on the rows it was drawn from,
+every group comes back looking like a discovery. `seasons_used` and
+`report_seasons` are disjoint by construction and asserted in
+`tests/test_leakage.py`. Reporting also stops at `seasons.end` — the predict
+season's rows carry `target == 0` because nothing has happened yet, and left in
+they drag every group's touchdown rate below the truth without looking wrong.
+
+**`k` is chosen by the gap statistic, not silhouette, and that is a measured
+choice.** Pooled over the league, silhouette peaks at `k=3` and those three
+groups are running backs, receivers, and players with no usage — the position
+column rediscovered and presented as a finding. So position became the
+stratifier rather than the answer, each position is fitted in its own
+standardised space, and selection moved to the gap statistic, which is the one
+standard criterion tested here with an interior optimum. Silhouette is still
+computed and still shown, as a diagnostic beside the gap curve. The evidence
+sits in the `clustering:` block of `config/settings.yaml`; do not "fix" the
+criterion back without re-deriving it.
+
+**Bet shapes are fitted on one season.** Real odds history begins in 2023 and the
+training split ends there, so that lens learns from a single season's board and
+is measured on the two after it. Thin, stated on screen, and not something to
+resolve by reaching across the split.
+
 ---
 
 ## Evaluation integrity
