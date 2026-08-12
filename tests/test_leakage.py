@@ -1683,3 +1683,57 @@ def test_the_positional_bias_is_not_stable_enough_to_correct():
         f"ranks {consistent} now show a consistent bias across every season — "
         f"src/models/rank_calibration.py may be worth reviving, monotone form"
     )
+
+
+def test_consensus_price_is_taken_in_probability_space():
+    """A median of American odds is meaningless across the +/-100 boundary.
+
+    The scale is discontinuous there — the median of -135 and +105 lands on -15,
+    a price that does not exist. Taking it that way produced a mean best-vs-
+    consensus gap of -0.12pp alongside a median of +0.71pp, which is impossible
+    when "best" means best. src/ingest/odds_api.py documents the same trap for
+    the same reason.
+    """
+    from src.evaluation.line_shopping import best_vs_consensus
+
+    d = best_vs_consensus(2026, 1, "anytime_td")
+    if d is None or d.height == 0:
+        pytest.skip("no per-book quotes archived yet")
+    worst = d["gap_pp"].min()
+    assert worst >= -1e-9, (
+        f"a best price is paying less than the consensus ({worst:.3f}pp) — "
+        f"the consensus is being averaged in American odds again"
+    )
+
+
+def test_missing_injury_report_is_not_a_clean_bill_of_health(tmp_path, monkeypatch):
+    """No report published must never read as "everyone is fit".
+
+    That is the failure mode that costs money: a board recommending a player
+    who was ruled out on Friday, with nothing saying the check never ran.
+    """
+    import polars as pl
+    from src.prediction import availability
+
+    board = pl.DataFrame({"player_id": ["00-0000001"],
+                          "player_name": ["Someone"], "InRange": ["Strong"]})
+    # A season with no report at all.
+    out = availability.check(board, 1990, 1)
+    assert out["report_available"] is False
+    assert out["blocked"] == []
+    assert "not a clean bill of health" in out["note"]
+
+
+def test_injury_status_blocks_out_and_doubtful_only():
+    """Out/Doubtful stop a bet; Questionable is surfaced, not blocked."""
+    from src.prediction.availability import BLOCKING, CAUTION, status_for
+
+    assert set(BLOCKING) == {"Out", "Doubtful"}
+    assert set(CAUTION) == {"Questionable"}
+    s = status_for(2025, 10)
+    if s is None:
+        pytest.skip("no injury report for that week")
+    import polars as pl
+    blocked = s.filter(pl.col("is_blocked"))
+    assert blocked.height > 0
+    assert set(blocked["report_status"].unique().to_list()) <= set(BLOCKING)

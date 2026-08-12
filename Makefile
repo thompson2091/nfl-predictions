@@ -3,7 +3,7 @@
 	docker-pipeline docker-prod docker-build-amd64 \
 	backtest walkforward longshot economics evaluate wager wager-report \
 	odds-open odds-close odds-schedule-on odds-schedule-off odds-schedule-status \
-	decay
+	decay shop
 
 # Defaults so the evaluation targets run without arguments. Override per call:
 #   make backtest SEASON=2024 TARGET=first_td
@@ -108,6 +108,12 @@ wager-report:
 # stops working does not announce it.
 decay:
 	python scripts/17_decay.py --target $(TARGET)
+
+# What the best available price is worth against the consensus we modelled on.
+# Needs per-book quotes, which only exist for weeks captured since 2026-08-11.
+# Usage: make shop WEEK=1
+shop:
+	python scripts/18_shop.py --week $(WEEK) --target $(TARGET)
 
 # ── Weekly odds capture ───────────────────────────────────────────────────
 # The week number is derived from the schedule, so these take no arguments.

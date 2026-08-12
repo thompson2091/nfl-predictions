@@ -825,6 +825,24 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
              "size — and shrinks most where the disagreement is biggest. This "
              "is the column every profitability figure was measured on.",
     ),
+    "Best": st.column_config.TextColumn(
+        "Best price", width="small",
+        help="The best price across the books we archived this week, against "
+             "the consensus in **Odds**. Nobody can bet a consensus — this is "
+             "what you could actually take. Every profitability figure in this "
+             "app is measured at the consensus, so it understates a shopped "
+             "price by whatever this gap is worth."),
+    "BestBook": st.column_config.TextColumn("at", width="small",
+        help="Which book was offering it when we snapshotted."),
+    "Status": st.column_config.TextColumn(
+        "Injury", width="small",
+        help="This week's designation. **Out** or **Doubtful** means the "
+             "model's number is meaningless rather than merely pessimistic — "
+             "do not back them. **Questionable** is worth checking rather than "
+             "avoiding. A blank means the player is not on the report; if no "
+             "report has been published yet the column does not appear at all, "
+             "because that is no information rather than a clean bill of "
+             "health."),
     "InRange": st.column_config.TextColumn(
         "Worth backing", width="small",
         help=_tier_help(region),
@@ -1326,6 +1344,30 @@ def _highlight_tier(frame, rule: dict):
     return out
 
 
+@st.cache_data(show_spinner=False)
+def best_prices(tt: str, season: int, week: int) -> pd.DataFrame | None:
+    """Best available price per player, from the per-book archive."""
+    from src.evaluation.line_shopping import best_vs_consensus
+    try:
+        d = best_vs_consensus(season, week, tt)
+        return d.to_pandas() if d is not None and d.height else None
+    except Exception as e:
+        _SECTION_ERRORS[f"shop:{tt}"] = f"{type(e).__name__}: {e}"
+        return None
+
+
+@st.cache_data(show_spinner=False)
+def injury_status(tt: str, season: int, week: int) -> pd.DataFrame | None:
+    """This week's injury designations, or None when no report exists yet."""
+    from src.prediction.availability import status_for
+    try:
+        d = status_for(season, week)
+        return d.to_pandas() if d is not None and d.height else None
+    except Exception as e:
+        _SECTION_ERRORS[f"inj:{tt}"] = f"{type(e).__name__}: {e}"
+        return None
+
+
 def render_board(frame, tt: str, model: str):
     """Single renderer, so every view describes a player the same way."""
     lo, hi = confidence_cuts(tt)
@@ -1350,6 +1392,20 @@ def render_board(frame, tt: str, model: str):
     # departing from.
     cols = ["Player", "team", "Game", "Odds", "Rank", "AtRank", "Ours",
             "Book", "edge_pp", "Confidence"]
+
+    # Best available price sits beside the consensus, because the consensus is
+    # the one number on this board nobody can actually bet.
+    if "best_odds" in frame.columns and frame["best_odds"].notna().any():
+        show = show.assign(
+            Best=frame["best_odds"].map(lambda o: _american(o) if pd.notna(o) else ""),
+            BestBook=frame["best_book"].fillna(""),
+        )
+        cols = cols[:4] + ["Best", "BestBook"] + cols[4:]
+
+    # Availability last, so a ruled-out player is the final thing read on the row.
+    if "report_status" in frame.columns and frame["report_status"].notna().any():
+        show = show.assign(Status=frame["report_status"].fillna(""))
+        cols = cols + ["Status"]
 
     # Betting columns sit together at the right-hand end rather than mixed in.
     # Everything to their left answers "will he score" and is blended with the
@@ -1395,6 +1451,23 @@ def week_board():
     # a disagreement with the price and the blend is the act of conceding it.
     # Both rankings cover only priced players, which is also the population the
     # backtest ranked, so the two are directly comparable.
+    # Best available price, where the per-book archive has this week. The
+    # board's own `odds` is a consensus nobody can bet; this is the price you
+    # could actually take, and the gap is riskless edge that needs no model.
+    shop = best_prices(target_type, season, week)
+    if shop is not None and "player_name_norm" in board.columns:
+        board = board.merge(
+            shop[["player_name_norm", "best_odds", "best_book", "n_books"]],
+            on="player_name_norm", how="left")
+
+    # Injury designations. A recommendation for a player who is out is not a
+    # bad bet, it is a guaranteed loss, and nothing else on this board knows.
+    inj = injury_status(target_type, season, week)
+    if inj is not None and "player_id" in board.columns:
+        board = board.merge(
+            inj[["player_id", "report_status", "is_blocked"]],
+            on="player_id", how="left")
+
     rank_src = "prob_model" if "prob_model" in board.columns else "probability"
     board["bet_rank"] = (
         board.groupby("game_label")[rank_src]
