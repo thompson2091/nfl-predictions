@@ -1,0 +1,22 @@
+# Whoever scores the game's first touchdown scored a touchdown — so let the
+# anytime-TD model inform the first-TD ranking.
+#
+# Exploratory, four folds, weight chosen by looking at the same seasons it was
+# scored on (so optimistic by construction):
+#
+#   weight on anytime   0.0     0.3     0.4     0.5     0.7     1.0
+#   Top-1              16.2%   16.8%   17.0%   16.9%   16.1%   14.9%
+#   Top-3              37.1%   38.2%   38.6%   39.4%   38.6%   37.7%
+#
+# A smooth plateau, not a spike. The anytime model alone ranks first TD worse at
+# Top-1 and better at Top-3, so the two carry different information.
+#
+# This gates the honest version: the weight is fitted on each fold's validation
+# season and applied to the held-out one.
+#
+#   make gate EXP=experiments/first-td-anytime-prior.yaml MARKET=first_td
+id: 2026.08.12-first-td-anytime-prior
+note: "Rank first TD by a geometric blend with the anytime model, weight fitted per fold"
+overlay:
+  first_td:
+    use_anytime_prior: true

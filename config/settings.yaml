@@ -185,6 +185,23 @@ betting:
   min_edge_pp: 2.0
   min_ev_pct: 0.0
 
+# First-TD-only settings.
+first_td:
+  # Rank first-TD candidates by a geometric blend of this market's model and the
+  # anytime-TD model's. Whoever scores the game's first touchdown scored a
+  # touchdown, and the two models have been solving halves of one problem
+  # without seeing each other's answer.
+  #
+  # No weight is set here, and there is not one to set: it is fitted per fold on
+  # the validation season by the categorical likelihood — the probability the
+  # model placed on the player who actually scored first — and applied to the
+  # held-out one. See src/prediction/cross_market.py.
+  #
+  # Off until `make gate EXP=experiments/first-td-anytime-prior.yaml` says
+  # otherwise. The exploratory curve that motivated it was measured on the same
+  # seasons it would be applied to, so its peak is optimistic by construction.
+  use_anytime_prior: false
+
 # App-only settings. Nothing here reaches the model.
 app:
   # Adds a "Model version" control to the sidebar, letting you price a week

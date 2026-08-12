@@ -44,6 +44,7 @@ from pathlib import Path
 import polars as pl
 
 from src.evaluation.ranking import game_universe, per_game_outcomes, row_metrics
+from src.models.trainer import _filter_low_activity
 from src.utils.config import config_overlay, get_config, production_model
 from src.utils.paths import get_path
 
@@ -107,9 +108,54 @@ ROW_COLS = ("game_id", "season", "week", "player_id", "player_name", "team",
             "position_DEFST")
 
 
+def _apply_anytime_prior(scored: pl.DataFrame, target_type: str,
+                         model_dir: Path, companion_dir: Path | None,
+                         model_name: str, active_models: list[str],
+                         val_season: int | None) -> pl.DataFrame:
+    """Blend first-TD scores with the anytime model, at a weight fitted on val.
+
+    The weight is fitted on the fold's validation season and applied to the
+    held-out one, so the number this returns was never chosen by looking at the
+    season it is scored on. Fitting on the test season instead would reproduce
+    the measured curve's peak and mean nothing.
+    """
+    from src.prediction import cross_market as X
+
+    if target_type != "first_td" or companion_dir is None or val_season is None:
+        return scored
+    if not get_config().get("first_td", {}).get("use_anytime_prior"):
+        return scored
+
+    val = _filter_low_activity(_features(target_type).filter(
+        (pl.col("season") == val_season) & pl.col("target").is_not_null()))
+    if val.height == 0:
+        return scored
+
+    from src.models.scoring import score as _score
+    from src.models.trainer import prepare_data
+
+    feature_cols = pickle.loads((Path(model_dir) / "feature_cols.pkl").read_bytes())
+    Xv, _ = prepare_data(val, feature_cols)
+    val = val.select(["game_id", "player_id", "target"]).with_columns([
+        pl.Series("prob", _score(model_name, Xv, feature_cols, model_dir,
+                                 active_models=active_models)),
+        pl.Series("any_prob", X.anytime_probs(val, companion_dir, model_name,
+                                              active_models)),
+    ])
+    fitted = X.fit_weight(val)
+
+    return scored.with_columns(
+        pl.Series("prob", X.blend(
+            scored["prob"].to_numpy(),
+            X.anytime_probs(scored, companion_dir, model_name, active_models),
+            fitted["weight"]))
+    )
+
+
 def score_fold(target_type: str, model_dir: Path, test_season: int,
                model_name: str, active_models: list[str],
-               keep_rows: bool = False) -> tuple[pl.DataFrame, dict, pl.DataFrame | None]:
+               keep_rows: bool = False, companion_dir: Path | None = None,
+               val_season: int | None = None) -> tuple[pl.DataFrame, dict, pl.DataFrame | None]:
     """Score one fold's held-out season through the path production serves.
 
     The universe is built from the **unfiltered** labelled frame, so the
@@ -135,6 +181,8 @@ def score_fold(target_type: str, model_dir: Path, test_season: int,
     probs = score(model_name, X, feature_cols, model_dir,
                   active_models=active_models)
     scored = scored.with_columns(pl.Series("prob", probs))
+    scored = _apply_anytime_prior(scored, target_type, model_dir, companion_dir,
+                                  model_name, active_models, val_season)
 
     team_model = load_team_rate(Path(model_dir) / "team_td_rate.json")
     if target_type != "first_td" and team_model is not None:
@@ -198,36 +246,55 @@ def run(overlay: dict | None = None, *, markets=MARKETS,
     all_outcomes, all_rows, all_players = [], [], []
     folds_run: list[int] = []
 
-    for market in markets:
-        with config_overlay(base_overlay) as effective:
-            # Inside the overlay: an experiment is allowed to move the splits,
-            # and folds derived from the un-overlaid config would silently score
-            # a different window than the one under test.
-            folds = fold_splits(first_test, last_test, played_seasons(market))
-            if not folds:
-                raise ValueError(f"No played seasons in {first_test}..{last_test}")
-            folds_run = [f["test_season"] for f in folds]
-            active = list(effective["models"]["active"])
-            to_score = active + (["ensemble"] if len(active) > 1 else [])
-            for fold in folds:
-                progress(f"  {market} fold: train <={fold['train_end']} "
-                         f"val {fold['val_season']} score {fold['test_season']} "
-                         f"({', '.join(active)})")
-                scratch = Path(tempfile.mkdtemp(prefix="harness_"))
-                try:
+    with config_overlay(base_overlay) as effective:
+        # Inside the overlay: an experiment is allowed to move the splits, and
+        # folds derived from the un-overlaid config would silently score a
+        # different window than the one under test.
+        active = list(effective["models"]["active"])
+        to_score = active + (["ensemble"] if len(active) > 1 else [])
+
+        # Fold outer, market inner, so both markets of one fold are trained
+        # into the same scratch directory. First TD can then be scored with the
+        # anytime model *from its own fold* — a companion trained on any other
+        # window would be scoring the held-out season with knowledge of it.
+        needs = list(markets)
+        if (effective.get("first_td", {}).get("use_anytime_prior")
+                and "first_td" in needs and "anytime_td" not in needs):
+            needs.append("anytime_td")
+
+        folds = fold_splits(first_test, last_test, played_seasons(needs[0]))
+        if not folds:
+            raise ValueError(f"No played seasons in {first_test}..{last_test}")
+        folds_run = [f["test_season"] for f in folds]
+
+        for fold in folds:
+            scratch = Path(tempfile.mkdtemp(prefix="harness_"))
+            try:
+                trained: dict[str, Path] = {}
+                for market in needs:
+                    progress(f"  {market} fold: train <={fold['train_end']} "
+                             f"val {fold['val_season']} score "
+                             f"{fold['test_season']} ({', '.join(active)})")
                     train_all(market, splits=fold,
-                              model_dir=scratch / "models",
-                              output_dir=scratch / "output")
+                              model_dir=scratch / market / "models",
+                              output_dir=scratch / market / "output")
+                    trained[market] = scratch / market / "models"
+
+                for market in markets:
+                    companion = (trained.get("anytime_td")
+                                 if market == "first_td" else None)
                     for name in to_score:
                         outcomes, rows, players = score_fold(
-                            market, scratch / "models", fold["test_season"],
-                            name, active, keep_rows=keep_rows)
+                            market, trained[market], fold["test_season"],
+                            name, active, keep_rows=keep_rows,
+                            companion_dir=companion,
+                            val_season=fold["val_season"])
                         all_outcomes.append(outcomes)
                         all_rows.append(rows)
                         if players is not None:
                             all_players.append(players)
-                finally:
-                    shutil.rmtree(scratch, ignore_errors=True)
+            finally:
+                shutil.rmtree(scratch, ignore_errors=True)
 
     return {
         "outcomes": pl.concat(all_outcomes, how="diagonal_relaxed"),
