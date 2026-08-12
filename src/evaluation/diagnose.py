@@ -126,6 +126,115 @@ def market_benchmark(players: pl.DataFrame, graded: pl.DataFrame) -> dict:
     return out
 
 
+def by_position_vs_market(players: pl.DataFrame, graded: pl.DataFrame) -> dict:
+    """Position slices with the book's number printed beside ours. Always.
+
+    Reading our own position slice alone produced a confident wrong diagnosis
+    the first time this ran. First TD scores 1.9% Top-1 in games a receiver won,
+    against 33.6% in games a back won, and the obvious reading — "the ranking
+    has collapsed onto running backs" — is wrong. The book gets 3.8% on those
+    same games and puts a back top in 88.8% of games against our 93.2%. Nobody
+    can say *which* receiver scores first; that slice is close to a tautology,
+    because picking a back means you cannot hit a receiver game.
+
+    Three cuts, because they answer three different questions and only the
+    second is about over-valuation:
+
+      * **pick share** — how often each position is ranked first. Should NOT
+        match the outcome distribution: one lead back beats four receivers
+        splitting the same mass, so a Top-1 optimiser concentrates by design.
+        Matching outcomes instead is probability matching, and it is strictly
+        worse for accuracy.
+      * **probability mass** — the share of predicted probability each position
+        carries, against the share of games it actually wins. This is the real
+        test of whether a position is over-rated, and it is the one to argue
+        from.
+      * **within-position AUC** — given that a back scores, do we know which
+        back? Ours against the book's, on the same rows. A position can be
+        perfectly calibrated in aggregate and still hopeless here, which is
+        exactly first TD's quarterback problem.
+    """
+    from sklearn.metrics import roc_auc_score
+
+    priced = (
+        graded.select(["game_id", "player_id", "implied_prob", "fair_prob"])
+        .unique(subset=["game_id", "player_id"])
+        .with_columns(pl.coalesce([pl.col("fair_prob"), pl.col("implied_prob")])
+                      .alias("market_prob"))
+    )
+    joined = players.join(priced, on=["game_id", "player_id"], how="inner")
+    if joined.height == 0:
+        return {"available": False, "reason": "no overlap with the odds archive"}
+    counts = joined.group_by("game_id").agg(pl.len().alias("n_priced"))
+    joined = joined.join(
+        counts.filter(pl.col("n_priced") >= MIN_PRICED_PER_GAME).select("game_id"),
+        on="game_id", how="inner")
+    joined = joined.with_columns(_position(joined).alias("position"))
+    if joined.height == 0:
+        return {"available": False, "reason": "no game priced deeply enough"}
+
+    ranked = joined.with_columns([
+        pl.col("prob").rank(descending=True, method="ordinal")
+        .over("game_id").alias("_r_model"),
+        pl.col("market_prob").rank(descending=True, method="ordinal")
+        .over("game_id").alias("_r_market"),
+    ])
+    n_games = ranked["game_id"].n_unique()
+
+    def share(col):
+        d = ranked.filter(pl.col(col) == 1).group_by("position").len()
+        return {r["position"]: r["len"] / n_games for r in d.to_dicts()}
+
+    actual = ranked.filter(pl.col("target") == 1).group_by("position").len()
+    total_mass = float(ranked["prob"].sum())
+    # Share of scoring *events*, not of games. Anytime TD has about four
+    # scorers a game, so dividing by games gave a column summing to 400%
+    # against a mass column normalised to 100% — two different denominators
+    # printed side by side and invited to be compared. On first TD, where there
+    # is exactly one winner per game, the two definitions coincide.
+    total_wins = float(ranked["target"].sum()) or 1.0
+    mass = ranked.group_by("position").agg([
+        pl.col("prob").sum().alias("_mass"),
+        pl.col("target").sum().alias("_wins"),
+    ])
+
+    rows = []
+    for r in mass.sort("_mass", descending=True).to_dicts():
+        pos = r["position"]
+        sub = ranked.filter(pl.col("position") == pos)
+        y = sub["target"].to_numpy().astype(int)
+        ours = book = None
+        if len(y) >= 50 and 0 < y.sum() < len(y):
+            ours = float(roc_auc_score(y, sub["prob"].to_numpy()))
+            book = float(roc_auc_score(y, sub["market_prob"].to_numpy()))
+        rows.append({
+            "position": pos,
+            "our_pick_share": share("_r_model").get(pos, 0.0),
+            "book_pick_share": share("_r_market").get(pos, 0.0),
+            "predicted_mass": r["_mass"] / total_mass if total_mass else 0.0,
+            "actual_win_share": r["_wins"] / total_wins,
+            "our_auc_within": ours, "book_auc_within": book,
+            "rows": sub.height,
+        })
+
+    # Top-1 cut by who actually scored, ours beside the book's.
+    hits = (ranked.filter(pl.col("target") == 1).group_by("game_id")
+            .agg([(pl.col("_r_model").min() == 1).alias("we_hit"),
+                  (pl.col("_r_market").min() == 1).alias("book_hit")]))
+    scorer = (ranked.filter(pl.col("target") == 1)
+              .select(["game_id", "position"]).unique(subset=["game_id"]))
+    top1 = (scorer.join(hits, on="game_id", how="inner").group_by("position")
+            .agg([pl.col("we_hit").mean().alias("ours"),
+                  pl.col("book_hit").mean().alias("book"),
+                  pl.len().alias("games")])
+            .sort("games", descending=True).to_dicts())
+
+    return {"available": True, "games": n_games, "positions": rows,
+            "top1_by_scorer_position": top1,
+            "actual_win_share": {r["position"]: r["len"] / total_wins
+                                 for r in actual.to_dicts()}}
+
+
 # --------------------------------------------------------------------------
 # 2. Which half of the factorisation is wrong
 # --------------------------------------------------------------------------

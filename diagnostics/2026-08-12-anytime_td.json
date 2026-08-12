@@ -183,8 +183,8 @@
       "market": 0.8424170616113744,
       "model": 0.8850710900473934,
       "delta": 0.04265402843601896,
-      "se": 0.011522565909272416,
-      "se_multiple": 3.701782117965105,
+      "se": 0.01152256590927242,
+      "se_multiple": 3.701782117965104,
       "model_wins": 66,
       "market_wins": 30
     },
@@ -196,6 +196,84 @@
       "se_multiple": 3.1274122916800864,
       "model_wins": 36,
       "market_wins": 14
+    }
+  },
+  "positions": {
+    "available": true,
+    "games": 849,
+    "positions": [
+      {
+        "position": "WR",
+        "our_pick_share": 0.15076560659599528,
+        "book_pick_share": 0.08598351001177856,
+        "predicted_mass": 0.4248018556218115,
+        "actual_win_share": 0.4179675994108984,
+        "our_auc_within": 0.7949694769965054,
+        "book_auc_within": 0.7574943753721403,
+        "rows": 8576
+      },
+      {
+        "position": "RB",
+        "our_pick_share": 0.8150765606595995,
+        "book_pick_share": 0.8539458186101295,
+        "predicted_mass": 0.32971521678495547,
+        "actual_win_share": 0.33549337260677464,
+        "our_auc_within": 0.8431793140096464,
+        "book_auc_within": 0.8123028168116394,
+        "rows": 5547
+      },
+      {
+        "position": "TE",
+        "our_pick_share": 0.02944640753828033,
+        "book_pick_share": 0.02237926972909305,
+        "predicted_mass": 0.16804078146921964,
+        "actual_win_share": 0.16406480117820324,
+        "our_auc_within": 0.8110842279515245,
+        "book_auc_within": 0.756698703830625,
+        "rows": 5073
+      },
+      {
+        "position": "QB",
+        "our_pick_share": 0.004711425206124852,
+        "book_pick_share": 0.03769140164899882,
+        "predicted_mass": 0.07744214612401326,
+        "actual_win_share": 0.08247422680412371,
+        "our_auc_within": 0.7052050627943485,
+        "book_auc_within": 0.730266385400314,
+        "rows": 1736
+      }
+    ],
+    "top1_by_scorer_position": [
+      {
+        "position": "WR",
+        "ours": 0.4939759036144578,
+        "book": 0.463855421686747,
+        "games": 332
+      },
+      {
+        "position": "RB",
+        "ours": 0.6757679180887372,
+        "book": 0.6518771331058021,
+        "games": 293
+      },
+      {
+        "position": "TE",
+        "ours": 0.46808510638297873,
+        "book": 0.41843971631205673,
+        "games": 141
+      },
+      {
+        "position": "QB",
+        "ours": 0.5641025641025641,
+        "book": 0.47435897435897434,
+        "games": 78
+      }
+    ],
+    "actual_win_share": {
+      "RB": 0.33549337260677464,
+      "TE": 0.16406480117820324,
+      "WR": 0.4179675994108984,
+      "QB": 0.08247422680412371
     }
   }
 }

@@ -316,20 +316,43 @@ So there is no gap to the market to close on anytime TD; we are already ahead of
 it. On first TD we are level with the price at the top and slightly ahead at
 Top-5 (+1.5pp).
 
-**First TD's ranking has collapsed onto running backs.** 1,039 of its 1,131
-top-1 picks are RBs — 92%. Top-1 broken down by who actually scored first:
+**First TD's real gap is quarterbacks, and it is narrow.**
 
-| scorer was | RB | WR | QB | DEF/ST |
-| --- | --- | --- | --- | --- |
-| games | 563 | 415 | 87 | 50 |
-| our Top-1 | **30.4%** | **2.2%** | 1.1% | 0.0% |
+This paragraph first read "the ranking has collapsed onto running backs",
+citing 92% RB top picks and a 2.2% Top-1 in receiver-won games. That was wrong,
+and it was wrong because the slice had no benchmark beside it. The book puts a
+back top in **88.8%** of the same games, and scores **3.8%** on receiver-won
+games. Concentration on backs is the structure of the market, not a defect —
+and "Top-1 when a receiver won" is close to a tautology, since picking a back
+means you cannot hit a receiver game.
 
-The model is competent when a back scores first and blind otherwise, and 46% of
-first touchdowns are not scored by backs. The median rank of the actual first
-scorer is 5. This is what a pointwise binary log-loss objective does to a
-one-winner-per-game problem: it learns the position base rate. It is direct
-evidence for the conditional-logit rewrite in 3a, which was previously argued
-from theory alone.
+Three cuts are needed to tell those apart, and `by_position_vs_market` now
+prints all three with the book beside each:
+
+| | pick share (ours / book) | mass vs actual | within-position AUC (ours / book) |
+| --- | --- | --- | --- |
+| RB | 92.8% / 88.4% | 53.0% / 49.2% | **0.8264** / 0.8126 |
+| WR | 6.6% / 7.7% | 39.7% / 37.3% | **0.7614** / 0.7480 |
+| QB | **0.6% / 3.9%** | 7.3% / 7.3% | 0.7229 / **0.7395** |
+
+**Pick share should exceed win share.** One lead back outranks four receivers
+splitting the same mass, so a Top-1 optimiser concentrates by design; spreading
+picks to match the outcome distribution is probability matching, which is
+strictly worse for accuracy. Over-valuation shows up in *mass against actual*,
+and there it does not: every position lands within a point or two, RB at ratio
+1.02. We also out-discriminate the book *within* RB and WR.
+
+Quarterbacks are the exception, and the shape of the failure is specific. Our
+QB mass is exactly right in aggregate (7.3% against 7.3%), yet we put a QB top
+in 0.6% of games against the book's 3.9%. In the 62 QB-won games both we and
+the book give the actual scorer a median rank of 8 — but the book has him
+**top-3 in 35.5% of them against our 16.1%**. Correct on average, flat at the
+top: we never elevate the specific goal-line rushing quarterbacks the book
+identifies. Closing to the book's rate on those games is worth about +0.8pp of
+Top-1.
+
+This is the same defect `stage2.py` documents from the betting side — "under-
+predicts quarterbacks by 9.2 points" — reached independently.
 
 **Anytime TD's misses are the share, not the rate.** 78.0% of its 564 misses are
 the right team and the wrong player. The market-driven Poisson half is doing its
@@ -354,20 +377,34 @@ Widening the candidate pool cannot be where the wins are.
 
 Re-ordered by measured effect rather than by expected effect:
 
-1. **3a, conditional logit / listwise objective — first TD.** Was "largest
-   expected"; is now the only explanation for a 2.2% hit rate on WR-scored games
-   that does not require the features to be broken.
-2. **Position-conditional shape at the top of the board — anytime TD.** New, and
-   not previously on the list: the DEF/ST pick problem is worth ~3 points and is
-   a shape problem, so it belongs with 3c (calibration) rather than with
-   features.
-3. **3a, multinomial shares within team-game — anytime TD.** 78% of misses are
-   share errors, which is exactly what this fixes.
-4. **3d, market features — first TD only.** We already beat the book on anytime,
-   so there is little of the book's information left to import there. On first
-   TD we are level with it, so its information is worth more.
+1. **Position-conditional shape at the top of the board.** The largest measured
+   defect on both markets, and it was not on the original list. Anytime TD's
+   DEF/ST top picks hit 16.3% against 58.0% for backs, worth ~3 points; first
+   TD never elevates a quarterback (0.6% of picks against the book's 3.9%),
+   worth ~0.8. Both are the same shape: a position whose aggregate mass is
+   right but whose top end is flat. That is a calibration problem (3c), not a
+   feature or objective one, and it is the cheapest thing here to try.
+2. **3a, multinomial shares within team-game — anytime TD.** 78% of its misses
+   are right-team-wrong-player, which is exactly what this fixes.
+3. **3a, conditional logit — first TD.** Still worth testing: a softmax over the
+   game's candidates is the true likelihood for a one-winner market, and it
+   models cross-position competition directly rather than leaving it to a
+   pointwise fit. Demoted from first place because the evidence that motivated
+   putting it there turned out to be a misread — the ranking has not collapsed,
+   it is level with the market.
+4. **3d, market features — first TD only.** We already beat the book on anytime
+   TD, so there is little of its information left to import there. On first TD
+   we are level, so it is worth more.
 5. **3e/3f, feature ablation and pool thresholds — demoted.** The pool ceiling is
    99%+ and the losses are structural, not informational.
+
+### A note on reading these slices
+
+The RB misread is worth keeping as a warning. A slice of our own numbers with no
+benchmark beside it produced a confident, specific, wrong conclusion that
+survived into a committed plan — and the fix was not more analysis but printing
+the book's column next to ours. Any new cut added here should carry its
+benchmark in the same table, not in a follow-up.
 
 `scripts/24_diagnose.py --target ...` produces a report and a dated JSON
 snapshot (committed), so the diagnosis itself is trackable over time.

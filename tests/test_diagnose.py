@@ -177,6 +177,72 @@ def test_pool_ceiling_separates_a_data_gap_from_a_filter_loss():
     assert p["ceiling"] == pytest.approx(0.5)
 
 
+def _pos_frame(rows: list[dict]) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """(players, graded) for the position benchmark, priced deeply enough."""
+    players, graded = [], []
+    for r in rows:
+        players.append({
+            "game_id": r["g"], "player_id": r["p"], "team": "KC",
+            "prob": r["prob"], "target": r["target"],
+            "position_QB": 1 if r["pos"] == "QB" else 0,
+            "position_WR": 1 if r["pos"] == "WR" else 0,
+            "position_TE": 0, "position_FB": 0, "position_DEFST": 0,
+        })
+        graded.append({"game_id": r["g"], "player_id": r["p"],
+                       "implied_prob": r["mkt"], "fair_prob": None})
+    return pl.DataFrame(players), pl.DataFrame(graded)
+
+
+def test_mass_and_actual_share_use_the_same_denominator():
+    """Anytime TD has ~4 scorers a game; first TD has exactly one.
+
+    Dividing wins by *games* made the "actual" column sum to 400% on anytime
+    while the mass column beside it summed to 100% — two denominators printed
+    side by side and invited to be compared, which is how a position looks
+    wildly over-rated when it is calibrated.
+    """
+    rows = []
+    for g in range(3):                      # 3 games, 3 scorers each of 10
+        for i in range(10):
+            rows.append({"g": f"g{g}", "p": f"g{g}-p{i}", "pos": "RB",
+                         "prob": 0.4, "mkt": 0.4, "target": 1 if i < 3 else 0})
+    players, graded = _pos_frame(rows)
+    r = D.by_position_vs_market(players, graded)
+    assert r["available"]
+    total = sum(d["actual_win_share"] for d in r["positions"])
+    assert total == pytest.approx(1.0), (
+        f"actual shares must sum to 1 whatever the scorers-per-game rate, got "
+        f"{total}")
+    assert sum(d["predicted_mass"] for d in r["positions"]) == pytest.approx(1.0)
+
+
+def test_position_table_reports_the_book_beside_every_number():
+    """The omission that produced a confident wrong diagnosis.
+
+    A slice of our own numbers with no benchmark beside it said "the ranking has
+    collapsed onto running backs". The book concentrates on backs just as hard.
+    Every cut here carries the book's column or the same misread is available
+    again.
+    """
+    rows = []
+    for g in range(4):
+        for i in range(10):
+            # We rank the QB last; the book ranks him first. He scores.
+            is_qb = i == 9
+            rows.append({
+                "g": f"g{g}", "p": f"g{g}-p{i}", "pos": "QB" if is_qb else "RB",
+                "prob": 0.01 if is_qb else 0.5 - i * 0.01,
+                "mkt": 0.9 if is_qb else 0.1,
+                "target": 1 if is_qb else 0,
+            })
+    players, graded = _pos_frame(rows)
+    r = D.by_position_vs_market(players, graded)
+    qb = next(d for d in r["positions"] if d["position"] == "QB")
+    assert qb["our_pick_share"] == 0.0 and qb["book_pick_share"] == 1.0
+    top1 = {d["position"]: d for d in r["top1_by_scorer_position"]}
+    assert top1["QB"]["ours"] == 0.0 and top1["QB"]["book"] == 1.0
+
+
 def test_favourite_and_underdog_slices_are_not_inverted():
     """`spread_line` is team-relative and POSITIVE when that team is favoured.
 
