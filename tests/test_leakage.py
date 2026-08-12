@@ -1643,3 +1643,43 @@ def test_decay_stays_quiet_until_there_are_enough_settled_bets(tmp_path):
     assert out is not None
     assert "too few to judge" in out["verdict"]
     assert "below_expectation" not in out
+
+
+def test_the_positional_bias_is_not_stable_enough_to_correct():
+    """Guards three failed experiments' worth of conclusion.
+
+    The pooled calibration gap by rank looks like a systematic bias worth
+    correcting. Split by season it disagrees in sign — rank 1 runs +12.0pp,
+    +3.2pp, -8.8pp across 2023/24/25 on ~283 observations each. A
+    monotone-by-construction correction fitted on two seasons made the third
+    worse. If a future rebuild ever produces a bias that IS consistent across
+    seasons, this test fails and the idea is worth revisiting.
+    """
+    import polars as pl
+    from src.evaluation.rank_economics import load_bets, BET_RANK_COL
+
+    d = load_bets("anytime_td", rank_by=BET_RANK_COL)
+    if d is None or d.height == 0:
+        pytest.skip("no backtest frames")
+    seasons = sorted(d["season"].unique().to_list())
+    if len(seasons) < 3:
+        pytest.skip("need three seasons to judge stability")
+
+    consistent = []
+    for rank in (1, 2, 3):
+        gaps = []
+        for s in seasons:
+            sub = d.filter((pl.col("rank") == rank) & (pl.col("season") == s))
+            if sub.height < 100:
+                break
+            gaps.append(sub["scored"].mean() - sub["prob_calibrated"].mean())
+        # "Consistent" means every season agrees on the sign and the effect is
+        # not trivially small.
+        if len(gaps) == len(seasons) and (
+                all(g > 0.02 for g in gaps) or all(g < -0.02 for g in gaps)):
+            consistent.append(rank)
+
+    assert not consistent, (
+        f"ranks {consistent} now show a consistent bias across every season — "
+        f"src/models/rank_calibration.py may be worth reviving, monotone form"
+    )

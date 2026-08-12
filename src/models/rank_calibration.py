@@ -1,4 +1,37 @@
-"""Correct the model's positional bias.
+"""Correct the model's positional bias. DISABLED, AND THE BIAS IS NOT REAL.
+
+Kept and documented rather than deleted, because the idea is reasonable and
+keeps recurring. It was tried twice and failed twice, for two different reasons.
+
+FIRST FAILURE — it broke the ranking. Additive per-rank deltas were not monotone
+in rank, so a lower-rated player could overtake a higher-rated one. Stacked on
+the joint model's output it collapsed the top ranks into ties and took 2025 AUC
+from 0.862 to 0.497. That is why it is skipped whenever the joint model is
+active.
+
+SECOND FAILURE — the bias does not generalise. A monotone-by-construction
+version was built specifically to fix the first failure (non-increasing deltas
+cannot reorder a game), fitted on 2023-24 and tested on 2025. It moved nothing:
+Brier 0.11291 -> 0.11300, AUC 0.8141 -> 0.8144, Top-1 unchanged, and rank-1
+calibration got *worse* (-8.8pp -> -12.2pp).
+
+The reason is visible once the pooled figure is split by season:
+
+    calibration gap    2023     2024     2025    pooled
+    rank 1           +12.0pp   +3.2pp   -8.8pp   +2.1pp
+    rank 2            +6.5pp   -2.2pp   -3.2pp   +0.4pp
+    rank 6           +10.2pp   +5.4pp   -0.1pp   +5.2pp
+
+Roughly 283 observations per rank per season. The gaps disagree in sign, so the
+pooled "systematic bias" is an average of seasons that contradict each other.
+Fitting it forward is fitting last year's noise.
+
+The headline in the paragraph below — "#2 runs 6 points hot, #4 down runs cold" —
+is one season's shape read as a law. Across all 20,957 priced players the model
+sits +0.5pp off, which is close to calibrated, and the team-rate lambda is
+accurate across the whole spread. There is no positional bias left worth
+correcting.
+
 
 Measured on held-out data, this model's error depends on *where a player sits in
 its own ranking*, not just on the probability it assigned. For anytime-TD the #1
