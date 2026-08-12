@@ -298,6 +298,17 @@ def assemble_features() -> pl.DataFrame:
     pace_feats = build_pace_features(pbp)
     print(f"  Pace features: {pace_feats.shape}")
 
+    # === Game script: who gets the ball when a team is losing ===
+    # Aimed at the one residual that survived every other fix — underdogs are
+    # under-predicted, scaling with the spread. See the module docstring.
+    from src.features.game_script_features import (
+        build_game_script_features, build_player_script_features,
+    )
+    script_team_feats = build_game_script_features(pbp)
+    script_player_feats = build_player_script_features(pbp)
+    print(f"  Game script (team): {script_team_feats.shape}")
+    print(f"  Game script (player): {script_player_feats.shape}")
+
     # === NEW Round 2: Score-first features ===
     score_first_feats = build_score_first_features(schedules)
     print(f"  Score-first features: {score_first_feats.shape}")
@@ -389,6 +400,8 @@ def assemble_features() -> pl.DataFrame:
 
         # Round 2 team features carry-forward
         pace_feats = _carry_forward_team(pace_feats, predict_season, "team")
+        script_team_feats = _carry_forward_team(script_team_feats, predict_season, "team")
+        script_player_feats = _carry_forward_player(script_player_feats, predict_season)
         score_first_feats = _carry_forward_team(score_first_feats, predict_season, "team")
         coach_feats = _carry_forward_team(coach_feats, predict_season, "team")
         # TODO(oc-features): re-enable with build_oc_features
@@ -468,6 +481,10 @@ def assemble_features() -> pl.DataFrame:
         td_streak_feats = td_streak_feats.unique(subset=["player_id", "season", "week"], keep="last")
     td_proxy_feats = td_proxy_feats.unique(subset=["game_id", "team"], keep="last")
     pace_feats = pace_feats.unique(subset=["season", "week", "team"], keep="last")
+    script_team_feats = script_team_feats.unique(
+        subset=["season", "week", "team"], keep="last")
+    script_player_feats = script_player_feats.unique(
+        subset=["season", "week", "player_id"], keep="last")
     score_first_feats = score_first_feats.unique(subset=["season", "week", "team"], keep="last")
     coach_feats = coach_feats.unique(subset=["season", "week", "team"], keep="last")
     # TODO(oc-features): re-enable with build_oc_features
@@ -566,6 +583,8 @@ def assemble_features() -> pl.DataFrame:
 
     # Round 2: Pace features
     df = df.join(pace_feats, on=["season", "week", "team"], how="left")
+    df = df.join(script_team_feats, on=["season", "week", "team"], how="left")
+    df = df.join(script_player_feats, on=["season", "week", "player_id"], how="left")
 
     # Round 2: Score-first features
     df = df.join(score_first_feats, on=["season", "week", "team"], how="left")

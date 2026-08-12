@@ -2,7 +2,8 @@
 	docker-build docker-up docker-down docker-logs docker-shell \
 	docker-pipeline docker-prod docker-build-amd64 \
 	backtest walkforward longshot economics evaluate wager wager-report \
-	odds-open odds-close odds-schedule-on odds-schedule-off odds-schedule-status
+	odds-open odds-close odds-schedule-on odds-schedule-off odds-schedule-status \
+	decay
 
 # Defaults so the evaluation targets run without arguments. Override per call:
 #   make backtest SEASON=2024 TARGET=first_td
@@ -101,6 +102,12 @@ wager:
 
 wager-report:
 	python scripts/15_wager.py report
+
+# Is the edge still there? Run after every completed week. Exits non-zero when
+# the recent numbers fall below what the backtest says to expect — a model that
+# stops working does not announce it.
+decay:
+	python scripts/17_decay.py --target $(TARGET)
 
 # ── Weekly odds capture ───────────────────────────────────────────────────
 # The week number is derived from the schedule, so these take no arguments.

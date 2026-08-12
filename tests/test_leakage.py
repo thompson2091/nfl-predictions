@@ -1616,3 +1616,31 @@ def test_shift_baseline_is_week_matched():
     call = src.split("check_distribution_shift(\n", 1)[1].split(")", 1)[0]
     assert "prior" in call, "the shift check no longer uses a week-matched baseline"
     assert 'pl.col("week") == week' in src, "week matching was removed"
+
+
+def test_decay_check_compares_against_the_interval_not_a_threshold():
+    """"Below its own confidence range" has a meaning; "down 5 points" does not.
+
+    The one time this project used a picked threshold to call something a fading
+    edge, it fired on a decline that turned out to be in-sample contamination.
+    """
+    import inspect
+    from src.evaluation import decay
+
+    src = inspect.getsource(decay.by_season)
+    assert 'pooled["lo"]' in src, "the season check no longer uses the interval"
+    assert "clustered_roi" in src, "intervals must be game-clustered here too"
+
+
+def test_decay_stays_quiet_until_there_are_enough_settled_bets(tmp_path):
+    """A handful of coin flips must not be reported as a decaying edge."""
+    from src.betting import wagers
+    from src.evaluation import decay
+
+    wagers.WAGERS_PATH = tmp_path / "wagers.parquet"
+    wagers.record(2025, 1, "2025_01_SF_SEA", "Jaxon Smith-Njigba",
+                  odds_taken=145, stake=1.0)
+    out = decay.by_recent_weeks("anytime_td")
+    assert out is not None
+    assert "too few to judge" in out["verdict"]
+    assert "below_expectation" not in out
