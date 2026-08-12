@@ -1347,6 +1347,42 @@ def test_blend_weight_is_fitted_on_frames_that_contain_model_predictions():
     )
 
 
+def test_nobody_reimplements_the_scoring_path():
+    """Applying a calibrator by hand outside scoring.py is how the paths drift.
+
+    src/models/scoring.py was written because prediction, the backtest, the
+    blend stacker and the dashboard had each grown their own copy of "load the
+    model, apply the calibrator, weight and sum", and the copies disagreed. It
+    happened again: predict.py, app.py and 11_walkforward.py all kept theirs,
+    so the tie-break added to `score` reached the backtest and the stacker but
+    not the board anyone actually reads, and not the table used to pick which
+    model to serve.
+
+    trainer.py is exempt — it *fits* calibrators, which is a different job.
+    """
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    exempt = {"src/models/scoring.py", "src/models/calibration.py",
+              "src/models/trainer.py"}
+    offenders = []
+    for path in list(root.glob("src/**/*.py")) + list(root.glob("scripts/*.py")) + [root / "app.py"]:
+        rel = path.relative_to(root).as_posix()
+        if rel in exempt:
+            continue
+        text = path.read_text()
+        # `.calibrate(` on anything reached via IsotonicCalibrator/TemperatureScaler.
+        if re.search(r"(IsotonicCalibrator|TemperatureScaler)\.load\([^)]*\)\.calibrate\(", text) \
+                or re.search(r"\bcal(?:ibrator)?\s*=\s*(IsotonicCalibrator|TemperatureScaler)\.load\(", text):
+            offenders.append(rel)
+
+    assert not offenders, (
+        f"{offenders} apply a calibrator directly instead of calling "
+        f"src.models.scoring.score — that is a private copy of the scoring "
+        f"path and it will drift out of step with production"
+    )
+
+
 def test_calibration_ties_are_broken_without_reordering():
     """Isotonic flattens players onto steps; the tie-break must not reorder them.
 

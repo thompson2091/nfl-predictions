@@ -6,7 +6,6 @@ from src.utils.config import get_config, production_model
 from src.utils.paths import get_path
 from src.models.trainer import get_feature_cols, prepare_data, _filter_low_activity
 from src.models.registry import get_model, ensure_registered
-from src.models.calibration import IsotonicCalibrator
 
 
 def _rank_bucket_lines(target_type: str, model_name: str = None):
@@ -522,36 +521,17 @@ def predict(season: int, week: int, model_name: str = None,
 
     X, _ = prepare_data(week_df, feature_cols)
 
-    if model_name == "ensemble":
-        weights_path = model_dir / "ensemble_weights.pkl"
-        if weights_path.exists():
-            with open(weights_path, "rb") as f:
-                weights = pickle.load(f)
-        else:
-            active = cfg["models"]["active"]
-            weights = {n: 1.0 / len(active) for n in active}
-
-        probs = np.zeros(X.shape[0])
-        for name, w in weights.items():
-            m = get_model(name).load(model_dir / f"{name}.pkl")
-            m.feature_names = feature_cols
-            p = m.predict_proba(X)
-
-            cal_path = model_dir / f"{name}_calibrator.pkl"
-            if cal_path.exists():
-                cal = IsotonicCalibrator.load(cal_path)
-                p = cal.calibrate(p)
-
-            probs += w * p
-    else:
-        model = get_model(model_name).load(model_dir / f"{model_name}.pkl")
-        model.feature_names = feature_cols
-        probs = model.predict_proba(X)
-
-        cal_path = model_dir / f"{model_name}_calibrator.pkl"
-        if cal_path.exists():
-            cal = IsotonicCalibrator.load(cal_path)
-            probs = cal.calibrate(probs)
+    # Through src.models.scoring.score. This used to load the models and apply
+    # their calibrators inline, which made the serving path a private copy of
+    # the one that module exists to centralise — and copies drift silently.
+    # It did: the copy never picked up the tie-break that separates players
+    # sharing an isotonic step, so the board resolved a quarter of games'
+    # headline picks by row order while the backtest measuring that board did
+    # not. Anything added to `score` has to reach here without being
+    # remembered.
+    from src.models.scoring import score as _score
+    probs = _score(model_name, X, feature_cols, model_dir,
+                   active_models=cfg["models"]["active"])
 
     id_cols = ["game_id", "player_id", "player_name", "team"]
     result = week_df.select(id_cols).with_columns(pl.Series("raw_prob", probs))

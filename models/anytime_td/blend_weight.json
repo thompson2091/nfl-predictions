@@ -1,8 +1,8 @@
 {
   "kind": "blend_weight",
   "source": "fitted",
-  "market_weight": 0.4280540966772485,
-  "log_loss": 0.3523637655971925,
+  "market_weight": 0.4280540966627781,
+  "log_loss": 0.35236376559719257,
   "log_loss_model_only": 0.35563464592780714,
   "log_loss_market_only": 0.3762856349909563,
   "n_rows": 6985,

@@ -17,7 +17,7 @@ from src.utils.config import get_config
 from src.utils.paths import get_path
 from src.models.trainer import get_feature_cols, prepare_data, _filter_low_activity
 from src.models.registry import get_model, ensure_registered
-from src.models.calibration import IsotonicCalibrator
+from src.models.scoring import score
 from src.ingest.odds_api import fetch_week_td_props, load_cached_odds
 from src.analysis.game_analyst import analyze_edges
 from src.prediction.ai_adjustments import get_ai_adjustments, apply_adjustments
@@ -301,34 +301,17 @@ def _prob_to_american(p: float) -> str:
 
 
 def _load_and_predict(model_name, feature_cols, X, model_dir):
-    """Load model(s), run inference, and return calibrated probabilities."""
-    if model_name == "ensemble":
-        weights_path = model_dir / "ensemble_weights.pkl"
-        if weights_path.exists():
-            with open(weights_path, "rb") as f:
-                weights = pickle.load(f)
-        else:
-            weights = {n: 1.0 / len(active_models) for n in active_models}
+    """Calibrated probabilities, through the one shared scoring path.
 
-        probs = np.zeros(X.shape[0])
-        for name, w in weights.items():
-            m = get_model(name).load(model_dir / f"{name}.pkl")
-            m.feature_names = feature_cols
-            p = m.predict_proba(X)
-            cal_path = model_dir / f"{name}_calibrator.pkl"
-            if cal_path.exists():
-                cal = IsotonicCalibrator.load(cal_path)
-                p = cal.calibrate(p)
-            probs += w * p
-    else:
-        model = get_model(model_name).load(model_dir / f"{model_name}.pkl")
-        model.feature_names = feature_cols
-        probs = model.predict_proba(X)
-        cal_path = model_dir / f"{model_name}_calibrator.pkl"
-        if cal_path.exists():
-            cal = IsotonicCalibrator.load(cal_path)
-            probs = cal.calibrate(probs)
-    return probs
+    This was a hand-rolled copy of src.models.scoring.score — load each model,
+    apply its calibrator, weight and sum. Copies of that path have drifted
+    before, which is why the module exists, and this one drifted again: it
+    never picked up the tie-break that separates players landing on the same
+    isotonic step, so the app ordered a quarter of games' top picks by row
+    order while the backtest it quotes did not.
+    """
+    return score(model_name, X, feature_cols, model_dir,
+                 active_models=active_models)
 
 
 def get_available_weeks(df, season):
@@ -861,7 +844,10 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
              "is the column every profitability figure was measured on.",
     ),
     "EV": st.column_config.NumberColumn(
-        "Expected on \\$100", format="$%+.2f", width="small",
+        # Plain "$" here, escaped "\\$" in `help` — a column label is drawn as
+        # text in the grid, but help is markdown, where Streamlit reads a
+        # matched pair of dollar signs as LaTeX.
+        "Expected on $100", format="$%+.2f", width="medium",
         help="What a flat \\$100 bet on this player returns **on average**, if "
              "our number is right — \\$100 risked, won at the price in "
              "**Odds**.\n\n"

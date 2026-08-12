@@ -47,9 +47,9 @@ def _fold_metrics(model_dir: Path, output_dir: Path, target_type: str,
     """Score the fold's saved model on its held-out season, joint path included."""
     import pickle
 
-    from src.models.calibration import IsotonicCalibrator
     from src.models.joint import apply_joint, load_team_rate, load_conversion
-    from src.models.registry import get_model, ensure_registered
+    from src.models.registry import ensure_registered
+    from src.models.scoring import score
     from src.models.trainer import prepare_data, _filter_low_activity
     from sklearn.metrics import brier_score_loss, roc_auc_score
 
@@ -63,19 +63,13 @@ def _fold_metrics(model_dir: Path, output_dir: Path, target_type: str,
         return None
     X, _ = prepare_data(te, fc)
 
-    if model_name == "ensemble":
-        weights = pickle.loads((model_dir / "ensemble_weights.pkl").read_bytes())
-    else:
-        weights = {model_name: 1.0}
-    probs = np.zeros(X.shape[0])
-    for name, w in weights.items():
-        m = get_model(name).load(model_dir / f"{name}.pkl")
-        m.feature_names = fc
-        p = m.predict_proba(X)
-        cal = model_dir / f"{name}_calibrator.pkl"
-        if cal.exists():
-            p = IsotonicCalibrator.load(cal).calibrate(p)
-        probs += w * p
+    # Through src.models.scoring.score, which is the whole point of that module:
+    # this function used to load each model and apply its calibrator by hand,
+    # making it a fifth private copy of the scoring path alongside the four the
+    # module was written to replace. The copy silently skipped the tie-break
+    # that resolves players sharing an isotonic step, so the table used to
+    # choose which model to serve described a pipeline production does not run.
+    probs = score(model_name, X, fc, model_dir)
 
     ev = te.with_columns(pl.Series("prob", probs))
     team_model = load_team_rate(model_dir / "team_td_rate.json")
