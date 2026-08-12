@@ -1587,19 +1587,31 @@ def test_bet_guidance_does_not_endorse_a_one_season_strategy():
     worked once in three years got the same endorsement as one that worked every
     year. Selecting `lr` in the app is what surfaced it.
     """
-    src = Path("app.py").read_text()
-    body = src.split("def _bet_guidance(", 1)[1].split("\ndef ", 1)[0]
+    from src.presentation import board as bp
 
-    assert "good_seasons == len(seasons)" in body, (
-        "guidance no longer distinguishes 'profitable every season' from "
-        "'profitable once' — both would read as an endorsement"
-    )
+    def econ(verdicts):
+        return {
+            "headline": {"verdict": "positive", "roi": 15.0},
+            "games": 1130,
+            "by_rank": [{"rank": 1, "verdict": "positive"}],
+            "by_odds_bucket": [{"bucket": "+300 or longer", "roi": -22.0}],
+            "by_season": [{"season": 2023 + i, "verdict": v}
+                          for i, v in enumerate(verdicts)],
+            "blend_comparison": [],
+        }
+
     endorsement = "take it seriously"
-    all_seasons_branch, _, partial_branch = body.partition("    else:")
-    assert endorsement in all_seasons_branch, "the endorsement went missing"
-    assert endorsement not in partial_branch, (
+
+    every, _ = bp.bet_guidance(econ(["positive"] * 3), 3)
+    assert any(endorsement in line for line in every), \
+        "profitable in every season separately is the case that earns it"
+
+    once, _ = bp.bet_guidance(
+        econ(["positive", "negative", "negative"]), 3)
+    assert not any(endorsement in line for line in once), \
         "a strategy that won in a minority of seasons is being endorsed"
-    )
+    assert any("Be sceptical of the headline" in line for line in once)
+    assert any("only profitable in 1 season out of 3" in line for line in once)
 
 
 def test_per_book_cache_is_not_read_as_a_consensus_cache(tmp_path, monkeypatch):
@@ -1970,6 +1982,68 @@ def test_each_market_reads_its_own_prices():
         bets.board_for_week)
 
 
+def test_no_module_global_is_used_before_it_exists():
+    """app.py is one long script, so definition order is a correctness property.
+
+    `_SECTION_ERRORS` was defined at line 2351 and written to at 1494, 1506 and
+    1914 — inside the `except` branches of loaders that the Full board calls at
+    line 1635. Nothing showed it until one of those loaders actually raised, at
+    which point the handler meant to report the failure raised `NameError`
+    instead and took the whole page down. The mechanism built to keep a broken
+    section from disappearing silently was the thing that crashed it.
+
+    This walks the module-level call graph: for every top-level statement that
+    reaches a function referencing a module global, that global must already be
+    assigned. It is the ordering rule the file has always depended on and never
+    checked.
+    """
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse(Path("app.py").read_text())
+
+    funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    assigned: dict[str, int] = {}
+    for node in tree.body:
+        for target in (node.targets if isinstance(node, ast.Assign)
+                       else [node.target] if isinstance(node, ast.AnnAssign)
+                       else []):
+            if isinstance(target, ast.Name):
+                assigned.setdefault(target.id, node.lineno)
+
+    def reaches(node, seen):
+        """(globals read, functions called) reachable from this subtree."""
+        names, calls = set(), set()
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
+                names.add(sub.id)
+            if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
+                calls.add(sub.func.id)
+        for name in calls - seen:
+            if name in funcs:
+                deeper, _ = reaches(funcs[name], seen | calls)
+                names |= deeper
+        return names, calls
+
+    problems = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef, ast.Import,
+                             ast.ImportFrom)):
+            continue
+        used, _ = reaches(node, set())
+        for name in used:
+            if name in assigned and assigned[name] > node.lineno:
+                problems.append(
+                    f"line {node.lineno} reaches `{name}`, "
+                    f"which is not assigned until line {assigned[name]}"
+                )
+
+    assert not problems, (
+        "app.py executes top to bottom, so these run before their global "
+        "exists:\n  " + "\n  ".join(sorted(set(problems)))
+    )
+
+
 def test_board_prose_cannot_describe_columns_that_are_not_drawn():
     """The caption and the renderer must ask the same question.
 
@@ -1980,10 +2054,278 @@ def test_board_prose_cannot_describe_columns_that_are_not_drawn():
     """
     from pathlib import Path
 
+    # The decision itself now lives in src/presentation/board.py, where
+    # test_board_presentation.py exercises it directly. What app.py still has
+    # to get right is that both the renderer and the prose consult it.
     src = Path("app.py").read_text()
-    assert "def preblend_columns_differ(" in src
     # The renderer gates the pre-blend pair on it...
-    assert "if preblend_columns_differ(frame):" in src
+    assert "if bp.preblend_columns_differ(frame):" in src
     # ...and so does the prose that describes what the renderer drew.
-    assert "_preblend = preblend_columns_differ(board)" in src
+    assert "_preblend = bp.preblend_columns_differ(board)" in src
     assert "if _rule and _preblend:" in src
+
+
+# --------------------------------------------------------------------------
+# Clustering — the Player types tab
+#
+# A segmentation is unusually good at inventing a pattern. It gets to draw its
+# own boundaries, and if it draws them on the same rows it is then scored on,
+# every group comes back looking like a discovery. These tests exist to keep the
+# fit and the scoring on opposite sides of the split, and to keep the number of
+# groups a fitted quantity rather than one somebody typed.
+# --------------------------------------------------------------------------
+
+def _cluster_artifacts(target: str = TARGET):
+    import json
+
+    from src.clustering import archetypes, bet_shapes, core
+
+    art = core.load(archetypes.artifact_path(target))
+    rep_path = archetypes.report_path(target)
+    if art is None or not rep_path.exists():
+        pytest.skip("cluster artifacts not built — run `make clusters`")
+    return art, json.loads(rep_path.read_text()), archetypes, bet_shapes, core
+
+
+def test_cluster_fit_never_sees_the_seasons_it_is_scored_on():
+    """The groups must be drawn on one set of seasons and judged on another.
+
+    This is the whole reason the tab is believable. A clustering fitted on the
+    rows it then reports returns on will always find a group with a striking
+    number attached, because it drew the boundary around one. The most recent
+    thing this project fixed was a blend weight learned from the model's own
+    training data; the same mistake in a segmentation is harder to see, because
+    nothing about a named archetype looks like a fitted parameter.
+    """
+    art, rep, _, _, _ = _cluster_artifacts()
+    train_end = get_config()["splits"]["train_end"]
+
+    assert max(art["seasons_used"]) <= train_end, (
+        f"archetypes were fitted through {max(art['seasons_used'])}, past the "
+        f"training split at {train_end}"
+    )
+    assert min(rep["report_seasons"]) > train_end
+    assert not set(art["seasons_used"]) & set(rep["report_seasons"])
+
+
+def test_cluster_report_never_scores_an_unplayed_season():
+    """Reporting stops at the last season that has actually been played.
+
+    features.parquet carries the predict season, whose rows have `target == 0`
+    because nothing has happened yet rather than because nobody scored. Left in
+    the reporting set they read as a mass of players who all failed to score:
+    every group's touchdown rate drops, our probabilities look systematically
+    over-confident, and none of it looks wrong on screen. It reached the report
+    once already.
+    """
+    art, rep, archetypes, _, _ = _cluster_artifacts()
+    predict_season = get_config()["seasons"]["predict_season"]
+    assert predict_season not in rep["report_seasons"]
+    assert max(rep["report_seasons"]) <= get_config()["seasons"]["end"]
+    assert archetypes.reporting_window()[1] < predict_season
+
+
+def test_cluster_assignment_reproduces_the_persisted_sizes():
+    """Re-assigning the fit rows from the artifact alone must land them back.
+
+    The parity check between the fit path and the serve path. If an impute
+    value, a transform or a scaler is applied on one and not the other, the app
+    silently shows a different grouping from the one the report measured, and
+    both look fine in isolation. Sizes are exact, so any drift fails here.
+    """
+    art, _, archetypes, _, core = _cluster_artifacts()
+    import polars as pl
+
+    pop = archetypes.population(TARGET)
+    if pop is None:
+        pytest.skip("features not built")
+    fit_df = pop.filter(pl.col("season") <= get_config()["splits"]["train_end"])
+    assigned = archetypes.assign_frame(fit_df, art)
+
+    for name, stratum in art["strata"].items():
+        sub = assigned.filter(pl.col("stratum") == name)
+        got = [int(sub.filter(pl.col("cluster_id") == c).height)
+               for c in range(stratum["k"])]
+        assert got == stratum["sizes"], (
+            f"{name}: assigning the fit rows through the artifact gave {got}, "
+            f"but the artifact records {stratum['sizes']}. The fit path and the "
+            f"serve path are in different spaces."
+        )
+
+
+def test_cluster_features_are_not_the_position_dummies():
+    """Position is the thing we stratify by, not the thing we discover.
+
+    Pooled across the league, silhouette settles on three groups and they are
+    running backs, receivers, and everyone with no usage — the position column
+    with extra steps, presented as a finding. Feeding the dummies back into the
+    feature set would recreate that inside every position too, and it would look
+    like structure.
+    """
+    art, _, _, _, _ = _cluster_artifacts()
+    assert art["strata_col"] == "position"
+    for name, stratum in art["strata"].items():
+        for col in stratum["features"]:
+            assert not col.startswith("position_"), (
+                f"{name} is clustering on {col}, which is the stratifier")
+
+
+def test_cluster_k_is_fitted_not_typed():
+    """No literal cluster count anywhere in src/clustering."""
+    import re
+
+    for path in Path("src/clustering").glob("*.py"):
+        src = path.read_text()
+        assert not re.search(r"n_clusters\s*=\s*\d", src), (
+            f"{path} hardcodes a cluster count; k comes from choose_k")
+    core_src = Path("src/clustering/core.py").read_text()
+    assert "def choose_k(" in core_src
+    for lens in ("archetypes", "bet_shapes"):
+        assert "core.choose_k(" in Path(f"src/clustering/{lens}.py").read_text()
+
+
+def test_clustering_never_zero_fills_a_standardised_matrix():
+    """Missing values are imputed and recorded, never filled with zero.
+
+    `prepare_data` fills nulls with 0.0, which is harmless for trees and
+    poisonous here: after standardisation a filled zero is an extreme z, k-means
+    isolates those rows, and the result is a cluster of missingness that the
+    naming code will hand a confident English label to.
+    """
+    import ast
+
+    # Walked as a syntax tree rather than grepped, because the modules discuss
+    # `nan_to_num` at length in their docstrings explaining why they avoid it.
+    for path in Path("src/clustering").glob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = fn.attr if isinstance(fn, ast.Attribute) else getattr(
+                fn, "id", "")
+            assert name != "nan_to_num", (
+                f"{path}:{node.lineno} zero-fills a matrix that is about to be "
+                f"standardised")
+
+
+def test_cluster_roi_uses_the_game_clustered_bootstrap():
+    """Per-group returns reuse rank_economics, they do not roll their own."""
+    for lens in ("archetypes", "bet_shapes"):
+        src = Path(f"src/clustering/{lens}.py").read_text()
+        assert "from src.evaluation.rank_economics import" in src
+        assert "clustered_roi" in src
+
+
+def test_cluster_thin_cells_are_flagged_not_dropped():
+    """Small groups are reported with a warning rather than quietly removed.
+
+    Hiding them is how a table starts implying more coverage than it has — the
+    same stance `by_rank_and_odds` takes. Every row carries the flag so the tab
+    can say "too few bets to say" instead of showing a return computed from five
+    events.
+    """
+    _, rep, _, _, _ = _cluster_artifacts()
+    assert rep["rows"], "report has no groups"
+    for row in rep["rows"]:
+        assert "thin" in row and "n_bets" in row
+    assert rep["n_cells"] == len(rep["rows"])
+
+
+def test_cluster_binary_flags_do_not_define_a_group():
+    """A 0/1 column is a ready-made split plane and k-means will take it first.
+
+    With `is_dome` in the feature set, three of the eight bet-shape groups came
+    back named after the stadium roof. The roof is not a kind of bet. Flags stay
+    available to describe a group; they do not get to draw one.
+    """
+    art, _, _, _, _ = _cluster_artifacts()
+    import polars as pl
+    from src.clustering import archetypes
+
+    pop = archetypes.population(TARGET)
+    if pop is None:
+        pytest.skip("features not built")
+    for name, stratum in art["strata"].items():
+        sub = pop.filter(pl.col("stratum") == name)
+        for col in stratum["features"]:
+            assert sub[col].drop_nulls().n_unique() > 2, (
+                f"{name} clusters on {col}, which is binary")
+
+
+def test_cluster_labels_carry_their_own_evidence():
+    """Every name ships with the deviations that produced it.
+
+    A name is the one place a plausible story can enter this tab unchallenged.
+    Rendered beside its top standardised deviations, a wrong one is obvious;
+    rendered alone, it is believed.
+    """
+    art, _, _, _, _ = _cluster_artifacts()
+    for name, stratum in art["strata"].items():
+        assert len(stratum["clusters"]) == stratum["k"]
+        for c in stratum["clusters"]:
+            assert c["label"] and c["top_features"]
+            assert c["label_source"] in ("vocabulary", "generated")
+            assert all(t["col"] in stratum["features"] for t in c["top_features"])
+
+
+def _clusters_tab_source() -> str:
+    """Just the Player types tab block, sliced out of app.py."""
+    src = Path("app.py").read_text()
+    start = src.index("with tab_clusters:")
+    return src[start:]
+
+
+def test_clustering_tab_states_its_split():
+    """The tab must read its own split off the artifact, not describe one.
+
+    A sentence saying "fitted on 2015-2023" is correct until somebody changes
+    `splits.train_end`, at which point it is a confident lie that nothing
+    checks. The banner is built from `seasons_used` and `report_seasons` so it
+    cannot drift from what was actually fitted.
+    """
+    src = Path("app.py").read_text()
+    assert "def cluster_split_note(" in src
+    assert "art['seasons_used']" in src and "rep['report_seasons']" in src
+    assert "cluster_split_note(_art, _rep)" in _clusters_tab_source()
+
+
+def test_clustering_explore_mode_is_labelled_and_never_writes():
+    """The exploratory refit must say so, and must not persist anything.
+
+    Twelve values of k crossed with arbitrary feature subsets and a returns
+    column is a lottery with a search button. It stays useful only while it is
+    obvious that nothing there is the served grouping — and while the seasons
+    are not one of the dials.
+    """
+    tab = _clusters_tab_source()
+    assert "Exploratory. Not the served grouping." in tab
+    assert "cluster_explore_toggle" in tab
+
+    app = Path("app.py").read_text()
+    for banned in ("core.save(", "archetypes.fit(", "bet_shapes.fit("):
+        assert banned not in app, (
+            f"app.py calls {banned} — fitting and saving belong to "
+            f"scripts/21_clusters.py, not to a page render")
+
+
+def test_cluster_labels_do_not_leak_into_the_board():
+    """Player types stay in their own tab.
+
+    The archetypes are a new and unvalidated way of slicing the data. Putting a
+    group's historical return next to a live price invites betting on it before
+    anything has established that the grouping means what its name says.
+    """
+    src = Path("app.py").read_text()
+    # Everything from the first tab body up to the Player types banner: the
+    # four original tabs and their helpers, but not the cluster loaders, which
+    # are defined under that banner.
+    board = src[src.index("with tab_board:"):src.index("# ── Tab: Player types")]
+    for token in ("cluster_label", "cluster_id", "cluster_report(",
+                  "cluster_model("):
+        assert token not in board, (
+            f"{token} reached the betting tabs; the grouping is meant to be "
+            f"self-contained until it has been judged on its own page")
+
+    cols = src[src.index("def board_columns("):]
+    cols = cols[:cols.index("\ndef ")]
+    assert "cluster" not in cols

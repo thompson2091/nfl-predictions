@@ -68,6 +68,23 @@ class Block:
         self._node["children"].append(node)
         return node
 
+    @property
+    def open(self) -> bool:
+        """Every tab is "selected" during an export.
+
+        app.py gates each tab body on `tab.open` so that a live rerun only
+        computes the tab on screen. The export has no screen and no reruns — it
+        publishes several panes from one pass — so it needs all five bodies to
+        execute. Returning True here is what keeps the lazy-tab optimisation
+        from silently emptying every pane but the first.
+
+        A real property rather than something `__getattr__` invents, because
+        that fallback returns a bound method, and a bound method is truthy —
+        the export would have appeared to work while the app-side gate did
+        nothing.
+        """
+        return True
+
     # -- everything app.py calls on a container ----------------------------
     #
     # Delegated to the Capture, which holds the actual implementations, with

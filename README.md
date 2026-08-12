@@ -32,13 +32,21 @@ pipeline and app need.
 Create a `.env` in the project root:
 
 ```
-ANTHROPIC_API_KEY=...   # optional — enables AI edge analysis in the app
-ODDS_API_KEY=...        # optional — enables live sportsbook TD props
+ODDS_API_KEY=...        # optional — lets the pipeline snapshot sportsbook prices
+ANTHROPIC_API_KEY=...   # unused at present — see below
 ```
 
-Both are optional. Without `ANTHROPIC_API_KEY` the AI analysis panel shows a
-notice instead of commentary; without `ODDS_API_KEY` the app falls back to
-cached odds.
+`ODDS_API_KEY` is read by the **pipeline**, not the app: `make odds` snapshots
+live prices into the archive at `data/archive/`, and the app reads that archive.
+Without the key the pipeline cannot capture new prices, but the app still runs
+against whatever is already archived.
+
+`ANTHROPIC_API_KEY` currently does nothing. `src/analysis/game_analyst.py` and
+`src/prediction/ai_adjustments.py` read it, but no page and no pipeline stage
+calls either module — the AI commentary panel was removed from the app along
+with the old Predictions tab. The modules and the `anthropic` dependency are
+kept for whoever restores the feature; the key is not needed to run anything
+that currently exists.
 
 ## Running the pipeline
 
@@ -181,9 +189,13 @@ Task settings that matter:
 - **Size** — 1 vCPU / 4 GB is comfortable; the app loads a ~59 MB feature
   parquet per target type into memory. The image is ~2 GB, well under the 20 GB
   default ephemeral storage.
-- **Secrets** — pass `ANTHROPIC_API_KEY` and `ODDS_API_KEY` via the task
-  definition's `secrets` block (Secrets Manager / SSM). Both are optional; the
-  app degrades gracefully without them.
+- **Secrets** — the serving task needs none. `ODDS_API_KEY` belongs on the
+  pipeline task that runs `make odds`; pass it via the task definition's
+  `secrets` block (Secrets Manager / SSM). `ANTHROPIC_API_KEY` is not read by
+  anything that currently runs.
+- **Authentication** — there is none in the app. Anyone who can reach the port
+  gets the full board and the betting pages. Put it behind an authenticating
+  proxy (ALB OIDC, Cognito, an identity-aware proxy) before exposing it.
 - **Filesystem** — leave `readonlyRootFilesystem` off, or mount writable
   volumes at `/app/data`, `/app/models`, `/app/output`, and `/app/config`:
   `get_path()` calls `mkdir(parents=True, exist_ok=True)`, and `run_all.py`
@@ -206,7 +218,7 @@ Task settings that matter:
   `models.production` picks the default shown in the app
 - `model.*` — per-model hyperparameters and the random seed
 - `ai_context` — toggles AI adjustments and caps their magnitude
-  (`max_adjustment`)
+  (`max_adjustment`). Inert: nothing currently calls the AI adjustment code.
 - `paths` — where raw data, processed data, models, and output are written
 
 ## Layout
@@ -223,8 +235,10 @@ src/
   targets/          TD label extraction and candidate pools
   features/         feature builders (matchup, usage, pace, red zone, ...)
   models/           trainers, registry, calibration
-  prediction/       AI adjustments applied to model output
-  analysis/         Claude-powered edge analysis
+  prediction/       board pricing, availability, portfolio sizing
+  presentation/     pure board-display rules (tiers, labels, money formatting)
+  clustering/       player archetypes and bet shapes
+  analysis/         Claude-powered edge analysis (not currently wired up)
   evaluation/       metrics and plots
   utils/            config and path helpers
 notebooks/          exploratory notebooks
