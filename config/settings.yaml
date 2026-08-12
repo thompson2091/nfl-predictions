@@ -45,21 +45,43 @@ models:
   production_by_target:
     anytime_td: xgb
     first_td: ensemble
+# Hyperparameters. Every key here reaches the model, and every key the model
+# reads is declared here — tests/test_leakage.py asserts both directions
+# against DEFAULTS in each wrapper. That check exists because this block used
+# to be half-wired: max_depth, subsample and colsample_bytree were read, while
+# n_estimators and learning_rate were hardcoded at 2000 and 0.02 in the
+# wrappers against the 500 and 0.05 declared here. Tuning those two through
+# config changed nothing and raised nothing.
+#
+# The values are hand-picked and then checked, not searched-and-chosen. A
+# 60-configuration walk-forward random search over depth, learning rate, both
+# sampling fractions, min_child_weight and both regularisers — scoring seasons
+# 2022-2025, each on a model trained only on earlier ones — failed to beat this
+# setting by more than its standard error. Re-run
+# scripts/19_tune.py before changing anything here.
 model:
   seed: 42
   lgbm:
-    n_estimators: 500
-    learning_rate: 0.05
+    n_estimators: 2000
+    learning_rate: 0.02
     max_depth: 6
     num_leaves: 31
+    min_child_samples: 20
     subsample: 0.8
     colsample_bytree: 0.8
+    reg_alpha: 0.1
+    reg_lambda: 1.0
+    early_stopping_rounds: 50
   xgb:
-    n_estimators: 500
-    learning_rate: 0.05
+    n_estimators: 2000
+    learning_rate: 0.02
     max_depth: 6
+    min_child_weight: 20
     subsample: 0.8
     colsample_bytree: 0.8
+    reg_alpha: 0.1
+    reg_lambda: 1.0
+    early_stopping_rounds: 50
   logistic:
     max_iter: 2000
     C: 0.1

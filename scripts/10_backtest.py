@@ -143,15 +143,27 @@ def main(season: int, target_type: str, model_name: str,
 
     # Stacker training data, computed once and sliced per fold below.
     #
-    # `model_dir` has to be passed explicitly. It defaults to production, and
-    # under --walk-forward that would score the archive with a model trained on
-    # the seasons the archive covers — the stacker would then see in-sample
-    # predictions, conclude the model needs no market help, and drive the
-    # weight to ~0.01. The guard at the top of this function does not catch it:
-    # it checks the season being scored, not the one the stacker learned from.
+    # Both arguments exist to keep the model away from its own training data.
+    # `model_dir` defaults to production, and under --walk-forward that would
+    # score the archive with a model trained on the seasons the archive covers.
+    # `min_season` then drops the seasons *this* fold's model learned from:
+    # under --walk-forward the fold trains through `season - 2` and early-stops
+    # on `season - 1`, so nothing before `season` can honestly say how much the
+    # model needs the market.
+    #
+    # That is deliberately harsh. It means the opening weeks of a fold have too
+    # few graded rows to fit anything and fall back to the declared bootstrap
+    # weight — which is exactly the position a live season starts from, and a
+    # more honest one than a fitted number derived from the model's homework.
+    # Left uncorrected, the stacker saw in-sample predictions, concluded the
+    # model needed no market help, and drove the weight to ~0.01.
+    #
+    # The guard at the top of this function catches neither: it checks the
+    # season being scored, not the ones the stacker learned from.
     from src.prediction.blend import build_blend_training_frame
     stack = build_blend_training_frame(target_type, model_name,
-                                       model_dir=model_dir)
+                                       model_dir=model_dir,
+                                       min_season=splits["val_season"] + 1)
     if stack is None:
         print("Could not build blend training frame.")
         return 1

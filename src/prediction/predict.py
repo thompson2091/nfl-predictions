@@ -208,27 +208,40 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
 
     weight_path = model_dir / "blend_weight.json"
     graded = load_graded_history(target_type)
-    n_graded = 0 if graded is None else graded.height
     min_rows = bcfg.get("min_history_rows", 500)
 
-    # Refitting replays the whole archive through the model, so do it only when
-    # the archive has actually grown since the stored weight was fitted.
+    # Only seasons this model neither trained on nor early-stopped against can
+    # say how much it needs the market. Fitting over the whole archive asked a
+    # model about its own homework: on anytime TD that returned w=0.21 where
+    # the clean seasons say 0.60 — roughly twice as much trust in the model as
+    # the evidence supports. See build_blend_training_frame's docstring.
+    first_clean = int(cfg["splits"]["val_season"]) + 1
+    eligible = (0 if graded is None
+                else graded.filter(pl.col("season") >= first_clean).height)
+
+    # Refitting replays the archive through the model, so do it only when the
+    # eligible rows have grown or the eligibility rule itself has moved. Both
+    # halves matter: comparing against the *whole* archive instead would refit
+    # on every single run, because the eligible count is permanently smaller.
     stored = None
     if weight_path.exists():
         try:
             stored = json.loads(weight_path.read_text())
         except Exception:
             stored = None
-    needs_fit = n_graded >= min_rows and (
+    needs_fit = eligible >= min_rows and (
         stored is None or stored.get("source") != "fitted"
-        or int(stored.get("n_rows", 0)) < n_graded
+        or int(stored.get("n_rows", 0)) < eligible
+        or int(stored.get("min_season", -1)) != first_clean
     )
     if needs_fit:
-        print(f"  Fitting blend weight on {n_graded:,} graded player-games "
-              f"(replaying the archive through the model)...")
-        history = build_blend_training_frame(target_type, model_name)
+        print(f"  Fitting blend weight on {eligible:,} graded player-games from "
+              f"{first_clean} on (replaying the archive through the model)...")
+        history = build_blend_training_frame(target_type, model_name,
+                                             min_season=first_clean)
         fitted = fit_blend_weight(history, min_rows=min_rows)
         if fitted is not None:
+            fitted["min_season"] = first_clean
             save_blend_weight(fitted, weight_path)
             print(f"  Blend weight FITTED on {fitted['n_rows']:,} graded "
                   f"player-games: market={fitted['market_weight']:.2f}")
@@ -236,7 +249,8 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
     if weight.get("source") == "bootstrap":
         n = 0 if graded is None else graded.height
         print(f"  Blend weight BOOTSTRAP (market={weight['market_weight']:.2f}) — "
-              f"{n:,}/{bcfg.get('min_history_rows', 500)} graded rows archived so far.")
+              f"{eligible:,} of {n:,} archived rows are from {first_clean} on; "
+              f"{min_rows:,} needed before a weight can be fitted.")
 
     result = blend(result, "prob_calibrated", "market_prob", weight,
                    out_col="probability")

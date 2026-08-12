@@ -1347,6 +1347,35 @@ def test_blend_weight_is_fitted_on_frames_that_contain_model_predictions():
     )
 
 
+def test_declared_hyperparameters_reach_the_model():
+    """Every knob config declares must be read, and every knob read declared.
+
+    The wrappers used to take `max_depth`, `subsample` and `colsample_bytree`
+    from config while hardcoding `n_estimators=2000` and `learning_rate=0.02` —
+    against a config that declared 500 and 0.05 for exactly those two. Tuning
+    them through config changed nothing, raised nothing, and left the file
+    describing a model nobody had trained. Both directions matter: a declared
+    key that is ignored is a lie, and a read key that is undeclared is a
+    setting nobody can find.
+    """
+    from src.models.lightgbm_model import DEFAULTS as LGBM_DEFAULTS
+    from src.models.xgboost_model import DEFAULTS as XGB_DEFAULTS
+    from src.utils.config import get_config
+
+    model_cfg = get_config()["model"]
+    for name, defaults in (("lgbm", LGBM_DEFAULTS), ("xgb", XGB_DEFAULTS)):
+        declared = {k for k in model_cfg.get(name, {})}
+        read = set(defaults)
+        assert not (read - declared), (
+            f"model.{name} reads {sorted(read - declared)} but config does not "
+            f"declare them — nobody tuning this file can find those settings"
+        )
+        assert not (declared - read), (
+            f"config declares model.{name}.{sorted(declared - read)} but the "
+            f"wrapper never reads them; they silently do nothing"
+        )
+
+
 def test_walkforward_fits_its_blend_weight_on_its_own_model():
     """The stacker must not learn from a model that trained on the archive.
 
@@ -1730,11 +1759,22 @@ def test_the_positional_bias_is_not_stable_enough_to_correct():
 
     The pooled calibration gap by rank looks like a systematic bias worth
     correcting. Split by season it disagrees in sign — rank 1 runs +12.0pp,
-    +3.2pp, -8.8pp across 2023/24/25 on ~283 observations each. A
+    -2.3pp, -8.9pp across 2023/24/25 on ~283 observations each. A
     monotone-by-construction correction fitted on two seasons made the third
     worse. If a future rebuild ever produces a bias that IS consistent across
     seasons, this test fails and the idea is worth revisiting.
+
+    The bar is each season's gap clearing its *own* standard error, not a flat
+    threshold. With ~283 observations per rank-season and a base rate near 0.4,
+    that standard error is about 2.9pp — so the flat 2pp this used to require
+    was below the noise floor and could fire on nothing at all. It did: after
+    the blend-weight fix, rank 3 read +7.5 / +2.8 / +2.6pp, one season at 2.6
+    standard errors and two under 1. Leave-one-season-out, applying the shift
+    learned from the other two moved Brier by -0.0033 / -0.0002 / +0.0000 —
+    a pooled 0.5% of a 0.244 Brier, essentially all of it from 2023. Not a bias;
+    one season with an opinion.
     """
+    import numpy as np
     import polars as pl
     from src.evaluation.rank_economics import load_bets, BET_RANK_COL
 
@@ -1752,16 +1792,21 @@ def test_the_positional_bias_is_not_stable_enough_to_correct():
             sub = d.filter((pl.col("rank") == rank) & (pl.col("season") == s))
             if sub.height < 100:
                 break
-            gaps.append(sub["scored"].mean() - sub["prob_calibrated"].mean())
-        # "Consistent" means every season agrees on the sign and the effect is
-        # not trivially small.
+            y = sub["scored"].to_numpy()
+            gap = float(y.mean() - sub["prob_calibrated"].mean())
+            se = float(np.sqrt(y.mean() * (1 - y.mean()) / len(y)))
+            gaps.append((gap, se))
+        # Consistent means every season agrees on the sign AND every season's
+        # effect is larger than that season's own sampling error. Either half
+        # alone is satisfied by noise.
         if len(gaps) == len(seasons) and (
-                all(g > 0.02 for g in gaps) or all(g < -0.02 for g in gaps)):
+                all(g > se for g, se in gaps) or all(g < -se for g, se in gaps)):
             consistent.append(rank)
 
     assert not consistent, (
-        f"ranks {consistent} now show a consistent bias across every season — "
-        f"src/models/rank_calibration.py may be worth reviving, monotone form"
+        f"ranks {consistent} now show a bias that clears its own standard error "
+        f"in every season — src/models/rank_calibration.py may be worth "
+        f"reviving, monotone form. Confirm leave-one-season-out first."
     )
 
 

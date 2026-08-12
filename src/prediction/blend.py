@@ -158,7 +158,8 @@ def calibrate_level(df: pl.DataFrame, prob_col: str, expected: pl.DataFrame,
 
 def build_blend_training_frame(target_type: str, model_name: str,
                                before: tuple[int, int] | None = None,
-                               model_dir=None) -> pl.DataFrame | None:
+                               model_dir=None,
+                               min_season: int | None = None) -> pl.DataFrame | None:
     """Assemble (model_prob, market_prob, scored) rows to fit the stacker on.
 
     `load_graded_history` returns prices and outcomes but no model predictions,
@@ -173,17 +174,37 @@ def build_blend_training_frame(target_type: str, model_name: str,
         model_dir: which trained model to score the archive with. Defaults to
             production, which is right when serving and **wrong inside a
             walk-forward backtest** — see below.
+        min_season: drop archive seasons before this. Serving passes
+            `val_season + 1`, because a model cannot tell you how much help it
+            needs by being asked about years it trained on — see below.
 
-    The `model_dir` argument is the whole reason this is not a two-line helper.
-    It used to read production unconditionally, so a walk-forward backtest that
-    had carefully retrained into a scratch directory still fitted its blend
-    weight against a model that had trained on the very seasons in the archive.
-    In-sample predictions look sharper than honest ones, so the stacker
-    concluded the model needed no help and drove the market weight toward zero:
-    measured at 0.010-0.015 across 2024 and 0.003-0.005 on first-TD 2025,
-    against an honest optimum of 0.23-0.33. The season guard in
-    scripts/10_backtest.py does not catch this, because it checks which season
-    is being *scored*, not which model produced the stacker's training rows.
+    `model_dir` and `min_season` are the whole reason this is not a two-line
+    helper. Both exist to stop the stacker learning from a model's own training
+    data, which biases the weight one specific way: in-sample predictions look
+    sharper than honest ones, so the stacker concludes the model needs no help
+    and suppresses the market.
+
+    `model_dir` used to read production unconditionally, so a walk-forward
+    backtest that had carefully retrained into a scratch directory still fitted
+    its weight against a model that had trained on the archive's seasons. That
+    drove the market weight to 0.010-0.015 across anytime-TD 2024 and
+    0.003-0.005 on first-TD 2025, against an honest 0.23-0.33.
+
+    `min_season` is the same disease in the serving path. Production's model
+    trains through `splits.train_end` and early-stops on `splits.val_season`,
+    but the weight was fitted over the whole archive — so two of three seasons
+    were the model's own homework. Measured on anytime TD, the weight rises
+    monotonically as that contamination is removed:
+
+        2023-2025 (two seasons contaminated)   w = 0.214
+        2024-2025 (val season + one clean)     w = 0.432
+        2025 only (clean)                      w = 0.600
+
+    Production had been serving roughly 0.29 where the honest answer is near
+    0.60 — it was trusting the model about twice as much as the evidence
+    supports. The season guard in scripts/10_backtest.py catches neither case:
+    it checks which season is being *scored*, not which model produced the
+    stacker's training rows.
     """
     import pickle
 
@@ -203,6 +224,8 @@ def build_blend_training_frame(target_type: str, model_name: str,
         graded = graded.filter(
             (pl.col("season") < s) | ((pl.col("season") == s) & (pl.col("week") < w))
         )
+    if min_season is not None:
+        graded = graded.filter(pl.col("season") >= min_season)
     if graded.height == 0:
         return None
 
@@ -215,6 +238,17 @@ def build_blend_training_frame(target_type: str, model_name: str,
     ensure_registered()
     feature_cols = pickle.loads(fc_path.read_bytes())
 
+    # The stacker has to see the number production actually publishes. When a
+    # team rate has been fitted, predict.py sends the model through the joint
+    # structure -- P = 1 - exp(-lambda * share) -- and only falls back to the
+    # log-odds shift `calibrate_level` when it has not. This function used to
+    # call calibrate_level unconditionally, so the weight was fitted against a
+    # quantity nobody serves: two different transforms of the same raw score,
+    # combined with the market as though they were interchangeable.
+    from src.models.joint import apply_joint, load_team_rate, load_conversion
+    team_model = load_team_rate(model_dir / "team_td_rate.json")
+    conversion = load_conversion(model_dir / "td_conversion.json")
+
     feats = pl.read_parquet(get_path("processed", target_type) / "features.parquet")
     out = []
     for (season, week), _ in graded.group_by(["season", "week"], maintain_order=True):
@@ -224,14 +258,20 @@ def build_blend_training_frame(target_type: str, model_name: str,
         if wdf.height == 0:
             continue
         X, _ = prepare_data(wdf, feature_cols)
-        res = wdf.select(["game_id", "player_id"]).with_columns(
+        # `team` rides along because the joint model forms shares within a
+        # team-game; without it apply_joint has nothing to normalise over.
+        res = wdf.select(["game_id", "player_id", "team"]).with_columns(
             pl.Series("raw_prob", score(model_name, X, feature_cols, model_dir))
         )
         games = wdf.group_by("game_id").agg(
             [pl.col("total_line").first(), pl.col("spread_line").first()]
         )
         exp = expected_scorers(prior, games)
-        res = calibrate_level(res, "raw_prob", exp, out_col="model_prob")
+        if team_model is not None:
+            res = apply_joint(res, wdf, team_model, score_col="raw_prob",
+                              out_col="model_prob", conversion=conversion)
+        else:
+            res = calibrate_level(res, "raw_prob", exp, out_col="model_prob")
 
         mkt = graded.filter((pl.col("season") == season) & (pl.col("week") == week))
         mkt = devig_market(
