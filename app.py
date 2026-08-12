@@ -613,16 +613,20 @@ def render_accuracy_strip(tt: str, model: str):
                 delta_color="off",
                 help=f"On the tenth of players we differ from the book on most, "
                      f"taking only those we rate **higher** — the direction "
-                     f"these markets let you bet. Our estimate landed this much "
-                     f"closer to what happened than the book's, measured by "
-                     f"Brier score across {h2h['span']}.")
+                     f"these markets let you bet. The percentage by which our "
+                     f"average squared miss is *smaller* than the book's across "
+                     f"{h2h['span']}. **0% would mean we match the book**, so "
+                     f"this is a win; it is not a win rate and there is no 50% "
+                     f"baseline.")
         if lo is not None:
             strip.metric(
                 "Closer — fade", f"{lo:+.0f}%",
                 delta=f"{h2h.get('disagree_lower_n', 0):,} players",
                 delta_color="off",
                 help=f"The same comparison for players we rate **lower** than "
-                     f"the book. This is the model's sharpest skill by a wide "
+                     f"the book — again, how much smaller our average squared "
+                     f"miss is, against a 0% break-even. This is the model's "
+                     f"sharpest skill by a wide "
                      f"margin — and there is no way to bet it, because these "
                      f"markets only sell the Yes side. Useful as a veto: a big "
                      f"disagreement downward is a player to leave alone. The "
@@ -1557,6 +1561,35 @@ with tab_board:
                     f"that is the half you can back.",
                     icon=":material/trending_up:",
                 )
+                # "Closer" is doing a lot of unexplained work. It is a Brier
+                # skill score, so 0% is the break-even point and both halves
+                # above are wins -- without saying so, 17% reads like a loss
+                # against an imagined 50% coin flip.
+                with st.expander("What does “closer” mean here?"):
+                    st.markdown(
+                        f"Both our estimate and the book's are probabilities, "
+                        f"and the player either scored or did not. Square the "
+                        f"miss for each, average over the players, and compare. "
+                        f"**“Closer” is the percentage by which our "
+                        f"average squared miss is *smaller* than the book's.**\n\n"
+                        f"- **0% would mean we match the book.** Anything above "
+                        f"zero means we beat it, so both halves above are wins "
+                        f"— {_lo:.0f}% is simply a much bigger one than "
+                        f"{_hi:.0f}%.\n"
+                        f"- It is **not** a win rate. There is no 50% baseline "
+                        f"here, and it does not count how often we were nearer "
+                        f"— one badly wrong call costs more than two "
+                        f"near-misses, which is the point of squaring.\n"
+                        f"- Each half is measured **only on the players where we "
+                        f"disagree with the book in that direction**, and only "
+                        f"on the tenth of players we disagree with most. "
+                        f"Agreement is not skill, so it is excluded.\n\n"
+                        f"The gap between the two halves is the honest story: "
+                        f"we are far better at spotting who **will not** score "
+                        f"than who will. That is the more useful skill and the "
+                        f"one you cannot bet, because these books do not post a "
+                        f"“no” price on touchdown props."
+                    )
             else:
                 st.success(
                     f"**Where we disagree with the bookmaker is where this "
