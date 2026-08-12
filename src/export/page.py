@@ -38,7 +38,7 @@ CSS = """
     --muted: #898781; --grid: #2c2c2a; --rule: #383835;
     --border: rgba(255,255,255,0.10); --accent: #3987e5;
     --good: #0ca30c; --good-ink: #0ca30c; --warn: #fab219; --bad: #d03b3b;
-    --ramp-1: #b7d3f6; --ramp-2: #3987e5; --ramp-3: #1c5cab;
+    --ramp-1: #256abf; --ramp-2: #3987e5; --ramp-3: #b7d3f6;
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
   }
 }
@@ -48,7 +48,7 @@ CSS = """
   --muted: #898781; --grid: #2c2c2a; --rule: #383835;
   --border: rgba(255,255,255,0.10); --accent: #3987e5;
   --good: #0ca30c; --good-ink: #0ca30c; --warn: #fab219; --bad: #d03b3b;
-  --ramp-1: #b7d3f6; --ramp-2: #3987e5; --ramp-3: #1c5cab;
+  --ramp-1: #256abf; --ramp-2: #3987e5; --ramp-3: #b7d3f6;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
 }
 
@@ -119,12 +119,17 @@ a { color: var(--accent); }
 /* ── Stat tiles ───────────────────────────────────────────────────────── */
 
 .tiles {
-  display: grid; gap: 1px; background: var(--border);
-  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  display: grid; background: var(--surface);
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
   border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
   margin: 0 0 22px;
 }
-.tile { background: var(--surface); padding: 14px 16px 16px; }
+/* Rules drawn outside each tile and clipped by the container, so a part-full
+   last row has no orphan cell and the outer edge never doubles up. */
+.tile {
+  padding: 14px 16px 16px;
+  box-shadow: 1px 0 0 var(--border), 0 1px 0 var(--border);
+}
 .tile-label { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
 .tile-value { font-size: 25px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; }
 .tile-delta { font-size: 12px; color: var(--muted); margin-top: 3px; }
@@ -175,6 +180,7 @@ a { color: var(--accent); }
   overflow-x: auto; border: 1px solid var(--border); border-radius: 12px;
   background: var(--surface); margin: 0 0 8px;
 }
+.tablewrap.tall { max-height: 68vh; overflow-y: auto; }
 table.grid { border-collapse: collapse; width: 100%; font-size: 14px; }
 table.grid th, table.grid td { padding: 9px 13px; text-align: left; white-space: nowrap; }
 table.grid th {
@@ -240,6 +246,12 @@ svg.chart .crosshair { stroke: var(--rule); stroke-width: 1; }
 .chart-tip i { width: 9px; height: 3px; border-radius: 2px; flex: none; }
 .axis-note { font-size: 11px; color: var(--muted); text-align: center; margin: 2px 0 0; }
 
+@media (max-width: 720px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ctl input, .ctl select { min-width: 0; width: 100%; }
+  .ctl { flex: 1 1 160px; }
+}
+
 footer { border-top: 1px solid var(--border); margin-top: 56px; padding-top: 20px; font-size: 13px; color: var(--muted); }
 footer p { max-width: 78ch; }
 
@@ -252,8 +264,19 @@ JS = r"""
 (function () {
   'use strict';
 
-  /* ── Theme ───────────────────────────────────────────────────────────── */
   var root = document.documentElement;
+  /* Declared up here because syncPanes() runs during setup and closes it. */
+  var pop = document.getElementById('popover');
+  var openBtn = null;
+
+  function hidePopover() {
+    if (!pop) return;
+    pop.hidden = true;
+    if (openBtn) openBtn.setAttribute('aria-expanded', 'false');
+    openBtn = null;
+  }
+
+  /* ── Theme ───────────────────────────────────────────────────────────── */
   var saved = null;
   try { saved = localStorage.getItem('td-theme'); } catch (e) {}
   if (saved) root.setAttribute('data-theme', saved);
@@ -274,18 +297,45 @@ JS = r"""
     });
   }
 
-  group('.switch button', function (btn, btns) {
+  function showMarket(btn, btns) {
     btns.forEach(function (b) { b.setAttribute('aria-pressed', String(b === btn)); });
-    document.querySelectorAll('[data-market]').forEach(function (el) {
+    /* Scoped to the panels: the switch's own buttons also carry data-market,
+       and a bare [data-market] hid the button you had just pressed. */
+    document.querySelectorAll('.marketpane').forEach(function (el) {
       el.hidden = el.getAttribute('data-market') !== btn.dataset.market;
     });
+  }
+
+  group('.switch button', function (btn, btns) {
+    showMarket(btn, btns);
     syncPanes();
+    writeHash();
   });
 
   group('.tabsnav button', function (btn, btns) {
     btns.forEach(function (b) { b.setAttribute('aria-selected', String(b === btn)); });
     syncPanes();
+    writeHash();
   });
+
+  /* Market and section in the URL, so a particular view can be linked to. */
+  function writeHash() {
+    var m = document.querySelector('.switch button[aria-pressed="true"]');
+    var t = document.querySelector('.tabsnav button[aria-selected="true"]');
+    if (m && t) history.replaceState(null, '', '#' + m.dataset.market + '/' + t.dataset.pane);
+  }
+
+  function readHash() {
+    var parts = (location.hash || '').replace(/^#/, '').split('/');
+    var m = parts[0] && document.querySelector('.switch button[data-market="' + CSS.escape(parts[0]) + '"]');
+    var t = parts[1] && document.querySelector('.tabsnav button[data-pane="' + CSS.escape(parts[1]) + '"]');
+    if (m) showMarket(m, Array.prototype.slice.call(document.querySelectorAll('.switch button')));
+    if (t) document.querySelectorAll('.tabsnav button').forEach(function (b) {
+      b.setAttribute('aria-selected', String(b === t));
+    });
+  }
+  readHash();
+  addEventListener('hashchange', function () { readHash(); syncPanes(); });
 
   function syncPanes() {
     var tab = document.querySelector('.tabsnav button[aria-selected="true"]');
@@ -298,15 +348,6 @@ JS = r"""
   syncPanes();
 
   /* ── Help popovers ───────────────────────────────────────────────────── */
-  var pop = document.getElementById('popover');
-  var openBtn = null;
-
-  function hidePopover() {
-    pop.hidden = true;
-    if (openBtn) openBtn.setAttribute('aria-expanded', 'false');
-    openBtn = null;
-  }
-
   document.addEventListener('click', function (ev) {
     var btn = ev.target.closest ? ev.target.closest('button.help') : null;
     if (!btn) { if (!ev.target.closest('#popover')) hidePopover(); return; }
@@ -475,7 +516,8 @@ def build_page(markets: list[dict], *, panes: list[tuple[str, str]],
         meta = " ".join(f"<span>{v}</span>" for v in m["meta"])
         body = "".join(_pane(m["capture"], label, pid) for pid, label in panes)
         blocks.append(
-            f'<div data-market="{esc(m["key"])}"{"" if i == 0 else " hidden"}>'
+            f'<div class="marketpane" data-market="{esc(m["key"])}"'
+            f'{"" if i == 0 else " hidden"}>'
             f'<div class="wrap"><p class="meta submeta">{meta}</p>{body}</div></div>')
 
     return f"""<!doctype html>
@@ -486,6 +528,7 @@ def build_page(markets: list[dict], *, panes: list[tuple[str, str]],
 <title>{esc(title)}</title>
 <meta name="description" content="{esc(dek)}">
 <meta name="robots" content="index, follow">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8F%88%3C/text%3E%3C/svg%3E">
 <style>{CSS}</style>
 </head>
 <body>

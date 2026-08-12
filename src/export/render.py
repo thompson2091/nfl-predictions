@@ -166,6 +166,19 @@ def help_button(text: str | None) -> str:
             f'<span class="tip" role="tooltip">{md(text)}</span></button>')
 
 
+def tiles(nodes: list[dict]) -> str:
+    """A strip of stat tiles, in rows that come out even.
+
+    The column count is chosen to divide the number of tiles rather than left
+    to auto-fit, because auto-fit strands the last one or two in a part-empty
+    row — and this strip is the first thing on the page.
+    """
+    n = len(nodes)
+    cols = next((c for c in (5, 4, 3) if c <= n and n % c == 0), min(n, 4))
+    return (f'<div class="tiles" style="--cols:{cols}">'
+            + "".join(tile(t) for t in nodes) + "</div>")
+
+
 def tile(node: dict) -> str:
     delta = (f'<div class="tile-delta">{esc(_unstreamlit(node["delta"]))}</div>'
              if node.get("delta") else "")
@@ -219,9 +232,12 @@ def table(node: dict, index: int, controls: list[dict]) -> str:
     bar = _control_bar(tid, controls, keys, node["rows"], cols)
     count = (f'<p class="rowcount" data-for="{tid}"></p>' if bar else "")
 
+    # A long table scrolls inside itself rather than pushing the page's prose
+    # far below the fold; the header is sticky either way.
+    tall = " tall" if len(node["rows"]) > 20 else ""
     return (
         f'{bar}'
-        f'<div class="tablewrap"><table id="{tid}" class="grid">'
+        f'<div class="tablewrap{tall}"><table id="{tid}" class="grid">'
         f'<thead><tr>{"".join(head)}</tr></thead>'
         f'<tbody>{"".join(body)}</tbody></table></div>{count}'
     )
@@ -305,15 +321,23 @@ def chart(node: dict, index: int) -> str:
         parts.append(f'<text class="tick" x="{px(x):.1f}" y="{H - pad["b"] + 20}" '
                      f'text-anchor="middle">{esc(x)}</text>')
 
+    # Direct end-labels, but only where they do not land on top of each other.
+    # Nudging collided labels apart detaches them from their lines; the legend
+    # and the hover tooltip already carry identity, so a dropped label costs
+    # nothing and a stacked one costs legibility.
+    placed: list[float] = []
     for i, s in enumerate(series):
         var = f"var({RAMP[i % len(RAMP)]})"
         pts = " ".join(f"{px(x):.1f},{py(y):.1f}" for x, y in zip(s["x"], s["y"]))
         parts.append(f'<polyline class="line" points="{pts}" stroke="{var}"/>')
         ex, ey = s["x"][-1], s["y"][-1]
-        parts.append(f'<circle class="end" cx="{px(ex):.1f}" cy="{py(ey):.1f}" '
+        cy = py(ey)
+        parts.append(f'<circle class="end" cx="{px(ex):.1f}" cy="{cy:.1f}" '
                      f'r="4" fill="{var}"/>')
-        parts.append(f'<text class="endlabel" x="{px(ex) + 10:.1f}" '
-                     f'y="{py(ey) + 4:.1f}">{esc(s["name"])}</text>')
+        if all(abs(cy - p) >= 14 for p in placed):
+            placed.append(cy)
+            parts.append(f'<text class="endlabel" x="{px(ex) + 10:.1f}" '
+                         f'y="{cy + 4:.1f}">{esc(s["name"])}</text>')
 
     parts.append(f'<line class="crosshair" y1="{pad["t"]}" y2="{H - pad["b"]}" '
                  f'x1="0" x2="0" style="opacity:0"/>')
@@ -352,8 +376,7 @@ class Renderer:
 
         def flush_tiles():
             if run:
-                out.append('<div class="tiles">'
-                           + "".join(tile(m) for m in run) + "</div>")
+                out.append(tiles(run))
                 run.clear()
 
         for node in children:
@@ -381,8 +404,10 @@ class Renderer:
             elif node["t"] == "text":
                 out.append(self.text(node))
             elif node["t"] == "group":
+                # Not cleared here: only a table consumes pending controls, and
+                # app.py puts a callout between the filter bar and the board
+                # whenever the longshot filter is on.
                 out.append(self.group(node, pending))
-                pending = []
 
         flush_tiles()
         return "".join(out)
@@ -417,7 +442,7 @@ class Renderer:
             # be built with columns instead of a horizontal container.
             flat = [g for c in kids for g in c["children"]]
             if flat and all(g["t"] == "metric" for g in flat):
-                return '<div class="tiles">' + "".join(tile(m) for m in flat) + "</div>"
+                return tiles(flat)
             inner = "".join(f'<div class="col" style="flex:{c.get("weight", 1)}">'
                             f'{self.nodes(c["children"])}</div>' for c in kids)
             return f'<div class="cols">{inner}</div>'
