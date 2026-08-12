@@ -418,6 +418,58 @@ defences published at 0.908 against an actual 0.153.
 at and a size you can measure before you write any code. An improvement has an
 argument.
 
+### Where the remaining headroom is not
+
+After the DEF/ST fix, four candidate leads were sized before building anything.
+Three of them dissolved on measurement. Recording them so they are not
+rediscovered:
+
+**Anytime TD beats the book on every decomposition.** Splitting the top pick
+into its two halves, over 849 priced games:
+
+| | right team | right player *given* right team | overall |
+| --- | --- | --- | --- |
+| us | **97.9%** | **56.8%** | **55.6%** |
+| book | 95.4% | 54.4% | 51.9% |
+
+This also retires the Phase 2 reading that "78% of misses are
+right-team-wrong-player, so the share half is where the error lives". At 97.9%
+right-team, almost every remaining miss *must* be within-team by arithmetic.
+That figure describes a model picking the right team nearly always — it is not a
+diagnosis, and it was another slice read without a benchmark beside it.
+
+**Ranking defences needs features that do not exist.** Only 44 of 319 features
+are non-null and varying on DEF/ST rows, and 77 are constant. A model trained on
+DEF/ST rows alone reaches AUC 0.5045 — worse than the global model's 0.54 and
+indistinguishable from chance. Everything available describes the offence
+(targets allowed, coach tendencies); nothing describes takeaway ability, return
+units, or the opponent's turnover-proneness. This is a feature-building project
+against play-by-play, and it buys Top-5, not Top-1: a defence at its true 11%
+should rarely be anyone's top pick.
+
+**First TD's quarterback gap is not a compression defect.** The hypothesis was
+that QB probabilities were correct on average but too flat to ever reach the
+top. Measured, within-game share spread:
+
+| | ours p95/p50 | book p95/p50 | ours max | book max |
+| --- | --- | --- | --- | --- |
+| RB | **6.47** | 4.89 | 0.398 | 0.244 |
+| QB | **3.90** | 3.28 | 0.217 | 0.162 |
+
+We give quarterbacks *more* spread than the book, and rank each game's best QB
+about as highly (median rank 9 against 10; top-5 in 26.2% against 28.3%). The
+book puts a QB top more often because **we concentrate harder on top backs**,
+not because we bury quarterbacks. Our back discrimination is the better of the
+two (AUC 0.8264 against 0.8126) and we win more RB-scored games, so matching the
+book's mix would be probability matching — the same error as the RB misread.
+
+**What that leaves.** Both markets are close to what this feature set supports:
+anytime TD is ahead of the book on Top-1, Top-3, Top-5, both halves of the
+decomposition, and within-position AUC everywhere except QB; first TD is level
+with it. The next real gains need new *information*, not new fitting — turnover
+and return-unit features for defences, and whatever else the play-by-play holds
+that 319 columns do not yet capture.
+
 ### A note on reading these slices
 
 The RB misread is worth keeping as a warning. A slice of our own numbers with no
