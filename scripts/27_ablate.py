@@ -157,10 +157,23 @@ def report(saved: dict, market: str) -> None:
         print(f"  {name:38s} {r['columns']:5d} {r['top1_delta']*100:+8.2f}pp "
               f"{se_mult:+7.2f} {r['p_value']:7.3f} "
               f"{r['top3_delta']*100:+7.2f}pp")
-    print("\nFamilies at the top cost the most when removed. Families near zero "
-          "are prune candidates:\nfewer features is variance reduction even at "
-          "equal Top-1. Nothing here is a decision on its\nown — a family that "
-          "reads +0.3pp is inside the noise, not an improvement.")
+    import numpy as np
+    t1 = np.array([r["top1_delta"] for r in rows.values()])
+    t3 = np.array([r["top3_delta"] for r in rows.values()])
+    print(f"\n  Top-1 negative in {int((t1 < 0).sum())}/{len(t1)}, "
+          f"Top-3 negative in {int((t3 < 0).sum())}/{len(t3)}. "
+          f"Mean Top-3 {t3.mean() * 100:+.2f}pp.")
+    print("""
+READ THE SIGN PATTERN, NOT THE RANKING.
+
+One seed per family means each row on its own is noise-dominated: the spread of
+these Top-1 deltas is barely wider than the seed-to-seed band, and with this many
+families a couple will read p<0.05 by chance. Ranking them is over-reading.
+
+What the aggregate says is solid, because seed noise is *symmetric* — paired
+deltas between two runs differing only in seed come out positive about as often
+as negative — while ablation deltas do not. A column of same-signed deltas is
+therefore evidence even when each one individually is not.""")
 
 
 if __name__ == "__main__":

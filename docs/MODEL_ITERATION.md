@@ -783,7 +783,51 @@ priced population *with* price features is the natural extension of what
 strictly stronger than the post-hoc probability-level blend, because a tree can
 interact price with usage.
 
-### 3e. Feature-family ablation
+### 3e. Feature-family ablation — **RUN 2026-08-13. Nothing is prunable.**
+
+The hypothesis was that some of the 33 builder families do not earn their keep,
+and pruning them would buy variance reduction at equal Top-1. It is wrong, and
+the way it is wrong is more interesting than the pruning would have been.
+
+Each family dropped in turn, the production model retrained on the same four
+folds, paired per game against the full feature set (`scripts/27_ablate.py`,
+`diagnostics/ablation_anytime_td.json`):
+
+| | result |
+| --- | --- |
+| Top-1 worse when family removed | 23 of 33 (sign test p=0.035) |
+| **Top-3 worse when family removed** | **33 of 33 (p=2.3e-10)** |
+| mean Top-3 cost | −1.30pp |
+| spread of Top-3 costs across families | 0.46pp |
+| does family size predict the cost? | no — rho=+0.06, p=0.75 |
+
+**The control is what makes this readable.** −1.30pp is less than twice the
+seed-to-seed band, so on magnitude alone it could be an artifact of retraining.
+Pairing the five saved noise-floor runs against each other gives Top-3 deltas
+averaging |0.74pp| — but **symmetric**, five negative and five positive out of
+ten pairs. Seed noise has no preferred sign. Ablation does: 33 out of 33. A
+column of same-signed deltas is evidence even where each individual row is not.
+
+So every family carries something, and roughly the same something whether it is
+one column or forty-two. `build_depth_chart_features` is a single column and
+costs as much as `build_player_rolling_features` at 42. Feature *count* is not
+the unit of value here; distinct point of view is.
+
+**What not to take from the table.** With one seed per family, individual rows
+are noise-dominated — the spread of Top-1 deltas (0.83pp) is barely wider than
+the seed band (0.55pp). Two families read p<0.05 on Top-1
+(`build_opponent_position_features` −2.74pp, `build_td_streak_features`
+−2.48pp), and across 33 tests roughly 1.7 false positives at that threshold are
+expected. Their ranking is a hint for where to look, not a finding. The Top-1
+and Top-3 orderings correlate at rho=+0.52, so there *is* per-family signal; it
+is just not resolved at one seed each.
+
+This closes 3e as a pruning exercise and reinforces the Phase 2 conclusion from
+a new direction: the feature set is not carrying dead weight that could be
+traded for variance. It is a set of small, largely non-redundant contributions,
+which is exactly the shape that resists both pruning and improvement.
+
+### 3e as originally planned *(kept for the reasoning)*
 
 319 columns across ~40 builder modules on ~100k rows. Ablate **by family**, not
 by column: ~40 screens, cheap on cached folds. Prune families that do not earn
