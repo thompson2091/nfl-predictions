@@ -53,6 +53,23 @@ def version_options(tt: str) -> list[dict]:
         return []
 
 
+def version_scoring_config(version_id: str | None) -> dict:
+    """Settings to restore while previewing, or {} for the served version.
+
+    A preview used to restore weights alone, which cannot reproduce a
+    config-only change — and two of this project's model changes were exactly
+    that. See `versioning.scoring_config` for what is restored and what is
+    deliberately left alone.
+    """
+    if not version_id:
+        return {}
+    from src.models.versioning import scoring_config
+    try:
+        return scoring_config(version_id)
+    except Exception:                                        # noqa: BLE001
+        return {}
+
+
 def selected_model_dir(tt: str, version_id: str | None):
     """Where to load artifacts from, and whether writing back is allowed.
 
@@ -98,44 +115,6 @@ with st.sidebar:
         key="sidebar_target_type",
     )
 
-    # Build model options: individual models + ensemble (if >1 active)
-    model_options = list(active_models)
-    if len(active_models) > 1:
-        model_options.append("ensemble")
-    # Resolved from the market, not once at import: the two markets are best
-    # served by different models (lgbm for anytime, ensemble for first), and a
-    # single default meant whichever market lost that argument silently ran on
-    # a model that measured fourth-best.
-    from src.utils.config import production_model
-    preferred = production_model(target_type)
-    default_model = preferred if preferred in model_options else model_options[0]
-    selected_model = st.selectbox(
-        "Model",
-        model_options,
-        index=model_options.index(default_model),
-        key="sidebar_model",
-    )
-
-    # Every artifact on this page is read through `st.cache_data`, which has no
-    # expiry — deliberately, because a mixture of TTLs would leave the board
-    # fresh while the accuracy strip above it still described the old model.
-    # Retraining under a running server therefore needs one explicit,
-    # all-at-once invalidation rather than several staggered ones.
-    if st.button("Reload artifacts", icon=":material/refresh:",
-                 key="reload_artifacts",
-                 help="Re-read models, backtests and fitted rules from disk. "
-                      "Needed after `make train` or `make evaluate` while the "
-                      "app is running — otherwise it serves what it loaded at "
-                      "startup."):
-        st.cache_data.clear()
-        # `cache_data` and `cache_resource` are separate stores, and clearing
-        # one leaves the other. The feature matrix moved to `cache_resource` so
-        # it is held once rather than copied per caller, which quietly took it
-        # out of this button's reach — so "Reload artifacts" stopped reloading
-        # the largest artifact of all.
-        st.cache_resource.clear()
-        st.rerun()
-
     # Which locked version is on screen. Without this the board is a number
     # from an unidentified model: `models/` holds one state, every `make train`
     # overwrites it, and nothing on the page said which one you were looking
@@ -163,24 +142,26 @@ with st.sidebar:
                 "or in recorded metrics, so they would score the same board.")
 
         if selected_version != _served_id:
-            # Say exactly how far the preview reaches. The board is priced from
-            # the snapshot; the evaluation tabs read artifacts written by the
-            # pipeline for the served version and do not move. Leaving that
-            # implicit is how you end up reading one model's board beside
-            # another model's accuracy and believing they describe each other.
+            # The model selector has not run yet — it is below, and it takes its
+            # default from this version — so the number quoted here is the one
+            # this version actually served, not whatever is selected.
+            from src.utils.config import config_overlay as _overlay
+            from src.utils.config import production_model as _prod
+            with _overlay(version_scoring_config(selected_version)):
+                _version_model = _prod(target_type)
             _preview = next((v for v in _versions if v["id"] == selected_version), {})
-            _recorded = (_preview.get("metrics") or {}).get(selected_model)
+            _recorded = (_preview.get("metrics") or {}).get(_version_model)
             st.info(
-                f"Previewing **{selected_version}** — the board below is priced "
-                "from its weights, read-only. Every other tab describes the "
-                "served version. **Settings are not rolled back**: a version "
-                "that differed only by a config change scores identically to "
-                "what is being served.",
+                f"Previewing **{selected_version}** — board, model choice and "
+                f"settings all come from that version, read-only. It served "
+                f"**{_version_model}** on this market. Betting comparisons stay "
+                f"hidden while previewing: they are computed from backtest "
+                f"frames that exist only for the served model.",
                 icon=":material/history:")
             if _recorded:
                 st.caption(
-                    f"Its recorded walk-forward Top-1 for {selected_model}: "
-                    f"{_recorded['top1']:.1%} over {_recorded['games']} games.")
+                    f"Its recorded walk-forward Top-1 for {_version_model}: "
+                    f"{_recorded['top1']:.1%} over {_recorded['games']:,} games.")
 
     _version = served_version(target_type)
     if _version is None:
@@ -195,6 +176,49 @@ with st.sidebar:
             st.warning("Served artifacts do not match the version record:\n\n"
                        + "\n\n".join(f"- {p}" for p in _version["problems"]),
                        icon=":material/warning:")
+
+    # Build model options: individual models + ensemble (if >1 active)
+    model_options = list(active_models)
+    if len(active_models) > 1:
+        model_options.append("ensemble")
+    # Resolved from the market AND from the version being viewed. The two
+    # markets are best served by different models, and a single default meant
+    # whichever market lost that argument silently ran on a model that measured
+    # fourth-best. The version matters for the same reason: two of this
+    # project's model changes were config-only, and one of them was which model
+    # first TD serves — so previewing a version without resolving its model
+    # shows that version's weights running the current model's role, which is a
+    # state that never existed.
+    from src.utils.config import config_overlay, production_model
+    with config_overlay(version_scoring_config(selected_version)):
+        preferred = production_model(target_type)
+    default_model = preferred if preferred in model_options else model_options[0]
+    selected_model = st.selectbox(
+        "Model", model_options, index=model_options.index(default_model),
+        key=f"sidebar_model_{selected_version or 'served'}",
+        help="Which fitted model produces the numbers. The default is whichever "
+             "one the selected version serves for this market.",
+    )
+
+    # Every artifact on this page is read through `st.cache_data`, which has no
+    # expiry — deliberately, because a mixture of TTLs would leave the board
+    # fresh while the accuracy strip above it still described the old model.
+    # Retraining under a running server therefore needs one explicit,
+    # all-at-once invalidation rather than several staggered ones.
+    if st.button("Reload artifacts", icon=":material/refresh:",
+                 key="reload_artifacts",
+                 help="Re-read models, backtests and fitted rules from disk. "
+                      "Needed after `make train` or `make evaluate` while the "
+                      "app is running — otherwise it serves what it loaded at "
+                      "startup."):
+        st.cache_data.clear()
+        # `cache_data` and `cache_resource` are separate stores, and clearing
+        # one leaves the other. The feature matrix moved to `cache_resource` so
+        # it is held once rather than copied per caller, which quietly took it
+        # out of this button's reach — so "Reload artifacts" stopped reloading
+        # the largest artifact of all.
+        st.cache_resource.clear()
+        st.rerun()
 
 st.title("First TD Scorer" if target_type == "first_td" else "Anytime TD Scorer")
 
@@ -408,9 +432,13 @@ def load_board(season: int, week: int, tt: str, model: str,
     A snapshot is scored read-only — see `selected_model_dir`.
     """
     from src.prediction.bets import board_for_week
+    from src.utils.config import config_overlay
     model_dir, persist = selected_model_dir(tt, version)
-    board, msg = board_for_week(season, week, tt, model,
-                                model_dir=model_dir, persist=persist)
+    # The version's own settings, not today's: a config-only change is still a
+    # change to what the board says.
+    with config_overlay(version_scoring_config(version)):
+        board, msg = board_for_week(season, week, tt, model,
+                                    model_dir=model_dir, persist=persist)
     return (board.to_pandas() if board.height else None), msg
 
 
@@ -428,15 +456,19 @@ def team_outlook_frame(season: int, week: int, version: str | None = None):
     from src.models.joint import _game_lines, load_team_rate, team_rate
     from src.prediction.predict import predict
     from src.presentation import team_outlook as T
+    from src.utils.config import config_overlay
 
     model_dir, _ = selected_model_dir(tt="anytime_td", version_id=version)
+    overlay = version_scoring_config(version)
 
     preds = {}
     for tt in ("first_td", "anytime_td"):
         md, _ = selected_model_dir(tt, version)
         try:
-            preds[tt] = predict(season, week, model_name=production_model(tt),
-                                target_type=tt, model_dir=md, persist=False)
+            with config_overlay(overlay):
+                preds[tt] = predict(season, week,
+                                    model_name=production_model(tt),
+                                    target_type=tt, model_dir=md, persist=False)
         except Exception:                                    # noqa: BLE001
             preds[tt] = None
 
@@ -514,9 +546,11 @@ def scored_season(tt: str, model: str, season: int, version: str | None = None):
         return None
     if model != "ensemble" and not (model_dir / f"{model}.pkl").exists():
         return None
+    from src.utils.config import config_overlay
     try:
-        outcomes, _rows, _players = score_fold(
-            tt, model_dir, season, model, list(cfg["models"]["active"]))
+        with config_overlay(version_scoring_config(version)):
+            outcomes, _rows, _players = score_fold(
+                tt, model_dir, season, model, list(cfg["models"]["active"]))
     except Exception:                                        # noqa: BLE001
         return None
     return outcomes.to_pandas()
@@ -621,6 +655,52 @@ def walkforward_accuracy(tt: str, model: str) -> dict | None:
     return out
 
 
+def headline_accuracy(tt: str, model: str, version: str | None = None):
+    """**The** track-record figure. Both places that show one call this.
+
+    The board's header and the Model performance tab used to compute their own,
+    from different sources and over different populations: the header pooled
+    four walk-forward folds while the tab scored the single held-out season, and
+    both were labelled "Top-1". Two numbers under one label read as a
+    contradiction rather than as two views, and there was no way to tell from
+    the screen which described what you were looking at.
+
+    Order of preference, and each step is a real fallback rather than a
+    nicety: the previewed version's own recorded metrics, then the walk-forward
+    artifact for what is served, then the single held-out season if the
+    walk-forward has never been run.
+
+    `tests/test_headline_parity.py` asserts that nothing else renders a
+    track-record tile.
+    """
+    return (version_accuracy(tt, model, version)
+            or walkforward_accuracy(tt, model)
+            or historical_accuracy(tt, model))
+
+
+def render_headline(acc: dict, target) -> None:
+    """Render the track-record tiles. One implementation, so one appearance."""
+    target.metric("Games", f"{acc['games']:,}",
+                  help=(f"Games across {acc.get('span')}. The model is retrained "
+                        f"for each season and never sees the one it is scored on."
+                        if acc.get("pooled") else
+                        f"Games in the {acc.get('season')} season, which the "
+                        f"model never trained on."))
+    for key, label, blurb in [
+        ("top1", "Top-1", "How often our highest-rated player in a game actually scored."),
+        ("top3", "Top-3", "How often at least one of our top 3 scored."),
+        ("top5", "Top-5", "How often at least one of our top 5 scored."),
+    ]:
+        se = acc.get(f"{key}_se")
+        target.metric(
+            label, f"{acc[key]:.1%}",
+            delta=(f"+/- {se:.1%}" if se else None), delta_color="off",
+            help=blurb + (
+                f" Measured over {acc['games']:,} games; the +/- is one standard "
+                f"error, so treat anything inside it as noise." if se else ""),
+        )
+
+
 def render_accuracy_strip(tt: str, model: str, version: str | None = None):
     """Track record, shown on every page — a number you act on should carry its
     accuracy beside it, not a tab away."""
@@ -631,36 +711,13 @@ def render_accuracy_strip(tt: str, model: str, version: str | None = None):
     # walk-forward retrains once per season and never lets a fold see its own
     # test year, so pooling four of them is the same measurement over four
     # times the games.
-    # A previewed version carries its own measured numbers; the global
-    # walk-forward artifact describes only what is served.
-    wf = version_accuracy(tt, model, version) or walkforward_accuracy(tt, model)
-    acc = wf or historical_accuracy(tt, model)
+    acc = headline_accuracy(tt, model, version)
     if acc is None:
         st.caption("Model performance unavailable — run the pipeline first.")
         return
 
-    pooled = acc.get("pooled", False)
-    span = acc.get("span", str(acc.get("season", "")))
     strip = st.container(horizontal=True)
-    strip.metric("Games", f"{acc['games']:,}",
-                 help=(f"Games across {span}. The model is retrained for each "
-                       f"season and never sees the one it is being scored on."
-                       if pooled else
-                       f"Games in the {acc.get('season')} season, which the "
-                       f"model never trained on."))
-    for key, label, blurb in [
-        ("top1", "Top-1", "How often our highest-rated player in a game actually scored."),
-        ("top3", "Top-3", "How often at least one of our top 3 scored."),
-        ("top5", "Top-5", "How often at least one of our top 5 scored."),
-    ]:
-        se = acc.get(f"{key}_se")
-        strip.metric(
-            label, f"{acc[key]:.1%}",
-            delta=(f"+/- {se:.1%}" if se else None), delta_color="off",
-            help=blurb + (
-                f" Measured over {acc['games']:,} games; the +/- is one standard "
-                f"error, so treat anything inside it as noise." if se else ""),
-        )
+    render_headline(acc, strip)
     if acc.get("median_rank") is not None:
         strip.metric("Median rank", f"{acc['median_rank']:.0f}",
                      help="In a typical game, the best-ranked player who actually "
@@ -2019,22 +2076,6 @@ if tab2.open:
             f"numbers aren't flattering themselves."
         )
 
-        # The strip on the board quotes a different number, and it should. Same
-        # scoring path — both go through src/evaluation/harness.score_fold — but
-        # a different population: one season here, four retrained folds there.
-        # Saying so is the difference between two views and two contradictions.
-        _wf = walkforward_accuracy(target_type, selected_model)
-        if _wf:
-            st.caption(
-                f":material/compare_arrows: The headline on the board reads "
-                f"**{_wf['top1']:.1%}** — that is the same model scored the same "
-                f"way over **{_wf['games']:,} games in {_wf['span']}**, each "
-                f"season predicted by a model retrained without it. This page is "
-                f"the single held-out season, so it moves around more. One "
-                f"season is roughly 285 games and carries about three points of "
-                f"standard error."
-            )
-
         if not metrics and df is None:
             st.warning(f"No data found for {target_type}. Run the pipeline first.")
         else:
@@ -2091,6 +2132,36 @@ if tab2.open:
                         top5_pct = sum(1 for r in best_ranks if r <= 5) / n_games * 100 if n_games else 0
                         median_rank = float(np.median(best_ranks)) if best_ranks else 0
 
+                        # The headline is the same measurement the board's
+                        # strip shows, from the same source, so the two pages
+                        # cannot disagree about how good the model is. Two
+                        # numbers under similar labels — pooled folds here, one
+                        # season there — read as a contradiction rather than as
+                        # two views, which is exactly how this page was read.
+                        # Same accessor and same renderer as the board's
+                        # header, so the two cannot disagree. See
+                        # tests/test_headline_parity.py.
+                        _headline = headline_accuracy(target_type, hist_model,
+                                                      selected_version)
+                        if _headline:
+                            st.markdown("#### Track record")
+                            render_headline(_headline, st.container(horizontal=True))
+                            st.caption(
+                                f"Pooled over {_headline['games']:,} games in "
+                                f"{_headline.get('span', '')}, each season "
+                                f"predicted by a model retrained without it. "
+                                f"This is the figure on the board's header — "
+                                f"same measurement, same source."
+                            )
+
+                        st.markdown(f"#### {test_season} in detail")
+                        st.caption(
+                            f"The single held-out season on its own. It moves "
+                            f"around more than the pooled figure above — "
+                            f"{n_games} games carries roughly three points of "
+                            f"standard error — so read it for *where* the model "
+                            f"missed, not for how good it is."
+                        )
                         summary_cols = st.columns(5)
                         summary_cols[0].metric("Games", n_games)
                         summary_cols[1].metric("Top-1", f"{top1_pct:.1f}%")

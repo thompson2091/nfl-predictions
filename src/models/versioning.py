@@ -389,6 +389,58 @@ def market_dir(market: str, version_id: str | None = None) -> Path:
     return directory
 
 
+#: Config sections that change how a model *scores*, and therefore have to be
+#: restored when previewing a version. Everything else in the snapshot is left
+#: alone deliberately.
+#:
+#: The manifest holds the whole of `settings.yaml`, and applying all of it would
+#: restore settings that have nothing to do with the model and some that would
+#: break the page doing it — `app.version_selector` would switch off the very
+#: control being used, `paths` would point at wherever the machine that locked
+#: the version kept its data, and `betting` would silently restake the board.
+#:
+#: What is here is what decides the number: which model serves each market, the
+#: joint model's share rules, the first-TD path flags, the market blend, and the
+#: season boundaries those are measured against.
+SCORING_CONFIG_KEYS = ("models", "model", "joint", "first_td", "blend", "splits")
+
+
+def scoring_config(version_id: str | None, market: str | None = None) -> dict:
+    """The scoring-relevant config a version was locked with.
+
+    Two of this project's model changes were config-only — switching first TD to
+    xgb, and holding DEF/ST out of the offensive share denominator. A preview
+    that restores weights but not settings cannot reproduce either of them, so
+    those versions scored identically to what was being served and the version
+    selector looked broken for the second time.
+
+    Returns `{}` for no version, so callers can wrap unconditionally.
+    """
+    if not version_id:
+        return {}
+    try:
+        manifest = load_manifest(version_id)
+    except VersionError:
+        return {}
+    config = manifest.get("config") or {}
+    current = get_config()
+
+    out: dict = {}
+    for key in SCORING_CONFIG_KEYS:
+        if key in config:
+            out[key] = config[key]
+        elif key in current:
+            # The version predates this setting existing. Merging would leave
+            # today's value in place, which is the opposite of a preview:
+            # `2026.08.12-baseline-remeasured` has no `joint` section at all, so
+            # inheriting today's `exclude_defst_from_shares: true` would apply a
+            # fix that version was locked before. An empty section restores the
+            # default in force at the time, because that is what the code's own
+            # `.get(key, default)` calls fall back to.
+            out[key] = {}
+    return out
+
+
 def artifacts_key(manifest: dict, market: str) -> str:
     """Fingerprint of a version's weights for one market.
 
