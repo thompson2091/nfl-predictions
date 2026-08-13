@@ -407,6 +407,7 @@ Re-ordered by measured effect rather than by expected effect:
 | First TD from a blend with the anytime model | REJECTED | −0.35pp (xgb −1.41, p=0.026) |
 | First TD from competing-Poisson team rates | REJECTED | −0.62pp (all four models worse) |
 | **DEF/ST out of the offensive share denominator** | **KEPT_WITH_JUSTIFICATION** | **+2.56pp, p=0.000** |
+| Conditional logit — train the objective we score (3a) | REJECTED | first TD −0.09pp (p=1.000); anytime −2.74pp (p=0.016) |
 
 The pattern is worth naming. Both rejected experiments were *theoretically*
 motivated — sound arguments about likelihoods and generative structure — and
@@ -470,6 +471,44 @@ with it. The next real gains need new *information*, not new fitting — turnove
 and return-unit features for defences, and whatever else the play-by-play holds
 that 319 columns do not yet capture.
 
+### Two ways the harness flattered a candidate
+
+Both were found by being the first thing to add a *new model* rather than a new
+config value, and both are the dangerous kind: they do not fail, they improve.
+
+**The champion went stale.** The gate pairs a candidate against the champion's
+saved per-game rows. The DEF/ST fix was promoted on 2026-08-12 and the champion
+was not re-run, so it still described the pre-fix model. The first
+conditional-logit screen duly reported **+2.56pp on Top-1 for an overlay whose
+model was never trained** — the entire delta was the DEF/ST fix being counted a
+second time. `champion_drift` now compares the champion's recorded version
+against what `CURRENT.json` serves and says so before any verdict is printed.
+The tell, once the champion was re-baselined, is that the unchanged `xgb` row
+reads `+0.00pp, 0 of 1131 games differ` — which is what an overlay that does not
+touch a model should always produce, and is worth checking on every gate.
+
+**The screen omitted its own subject.** `screen_models` returned only the model
+the market serves, so an overlay adding `condlogit` trained everything except
+`condlogit`, then printed a full result table under the experiment's name. It
+now also trains whatever the overlay adds to `models.active`. Relatedly,
+`compare_all` intersected model names, so a model the champion lacks produced no
+comparison at all — and a gate that prints nothing reads exactly like a gate
+that found nothing wrong. New models are now paired against what the market
+serves, and the table names both sides when they differ.
+
+The ledger row from the invalid run is retained and marked `VOID`, with a
+retraction row naming what was wrong. Deleting it would leave the record
+looking like the mistake never happened, which is the failure this ledger exists
+to prevent.
+
+A third defect fell out of the same run. `_break_ties` nudged calibrated
+probabilities *upward* to restore ordering isotonic had flattened, and the
+anytime-TD xgb calibrator tops out at 0.999999 — so the nudge could produce
+p > 1. Nothing rejected it; the values flowed into `1 - exp(-lambda*s)` and into
+Brier until sklearn refused a 1.00006. The nudge now subtracts, which is bounded
+by construction. Measured cost on the served model: 3 of 1131 games change,
+2 won and 1 lost.
+
 ### A note on reading these slices
 
 The RB misread is worth keeping as a warning. A slice of our own numbers with no
@@ -508,7 +547,65 @@ Each item is one experiment through the harness: screen first, gate if it
 survives, ledger row either way. **Order within this phase is set by Phase 2**;
 the sequence below is the prior.
 
-### 3a. Train the objective we are scoring *(largest expected effect)*
+### 3a. Train the objective we are scoring — **RUN 2026-08-13, REJECTED**
+
+`src/models/ranker.py` implements the conditional logit as `condlogit`: an
+XGBoost fitted on the within-group multinomial likelihood, softmax over a
+game's candidates for first TD and over a team-game for anytime. Same features,
+same tree hyperparameters as `xgb`, same folds. Only the loss differs.
+
+Screened on both markets against `2026.08.13-champion-defst`:
+
+| | Top-1 | Top-3 | Top-5 | AUC | coin flips |
+| --- | --- | --- | --- | --- | --- |
+| first TD — xgb | 16.8% | 37.1% | 53.2% | 0.8225 | 37.0% |
+| first TD — condlogit | 16.7% | **38.2%** | **54.0%** | 0.8222 | 43.5% |
+| anytime — xgb | **53.4%** | **85.8%** | 93.3% | 0.8320 | 16.5% |
+| anytime — condlogit | 50.7% | 84.2% | 93.4% | 0.8285 | — |
+
+Paired: first TD −0.09pp on Top-1, 34 games won against 35 lost, p=1.000 —
+level, not merely insignificant. Anytime −2.74pp, 63 won against 94 lost,
+p=0.016, with Top-3, AUC and Brier guards all tripped.
+
+**This was the strongest remaining argument that the model is fitting-limited,
+and it does not survive contact.** The plan called it "the single biggest
+structural gap in the repo", and the reasoning was sound: Top-1 is a within-game
+argmax, exactly one player wins, and the multinomial likelihood is the
+likelihood of that event rather than an approximation of it. Trained on it, the
+model ranks first TD no better and anytime distinctly worse.
+
+Two things the numbers say about *why*, both worth keeping:
+
+- **On first TD it trades Top-1 for Top-3/Top-5.** Top-3 +1.06pp and Top-5
+  +0.80pp, with the coin-flip rate rising from 37.0% to 43.5%. A softmax is
+  indifferent between two candidates it cannot separate, so it stops
+  manufacturing a gap the data does not support. It orders the shortlist better
+  and commits to the top of it less. That is the correct behaviour for the loss
+  and the wrong behaviour for the metric.
+- **On anytime the grouping throws away what the joint model needs.** Grouping
+  by team-game learns only *relative* standing within a team, but `combine`
+  multiplies a team-level Poisson rate by that share — and the cross-team
+  information the pointwise loss retains is doing real work. The multiple-winner
+  case is also a weaker fit: several players score, so the "exactly one wins"
+  structure that makes this exact for first TD is only an approximation here.
+
+The one live thread: adding `condlogit` to the ensemble moved the ensemble from
+51.8% to 54.0% on anytime and 16.0% to 16.6% on first TD, so it does carry
+information the others do not. Neither beats the served `xgb` (53.5% / 16.8%) by
+anything like a standard error, so this is a lead and not a result.
+
+**What this settles.** The Phase 2 conclusion — data-limited, not
+fitting-limited — was reached by measuring the feature set, and a fair objection
+was that it had never been tested against a change of *objective*. It has been
+now, on the objective with the best theoretical claim, and the conclusion holds.
+The remaining items in this phase are calibration shape (3c), family ablation
+(3e) and pool thresholds (3f), none of which had the prior 3a had.
+
+The screening infrastructure this run exercised had two defects of its own, both
+of which flattered the candidate and neither of which failed loudly — see
+"Two ways the harness flattered a candidate" below.
+
+### 3a as originally planned *(kept for the reasoning)*
 
 Everything is trained pointwise on binary log loss. Top-1 is a within-game
 argmax. Three ways to close that gap:
