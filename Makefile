@@ -6,7 +6,7 @@
 	odds-schedule-status \
 	decay shop site \
 	lock versions version-show promote rollback version-diff version-verify \
-	champion screen gate noise-floor experiments diagnose version-prune
+	champion screen gate settle noise-floor experiments diagnose version-prune
 
 # Defaults so the evaluation targets run without arguments. Override per call:
 #   make backtest SEASON=2024 TARGET=first_td
@@ -126,6 +126,16 @@ gate:
 
 # What is the random seed alone worth? Every guard band in the gate is this
 # number. Without it, a 0.4-point difference has no scale to be read on.
+# Settle a close call the seed cannot be ruled out of: run the same overlay at
+# N seeds, average each game's outcome across them, then pair on the averages.
+# Both models come from the same run, so folds and features are identical on
+# each side and the model is the only difference. This is the test that decided
+# first TD's production model, which was done by hand and so was never repeatable.
+#   make settle EXP=experiments/x.yaml MODEL=ensemble AGAINST=xgb SEEDS=5
+settle:
+	python scripts/23_experiment.py settle $(EXP) --model $(MODEL) \
+		--against $(AGAINST) --seeds $(SEEDS) $(if $(MARKET),--market $(MARKET))
+
 noise-floor:
 	python scripts/23_experiment.py noise-floor --seeds $(SEEDS)
 

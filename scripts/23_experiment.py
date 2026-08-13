@@ -269,6 +269,54 @@ def cmd_gate(a) -> int:
     return _experiment(a, "gate")
 
 
+def cmd_settle(a) -> int:
+    """Decide a close call by averaging each game's outcome across seeds.
+
+    A single paired run cannot separate a real few-tenths gain from the seed.
+    This runs the same overlay at N seeds, averages each game's hit indicator
+    across them, and pairs on the averages — the test that settled first TD's
+    production model, which was done by hand and therefore never again.
+
+    Both models come from the *same* run, so folds, features and seed are
+    identical on each side and the only difference is the model.
+    """
+    spec = load_experiment(a.experiment)
+    markets = (a.market,) if a.market else H.MARKETS
+    base_seed = get_config()["model"]["seed"]
+    seeds = [base_seed + i for i in range(a.seeds)]
+
+    runs = []
+    for seed in seeds:
+        run_id = f"{spec['id']}-seed{seed}"
+        try:
+            runs.append(H.load(run_id))
+            print(f"seed {seed}: reusing saved run '{run_id}'")
+        except FileNotFoundError:
+            print(f"\n=== seed {seed} ({len(runs) + 1} of {len(seeds)}) ===")
+            result = _run(spec["overlay"], "settle", markets, seed=seed)
+            H.save(result, run_id)
+            runs.append(result)
+
+    rows = [C.seed_gate(runs, market=m, model=a.model, against=a.against)
+            for m in markets]
+    print("\nSeed-averaged paired comparison:\n")
+    print(C.format_seed_gate(rows))
+
+    append_ledger({
+        "id": spec["id"], "kind": "experiment", "tier": "settle",
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "git": git_state(), "overlay": spec["overlay"],
+        "note": f"{a.model} vs {a.against}, {a.seeds} seeds, seed-averaged: "
+                + spec.get("note", ""),
+        "seed": seeds, "summary": {},
+        "verdict": _overall_verdict(rows, markets),
+        "comparisons": [{k: v for k, v in r.items() if k != "top_k"}
+                        | {"top1": {kk: vv for kk, vv in r["top_k"][1].items()
+                                    if kk != "per_seed"}} for r in rows],
+    })
+    return 0
+
+
 def cmd_noise_floor(a) -> int:
     """Measure what the random seed alone is worth.
 
@@ -370,6 +418,17 @@ def main() -> int:
         p.add_argument("experiment", help="path to the experiment YAML")
         p.add_argument("--market", choices=H.MARKETS, default=None)
         p.set_defaults(fn=fn)
+
+    p = sub.add_parser(
+        "settle", help="decide a close call by averaging outcomes across seeds")
+    p.add_argument("experiment", help="path to the experiment YAML")
+    p.add_argument("--model", required=True,
+                   help="the candidate model within each run, e.g. ensemble")
+    p.add_argument("--against", required=True,
+                   help="what to pair it against, e.g. xgb")
+    p.add_argument("--seeds", type=int, default=5)
+    p.add_argument("--market", choices=H.MARKETS, default=None)
+    p.set_defaults(fn=cmd_settle)
 
     p = sub.add_parser("noise-floor", help="measure the seed-to-seed spread")
     p.add_argument("--seeds", type=int, default=5)

@@ -1,0 +1,27 @@
+# Is a two-model ensemble of xgb and condlogit better than xgb alone?
+#
+# The only positive number anywhere in the conditional-logit work. Paired on one
+# run it was +0.53pp on anytime Top-1 at 1.13 standard errors, p=0.345 over 28
+# discordant games of 1,131, with all four guards tripped. That clears the
+# promotion rule by a hair on the metric that decides and loses on everything
+# else by more than noise — which is exactly the shape of a result that is
+# really the random seed.
+#
+# The four-model ensemble is worse than xgb on both markets (anytime -0.62pp,
+# first TD -0.53pp), so this is specifically about the two-model pairing: lr and
+# lgbm dilute the ranking, condlogit may not.
+#
+# Settled with the seed-averaged test rather than another single run:
+#
+#   make settle EXP=experiments/xgb-condlogit-ensemble.yaml \
+#       MODEL=ensemble AGAINST=xgb SEEDS=5
+#
+# Both models come from the same run at each seed, so folds and features are
+# identical on each side and the model is the only difference.
+id: 2026.08.13-xgb-condlogit-ensemble
+note: "Two-model ensemble of xgb and condlogit, against xgb alone"
+overlay:
+  models:
+    active:
+    - xgb
+    - condlogit

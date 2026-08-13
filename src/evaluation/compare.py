@@ -193,6 +193,134 @@ def gate(comparison: dict) -> dict:
     }
 
 
+def seed_averaged_paired(runs: list[dict], *, market: str, model: str,
+                         against: str, k: int = 1) -> dict:
+    """Pair two models after averaging each game's outcome across seeds.
+
+    A single paired run answers "did this win on these folds with this seed".
+    When the margin is a few dozen games out of 1,131, the seed is a large part
+    of what is being measured — the noise floor exists because the same recipe
+    at a different seed moves Top-1 by several tenths of a point.
+
+    Averaging first is what removes it. Each game's hit indicator becomes a
+    fraction — "this model gets this game right in 4 of 5 seeds" — and the
+    pairing is over those fractions. A model that wins only because one seed
+    happened to land well shows up here as a game it wins 1 time in 5, and
+    contributes 0.2 rather than 1.
+
+    This is the test that settled first TD's production model. It was done by
+    hand then; doing it by hand is how it stays unrepeatable.
+
+    Two significance readings, because they answer different questions:
+      * `p_value` is a sign test over games where the averaged outcomes differ,
+        the direct analogue of the McNemar test in `paired_top_k`;
+      * `seeds_ahead` counts how many individual seeds favour the candidate,
+        which catches a result driven by one outlying seed even when the
+        pooled average looks clean.
+
+    Read `p_value` beside `se_multiple`, never instead of it. For a strictly
+    one-sided difference — some games won, none lost — `delta / se` reduces to
+    sqrt(wins) regardless of how many games were scored, so a single
+    consistently-won game lands exactly on the one-standard-error threshold and
+    "passes". `paired_top_k` has the same arithmetic and always has. The sign
+    test is what refuses that: at 1 win and 0 losses it returns p=1.000.
+    """
+    col = f"hit{k}"
+    if not runs:
+        raise ValueError("seed averaging needs at least one run")
+
+    joined = None
+    for i, run in enumerate(runs):
+        a = (_outcomes_for(run, market, against)
+             .select(["game_id", col]).rename({col: f"a{i}"}))
+        b = (_outcomes_for(run, market, model)
+             .select(["game_id", col]).rename({col: f"b{i}"}))
+        pair = a.join(b, on="game_id", how="inner")
+        joined = pair if joined is None else joined.join(pair, on="game_id",
+                                                         how="inner")
+    n_seeds = len(runs)
+    if joined is None or joined.height == 0:
+        return {"k": k, "n_seeds": n_seeds, "n_compared": 0, "delta": 0.0,
+                "se": 0.0, "champion": 0.0, "candidate": 0.0, "wins": 0,
+                "losses": 0, "p_value": 1.0, "se_multiple": 0.0,
+                "seeds_ahead": 0}
+
+    A = np.column_stack([joined[f"a{i}"].to_numpy().astype(float)
+                         for i in range(n_seeds)])
+    B = np.column_stack([joined[f"b{i}"].to_numpy().astype(float)
+                         for i in range(n_seeds)])
+    a_mean, b_mean = A.mean(axis=1), B.mean(axis=1)
+    d = b_mean - a_mean
+    n = d.size
+    delta = float(d.mean())
+    se = float(d.std(ddof=1) / np.sqrt(n)) if n > 1 else 0.0
+
+    wins = int((d > 0).sum())
+    losses = int((d < 0).sum())
+    p_value = 1.0
+    if wins + losses > 0:
+        from scipy.stats import binomtest
+        p_value = float(binomtest(wins, wins + losses, 0.5).pvalue)
+
+    return {
+        "k": k, "n_seeds": n_seeds, "n_compared": n,
+        "champion": float(a_mean.mean()), "candidate": float(b_mean.mean()),
+        "delta": delta, "se": se,
+        "se_multiple": (delta / se) if se > 0 else (0.0 if delta == 0 else float("inf")),
+        "wins": wins, "losses": losses, "discordant": wins + losses,
+        "p_value": p_value,
+        "seeds_ahead": int(sum(1 for i in range(n_seeds)
+                               if B[:, i].mean() > A[:, i].mean())),
+        "per_seed": [{"champion": float(A[:, i].mean()),
+                      "candidate": float(B[:, i].mean())}
+                     for i in range(n_seeds)],
+    }
+
+
+def format_seed_gate(rows: list[dict]) -> str:
+    """The seed-averaged table a final decision gets made from."""
+    lines = []
+    for r in rows:
+        t1 = r["top_k"][1]
+        lines.append(f"{r['market']}: {r['model']} vs {r['against']}  "
+                     f"({t1['n_seeds']} seeds, {t1['n_compared']} games)")
+        for k in TOP_K:
+            e = r["top_k"][k]
+            extra = (f"  p={e['p_value']:.3f}" if k == 1 else "")
+            lines.append(
+                f"    Top-{k}  {e['champion']:.2%} -> {e['candidate']:.2%}  "
+                f"{e['delta']*100:+.2f}pp  ({e['se_multiple']:+.2f} se){extra}")
+        lines.append(f"           {t1['discordant']} games differ once averaged: "
+                     f"{t1['wins']} won, {t1['losses']} lost")
+        lines.append(f"           candidate ahead in {t1['seeds_ahead']} of "
+                     f"{t1['n_seeds']} seeds")
+        for i, s in enumerate(t1["per_seed"]):
+            lines.append(f"             seed {i}: {s['champion']:.2%} -> "
+                         f"{s['candidate']:.2%}")
+        lines.append(f"    VERDICT {r['verdict']}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def seed_gate(runs: list[dict], *, market: str, model: str,
+              against: str) -> dict:
+    """Apply the promotion rule to a seed-averaged comparison."""
+    top_k = {k: seed_averaged_paired(runs, market=market, model=model,
+                                     against=against, k=k) for k in TOP_K}
+    t1 = top_k[1]
+    wins_top1 = t1["se"] > 0 and t1["delta"] >= PROMOTION_SE * t1["se"]
+    tripped = [k for k in (3, 5) if top_k[k]["delta"] < -top_k[k]["se"]]
+    if wins_top1 and not tripped:
+        verdict = "PROMOTED"
+    elif wins_top1:
+        verdict = "GUARD_TRIPPED"
+    else:
+        verdict = "REJECTED"
+    return {"market": market, "model": model, "against": against,
+            "top_k": top_k, "verdict": verdict,
+            "guards_tripped": [f"top{k}" for k in tripped]}
+
+
 def ensemble_mismatch(champion: dict, candidate: dict) -> str | None:
     """Do both runs mean the same thing by "ensemble"?
 

@@ -469,3 +469,106 @@ def test_missing_metadata_does_not_invent_a_mismatch():
     champion = _result([_outcomes([1, 0] * 50, model="ensemble")])
     candidate = _result([_outcomes([1, 0] * 50, model="ensemble")])
     assert C.ensemble_mismatch(champion, candidate) is None
+
+
+# --------------------------------------------------------------------------
+# Seed-averaged pairing
+# --------------------------------------------------------------------------
+
+def _seeded(hits_a, hits_b, market="anytime_td"):
+    """One run carrying `xgb` and `ensemble` rows over the same games."""
+    return _result([_outcomes(hits_a, market=market, model="xgb"),
+                    _outcomes(hits_b, market=market, model="ensemble")])
+
+
+def test_a_win_driven_by_one_seed_is_discounted():
+    """The whole reason for averaging first.
+
+    The candidate wins 20 games, but only in one seed out of five. Paired on
+    that seed alone it looks like a clean 20-game gain; averaged, each of those
+    games is worth 0.2 and the result collapses.
+    """
+    n = 100
+    base = [1, 0] * (n // 2)
+    lucky = list(base)
+    for i in range(1, 41, 2):          # 20 games the candidate wins
+        lucky[i] = 1
+
+    runs = [_seeded(base, lucky)] + [_seeded(base, base) for _ in range(4)]
+    r = C.seed_averaged_paired(runs, market="anytime_td", model="ensemble",
+                               against="xgb", k=1)
+    assert r["n_seeds"] == 5 and r["n_compared"] == n
+    assert r["delta"] == pytest.approx(20 * 0.2 / n)      # 0.04, not 0.20
+    assert r["seeds_ahead"] == 1, "only one seed favours the candidate"
+
+    # The single-seed view of the same data claims five times the gain.
+    single = C.paired_top_k(_outcomes(base), _outcomes(lucky), k=1)
+    assert single["delta"] == pytest.approx(0.20)
+    assert single["delta"] > 4 * r["delta"]
+
+
+def test_a_consistent_win_survives_averaging():
+    n = 100
+    base = [1, 0] * (n // 2)
+    better = list(base)
+    for i in range(1, 21, 2):          # the same 10 games, every seed
+        better[i] = 1
+    runs = [_seeded(base, better) for _ in range(5)]
+    r = C.seed_averaged_paired(runs, market="anytime_td", model="ensemble",
+                               against="xgb", k=1)
+    assert r["delta"] == pytest.approx(0.10)
+    assert r["seeds_ahead"] == 5
+    assert r["wins"] == 10 and r["losses"] == 0
+    assert r["p_value"] < 0.01
+
+
+def test_identical_models_average_to_no_difference():
+    runs = [_seeded([1, 0] * 50, [1, 0] * 50) for _ in range(5)]
+    r = C.seed_averaged_paired(runs, market="anytime_td", model="ensemble",
+                               against="xgb", k=1)
+    assert r["delta"] == pytest.approx(0.0)
+    assert r["wins"] == 0 and r["losses"] == 0 and r["p_value"] == 1.0
+    assert C.seed_gate(runs, market="anytime_td", model="ensemble",
+                       against="xgb")["verdict"] == "REJECTED"
+
+
+def test_games_missing_from_any_seed_are_dropped():
+    """Averaging over a game only some seeds scored would weight it wrongly."""
+    runs = [_seeded([1, 0, 1, 0], [1, 1, 1, 0]),
+            _seeded([1, 0, 1], [1, 1, 1])]
+    r = C.seed_averaged_paired(runs, market="anytime_td", model="ensemble",
+                               against="xgb", k=1)
+    assert r["n_compared"] == 3, "only games present in every seed can average"
+
+
+@pytest.mark.parametrize("wins", [1, 4, 9])
+def test_the_one_standard_error_rule_is_the_square_root_of_the_net_wins(wins):
+    """A property of the promotion rule worth knowing before trusting it.
+
+    For a strictly one-sided paired difference — the candidate wins some games
+    and loses none — `delta / se` works out to sqrt(wins), independent of how
+    many games were scored. So a single consistently-won game lands exactly on
+    the one-standard-error threshold and "passes".
+
+    That is not a defect in the seed averaging; `paired_top_k` has the same
+    arithmetic and always has. It is the reason the sign test is reported
+    beside the standard-error multiple rather than instead of it: with 1 win
+    and 0 losses the sign test returns p=1.000 and says plainly that one game
+    is not evidence. A verdict read off the SE alone would disagree.
+    """
+    n = 400
+    base = [1, 0] * (n // 2)
+    better = list(base)
+    for i in range(wins):
+        better[2 * i + 1] = 1           # the same games in every seed
+    runs = [_seeded(base, better) for _ in range(5)]
+    row = C.seed_gate(runs, market="anytime_td", model="ensemble",
+                      against="xgb")
+    t1 = row["top_k"][1]
+    assert t1["wins"] == wins and t1["losses"] == 0
+    assert t1["se_multiple"] == pytest.approx(wins ** 0.5, rel=0.05)
+    # One game clears the SE rule and the sign test refuses to call it.
+    if wins == 1:
+        assert t1["p_value"] == pytest.approx(1.0)
+    else:
+        assert t1["p_value"] < 0.15
