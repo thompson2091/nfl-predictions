@@ -211,6 +211,15 @@ def seed_averaged_paired(runs: list[dict], *, market: str, model: str,
     This is the test that settled first TD's production model. It was done by
     hand then; doing it by hand is how it stays unrepeatable.
 
+    **What this cannot tell you.** It compares *recipes*, and a recipe is not
+    what gets served — one set of weights is, trained at `model.seed`. A recipe
+    can be better on average while the seed you actually ship is the draw that
+    loses. That is not hypothetical: the `{xgb, condlogit}` ensemble measured
+    +0.32pp on first TD here, was promoted, and the walk-forward at seed 42 read
+    16.6% against xgb's 16.8% — the seed-0 line of this very comparison. It was
+    reverted the same day. So read the per-seed breakdown, not just the mean,
+    and check what `model.seed` produces before promoting anything on this.
+
     Two significance readings, because they answer different questions:
       * `p_value` is a sign test over games where the averaged outcomes differ,
         the direct analogue of the McNemar test in `paired_top_k`;

@@ -409,7 +409,7 @@ Re-ordered by measured effect rather than by expected effect:
 | **DEF/ST out of the offensive share denominator** | **KEPT_WITH_JUSTIFICATION** | **+2.56pp, p=0.000** |
 | Conditional logit — train the objective we score (3a) | REJECTED | first TD −0.09pp (p=1.000); anytime −2.74pp (p=0.016) |
 | Ensemble including condlogit, vs served xgb | REJECTED | anytime −0.62pp (p=0.435); first TD −0.53pp (p=0.497) |
-| `{xgb, condlogit}` ensemble vs xgb, seed-averaged | first TD **PROMOTED**, anytime REJECTED | first TD +0.32pp (1.53 se, p=0.272); anytime +0.21pp (0.78 se) |
+| `{xgb, condlogit}` ensemble vs xgb, seed-averaged | REVERTED after promotion | seed-averaged +0.32pp, but the served seed is −0.18pp |
 
 The pattern is worth naming. Both rejected experiments were *theoretically*
 motivated — sound arguments about likelihoods and generative structure — and
@@ -502,6 +502,32 @@ The ledger row from the invalid run is retained and marked `VOID`, with a
 retraction row naming what was wrong. Deleting it would leave the record
 looking like the mistake never happened, which is the failure this ledger exists
 to prevent.
+
+**Rank calibration could not be fitted for an ensemble, and said so quietly.**
+Found while promoting first TD to `ensemble`. `train_all` fits the per-rank
+correction by loading one model pickle, so `get_model("ensemble")` raised, a
+bare `except Exception` printed a single line reading "Rank calibration
+skipped", and the **previous model's correction stayed on disk to be applied to
+the new model's probabilities**. The paragraph directly above that code measures
+what a stale correction costs: the 2025 bet card fell from 19.4% to 14.0%.
+
+Two changes. The fit now runs through `scoring.score` — the entry point
+production itself uses — so `"ensemble"` works and the fitted quantity matches
+the served one. And a failed fit now *deletes* the stale file rather than
+leaving it, because applying no correction is the better failure.
+
+This did not affect the promotion decision. `apply_rank_calibration` clamps with
+`np.minimum.accumulate`, so ordering is preserved exactly and Top-K cannot
+change; only probability levels move, which matter to the bet card and not to
+the ranking the settle measured.
+
+**A related gap, still open.** The harness — and so `make walkforward` and the
+app's headline Top-1 — never applies rank calibration, while `predict.py` and
+`scripts/10_backtest.py` both do. That is a third scoring path, and
+`test_served_path_matches_the_evaluated_path` only compares the two that agree.
+Top-K is unaffected for the reason above, so the published accuracy is right,
+but the harness and the board disagree on published *probabilities*. Worth its
+own investigation rather than folding into a promotion.
 
 A third defect fell out of the same run. `_break_ties` nudged calibrated
 probabilities *upward* to restore ordering isotonic had flattened, and the
@@ -660,9 +686,40 @@ is a real number and a small one, on a market where rank economics reports NO
 EDGE DEMONSTRATED. More seeds would not settle it much further: the standard
 error here is dominated by having 1,131 games, not by having 5 seeds.
 
-Serving it is a real config change — `models.active` becomes `{xgb, condlogit}`
-and `production_by_target.first_td` becomes `ensemble` — so it should be locked
-as a version before promotion, not after.
+**Promoted, then reverted the same day. The reason is the most useful thing in
+this whole experiment.**
+
+The config was changed, both markets retrained, and the walk-forward re-run.
+first TD then read:
+
+    xgb        Top-1 16.8%   Top-3 37.1%   Top-5 53.2%
+    ensemble   Top-1 16.6%   Top-3 37.7%   Top-5 53.4%
+
+The model we would actually serve is **0.2pp worse on Top-1**, not 0.32pp
+better. That is not a contradiction of the settle — it is the settle's own
+seed-0 line, `16.80% -> 16.62%`, reproduced to two decimals by an independent
+path.
+
+`make settle` estimates which **recipe** is better in expectation, by averaging
+each game's outcome across seeds. But we do not ship a recipe. We ship one set
+of weights, trained at `model.seed = 42` — and seed 42 is the single draw of the
+five where the ensemble loses. At p=0.272 the recipe's edge cannot be
+distinguished from noise, while the artifact's deficit is directly observable on
+the same folds. Promoting would also have dropped the board's headline Top-1
+from 16.8% to 16.6% while the version manifest called it an improvement: two
+numbers under one label, the failure this project keeps having to fix.
+
+Reverted to `2026.08.12-first-td-xgb`. Production is unchanged on both markets.
+
+**The lesson, which generalises past this experiment.** A seed-averaged test and
+a served artifact answer different questions, and this repo now has a tool that
+answers the first while shipping the second. Either check the served seed
+alongside the average, or change what is shipped to something a seed average
+actually describes — averaging over seeds is not a model you can serve. The
+`settle` command's docstring and the config comment both say so now.
+
+Anything reached through `settle` in future should be read the same way: the
+average says whether to keep exploring, the served seed says whether to ship.
 
 **What this settles.** The Phase 2 conclusion — data-limited, not
 fitting-limited — was reached by measuring the feature set, and a fair objection

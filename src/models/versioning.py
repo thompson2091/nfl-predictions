@@ -638,7 +638,22 @@ def unlocked_markets(markets=MARKETS) -> list[str]:
     out = []
     for market in markets:
         fitted, _ = split_runtime(live[market])
-        if not any(v.get("artifacts", {}).get(market) == fitted for v in known):
+        matched = False
+        for version in known:
+            recorded = (version.get("artifacts") or {}).get(market)
+            if not recorded:
+                continue
+            # Both sides through the same filter. Filtering only the live side
+            # compares a fitted-only dict against one that still carries
+            # clusters_*.json and blend_weight.json, so nothing ever matched and
+            # this reported every market as unlocked — directly contradicting
+            # `verify_current`, which had this same bug fixed earlier and says
+            # the artifacts DO match. A guard that disagrees with its neighbour
+            # about the same files teaches you to ignore both.
+            if split_runtime(recorded)[0] == fitted:
+                matched = True
+                break
+        if not matched:
             out.append(market)
     return out
 

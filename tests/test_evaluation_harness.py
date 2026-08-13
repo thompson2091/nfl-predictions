@@ -336,17 +336,26 @@ def test_a_screen_trains_the_model_the_overlay_introduces():
     screened is worse than no screen, because it looks like a result.
     """
     from src.evaluation.harness import screen_models
+    from src.utils.config import get_config
+
+    # Built from whatever is active *now*, not from a remembered list. An
+    # earlier version of this test hardcoded {lr, lgbm, xgb} and started failing
+    # the moment condlogit was promoted into models.active — asserting a fact
+    # about the config rather than about the function.
+    active = list(get_config()["models"]["active"])
+    newcomer = "a-model-not-in-the-active-set"
+    assert newcomer not in active
 
     served = screen_models("anytime_td")
-    assert "condlogit" not in served, "no overlay, no newcomer"
+    assert newcomer not in served, "no overlay, no newcomer"
+    assert len(served) == 1, "without an overlay a screen trains one model"
 
-    overlay = {"models": {"active": ["lr", "lgbm", "xgb", "condlogit"]}}
-    with_new = screen_models("anytime_td", overlay)
-    assert "condlogit" in with_new, "the overlay's new model must be trained"
+    with_new = screen_models("anytime_td", {"models": {"active": active + [newcomer]}})
+    assert newcomer in with_new, "the overlay's new model must be trained"
     assert with_new[0] == served[0], "still screened against what is served"
     # Models already active are not duplicated — the screen stays cheap.
-    assert with_new.count("xgb") == 1
-    assert "lgbm" not in with_new
+    assert with_new.count(served[0]) == 1
+    assert len(with_new) == 2
 
 
 def test_an_overlay_that_adds_no_model_screens_exactly_as_before():

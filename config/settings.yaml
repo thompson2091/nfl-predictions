@@ -18,6 +18,9 @@ rolling_windows:
   short: 3
   medium: 5
 models:
+  # `condlogit` is registered (src/models/ranker.py) and deliberately NOT active.
+  # It was trialled here on 2026-08-13 and reverted the same day; the reason is
+  # under production_by_target below, and is worth reading before trying again.
   active:
   - lr
   - lgbm
@@ -91,6 +94,27 @@ models:
   #
   # Worth knowing before optimising this market at all: rank economics reports
   # NO EDGE DEMONSTRATED here, top 3 at -2.4% [-11.2, +6.7].
+  # An {xgb, condlogit} ensemble was trialled on first TD, 2026-08-13, and
+  # REVERTED. Recording it because the seed-averaged evidence said take it and
+  # the evidence was, on its own terms, not wrong:
+  #
+  #   seed-averaged over 5 seeds   16.78% -> 17.10%   +0.32pp (1.53 se), p=0.272
+  #   the seed we actually serve   16.80% -> 16.62%   -0.18pp
+  #
+  # `make settle` estimates which RECIPE is better in expectation. We do not
+  # serve a recipe, we serve one set of weights, and the pipeline trains at
+  # model.seed = 42 — which is the single draw of the five where the ensemble
+  # loses. The walk-forward reproduced it to two decimals, so the two paths
+  # agree; there is nothing to reconcile, only something to choose.
+  #
+  # At p=0.272 the recipe's edge is indistinguishable from noise, while the
+  # artifact's deficit is directly observable on the same folds. Promoting would
+  # also have dropped the board's headline Top-1 from 16.8% to 16.6% while the
+  # version manifest called it an improvement.
+  #
+  # Do not re-run `settle` on this and promote on the average alone. Either
+  # check the served seed too, or change what we serve to something a seed
+  # average describes — an average over seeds is not a model you can ship.
   production_by_target:
     anytime_td: xgb
     first_td: xgb

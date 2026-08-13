@@ -333,3 +333,36 @@ def test_the_served_version_wins_its_group(sandbox):
     dry = V.prune_duplicates(apply=False)
     assert dry["groups"][0]["keep"] == "2026.01.01-one"
     assert dry["groups"][0]["drop"] == ["2026.01.09-later-duplicate"]
+
+
+def test_a_manifest_locked_before_a_file_became_runtime_still_matches(sandbox):
+    """RUNTIME_ARTIFACTS grows, and old manifests were written under the old set.
+
+    `2026.08.12-first-td-xgb` was locked before the cluster files were
+    classified as runtime, so its manifest still lists them under `artifacts`.
+    Filtering only the live side compared a fitted-only dict against one that
+    still carried them, nothing matched, and `unlocked_markets` reported every
+    market as never locked — printing "Lock them before promoting anything, or
+    they are lost" directly above `verify_current` saying the artifacts match.
+
+    Two guards disagreeing about the same files is worse than either being
+    wrong alone: it teaches you to ignore both.
+    """
+    V.lock("2026.01.01-old", "locked before the classification changed")
+    V.promote("2026.01.01-old")
+    assert V.unlocked_markets() == []
+
+    # Rewrite the manifest the way an older lock would have written it, with a
+    # runtime artifact recorded among the fitted ones.
+    path = V.registry_root() / "2026.01.01-old.json"
+    manifest = json.loads(path.read_text())
+    for market in V.MARKETS:
+        runtime = manifest.get("runtime", {}).get(market, {})
+        for name, entry in runtime.items():
+            manifest["artifacts"][market][name] = entry["sha256"]
+        manifest["runtime"][market] = {}
+    path.write_text(json.dumps(manifest, indent=2))
+
+    assert V.unlocked_markets() == [], (
+        "a manifest predating the runtime classification must still match")
+    assert V.verify_current() == [], "and the two guards must agree"
