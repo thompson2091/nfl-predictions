@@ -12,9 +12,44 @@ from src.models.registry import get_model, ensure_registered
 from src.models.calibration import IsotonicCalibrator
 
 
+def excluded_families(cfg: dict | None = None) -> set[str]:
+    """Columns dropped because their builder family is switched off.
+
+    Ablation is by family, not by column, because columns within a family are
+    correlated by construction — `player_carries_avg_3g` and `_5g` cover for
+    each other, so dropping either alone measures nothing while dropping the
+    family measures something. The map from column to builder is
+    `diagnostics/feature_families.json`, recorded by
+    `scripts/26_feature_families.py`.
+
+    Driven from config so an ablation is an ordinary overlay and goes through
+    the same screen, gate and ledger as any other change.
+    """
+    cfg = cfg if cfg is not None else get_config()
+    families = list((cfg.get("models") or {}).get("exclude_feature_families") or [])
+    if not families:
+        return set()
+
+    path = Path(__file__).resolve().parents[2] / "diagnostics" / "feature_families.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"exclude_feature_families is set to {families} but {path} does not "
+            "exist. Run `python scripts/26_feature_families.py` to record which "
+            "builder produced each column. Guessing from column names would "
+            "drop the wrong ones silently.")
+    mapping = json.loads(path.read_text())["families"]
+    unknown = [f for f in families if f not in mapping]
+    if unknown:
+        raise ValueError(
+            f"unknown feature families {unknown}; known families are "
+            f"{sorted(mapping)}. A typo here would ablate nothing and report "
+            "the result as 'this family does not matter'.")
+    return {c for f in families for c in mapping[f]}
+
+
 def get_feature_cols(df: pl.DataFrame) -> list[str]:
     """Get feature columns (exclude identifiers and target)."""
-    exclude = {
+    exclude = set(excluded_families()) | {
         "game_id", "season", "week", "player_id", "player_name",
         "team", "opponent", "home_team", "away_team",
         "target", "game_type", "prob",
