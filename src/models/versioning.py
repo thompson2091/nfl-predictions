@@ -60,13 +60,20 @@ ID_PATTERN = re.compile(r"^\d{4}\.\d{2}\.\d{2}-[a-z0-9][a-z0-9._-]*$")
 #:
 #: `blend_weight.json` is refit during *prediction*, from graded odds history
 #: that grows every week the season is live (see `predict._anchor_to_market`).
-#: So it changes without a retrain, and enforcing it byte-for-byte would fail
-#: verification after every `make predict` — training an operator to ignore the
-#: check, which is worse than not having one.
+#: `clusters_player.json` and `clusters_bet.json` are fitted by
+#: `scripts/21_clusters.py`, which runs after training and is re-run on its own.
 #:
-#: They are still recorded, with their contents inlined, so a manifest says what
-#: weight the version was serving. Drift is *reported* rather than failed.
-RUNTIME_ARTIFACTS = frozenset({"blend_weight.json"})
+#: All of them change without a retrain, so enforcing them byte-for-byte fails
+#: verification after an ordinary `make predict` or `make clusters` — training
+#: an operator to ignore the check, which is worse than not having one. Running
+#: the clusters script is exactly what broke this check the first time.
+#:
+#: They are still recorded, with their contents inlined where they are small
+#: enough to be worth reading, so a manifest says what the version was serving.
+#: Drift is *reported* rather than failed.
+RUNTIME_ARTIFACTS = frozenset({
+    "blend_weight.json", "clusters_player.json", "clusters_bet.json",
+})
 
 #: The three outcomes an experiment can have. `KEPT_WITH_JUSTIFICATION` is the
 #: one that matters: a candidate may be promoted despite tripping a guard
@@ -511,7 +518,8 @@ def verify_current(markets=MARKETS) -> list[str]:
         except VersionError as e:
             problems.append(f"{market}: {e}")
             continue
-        expected = manifest.get("artifacts", {}).get(market, {})
+        expected, _ = split_runtime(
+            manifest.get("artifacts", {}).get(market, {}))
         fitted, _ = split_runtime(live[market])
         if expected != fitted:
             missing = sorted(set(expected) - set(fitted))

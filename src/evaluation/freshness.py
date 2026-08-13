@@ -16,9 +16,13 @@ artifact is *wrong*, only that it was written before the model it claims to
 describe, which is enough to know it cannot be trusted. Anything subtler would
 need to re-run the evaluation, which is the thing being avoided.
 
-`blend_weight.json` is excluded from the model's timestamp. It is refit during
-prediction rather than training, so every `make predict` would otherwise make
-every evaluation artifact look stale.
+Artifacts written *downstream* of training are excluded from the model's
+timestamp — `blend_weight.json`, refit during prediction, and the two cluster
+files, refit by `make clusters`. Counting them inverts the comparison: the first
+run of this check reported every evaluation artifact as stale, including ones
+regenerated seconds earlier, because the clustering script had touched the model
+directory. A warning that fires on everything at once is a warning that gets
+ignored.
 """
 from __future__ import annotations
 
@@ -50,9 +54,7 @@ EVALUATION_ARTIFACTS = [
 #:
 #: `blend_weight.json` is here for the same reason from the other direction: it
 #: is refit during prediction, so every `make predict` would age the evaluation.
-DOWNSTREAM_ARTIFACTS = set(RUNTIME_ARTIFACTS) | {
-    "clusters_player.json", "clusters_bet.json",
-}
+DOWNSTREAM_ARTIFACTS = frozenset(RUNTIME_ARTIFACTS)
 
 
 def model_mtime(market: str, model_dir: Path | None = None) -> float | None:
