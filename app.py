@@ -234,12 +234,34 @@ def guarded(fn):
     return wrapper
 
 
-@st.cache_data
+@st.cache_resource(show_spinner=False)
 def load_features(tt: str):
-    path = get_path("processed", tt) / "features.parquet"
-    if not path.exists():
+    """The feature matrix for one market — one copy, shared everywhere.
+
+    `cache_resource` rather than `cache_data`, and delegating to the harness's
+    loader rather than reading the file again. Both halves matter, because this
+    frame is 409 MB per market in memory (160,336 rows x ~355 columns):
+
+      * `cache_data` serialises what it caches and hands back a *copy* on every
+        call, so the board, the accuracy strip and the performance tab each got
+        their own.
+      * `src.evaluation.harness` keeps its own module-level cache, which
+        `scored_season` started populating when the app's accuracy numbers moved
+        onto the shared scorer. That was a second full copy of both markets —
+        about 817 MB of pure duplication — sitting alongside the app's.
+
+    One loader, one object, read-only by convention: every consumer filters,
+    and a polars filter returns a new frame rather than mutating this one.
+
+    Returns None when the file is absent, which is the contract every caller
+    here already expects; the harness raises instead, because a pipeline that
+    cannot find its inputs should stop rather than render an empty page.
+    """
+    from src.evaluation import harness
+    try:
+        return harness._features(tt)
+    except FileNotFoundError:
         return None
-    return pl.read_parquet(path)
 
 
 @st.cache_data
