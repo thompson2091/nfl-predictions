@@ -106,3 +106,36 @@ def test_the_strip_passes_the_selected_version_through(source):
         assert "selected_version" in args, (
             f"render_accuracy_strip called without a version: {args!r}"
         )
+
+
+def test_selecting_the_served_version_is_not_previewing(source):
+    """The sidebar defaults the selector to the served version.
+
+    So `version` arrives non-None on an ordinary page load. Treating that as a
+    preview cost two things at once: the strip quoted the manifest's metrics as
+    recorded at lock time instead of the live walk-forward (53.4% against a
+    re-measured 53.5%), and it set `from_version`, which the strip reads as
+    "previewing" and uses to hide the bookmaker and Closer tiles. Those tiles
+    vanished from the board entirely.
+
+    Hiding them while previewing is right — backtest frames exist only for the
+    served model. When the served model IS the selection, there is nothing to
+    hide.
+    """
+    block = source[source.index("def headline_accuracy("):]
+    block = block[:block.index("\ndef ")]
+    assert "served_version(" in block, (
+        "headline_accuracy must compare the selection against what is served, "
+        "or an ordinary page load is treated as a preview")
+    assert "version = None" in block, (
+        "and must fall through to the live walk-forward when they match")
+
+
+def test_the_betting_tiles_are_hidden_only_for_a_real_preview(source):
+    """`from_version` is the flag that hides them; it must mean 'another model'."""
+    strip = source[source.index("def render_accuracy_strip("):]
+    strip = strip[:strip.index("\n@st.cache_data")]
+    assert 'acc.get("from_version")' in strip, (
+        "the suppression must key off the previewed-version marker")
+    for tile in ("vs bookmaker", "Closer — backable", "Closer — fade"):
+        assert tile in strip, f"the {tile!r} tile is gone from the strip"

@@ -670,9 +670,23 @@ def headline_accuracy(tt: str, model: str, version: str | None = None):
     artifact for what is served, then the single held-out season if the
     walk-forward has never been run.
 
+    **Selecting the served version is not previewing.** The sidebar defaults its
+    selector to whatever is being served, so `version` arrives non-None on an
+    ordinary page load. Treating that as a preview cost two things at once: the
+    strip quoted the manifest's metrics as recorded at lock time rather than the
+    live walk-forward — 53.4% against a re-measured 53.5% — and it set
+    `from_version`, which the strip reads as "previewing" and uses to hide the
+    bookmaker and Closer tiles. Those tiles simply disappeared from the board.
+    They are hidden while previewing because backtest frames exist only for the
+    served model; when the served model *is* the selection there is nothing to
+    hide.
+
     `tests/test_headline_parity.py` asserts that nothing else renders a
     track-record tile.
     """
+    served = served_version(tt)
+    if version and served and version == served.get("id"):
+        version = None
     return (version_accuracy(tt, model, version)
             or walkforward_accuracy(tt, model)
             or historical_accuracy(tt, model))
