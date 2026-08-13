@@ -881,12 +881,86 @@ operating point, and the config knobs stay at their served defaults.
 Only testable now that the denominator is fixed (1a). Trades pool ceiling
 against pool noise: 33 candidates per game survive the filter, from 51.8.
 
+### 3h. Defensive and coaching data — **SURVEYED 2026-08-13, the largest unused seam**
+
+Phase 2 closed the defence question with "ranking defences needs features that do
+not exist". That was true of the *assembled* feature set and false of the data
+available. Surveyed properly:
+
+**Already on disk, unused.** `pbp.parquet` carries 379 columns and the feature
+builders touch a fraction. The takeaway and pressure columns are ~97% populated
+across **all eleven seasons**, with no coverage cliff:
+
+    interception  fumble_forced  fumble_lost  sack  qb_hit
+    return_touchdown  safety  punt_blocked
+
+That is the raw material for team-level takeaway rate, pressure rate and return
+ability — precisely the three things Phase 2 named as missing. 864 return
+touchdowns are in the archive, ~79 a season.
+
+Sparser, and recent-only: `defenders_in_box` (60% pre-2020, 84% after),
+`number_of_pass_rushers` (34% / 68%), `defense_man_zone_type` (16% / 66%),
+`defense_coverage_type` (16% / 42%). Usable for recent folds, a train/serve skew
+risk for older ones — the same trap `temp` and `wind` fell into.
+
+**Not ingested at all.** `nflreadpy` exposes 25 loaders; the pipeline uses nine.
+Two are directly on this question:
+
+- **`load_pfr_advstats(stat_type="def")`** — 29 columns *per defender per game*,
+  2018-2025, which covers every walk-forward fold. Coverage
+  (`def_targets`, `def_completions_allowed`, `def_yards_allowed_per_tgt`,
+  `def_passer_rating_allowed`, `def_adot`), pressure (`def_times_blitzed`,
+  `def_times_hurried`, `def_pressures`, `def_sacks`), and tackling
+  (`def_missed_tackle_pct`). This is the "defensive tendencies" dataset.
+- **`load_team_stats`** — 138 weekly team columns, offence and defence.
+
+Also unused: `load_ftn_charting`, `load_officials`, `load_players`,
+`load_pfr_advstats` for pass/rush/rec.
+
+**Coaching is half-blocked.** `home_coach` / `away_coach` are already used —
+`build_coach_features` produces 8 columns. But `src/features/oc_features.py`
+exists, is fully written, and is **commented out of the assembler** because it
+reads `data/raw/oc_mapping.csv`, which does not exist. nflverse ships no
+coordinator mapping, so offensive-coordinator tendencies need a hand-built or
+externally sourced table. That is a data-acquisition task, not a modelling one.
+
+**Honest expectation before anyone builds this.** Phase 2 sized the prize:
+better defensive features buy Top-5 and calibration, not Top-1, because a
+defence at its true ~11% should rarely be anyone's top pick. Phase 3f then
+showed defences earn their place in the pool by being *present* rather than by
+being ranked — removing them cost 1.77pp of Top-3 while moving Top-1 by a fifth
+of a standard error. So this is the largest genuinely-new information available,
+and it is still not obviously a Top-1 lever. It is the only remaining item that
+adds information rather than rearranging what is already there.
+
 ### 3g. Weather forecasts *(optional, has an external dependency)*
+
+**Approved 2026-08-13.** 3a–3f are exhausted and all rejected, so this and 3h
+are what remain.
 
 `temp` and `wind` are discarded as train/serve skew — correctly, since they are
 measured at kickoff. A pre-kickoff **forecast** feed restores them honestly.
-Real signal for goal-line-heavy game scripts. Needs a data source decision
-first; parked until 3a–3e are exhausted.
+Real signal for goal-line-heavy game scripts.
+
+**The design decision that decides whether this works.** Training on historical
+*observations* and serving on *forecasts* rebuilds the exact skew the exclusion
+was meant to remove — the model would learn against a precision it never has on
+Sunday morning, and the features would look strong in backtest and weak live.
+Training rows must carry **what was forecast before that game**, not what
+happened during it.
+
+That rules out most weather APIs, which serve observations for the past and
+forecasts only for the future. Open-Meteo's *historical forecast* archive is the
+exception: it stores the forecasts as they were issued, back to 2016, free and
+keyless. Same endpoint shape for past and future, so one code path serves
+training and prediction — which is itself the guard against the two drifting
+apart.
+
+Needed alongside it: stadium coordinates per team, and a kickoff-relative lead
+time chosen once and applied to every row (a 24-hour forecast is a different
+feature from a 3-hour one, and mixing them silently is the same class of error).
+`is_dome` already exists and must zero the whole family, or domes will carry the
+local outdoor weather as though it reached the field.
 
 ---
 
