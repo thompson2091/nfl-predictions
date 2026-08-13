@@ -431,61 +431,59 @@ def team_outlook_frame(season: int, week: int, version: str | None = None):
 
 
 @st.cache_data(show_spinner=False)
-def historical_accuracy(tt: str, model: str) -> dict | None:
-    """How often our ranking found a real scorer, on the held-out season.
+@st.cache_data(show_spinner=False, max_entries=32)
+def scored_season(tt: str, model: str, season: int, version: str | None = None):
+    """Per-game outcomes for one season, through the path production serves.
 
-    Scored over the same candidate pool production actually scores — training,
-    metrics.json and predict() all apply _filter_low_activity, and skipping it
-    here once reported Top-1 as 10.2% for a model whose true figure was 63.4%.
+    **The single source for every accuracy number on this page.** It calls
+    `src.evaluation.harness.score_fold`, which is the same function the
+    walk-forward and every gated experiment use — so a change to the served
+    pipeline moves the strip, the Model performance tab and the committed
+    walk-forward artifact together, or none of them.
+
+    That was not true before. The Model performance tab ranked on raw model
+    output and skipped the joint step entirely, making it a fourth private copy
+    of the scoring path alongside the three `src/models/scoring.py` was written
+    to replace. On anytime TD 2025 it reported Top-1 50.0% for a board showing
+    51.4% — the same model, the same season, two answers, and no way to tell
+    from the screen which one described what you were looking at.
+
+    Returns None when the artifacts are not present, rather than a zero.
     """
-    df = load_features(tt)
-    model_dir = get_path("models", tt)
-    fc_path = model_dir / "feature_cols.pkl"
-    if df is None or not fc_path.exists():
+    from src.evaluation.harness import score_fold
+
+    model_dir, _ = selected_model_dir(tt, version)
+    model_dir = model_dir or get_path("models", tt)
+    if not (model_dir / "feature_cols.pkl").exists():
         return None
     if model != "ensemble" and not (model_dir / f"{model}.pkl").exists():
         return None
-
-    test_season = cfg["splits"]["test_season"]
-    test_df = _filter_low_activity(
-        df.filter((pl.col("season") == test_season) & pl.col("target").is_not_null())
-    )
-    if test_df.height == 0:
+    try:
+        outcomes, _rows, _players = score_fold(
+            tt, model_dir, season, model, list(cfg["models"]["active"]))
+    except Exception:                                        # noqa: BLE001
         return None
+    return outcomes.to_pandas()
 
-    with open(fc_path, "rb") as f:
-        feature_cols = pickle.load(f)
-    X, _ = prepare_data(test_df, feature_cols)
-    probs = _load_and_predict(model, feature_cols, X, model_dir)
 
-    ev = test_df.with_columns(pl.Series("prob", probs))
-    # Score the ranking the board actually shows. The joint step multiplies each
-    # team's shares by that team's rate, which reorders players *across* the two
-    # teams in a game — so measuring accuracy on raw model output would report a
-    # Top-1 for a ranking no user ever sees.
-    _tm = _team_rate_model(tt)
-    if tt != "first_td" and _tm is not None:
-        from src.models.joint import apply_joint
-        ev = apply_joint(ev, test_df, _tm, score_col="prob", out_col="prob",
-                         conversion=_conversion(tt))
-    ev = ev.with_columns(
-        pl.col("prob").rank(descending=True, method="ordinal")
-        .over("game_id").alias("pred_rank")
-    )
-    best = (
-        ev.filter(pl.col("target") == 1).group_by("game_id")
-        .agg(pl.col("pred_rank").min().alias("best_rank"))["best_rank"].to_list()
-    )
-    if not best:
+@st.cache_data(show_spinner=False)
+def historical_accuracy(tt: str, model: str) -> dict | None:
+    """How often our ranking found a real scorer, on the held-out season.
+
+    Derived from `scored_season`, so it cannot drift from the tab below it.
+    """
+    season = cfg["splits"]["test_season"]
+    out = scored_season(tt, model, season)
+    if out is None or not len(out):
         return None
-    n = len(best)
+    ranked = out["best_rank"].dropna()
     return {
-        "season": test_season,
-        "games": n,
-        "top1": sum(1 for r in best if r == 1) / n,
-        "top3": sum(1 for r in best if r <= 3) / n,
-        "top5": sum(1 for r in best if r <= 5) / n,
-        "median_rank": float(np.median(best)),
+        "season": season,
+        "games": int(len(out)),
+        "top1": float(out["hit1"].mean()),
+        "top3": float(out["hit3"].mean()),
+        "top5": float(out["hit5"].mean()),
+        "median_rank": float(np.median(ranked)) if len(ranked) else float("nan"),
     }
 
 
@@ -1900,6 +1898,22 @@ if tab2.open:
             f"numbers aren't flattering themselves."
         )
 
+        # The strip on the board quotes a different number, and it should. Same
+        # scoring path — both go through src/evaluation/harness.score_fold — but
+        # a different population: one season here, four retrained folds there.
+        # Saying so is the difference between two views and two contradictions.
+        _wf = walkforward_accuracy(target_type, selected_model)
+        if _wf:
+            st.caption(
+                f":material/compare_arrows: The headline on the board reads "
+                f"**{_wf['top1']:.1%}** — that is the same model scored the same "
+                f"way over **{_wf['games']:,} games in {_wf['span']}**, each "
+                f"season predicted by a model retrained without it. This page is "
+                f"the single held-out season, so it moves around more. One "
+                f"season is roughly 285 games and carries about three points of "
+                f"standard error."
+            )
+
         if not metrics and df is None:
             st.warning(f"No data found for {target_type}. Run the pipeline first.")
         else:
@@ -1931,28 +1945,24 @@ if tab2.open:
                     elif hist_model != "ensemble" and not model_path.exists():
                         st.info(f"Model file for {hist_model} not found. Run training first.")
                     else:
-                        with open(feat_cols_path, "rb") as f:
-                            feature_cols = pickle.load(f)
-
-                        X_test, y_test = prepare_data(test_df, feature_cols)
-
-                        raw_probs = _load_and_predict(hist_model, feature_cols, X_test, model_dir)
-
-                        eval_df = test_df.with_columns([
-                            pl.Series("prob", raw_probs),
-                        ])
-                        eval_df = eval_df.with_columns(
-                            pl.col("prob").rank(descending=True, method="ordinal")
-                            .over("game_id").alias("pred_rank")
-                        )
-
-                        actual = eval_df.filter(pl.col("target") == 1)
-                        n_games = actual["game_id"].n_unique()
-                        game_best_ranks = (
-                            actual.group_by("game_id")
-                            .agg(pl.col("pred_rank").min().alias("best_rank"))
-                        )
-                        best_ranks = game_best_ranks["best_rank"].to_list()
+                        # One scorer, shared with the strip above and with the
+                        # walk-forward artifact. This block used to rank on raw
+                        # model output and skip the joint step, which made it a
+                        # fourth private copy of the scoring path: on anytime TD
+                        # 2025 it read Top-1 50.0% while the board showed 51.4%,
+                        # same model, same season.
+                        _out = scored_season(target_type, hist_model, test_season,
+                                             selected_version)
+                        if _out is None or not len(_out):
+                            st.info("Could not score this season with the "
+                                    "current artifacts.")
+                            st.stop()
+                        best_ranks = [int(r) for r in _out["best_rank"].dropna()]
+                        n_games = int(len(_out))
+                        # Games whose only scorer the candidate filter removed
+                        # have no rank at all. They count against the model —
+                        # dropping them is how the walk-forward flattered itself
+                        # for a year — so the denominator is every played game.
 
                         # Summary metrics
                         top1_pct = sum(1 for r in best_ranks if r == 1) / n_games * 100 if n_games else 0
@@ -1999,22 +2009,23 @@ if tab2.open:
                             st.dataframe(bucket_rows, hide_index=True, height=400)
 
                         with col_b:
-                            actual_with_week = actual.select(["game_id", "season", "week", "pred_rank"])
-                            game_best_week = (
-                                actual_with_week.group_by(["game_id", "week"])
-                                .agg(pl.col("pred_rank").min().alias("best_rank"))
-                            )
-                            weeks = sorted(game_best_week["week"].unique().to_list())
+                            # Weeks come from the feature matrix rather than from
+                            # a second scoring pass, so this chart and the
+                            # summary above it are the same numbers cut two ways.
+                            _weeks = (test_df.select(["game_id", "week"]).unique()
+                                      .to_pandas())
+                            _byweek = _out.merge(_weeks, on="game_id", how="left")
                             week_stats = []
-                            for w in weeks:
-                                w_ranks = game_best_week.filter(pl.col("week") == w)["best_rank"].to_list()
-                                n = len(w_ranks)
-                                if n == 0:
+                            for w in sorted(_byweek["week"].dropna().unique()):
+                                sub = _byweek[_byweek["week"] == w]
+                                if not len(sub):
                                     continue
-                                top1 = sum(1 for r in w_ranks if r == 1) / n * 100
-                                top3 = sum(1 for r in w_ranks if r <= 3) / n * 100
-                                top5 = sum(1 for r in w_ranks if r <= 5) / n * 100
-                                week_stats.append({"Week": w, "Top-1": top1, "Top-3": top3, "Top-5": top5})
+                                week_stats.append({
+                                    "Week": int(w),
+                                    "Top-1": float(sub["hit1"].mean()) * 100,
+                                    "Top-3": float(sub["hit3"].mean()) * 100,
+                                    "Top-5": float(sub["hit5"].mean()) * 100,
+                                })
 
                             if week_stats:
                                 ws_df = pl.DataFrame(week_stats)
