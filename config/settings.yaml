@@ -132,6 +132,21 @@ model:
   logistic:
     max_iter: 2000
     C: 0.1
+  # Same tree as `xgb`, different likelihood: the softmax runs within a game for
+  # first TD and within a team-game for anytime, so the loss is "which candidate
+  # won" rather than "was each candidate's probability calibrated". Held
+  # identical to the xgb block on purpose — a difference in Top-1 between them
+  # should be attributable to the objective and nothing else.
+  condlogit:
+    n_estimators: 2000
+    learning_rate: 0.02
+    max_depth: 6
+    min_child_weight: 20
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_alpha: 0.1
+    reg_lambda: 1.0
+    early_stopping_rounds: 50
 # Unsupervised grouping behind the Player types tab. Nothing here is a cluster
 # count: k is fitted per position on the training seasons and persisted with the
 # curve that chose it (src/clustering/core.py:choose_k). These are the bounds and

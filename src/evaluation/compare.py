@@ -35,6 +35,7 @@ import numpy as np
 import polars as pl
 
 from src.evaluation.ranking import TOP_K
+from src.utils.config import production_model
 
 #: Metrics a candidate must not quietly give up to buy its Top-1 gain. Sign is
 #: +1 where higher is better.
@@ -104,19 +105,32 @@ def _pooled_metric(result: dict, market: str, model: str, key: str) -> float | N
 
 
 def compare(champion: dict, candidate: dict, *, market: str, model: str,
-            noise: dict | None = None) -> dict:
-    """Every metric for one (market, model), paired where pairing is possible."""
-    a = _outcomes_for(champion, market, model)
+            against: str | None = None, noise: dict | None = None) -> dict:
+    """Every metric for one (market, model), paired where pairing is possible.
+
+    `against` names the champion-side model when it differs from the
+    candidate's — the case when the experiment introduces a model the champion
+    does not have, and the honest comparison is against whatever is being
+    served rather than against nothing. Pairing is still per game, so this
+    remains the same test; only the two things being paired differ.
+    """
+    against = against or model
+    a = _outcomes_for(champion, market, against)
     b = _outcomes_for(candidate, market, model)
 
     out = {
-        "market": market, "model": model,
+        "market": market, "model": model, "against": against,
         "top_k": {k: paired_top_k(a, b, k) for k in TOP_K},
         "row": {},
     }
-    band = (noise or {}).get(market, {}).get(model, {})
+    # The seed band is a property of the model whose variance we are reading,
+    # so it comes from the candidate's own name when one is available and the
+    # champion-side model's otherwise — a new model has no measured band until
+    # `make noise-floor` has seen it.
+    band = ((noise or {}).get(market, {}).get(model)
+            or (noise or {}).get(market, {}).get(against, {}))
     for key in ("auc", "brier"):
-        pa, pb = (_pooled_metric(champion, market, model, key),
+        pa, pb = (_pooled_metric(champion, market, against, key),
                   _pooled_metric(candidate, market, model, key))
         if pa is None or pb is None:
             continue
@@ -168,6 +182,7 @@ def gate(comparison: dict) -> dict:
 
     return {
         "market": comparison["market"], "model": comparison["model"],
+        "against": comparison.get("against", comparison["model"]),
         "verdict": verdict,
         "top1": top1,
         "top_k": comparison["top_k"],
@@ -180,14 +195,31 @@ def gate(comparison: dict) -> dict:
 
 def compare_all(champion: dict, candidate: dict,
                 noise: dict | None = None) -> list[dict]:
-    """Every (market, model) both runs share, gated."""
+    """Every (market, model) both runs share, gated — plus any new model.
+
+    A model the experiment introduces has no same-named counterpart in the
+    champion. Comparing only shared names would drop it silently, and a gate
+    that reports nothing reads exactly like a gate that found no problem. So a
+    new model is paired against whatever that market actually serves, which is
+    the decision being made anyway: would we rather serve this than that.
+    """
     def pairs(result):
         return set(map(tuple, result["outcomes"]
                        .select(["target_type", "model"]).unique().rows()))
 
-    shared = sorted(pairs(champion) & pairs(candidate))
-    return [gate(compare(champion, candidate, market=m, model=mod, noise=noise))
-            for m, mod in shared]
+    champion_pairs, candidate_pairs = pairs(champion), pairs(candidate)
+    out = [gate(compare(champion, candidate, market=m, model=mod, noise=noise))
+           for m, mod in sorted(champion_pairs & candidate_pairs)]
+
+    champion_models = {m: {mod for mk, mod in champion_pairs if mk == m}
+                       for m, _ in champion_pairs}
+    for market, model in sorted(candidate_pairs - champion_pairs):
+        served = production_model(market)
+        if served not in champion_models.get(market, set()):
+            continue
+        out.append(gate(compare(champion, candidate, market=market, model=model,
+                                against=served, noise=noise)))
+    return out
 
 
 def noise_floor(results: list[dict]) -> dict:
@@ -229,7 +261,13 @@ def format_gate(rows: list[dict]) -> str:
     lines = []
     for r in rows:
         t1 = r["top1"]
-        lines.append(f"{r['market']} / {r['model']}: {r['verdict']}")
+        against = r.get("against", r["model"])
+        # Naming both sides matters most exactly when they differ: "REJECTED"
+        # against a model nobody serves is a different claim from the same word
+        # against the one that is live.
+        label = (r["model"] if against == r["model"]
+                 else f"{r['model']} vs served {against}")
+        lines.append(f"{r['market']} / {label}: {r['verdict']}")
         lines.append(
             f"    Top-1  {t1['champion']:.1%} -> {t1['candidate']:.1%}  "
             f"{t1['delta']*100:+.2f}pp  ({t1['se_multiple']:+.2f} se, "

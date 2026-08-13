@@ -309,7 +309,19 @@ def train_all(target_type: str = None, splits: dict | None = None,
         model.feature_names = feature_cols
 
         mcfg = model_config(name)
-        model.fit(X_train, y_train, X_val, y_val, mcfg)
+        # Most models treat every row as independent. A model that declares
+        # `needs_groups` is trained on a within-group likelihood instead and
+        # cannot be fitted without knowing which rows compete with which — so
+        # this is a hard requirement, not an optional extra. Passing the groups
+        # to everything would mean changing every wrapper's signature to accept
+        # an argument it ignores.
+        if getattr(model_cls, "needs_groups", False):
+            from src.models.ranker import group_ids
+            model.fit(X_train, y_train, X_val, y_val, mcfg,
+                      groups=(group_ids(train_df, target_type),
+                              group_ids(val_df, target_type)))
+        else:
+            model.fit(X_train, y_train, X_val, y_val, mcfg)
 
         # Predict
         val_probs = model.predict_proba(X_val)

@@ -37,3 +37,4 @@ def ensure_registered():
     import src.models.logistic  # noqa: F401
     import src.models.lightgbm_model  # noqa: F401
     import src.models.xgboost_model  # noqa: F401
+    import src.models.ranker  # noqa: F401

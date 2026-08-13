@@ -8,6 +8,8 @@ is worse, because the wrong decision then gets locked, committed and defended.
 """
 from __future__ import annotations
 
+import json
+
 import polars as pl
 import pytest
 
@@ -251,3 +253,167 @@ def test_config_diff_reports_what_an_experiment_changed():
     diff = config_diff({"model": {"seed": 42, "xgb": {"max_depth": 6}}},
                        {"model": {"seed": 42, "xgb": {"max_depth": 4}}})
     assert diff == {"model.xgb.max_depth": (6, 4)}
+
+
+# --------------------------------------------------------------------------
+# A model the champion does not have
+# --------------------------------------------------------------------------
+
+def _result(frames: list[pl.DataFrame]) -> dict:
+    """A harness result carrying just what compare/gate read."""
+    outcomes = pl.concat(frames, how="vertical")
+    rows = []
+    for (market, model), part in outcomes.group_by(["target_type", "model"]):
+        rows.append({"target_type": market, "model": model,
+                     "rows": part.height, "auc": 0.83, "brier": 0.09})
+    return {"outcomes": outcomes, "row_metrics": rows}
+
+
+def test_a_new_model_is_gated_against_what_the_market_serves():
+    """Phase 3a introduces `condlogit`, which the champion has no version of.
+
+    `compare_all` used to intersect model names, so a brand-new model produced
+    no comparison at all — and a gate that prints nothing reads exactly like a
+    gate that found nothing wrong. The honest pairing is against whatever the
+    market actually serves, since that is the choice being made.
+    """
+    champion = _result([_outcomes([1, 0, 1, 0] * 25, model="xgb")])
+    # The newcomer wins 25 games the served model lost, and loses none.
+    better = [1, 0, 1, 0] * 25
+    for i in range(1, 100, 4):
+        better[i] = 1
+    candidate = _result([_outcomes([1, 0, 1, 0] * 25, model="xgb"),
+                         _outcomes(better, model="condlogit")])
+
+    rows = C.compare_all(champion, candidate)
+    by_model = {r["model"]: r for r in rows}
+    assert "condlogit" in by_model, "the new model must not be silently dropped"
+
+    new = by_model["condlogit"]
+    assert new["against"] == "xgb", "paired against the served model"
+    assert new["top1"]["wins"] == 25 and new["top1"]["losses"] == 0
+    assert new["verdict"] == "PROMOTED"
+
+    # The same-named comparison is still there and still finds no difference.
+    assert by_model["xgb"]["top1"]["delta"] == pytest.approx(0.0)
+
+
+def test_the_gate_table_names_both_sides_when_they_differ():
+    """'REJECTED' against an unserved model is a different claim."""
+    champion = _result([_outcomes([1, 0] * 50, model="xgb")])
+    candidate = _result([_outcomes([1, 0] * 50, model="xgb"),
+                         _outcomes([0, 0] * 50, model="condlogit")])
+    text = C.format_gate(C.compare_all(champion, candidate))
+    assert "condlogit vs served xgb" in text
+    # ...and stays quiet about it when they are the same model.
+    assert "xgb vs served xgb" not in text
+
+
+def test_a_new_model_in_a_market_the_champion_never_scored_is_skipped():
+    """No champion rows for that market means nothing to pair against.
+
+    Dropping it is right — there is no comparison to make — but it must drop
+    rather than raise, because a partial champion is normal when an experiment
+    is screened on one market.
+    """
+    champion = _result([_outcomes([1, 0] * 50, market="anytime_td", model="xgb")])
+    candidate = _result([_outcomes([1, 0] * 50, market="first_td",
+                                   model="condlogit")])
+    assert C.compare_all(champion, candidate) == []
+
+
+# --------------------------------------------------------------------------
+# What a screen trains
+# --------------------------------------------------------------------------
+
+def test_a_screen_trains_the_model_the_overlay_introduces():
+    """Otherwise the screen reports the served model under the experiment's name.
+
+    The conditional-logit screen did exactly that on its first run: the overlay
+    added `condlogit` to models.active, `screen_models` returned only the served
+    `xgb`, and the run printed a full result table in which the experiment's
+    entire content never appeared. A screen that silently omits the thing being
+    screened is worse than no screen, because it looks like a result.
+    """
+    from src.evaluation.harness import screen_models
+
+    served = screen_models("anytime_td")
+    assert "condlogit" not in served, "no overlay, no newcomer"
+
+    overlay = {"models": {"active": ["lr", "lgbm", "xgb", "condlogit"]}}
+    with_new = screen_models("anytime_td", overlay)
+    assert "condlogit" in with_new, "the overlay's new model must be trained"
+    assert with_new[0] == served[0], "still screened against what is served"
+    # Models already active are not duplicated — the screen stays cheap.
+    assert with_new.count("xgb") == 1
+    assert "lgbm" not in with_new
+
+
+def test_an_overlay_that_adds_no_model_screens_exactly_as_before():
+    from src.evaluation.harness import screen_models
+
+    overlay = {"joint": {"exclude_defst_from_shares": True}}
+    assert screen_models("anytime_td", overlay) == screen_models("anytime_td")
+
+
+# --------------------------------------------------------------------------
+# The champion must describe what is being served
+# --------------------------------------------------------------------------
+
+def _experiment_module():
+    """Load scripts/23_experiment.py without running its CLI."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "23_experiment.py"
+    spec = importlib.util.spec_from_file_location("_exp_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    saved = sys.argv
+    sys.argv = ["23_experiment.py"]
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.argv = saved
+    return module
+
+
+def test_a_champion_recorded_before_a_promotion_is_called_out(tmp_path):
+    """The defect that made a no-op experiment report +2.56pp.
+
+    The champion's per-game rows came from before the DEF/ST share fix was
+    promoted. Every experiment measured afterwards was therefore credited with
+    that fix. Nothing failed — the numbers just got better for free, which is
+    the hardest kind of wrong to notice.
+    """
+    module = _experiment_module()
+    current = tmp_path / "CURRENT.json"
+    current.write_text(json.dumps({
+        "anytime_td": {"version": "2026.08.12-first-td-xgb"},
+        "first_td": {"version": "2026.08.12-first-td-xgb"},
+    }))
+    module.current_path = lambda: current
+
+    stale = module.champion_drift({"run": "r", "version": "2026.08.12-baseline"})
+    assert stale, "a champion older than the served version must be reported"
+    text = "\n".join(stale)
+    assert "STALE CHAMPION" in text
+    assert "2026.08.12-baseline" in text and "2026.08.12-first-td-xgb" in text
+    assert "make champion" in text, "the warning must say how to fix it"
+
+    fresh = module.champion_drift({"run": "r",
+                                   "version": "2026.08.12-first-td-xgb"})
+    assert fresh == [], "a current champion must warn about nothing"
+
+
+def test_champion_drift_is_quiet_when_it_cannot_know(tmp_path):
+    """No champion, no recorded version, no CURRENT.json — all silent.
+
+    A warning that fires on a fresh checkout is a warning that gets ignored,
+    and this one has to survive being read on the day it matters.
+    """
+    module = _experiment_module()
+    module.current_path = lambda: tmp_path / "missing.json"
+    assert module.champion_drift(None) == []
+    assert module.champion_drift({"run": "r"}) == []
+    assert module.champion_drift({"run": "r", "version": "x"}) == []

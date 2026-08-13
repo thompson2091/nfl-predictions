@@ -373,11 +373,22 @@ def load(experiment_id: str) -> dict:
             "meta": meta}
 
 
-def screen_models(market: str) -> list[str]:
-    """What a screen trains: the one model this market actually serves.
+def screen_models(market: str, overlay: dict | None = None) -> list[str]:
+    """What a screen trains: the model this market serves, plus any newcomer.
 
     The ensemble cannot be screened alone — it is an average of the others, so
     screening it means training them all, which is the gate.
+
+    An overlay that introduces a *new* model is the one case where training only
+    the served model answers nothing: the experiment's whole content is the new
+    model, and a screen that skips it reports the served model's numbers under
+    the experiment's name. That is worse than no screen, because it looks like a
+    result. So anything the overlay adds to `models.active` is screened too.
     """
     name = production_model(market)
-    return list(get_config()["models"]["active"]) if name == "ensemble" else [name]
+    active = list(get_config()["models"]["active"])
+    if name == "ensemble":
+        return active
+    added = [m for m in (overlay or {}).get("models", {}).get("active", [])
+             if m not in active]
+    return [name] + added

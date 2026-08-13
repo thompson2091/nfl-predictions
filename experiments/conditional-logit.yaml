@@ -1,0 +1,29 @@
+# Train the objective we are actually scored on.
+#
+# Every model here is fitted pointwise on binary log loss — each player-game an
+# independent coin. Top-1 is a within-game argmax, and for first TD exactly one
+# candidate wins. A pointwise loss cannot see that constraint: it spends
+# capacity separating a 3% player from a 1% player in a game already decided,
+# and takes no credit for putting the right player on top.
+#
+# The conditional logit is the likelihood of what actually happened — given
+# this game's candidates, which one scored first. Same features, same tree, same
+# folds; only the loss differs. Groups are the market's own unit of competition:
+# the game for first TD, the team-game for anytime, since the joint model
+# consumes team-level shares.
+#
+# Phase 3a in docs/MODEL_ITERATION.md, and the standing counter-test to the
+# "data-limited, not fitting-limited" conclusion from Phase 2 — that conclusion
+# was reached by measuring the feature set, and this changes the objective.
+#
+#   make screen EXP=experiments/conditional-logit.yaml
+#   make gate   EXP=experiments/conditional-logit.yaml
+id: 2026.08.13-conditional-logit
+note: "Add condlogit: softmax within game (first TD) / team-game (anytime)"
+overlay:
+  models:
+    active:
+    - lr
+    - lgbm
+    - xgb
+    - condlogit

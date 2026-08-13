@@ -1428,13 +1428,30 @@ def test_declared_hyperparameters_reach_the_model():
     describing a model nobody had trained. Both directions matter: a declared
     key that is ignored is a lie, and a read key that is undeclared is a
     setting nobody can find.
+
+    The pairs are discovered from the registry rather than listed here, so a
+    model added later is covered without anyone remembering to add it. Listing
+    them by hand is how this check would come to describe two of three wrappers
+    while reading like it described all of them.
     """
-    from src.models.lightgbm_model import DEFAULTS as LGBM_DEFAULTS
-    from src.models.xgboost_model import DEFAULTS as XGB_DEFAULTS
+    import importlib
+
+    from src.models.registry import ensure_registered, get_model, list_models
     from src.utils.config import get_config
 
+    ensure_registered()
+    pairs = []
+    for name in list_models():
+        module = importlib.import_module(get_model(name).__module__)
+        defaults = getattr(module, "DEFAULTS", None)
+        if defaults is not None:
+            pairs.append((name, defaults))
+    assert len(pairs) >= 3, (
+        f"expected every tuned wrapper to declare DEFAULTS; found "
+        f"{[n for n, _ in pairs]} out of registered {list_models()}")
+
     model_cfg = get_config()["model"]
-    for name, defaults in (("lgbm", LGBM_DEFAULTS), ("xgb", XGB_DEFAULTS)):
+    for name, defaults in pairs:
         declared = {k for k in model_cfg.get(name, {})}
         read = set(defaults)
         assert not (read - declared), (

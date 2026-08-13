@@ -40,7 +40,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.evaluation import compare as C  # noqa: E402
 from src.evaluation import harness as H  # noqa: E402
-from src.models.versioning import git_state, registry_root  # noqa: E402
+from src.models.versioning import (  # noqa: E402
+    current_path, git_state, registry_root)
 from src.utils.config import get_config, production_model  # noqa: E402
 
 LEDGER = "ledger.jsonl"
@@ -51,6 +52,41 @@ NOISE = "noise_floor.json"
 # --------------------------------------------------------------------------
 # Registry side-files
 # --------------------------------------------------------------------------
+
+def champion_drift(champion_ref: dict | None) -> list[str]:
+    """Warn when the champion no longer describes what is being served.
+
+    The gate measures a candidate against the champion's saved per-game rows.
+    If a promotion has happened since those rows were written, the champion is
+    the *old* model and every subsequent experiment is credited with the
+    improvement that promotion already delivered.
+
+    This is not hypothetical. The conditional-logit screen was first run against
+    a champion recorded before the DEF/ST share fix was promoted, and reported
+    +2.56pp on Top-1 for an overlay that changed nothing about the model it
+    trained — the whole gain was the fix being re-credited. A stale champion
+    does not fail; it flatters.
+    """
+    if not champion_ref:
+        return []
+    recorded = champion_ref.get("version")
+    if not recorded:
+        return []
+    try:
+        current = json.loads(current_path().read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    served = {(e or {}).get("version") for e in current.values()} - {None}
+    if not served or recorded in served:
+        return []
+    return [
+        f"\nSTALE CHAMPION: the champion run was recorded against "
+        f"'{recorded}', but {' and '.join(sorted(served))} is being served.",
+        "Every comparison below therefore includes whatever changed between "
+        "them, credited to this experiment.",
+        "Re-baseline before believing any verdict:  make champion ID=<id>",
+    ]
+
 
 def _read(name: str, default=None):
     path = registry_root() / name
@@ -153,7 +189,7 @@ def _experiment(a, tier: str) -> int:
         # everything.
         if a.market is None:
             markets = (get_config()["target"]["type"],)
-        models = H.screen_models(markets[0])
+        models = H.screen_models(markets[0], spec["overlay"])
         print(f"Screen tier: {markets[0]}, training {', '.join(models)}. "
               "A screen never promotes anything.")
 
@@ -163,6 +199,8 @@ def _experiment(a, tier: str) -> int:
     _print_summary(summary)
 
     champion_ref = _read(CHAMPION)
+    for warning in champion_drift(champion_ref):
+        print(warning)
     comparisons, verdict = [], "NO_CHAMPION"
     if champion_ref:
         try:
