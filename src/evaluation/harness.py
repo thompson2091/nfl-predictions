@@ -234,6 +234,14 @@ def run(overlay: dict | None = None, *, markets=MARKETS,
     `models` restricts what is *trained*; the ensemble is scored additionally
     whenever more than one model is active, because that is what
     `models.production_by_target` may select.
+
+    Note what that means for a screen: restricting `models` restricts
+    `models.active`, so the ensemble scored is an ensemble **of the restricted
+    set**, not the production ensemble. A screen training `{xgb, condlogit}`
+    reports an `ensemble` row that is those two averaged — and comparing it to
+    a champion's three-model `ensemble` row compares two differently composed
+    models under one name. Only a gate scores the ensemble production would
+    actually serve.
     """
     from src.models.trainer import train_all
 
@@ -316,6 +324,12 @@ def run(overlay: dict | None = None, *, markets=MARKETS,
             "folds": folds_run,
             "seed": seed if seed is not None else get_config()["model"]["seed"],
             "feature_hash": {m: feature_matrix_hash(m) for m in markets},
+            # What the `ensemble` rows are an ensemble *of*. Two runs can both
+            # carry a model called "ensemble" and mean different models by it —
+            # a screen restricted to {xgb, condlogit} against a champion's
+            # {lr, lgbm, xgb} is a comparison of compositions, not of the change
+            # under test. Recorded so `compare_all` can refuse to pretend.
+            "active_models": list(active),
             "overlay": base_overlay,
         },
     }

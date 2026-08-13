@@ -417,3 +417,55 @@ def test_champion_drift_is_quiet_when_it_cannot_know(tmp_path):
     assert module.champion_drift(None) == []
     assert module.champion_drift({"run": "r"}) == []
     assert module.champion_drift({"run": "r", "version": "x"}) == []
+
+
+def test_two_runs_can_mean_different_things_by_ensemble():
+    """A screen's ensemble averages only the screened models.
+
+    `harness.run` restricts `models.active` to whatever is being trained, so a
+    screen of {xgb, condlogit} produces an `ensemble` row that is those two
+    averaged. Compared against a champion's {lr, lgbm, xgb} ensemble, the delta
+    is mostly composition — which is exactly how "+2.21pp" got read as "adding
+    condlogit helps the ensemble".
+    """
+    champion = _result([_outcomes([1, 0] * 50, model="ensemble")])
+    champion["meta"] = {"active_models": ["lr", "lgbm", "xgb"]}
+    candidate = _result([_outcomes([1, 1] * 50, model="ensemble")])
+    candidate["meta"] = {"active_models": ["xgb", "condlogit"]}
+
+    rows = C.compare_all(champion, candidate)
+    assert rows[0].get("incomparable"), (
+        "an ensemble of different models must not be compared silently")
+    text = C.format_gate(rows)
+    assert "NOT COMPARABLE" in text
+    assert "lgbm" in text and "condlogit" in text, "name both compositions"
+
+
+def test_matching_compositions_compare_without_complaint():
+    champion = _result([_outcomes([1, 0] * 50, model="ensemble")])
+    champion["meta"] = {"active_models": ["lr", "lgbm", "xgb"]}
+    candidate = _result([_outcomes([1, 0] * 50, model="ensemble")])
+    candidate["meta"] = {"active_models": ["xgb", "lgbm", "lr"]}   # order differs
+    rows = C.compare_all(champion, candidate)
+    assert not rows[0].get("incomparable")
+    assert "NOT COMPARABLE" not in C.format_gate(rows)
+
+
+def test_only_the_ensemble_row_is_flagged():
+    """A named model means the same thing in both runs regardless."""
+    champion = _result([_outcomes([1, 0] * 50, model="xgb"),
+                        _outcomes([1, 0] * 50, model="ensemble")])
+    champion["meta"] = {"active_models": ["lr", "xgb"]}
+    candidate = _result([_outcomes([1, 0] * 50, model="xgb"),
+                         _outcomes([1, 0] * 50, model="ensemble")])
+    candidate["meta"] = {"active_models": ["xgb", "condlogit"]}
+    by_model = {r["model"]: r for r in C.compare_all(champion, candidate)}
+    assert by_model["ensemble"].get("incomparable")
+    assert not by_model["xgb"].get("incomparable")
+
+
+def test_missing_metadata_does_not_invent_a_mismatch():
+    """Runs saved before this was recorded must still compare."""
+    champion = _result([_outcomes([1, 0] * 50, model="ensemble")])
+    candidate = _result([_outcomes([1, 0] * 50, model="ensemble")])
+    assert C.ensemble_mismatch(champion, candidate) is None

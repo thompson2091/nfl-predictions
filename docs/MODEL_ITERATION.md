@@ -589,10 +589,27 @@ Two things the numbers say about *why*, both worth keeping:
   case is also a weaker fit: several players score, so the "exactly one wins"
   structure that makes this exact for first TD is only an approximation here.
 
-The one live thread: adding `condlogit` to the ensemble moved the ensemble from
-51.8% to 54.0% on anytime and 16.0% to 16.6% on first TD, so it does carry
-information the others do not. Neither beats the served `xgb` (53.5% / 16.8%) by
-anything like a standard error, so this is a lead and not a result.
+**The ensemble thread, and a correction.** This was first written up as "adding
+condlogit to the ensemble moved it 51.8% → 54.0%". That is wrong, and the way it
+is wrong is worth keeping. `harness.run` restricts `models.active` to whatever
+the screen trains, so the ensemble scored in a screen is an ensemble *of the
+screened models only* — here `{xgb, condlogit}`, not `{lr, lgbm, xgb} +
+condlogit`. The 51.8% it was compared against was the champion's three-model
+ensemble, so that +2.21pp was mostly a comparison between two differently
+composed ensembles rather than the effect of adding anything.
+
+Paired properly — `{xgb, condlogit}` against `xgb`, inside a single run so folds
+and seed are identical:
+
+    Top-1  53.5% -> 54.0%   +0.53pp  (1.13 se, p=0.345, 17 won / 11 lost)
+    Top-3  85.9% -> 84.8%   -1.06pp  (band 0.30pp)
+    Top-5  93.5% -> 93.1%   -0.44pp  (band 0.37pp)
+    AUC    -0.00044 (band 0.00034)    Brier +0.00018 (band 0.00008)
+
+Top-1 clears the one-standard-error rule by a hair and every one of the four
+guards trips. On 28 discordant games out of 1,131, p=0.345 — the Top-1 gain is
+the kind of number that appears and disappears between seeds, while the Top-3
+loss is 3.6x its noise band. This is a lead, not a result.
 
 **What this settles.** The Phase 2 conclusion — data-limited, not
 fitting-limited — was reached by measuring the feature set, and a fair objection

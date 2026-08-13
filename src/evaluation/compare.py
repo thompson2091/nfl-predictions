@@ -193,6 +193,29 @@ def gate(comparison: dict) -> dict:
     }
 
 
+def ensemble_mismatch(champion: dict, candidate: dict) -> str | None:
+    """Do both runs mean the same thing by "ensemble"?
+
+    `harness.run` restricts `models.active` to whatever is being trained, so a
+    screen's ensemble averages only the screened models. Compared against a
+    champion's full ensemble, the row named "ensemble" on each side is a
+    different model, and the delta between them is mostly composition.
+
+    This happened: a screen of {xgb, condlogit} reported its ensemble +2.21pp
+    over a champion's {lr, lgbm, xgb} ensemble, which was read as "adding
+    condlogit helps the ensemble" when it was largely "these are two different
+    ensembles".
+    """
+    a = (champion.get("meta") or {}).get("active_models")
+    b = (candidate.get("meta") or {}).get("active_models")
+    if not a or not b or set(a) == set(b):
+        return None
+    return (f"ensemble composition differs: champion averages "
+            f"{', '.join(sorted(a))}; candidate averages {', '.join(sorted(b))}. "
+            "The delta on this row is mostly that difference, not the change "
+            "under test.")
+
+
 def compare_all(champion: dict, candidate: dict,
                 noise: dict | None = None) -> list[dict]:
     """Every (market, model) both runs share, gated — plus any new model.
@@ -208,8 +231,13 @@ def compare_all(champion: dict, candidate: dict,
                        .select(["target_type", "model"]).unique().rows()))
 
     champion_pairs, candidate_pairs = pairs(champion), pairs(candidate)
-    out = [gate(compare(champion, candidate, market=m, model=mod, noise=noise))
-           for m, mod in sorted(champion_pairs & candidate_pairs)]
+    mismatch = ensemble_mismatch(champion, candidate)
+    out = []
+    for m, mod in sorted(champion_pairs & candidate_pairs):
+        row = gate(compare(champion, candidate, market=m, model=mod, noise=noise))
+        if mod == "ensemble" and mismatch:
+            row["incomparable"] = mismatch
+        out.append(row)
 
     champion_models = {m: {mod for mk, mod in champion_pairs if mk == m}
                        for m, _ in champion_pairs}
@@ -268,6 +296,8 @@ def format_gate(rows: list[dict]) -> str:
         label = (r["model"] if against == r["model"]
                  else f"{r['model']} vs served {against}")
         lines.append(f"{r['market']} / {label}: {r['verdict']}")
+        if r.get("incomparable"):
+            lines.append(f"    NOT COMPARABLE: {r['incomparable']}")
         lines.append(
             f"    Top-1  {t1['champion']:.1%} -> {t1['candidate']:.1%}  "
             f"{t1['delta']*100:+.2f}pp  ({t1['se_multiple']:+.2f} se, "
