@@ -30,7 +30,6 @@ always the same teaches a reader to ignore that column.
 """
 from __future__ import annotations
 
-import numpy as np
 import polars as pl
 
 
@@ -65,7 +64,7 @@ def first_td_share(predictions: pl.DataFrame, prob_col: str = "probability",
     the other.
     """
     team = (predictions.group_by([game_col, team_col])
-            .agg([pl.col(prob_col).sum().alias("_p"),
+            .agg([pl.col(prob_col).sum().alias("team_prob_sum"),
                   pl.len().alias("candidates")]))
     thin = (team.group_by(game_col)
             .agg((pl.col("candidates").min() < min_candidates).alias("_thin")))
@@ -74,9 +73,10 @@ def first_td_share(predictions: pl.DataFrame, prob_col: str = "probability",
         .with_columns(
             pl.when(pl.col("_thin"))
             .then(None)
-            .otherwise(pl.col("_p") / pl.col("_p").sum().over(game_col))
+            .otherwise(pl.col("team_prob_sum")
+                       / pl.col("team_prob_sum").sum().over(game_col))
             .alias("first_td_pct"))
-        .drop(["_p", "_thin"]).sort([game_col, team_col])
+        .drop("_thin").sort([game_col, team_col])
     )
 
 

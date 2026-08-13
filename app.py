@@ -782,6 +782,14 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
     return {
     "Player": st.column_config.TextColumn("Player"),
     "team": st.column_config.TextColumn("Team", width="small"),
+    "TeamFirst": st.column_config.NumberColumn(
+        "Team scores first", format="%.0f%%", width="small",
+        help="How likely this player's team is to score the game's first "
+             "touchdown, whoever scores it. The two teams add to 100%. "
+             "Measured over 2,278 walk-forward team-games this is calibrated "
+             "from 6% to 94% and beats a coin flip (AUC 0.674). Blank when a "
+             "team's roster is missing from this week's data.",
+    ),
     "Game": st.column_config.TextColumn("Game"),
     "Odds": st.column_config.TextColumn(
         "Odds", width="small",
@@ -1193,6 +1201,13 @@ def render_board(frame, tt: str, model: str):
     cols = ["Player", "team", "Game", "Odds", "Rank", "AtRank", "Ours",
             "Book", "edge_pp", "Confidence"]
 
+    # The team's own chance of striking first, beside the player's. First TD
+    # only — see week_board. Placed immediately after Team, so it reads as a
+    # property of the team rather than another estimate of the player.
+    if "first_td_pct" in frame.columns and frame["first_td_pct"].notna().any():
+        show = show.assign(TeamFirst=frame["first_td_pct"] * 100)
+        cols = cols[:2] + ["TeamFirst"] + cols[2:]
+
     # Best available price sits beside the consensus, because the consensus is
     # the one number on this board nobody can actually bet.
     if "best_odds" in frame.columns and frame["best_odds"].notna().any():
@@ -1266,6 +1281,23 @@ def week_board(season, week, tt: str, model: str,
         board.groupby("game_label")["probability"]
         .rank(ascending=False, method="first").astype(int)
     )
+
+    # First TD only: how likely this player's *team* is to score the game's
+    # first touchdown. It is the context the player number sits in — a 9%
+    # player on a team with a 60% chance of striking first is the focal point of
+    # an offence expected to score, and a 9% player on a 30% team is the
+    # runaway pick of one that is not. Same number, different bet.
+    #
+    # Exact rather than approximate on this market: `predict` normalises
+    # first-TD probabilities to sum to one within the game, so a team's number
+    # is simply its players' summed probability. Anytime TD has no equivalent —
+    # there the answer is ~92% for everyone.
+    if tt == "first_td":
+        teams = team_outlook_frame(season, week, version)
+        if teams is not None and "first_td_pct" in getattr(teams, "columns", []):
+            board = board.merge(
+                teams[["game_id", "team", "first_td_pct"]],
+                on=["game_id", "team"], how="left")
     # A second ranking, on the pre-blend number. The published probability is
     # blended with the bookmaker's price because that predicts scorers more
     # accurately; ranking on it costs about 8 points of return, because a bet is
