@@ -131,11 +131,27 @@ def test_selecting_the_served_version_is_not_previewing(source):
         "and must fall through to the live walk-forward when they match")
 
 
-def test_the_betting_tiles_are_hidden_only_for_a_real_preview(source):
-    """`from_version` is the flag that hides them; it must mean 'another model'."""
+def test_the_betting_tiles_survive_a_preview_and_say_what_they_describe(source):
+    """They are shown while previewing, and labelled — not hidden.
+
+    They were hidden on the argument that a bookmaker comparison for a
+    different model is a claim about something else. That is true, and hiding
+    answers it by deleting the most informative numbers on the page: someone
+    switching version to compare boards lost the one figure saying whether any
+    of this beats the book. Labelling makes the same point without taking
+    anything away.
+    """
     strip = source[source.index("def render_accuracy_strip("):]
     strip = strip[:strip.index("\n@st.cache_data")]
-    assert 'acc.get("from_version")' in strip, (
-        "the suppression must key off the previewed-version marker")
+
     for tile in ("vs bookmaker", "Closer — backable", "Closer — fade"):
         assert tile in strip, f"the {tile!r} tile is gone from the strip"
+    assert "h2h = None" not in strip, (
+        "the market tiles are being suppressed again; label them instead")
+    # Each tile carries the served/preview marker...
+    assert strip.count("{suffix}") >= 3, (
+        "every market tile must say whether it describes the served version")
+    # ...and it is stated in prose too, because a tooltip nobody opens is not a
+    # caveat and the Top-K tiles beside them DO follow the selector.
+    assert "previewing" in strip and "strip.caption(" in strip
+    assert "served version" in strip

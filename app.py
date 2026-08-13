@@ -740,17 +740,22 @@ def render_accuracy_strip(tt: str, model: str, version: str | None = None):
     if acc.get("from_version"):
         strip.caption(f"as measured for {acc['from_version']}")
 
+    # Backtest frames are regenerated for the served model only, so these three
+    # tiles always describe what is served — never the preview. They used to be
+    # hidden while previewing on the argument that a bookmaker comparison for a
+    # different model is a claim about something else. True, but hiding them
+    # answers it by removing the most informative numbers on the page, and a
+    # reader who switches version to compare boards loses the one figure that
+    # says whether any of this beats the book. They are shown and labelled
+    # instead, which makes the same point without taking anything away.
     h2h = market_headtohead(tt, model)
-    if h2h and acc.get("from_version"):
-        # Backtest frames are regenerated for the served model only, so these
-        # tiles cannot describe a preview. Hiding them beats relabelling them:
-        # a bookmaker comparison for a different model is not a weaker claim,
-        # it is a claim about something else.
-        h2h = None
+    previewing = bool(acc.get("from_version"))
+    served = (served_version(tt) or {}).get("id")
+    suffix = " (served)" if previewing else ""
     if h2h:
         spans_zero = h2h["overall_lo"] <= 0 <= h2h["overall_hi"]
         strip.metric(
-            "vs bookmaker", f"{h2h['overall_better_pct']:+.1f}%",
+            f"vs bookmaker{suffix}", f"{h2h['overall_better_pct']:+.1f}%",
             delta=f"{h2h['overall_lo']:+.1f} to {h2h['overall_hi']:+.1f}",
             delta_color="off",
             help=f"How much closer our estimates were to reality than the "
@@ -773,7 +778,7 @@ def render_accuracy_strip(tt: str, model: str, version: str | None = None):
         hi, lo = h2h.get("disagree_higher_pct"), h2h.get("disagree_lower_pct")
         if hi is not None:
             strip.metric(
-                "Closer — backable", f"{hi:+.0f}%",
+                f"Closer — backable{suffix}", f"{hi:+.0f}%",
                 delta=f"{h2h.get('disagree_higher_n', 0):,} players",
                 delta_color="off",
                 help=f"On the tenth of players we differ from the book on most, "
@@ -785,7 +790,7 @@ def render_accuracy_strip(tt: str, model: str, version: str | None = None):
                      f"baseline.")
         if lo is not None:
             strip.metric(
-                "Closer — fade", f"{lo:+.0f}%",
+                f"Closer — fade{suffix}", f"{lo:+.0f}%",
                 delta=f"{h2h.get('disagree_lower_n', 0):,} players",
                 delta_color="off",
                 help=f"The same comparison for players we rate **lower** than "
@@ -798,6 +803,16 @@ def render_accuracy_strip(tt: str, model: str, version: str | None = None):
                      f"**vs bookmaker** figure blends this with the backable "
                      f"half, which is why it reads higher than what you can "
                      f"actually act on.")
+
+    if h2h and previewing:
+        # A tooltip nobody opens is not a caveat. The Top-K tiles above moved
+        # with the selector and these three did not, so the difference has to be
+        # visible without hovering.
+        strip.caption(
+            f"The three market tiles describe **{served}**, the served version — "
+            f"not the preview. They are computed from backtest frames, which are "
+            f"regenerated for the served model only. The Top-K figures above do "
+            f"follow your selection.")
 
 
 @st.cache_data(show_spinner=False)
