@@ -2524,3 +2524,53 @@ def test_tie_breaking_never_leaves_the_unit_interval_on_real_calibrators():
         raw = rng.random(n)
         out = _break_ties(cal, raw)
         assert out.min() >= 0.0 and out.max() <= 1.0, (cal, raw, out)
+
+
+def test_rank_calibration_is_not_fitted_where_nothing_reads_it():
+    """It is disabled in both markets, for two different reasons.
+
+    `first_td` never reaches the correction: `predict()` normalises raw
+    probabilities within the game and returns, and only the anytime branch
+    calls `_anchor_to_market`, where the correction lives.
+    `scripts/10_backtest.py` branches the same way. `anytime_td` reaches it and
+    is disabled by the joint-model guard, and `team_td_rate.json` is written on
+    every training run so the guard is always taken.
+
+    Fitting it anyway was not harmful, but it shipped a rank_calibration.json
+    into both model directories and printed "N of 12 ranks kept a meaningful
+    correction" on every retrain — which reads like a live component. If
+    someone re-enables it, this test should fail and make them say so.
+    """
+    from pathlib import Path
+    from src.models.rank_calibration import would_be_applied
+
+    for market in ("anytime_td", "first_td"):
+        model_dir = Path("models") / market
+        if not model_dir.exists():
+            continue
+        assert not would_be_applied(market, model_dir), (
+            f"{market} would now consume a rank calibration; the serving paths "
+            "in predict.py and 10_backtest.py must be re-checked"
+        )
+    # Deliberately not asserting the file is absent. A `rank_calibration.json`
+    # written by an earlier run is inert — nothing loads it — and it is recorded
+    # in the locked version's manifest, so deleting it to satisfy a test would
+    # break `verify_current` for no behavioural gain. The next retrain removes
+    # it. What must stay true is that nothing reads it, which is what is
+    # asserted above.
+
+
+def test_first_td_never_reaches_the_rank_correction(tmp_path):
+    """The first-TD answer must not depend on whether a team rate exists.
+
+    `would_be_applied` returns False for first TD unconditionally, because the
+    market's serving path returns before the correction rather than being
+    guarded at it. Deriving it from the team rate instead would silently
+    re-enable the correction for a model directory that happens to lack one.
+    """
+    from src.models.rank_calibration import would_be_applied
+
+    assert not would_be_applied("first_td", tmp_path)          # no team rate
+    # anytime with no team rate is the legacy fallback the guard was written
+    # for, and there the correction IS reachable.
+    assert would_be_applied("anytime_td", tmp_path)

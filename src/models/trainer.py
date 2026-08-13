@@ -245,6 +245,87 @@ def _optimize_ensemble_weights(val_probs_dict: dict[str, np.ndarray],
     return dict(zip(names, weights))
 
 
+def _fit_rank_correction(df, train_seasons, splits, feature_cols, model_dir,
+                         target_type: str, active_models: list[str]) -> None:
+    """Fit the per-rank correction, but only if a serving path would read it.
+
+    The model's error depends on where a player sits in its own ranking, which
+    no feature encodes and the per-game level shift cannot fix — that moves a
+    whole game together. Fitted across several seasons and shrunk by how
+    consistent each rank's bias is, because a single season taught the top ranks
+    a bias that reversed the next year.
+
+    It is disabled in both markets today, for two different reasons documented
+    on `rank_calibration.would_be_applied`. Fitting it regardless was not
+    harmful, but it wrote a `rank_calibration.json` into both model directories
+    and announced "N of 12 ranks kept a meaningful correction" on every retrain,
+    which reads exactly like a component that is doing something.
+    """
+    from src.models.rank_calibration import would_be_applied
+
+    if not would_be_applied(target_type, model_dir):
+        stale = model_dir / "rank_calibration.json"
+        note = ""
+        if stale.exists():
+            stale.unlink()
+            note = "  (removed the artifact a previous run left behind)"
+        reason = ("first_td never reaches it — predict() normalises within the "
+                  "game and returns" if target_type == "first_td" else
+                  "the joint model is active, which disables it")
+        print(f"\nRank calibration not fitted: {reason}. "
+              f"See src/models/rank_calibration.py.{note}")
+        return
+
+    try:
+        from src.models.rank_calibration import fit_rank_calibration, save as save_rank
+        prod = production_model(target_type)
+        rank_src = df.filter(
+            pl.col("season").is_in(train_seasons + [splits["val_season"]])
+            & pl.col("target").is_not_null()
+        )
+        rank_src = _filter_low_activity(rank_src)
+        Xr, _ = prepare_data(rank_src, feature_cols)
+
+        # Fit on the same quantity this correction is applied to. It used to be
+        # fitted on raw `predict_proba` and applied downstream of both the
+        # calibrator and the level step, so it corrected a rank-conditional bias
+        # measured on numbers nobody publishes.
+        #
+        # Scored through `scoring.score`, the entry point production uses,
+        # rather than by loading one pickle — a pickle cannot express
+        # `prod == "ensemble"`, and `get_model("ensemble")` raising was turned
+        # by the bare except below into a one-line "skipped" that left the
+        # previous model's correction on disk.
+        from src.models.scoring import score as score_probs
+        rank_probs = score_probs(prod, Xr, feature_cols, model_dir,
+                                 calibrate=True, active_models=active_models)
+        rank_src = rank_src.with_columns(pl.Series("prob", rank_probs))
+
+        from src.models.joint import apply_joint, load_team_rate
+        _tm = load_team_rate(model_dir / "team_td_rate.json")
+        if _tm is not None:
+            rank_src = apply_joint(rank_src, rank_src, _tm,
+                                   score_col="prob", out_col="prob")
+
+        rank_calib = fit_rank_calibration(rank_src, "prob", season_col="season")
+        save_rank(rank_calib, model_dir / "rank_calibration.json")
+        kept = [d for d in rank_calib["diagnostics"] if abs(d["delta"]) > 0.02]
+        print(f"\nRank calibration: fitted over {len(rank_calib['seasons_used'])} "
+              f"seasons, {len(kept)} of {len(rank_calib['diagnostics'])} ranks kept "
+              f"a meaningful correction -> {model_dir / 'rank_calibration.json'}")
+    except Exception as e:
+        # A failed fit must not leave the previous model's correction behind.
+        # Applying a stale per-rank shift is measurably worse than applying
+        # none: on 2025 it dropped the bet card from 19.4% to 14.0%.
+        stale = model_dir / "rank_calibration.json"
+        removed = ""
+        if stale.exists():
+            stale.unlink()
+            removed = (f"  REMOVED the previous {stale.name}: applying a stale "
+                       "rank correction is worse than applying none")
+        print(f"\nRank calibration skipped: {e}{removed}")
+
+
 def train_all(target_type: str = None, splits: dict | None = None,
               model_dir=None, output_dir=None):
     """Train, calibrate and fit every artifact for one market.
@@ -469,64 +550,9 @@ def train_all(target_type: str = None, splits: dict | None = None,
             print(f"TD conversion NOT fitted ({e}) — falling back to Poisson.")
 
     # --- Fit the positional (per-rank) correction ---
-    # The model's error depends on where a player sits in its own ranking, which
-    # no feature encodes and the per-game level shift cannot fix (that moves a
-    # whole game together). Fit across several seasons and shrink each rank by
-    # how consistent its bias is — a single season taught the top ranks a bias
-    # that reversed the next year, and "correcting" it made them worse.
-    try:
-        from src.models.rank_calibration import fit_rank_calibration, save as save_rank
-        prod = production_model(target_type)
-        rank_src = df.filter(
-            pl.col("season").is_in(train_seasons + [splits["val_season"]])
-            & pl.col("target").is_not_null()
-        )
-        rank_src = _filter_low_activity(rank_src)
-        Xr, _ = prepare_data(rank_src, feature_cols)
-        # Fit on the same quantity this correction is applied to. It used to be
-        # fitted on raw `predict_proba` and applied downstream of both the
-        # calibrator and the level step, so it was correcting a rank-conditional
-        # bias measured on numbers nobody publishes. Applying a stale correction
-        # cost more than applying none: on 2025 it dropped the bet card from
-        # 19.4% to 14.0% and squashed the top probability bucket from 583 rows
-        # to 192.
-        #
-        # Scored through `scoring.score`, the same entry point production uses,
-        # rather than by loading one pickle. Loading a pickle cannot express
-        # `prod == "ensemble"` — `get_model("ensemble")` raises, the bare except
-        # below turned that into a one-line "skipped", and the stale
-        # single-model correction stayed on disk to be applied to ensemble
-        # probabilities. That is precisely the stale-correction case the
-        # paragraph above measured as worse than none.
-        from src.models.scoring import score as score_probs
-        rank_probs = score_probs(prod, Xr, feature_cols, model_dir,
-                                 calibrate=True, active_models=active_models)
-        rank_src = rank_src.with_columns(pl.Series("prob", rank_probs))
+    _fit_rank_correction(df, train_seasons, splits, feature_cols, model_dir,
+                         target_type, active_models)
 
-        from src.models.joint import apply_joint, load_team_rate
-        _tm = load_team_rate(model_dir / "team_td_rate.json")
-        if _tm is not None:
-            rank_src = apply_joint(rank_src, rank_src, _tm,
-                                   score_col="prob", out_col="prob")
-
-        rank_calib = fit_rank_calibration(rank_src, "prob", season_col="season")
-        save_rank(rank_calib, model_dir / "rank_calibration.json")
-        kept = [d for d in rank_calib["diagnostics"] if abs(d["delta"]) > 0.02]
-        print(f"\nRank calibration: fitted over {len(rank_calib['seasons_used'])} "
-              f"seasons, {len(kept)} of {len(rank_calib['diagnostics'])} ranks kept "
-              f"a meaningful correction -> {model_dir / 'rank_calibration.json'}")
-    except Exception as e:
-        # A skipped fit must not leave the previous model's correction behind.
-        # Applying a stale per-rank shift is measurably worse than applying
-        # none — see above — so the file goes rather than lingering, and the
-        # message says which happened.
-        stale = model_dir / "rank_calibration.json"
-        removed = ""
-        if stale.exists():
-            stale.unlink()
-            removed = (f"  REMOVED the previous {stale.name}: applying a stale "
-                       "rank correction is worse than applying none")
-        print(f"\nRank calibration skipped: {e}{removed}")
 
     # --- Record the training feature distribution for train/serve skew checks ---
     null_rates = {

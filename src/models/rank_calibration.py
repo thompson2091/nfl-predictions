@@ -59,6 +59,35 @@ import json
 from datetime import date
 from pathlib import Path
 
+
+def would_be_applied(target_type: str, model_dir) -> bool:
+    """Will any serving path actually consume a correction fitted here?
+
+    Both answers are currently False, and the reasons differ:
+
+      * `first_td` never reaches the correction at all. `predict()` normalises
+        raw probabilities within the game and returns; only the anytime branch
+        calls `_anchor_to_market`, which is where the correction lives.
+        `scripts/10_backtest.py` branches the same way.
+      * `anytime_td` reaches it and is then disabled by the joint-model guard —
+        see FIRST FAILURE above — and `team_td_rate.json` is written on every
+        training run, so the guard is always taken.
+
+    This exists so `train_all` can stop fitting an artifact nothing reads, and
+    say which of those two reasons applies. Fitting it anyway was not harmful,
+    but it wrote a `rank_calibration.json` into both model directories and
+    announced "N of 12 ranks kept a meaningful correction" on every retrain,
+    which reads exactly like a component that is doing something.
+
+    Kept as a live check rather than a hardcoded False so the capability still
+    works for a model directory with no team rate — the legacy fallback the
+    guard was written for.
+    """
+    if target_type == "first_td":
+        return False
+    from src.models.joint import load_team_rate
+    return load_team_rate(Path(model_dir) / "team_td_rate.json") is None
+
 import numpy as np
 import polars as pl
 
