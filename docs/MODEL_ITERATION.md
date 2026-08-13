@@ -408,6 +408,7 @@ Re-ordered by measured effect rather than by expected effect:
 | First TD from competing-Poisson team rates | REJECTED | −0.62pp (all four models worse) |
 | **DEF/ST out of the offensive share denominator** | **KEPT_WITH_JUSTIFICATION** | **+2.56pp, p=0.000** |
 | Conditional logit — train the objective we score (3a) | REJECTED | first TD −0.09pp (p=1.000); anytime −2.74pp (p=0.016) |
+| Ensemble including condlogit, vs served xgb | REJECTED | anytime −0.62pp (p=0.435); first TD −0.53pp (p=0.497) |
 
 The pattern is worth naming. Both rejected experiments were *theoretically*
 motivated — sound arguments about likelihoods and generative structure — and
@@ -610,6 +611,27 @@ Top-1 clears the one-standard-error rule by a hair and every one of the four
 guards trips. On 28 discordant games out of 1,131, p=0.345 — the Top-1 gain is
 the kind of number that appears and disappears between seeds, while the Top-3
 loss is 3.6x its noise band. This is a lead, not a result.
+
+**Gated 2026-08-13: the production ensemble with condlogit is worse than xgb.**
+Full gate tier, `{lr, lgbm, xgb, condlogit}`, both markets, paired against `xgb`
+inside the same run:
+
+    anytime   53.5% -> 52.9%   -0.62pp  (26 won / 33 lost, p=0.435)
+    first TD  16.8% -> 16.3%   -0.53pp  (24 won / 30 lost, p=0.497)
+
+So the direction reverses with composition: `{xgb, condlogit}` is +0.53pp on
+anytime, `{lr, lgbm, xgb, condlogit}` is −0.62pp. That is not a contradiction —
+the three-model ensemble was already 1.7 points behind xgb, and adding a fourth
+model does not repair what lr and lgbm cost it. Averaging in weaker rankers
+dilutes the one that ranks best, and condlogit is not strong enough to carry
+them.
+
+Every lever on this experiment is now measured. The only positive number
+anywhere in it is the two-model `{xgb, condlogit}` Top-1, at p=0.345 with four
+guards tripped, which is below the standard this project has used for every
+other change. Settling it would need the seed-averaged paired test that decided
+first TD's production model — five seeds, outcomes averaged per game before
+pairing — and that is a lot of compute for a number this likely to be zero.
 
 **What this settles.** The Phase 2 conclusion — data-limited, not
 fitting-limited — was reached by measuring the feature set, and a fair objection
