@@ -374,6 +374,62 @@ def load_board(season: int, week: int, tt: str, model: str,
     return (board.to_pandas() if board.height else None), msg
 
 
+@st.cache_data(show_spinner="Reading the teams...", max_entries=16)
+def team_outlook_frame(season: int, week: int, version: str | None = None):
+    """Team-level numbers for the week, from both markets.
+
+    Scored read-only in both markets regardless of which one the sidebar is
+    showing: this panel is a view, and a view should not republish the week's
+    predictions as a side effect of being looked at.
+
+    Returns None rather than a placeholder when neither market can be scored —
+    an empty panel says "not available", a panel of zeros says something false.
+    """
+    from src.models.joint import _game_lines, load_team_rate, team_rate
+    from src.prediction.predict import predict
+    from src.presentation import team_outlook as T
+
+    model_dir, _ = selected_model_dir(tt="anytime_td", version_id=version)
+
+    preds = {}
+    for tt in ("first_td", "anytime_td"):
+        md, _ = selected_model_dir(tt, version)
+        try:
+            preds[tt] = predict(season, week, model_name=production_model(tt),
+                                target_type=tt, model_dir=md, persist=False)
+        except Exception:                                    # noqa: BLE001
+            preds[tt] = None
+
+    # The team rate is the market's view of how much scoring is coming, and it
+    # is fitted rather than assumed — the same lambda the joint model uses.
+    lam = None
+    try:
+        model = load_team_rate((model_dir or get_path("models", "anytime_td"))
+                               / "team_td_rate.json")
+        feats = load_features("anytime_td")
+        if model is not None and feats is not None:
+            wk = feats.filter((pl.col("season") == season) & (pl.col("week") == week))
+            if wk.height:
+                lam = team_rate(model, _game_lines(wk))
+    except Exception:                                        # noqa: BLE001
+        lam = None
+
+    out = T.build(preds.get("first_td"), preds.get("anytime_td"), lam)
+    if out.is_empty():
+        return None
+    if preds.get("anytime_td") is not None:
+        out = out.join(T.top_scorer_per_team(preds["anytime_td"]),
+                       on=["game_id", "team"], how="left")
+    labels = None
+    for p in preds.values():
+        if p is not None and "game_label" in p.columns:
+            labels = p.select(["game_id", "game_label"]).unique()
+            break
+    if labels is not None:
+        out = out.join(labels, on="game_id", how="left")
+    return out.to_pandas()
+
+
 @st.cache_data(show_spinner=False)
 def historical_accuracy(tt: str, model: str) -> dict | None:
     """How often our ranking found a real scorer, on the held-out season.
@@ -1497,6 +1553,81 @@ if tab_board.open:
                 f"We're higher than the bookmaker on {len(backing)}, lower on "
                 f"{len(overvalued)}, and close to them on {agree}."
             )
+
+            # ── By team ───────────────────────────────────────────────────
+            # The board answers "which player". This is the question underneath
+            # it, which the model has an opinion about and has never shown.
+            _teams = team_outlook_frame(season, week, selected_version)
+            if _teams is not None and len(_teams):
+                st.markdown("#### By team")
+                st.caption(
+                    "Which side scores first is a true coin-flip question, and "
+                    "the model beats the coin: **AUC 0.674** over 2,278 "
+                    "walk-forward team-games, calibrated from 6% to 94%. "
+                    "Expected touchdowns is the fitted team rate; shut-out risk "
+                    "is the chance of no offensive touchdown at all."
+                )
+                _t = _teams.copy()
+                _cols = {}
+                if "game_label" in _t.columns:
+                    _cols["game_label"] = st.column_config.TextColumn("Game")
+                _cols["team"] = st.column_config.TextColumn("Team")
+                if "first_td_pct" in _t.columns:
+                    _cols["first_td_pct"] = st.column_config.NumberColumn(
+                        "Scores first", format="%.0f%%",
+                        help="Chance this team scores the game's first "
+                             "touchdown. The two teams add to 100%.")
+                    _t["first_td_pct"] = _t["first_td_pct"] * 100
+                if "expected_tds" in _t.columns:
+                    _cols["expected_tds"] = st.column_config.NumberColumn(
+                        "Expected TDs", format="%.2f",
+                        help="The fitted team touchdown rate, driven by the "
+                             "betting lines.")
+                if "expected_scorers" in _t.columns:
+                    _cols["expected_scorers"] = st.column_config.NumberColumn(
+                        "Expected scorers", format="%.2f",
+                        help="How many different players are expected to score. "
+                             "Lower than expected touchdowns because one player "
+                             "can score twice.")
+                if "shutout_pct" in _t.columns:
+                    _cols["shutout_pct"] = st.column_config.NumberColumn(
+                        "Shut-out risk", format="%.0f%%",
+                        help="Chance of no offensive touchdown. Rare — teams "
+                             "score in 92% of games — so this column is only "
+                             "interesting when it is high.")
+                    _t["shutout_pct"] = _t["shutout_pct"] * 100
+                if "top_player" in _t.columns:
+                    _cols["top_player"] = st.column_config.TextColumn(
+                        "Likeliest scorer",
+                        help="So the team number has a name attached.")
+                if "top_player_pct" in _t.columns:
+                    _cols["top_player_pct"] = st.column_config.NumberColumn(
+                        "", format="%.0f%%")
+                    _t["top_player_pct"] = _t["top_player_pct"] * 100
+                st.dataframe(_t[list(_cols)], hide_index=True,
+                             column_config=_cols, use_container_width=True)
+
+                # A blank "scores first" is a roster outage, not a close game.
+                # Say so, and name the teams — otherwise the empty cell reads as
+                # a rendering glitch and the game quietly gets ignored.
+                if "candidates" in _teams.columns:
+                    _thin = _teams[_teams["candidates"] < 5]
+                    if len(_thin):
+                        _names = ", ".join(sorted(set(_thin["team"].tolist())))
+                        st.warning(
+                            f"**No first-TD split for some games.** "
+                            f"{_names} have almost no players in this week's "
+                            f"candidate pool, so the split would describe the "
+                            f"roster feed rather than the football. Their "
+                            f"opponents are withheld too — one number is just "
+                            f"one minus the other. This clears once rosters are "
+                            f"published; re-run `make ingest`.",
+                            icon=":material/database_off:")
+                st.caption(
+                    "Not shown: the chance a team scores *any* touchdown. It is "
+                    "92% for nearly every team in nearly every game, and a "
+                    "column that always reads the same teaches you to skip it."
+                )
 
             # The whole week's marked plays as one wager, because that is how they
             # get placed. Reads the full board rather than `shown` on purpose.
