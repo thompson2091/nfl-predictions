@@ -52,6 +52,20 @@ def _break_ties(calibrated: np.ndarray, raw: np.ndarray) -> np.ndarray:
     is worth doing at any effect size. Dropping the calibrator entirely was
     tested at the same time and is worse: Top-3 0.8464 against 0.8551 and AUC
     0.83836 against 0.84189.
+
+    The nudge goes **down** from each step, not up. Nudging up added to a
+    calibrated value that can be 1.0 — the anytime-TD xgb calibrator already
+    tops out at 0.999999 — and produced probabilities above 1. Nothing rejected
+    them: they flowed into `1 - exp(-lambda*s)` and into Brier, where sklearn
+    finally refused one at 1.00006 and made the bug visible. Subtracting instead
+    is bounded by construction, because a probability can always be made
+    slightly smaller and cannot always be made slightly larger.
+
+    Ordering is identical either way: within a step the nudge is monotone in the
+    raw score, and across steps it cannot reach a neighbour because it is at
+    most half the smallest gap. The floor at zero can still tie the bottom step
+    together, which is the one place a tie costs nothing — nobody's headline
+    pick comes off the bottom step.
     """
     uniq = np.unique(calibrated)
     if uniq.size < 2:
@@ -60,7 +74,8 @@ def _break_ties(calibrated: np.ndarray, raw: np.ndarray) -> np.ndarray:
     span = float(raw.max() - raw.min())
     if eps <= 0.0 or span <= 0.0:
         return calibrated
-    return calibrated + eps * (raw - raw.min()) / span
+    nudged = calibrated - eps * (raw.max() - raw) / span
+    return np.clip(nudged, 0.0, 1.0)
 
 
 def score(model_name: str, X: np.ndarray, feature_cols: list[str],

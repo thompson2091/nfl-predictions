@@ -2470,3 +2470,57 @@ def test_held_out_defence_keeps_its_probability_when_score_and_out_are_one_colum
     out2 = combine(player_shares(two["prob"].to_numpy(), two, exclude_defst=True),
                    out_col="prob", score_col="prob")
     assert out2["prob"].to_list() == pytest.approx([0.05, 0.20])
+
+
+def test_tie_breaking_cannot_produce_an_impossible_probability():
+    """The nudge must not push a calibrated 1.0 above 1.0.
+
+    The anytime-TD xgb calibrator tops out at 0.999999, so the old upward nudge
+    was one saturated player away from emitting p > 1 — and nothing downstream
+    checked. Those values fed `1 - exp(-lambda*s)` and Brier, where sklearn
+    eventually refused a 1.00006 and made it visible. A probability above 1 is
+    not a rounding artefact; it is a number that cannot mean anything.
+    """
+    import numpy as np
+    from src.models.scoring import _break_ties
+
+    # A saturated top step, exactly the shape the isotonic fit produces.
+    cal = np.array([1.0, 1.0, 1.0, 0.5, 0.5])
+    raw = np.array([0.99, 0.80, 0.60, 0.40, 0.20])
+    out = _break_ties(cal, raw)
+
+    assert out.max() <= 1.0, f"produced an impossible probability: {out.max()}"
+    assert out.min() >= 0.0
+    # The ties that matter are still broken, in the model's own order.
+    assert out[0] > out[1] > out[2]
+    assert out[3] > out[4]
+    assert min(out[0], out[1], out[2]) > max(out[3], out[4]), (
+        "calibration must still outrank the nudge across steps")
+
+
+def test_tie_breaking_holds_the_floor_at_zero():
+    """Isotonic can output exactly 0, and the nudge subtracts."""
+    import numpy as np
+    from src.models.scoring import _break_ties
+
+    cal = np.array([0.0, 0.0, 0.3, 0.3])
+    raw = np.array([0.4, 0.1, 0.9, 0.7])
+    out = _break_ties(cal, raw)
+    assert out.min() >= 0.0, "negative probabilities are as impossible as >1"
+    assert out.max() <= 1.0
+    assert out[2] > out[3], "the step that has room is still ordered"
+
+
+def test_tie_breaking_never_leaves_the_unit_interval_on_real_calibrators():
+    """Property check across the shapes isotonic actually produces."""
+    import numpy as np
+    from src.models.scoring import _break_ties
+
+    rng = np.random.default_rng(3)
+    for _ in range(200):
+        n = int(rng.integers(2, 40))
+        steps = np.sort(rng.random(int(rng.integers(1, 6))))
+        cal = rng.choice(np.append(steps, [0.0, 1.0]), size=n)
+        raw = rng.random(n)
+        out = _break_ties(cal, raw)
+        assert out.min() >= 0.0 and out.max() <= 1.0, (cal, raw, out)
