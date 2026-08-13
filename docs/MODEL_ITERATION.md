@@ -412,6 +412,7 @@ Re-ordered by measured effect rather than by expected effect:
 | `{xgb, condlogit}` ensemble vs xgb, seed-averaged | REVERTED after promotion | seed-averaged +0.32pp, but the served seed is −0.18pp |
 | Feature-family ablation, 33 families (3e) | REJECTED | nothing prunable; Top-3 worse in 33/33 |
 | Candidate pool and filter thresholds (3f) | REJECTED | best +0.18pp (0.21 se, p=0.915) |
+| Defensive takeaway/pressure/return + giveaway features (3h) | REJECTED | Top-1 +0.00pp; Top-3 −1.24pp; DEF/ST AUC still chance |
 
 The pattern is worth naming. Both rejected experiments were *theoretically*
 motivated — sound arguments about likelihoods and generative structure — and
@@ -881,7 +882,62 @@ operating point, and the config knobs stay at their served defaults.
 Only testable now that the denominator is fixed (1a). Trades pool ceiling
 against pool noise: 33 candidates per game survive the filter, from 51.8.
 
-### 3h. Defensive and coaching data — **SURVEYED 2026-08-13, the largest unused seam**
+### 3h. Defensive and coaching data — **BUILT AND REJECTED 2026-08-13**
+
+`src/features/defense_features.py` builds the three things Phase 2 named as
+missing, from data that was on disk the whole time: takeaway rate, pressure
+rate and return-unit production keyed on `team` (what a DEF/ST candidate's own
+defence does), plus the opposing offence's giveaway rate keyed on `opponent`
+(a defensive touchdown needs a turnover before it needs a defence). 42 columns,
+all ≥90% populated on DEF/ST rows.
+
+The build validates: league-wide takeaways (1.3407 per team-game) match
+giveaways (1.3386), as they must, which is what confirms the `td_team`
+attribution is right rather than crediting defensive scores to the offence that
+turned it over. Leakage checked directly — the 3-game average equals the mean of
+the previous three games for every row, and all 32 teams' first row is null.
+
+**Defences are still unrankable.** Walk-forward on DEF/ST rows alone, three
+seeds per season:
+
+| test season | pre-existing features | with the new families |
+| --- | --- | --- |
+| 2022 | 0.5198 | 0.4672 |
+| 2023 | 0.5213 | 0.5299 |
+| 2024 | 0.5405 | 0.5103 |
+| 2025 | 0.5381 | 0.5324 |
+| **mean** | **0.5299** | **0.5100** |
+
+Both are chance. Phase 2 recorded 0.5045 and that number survives.
+
+**And on the full model, gated against the same folds, they cost more than they
+give:**
+
+    Top-1  53.5% -> 53.5%   +0.00pp   42 games won, 42 lost
+    Top-3  85.9% -> 84.6%   -1.24pp   (band 0.63pp)  GUARD
+    AUC    -0.00148         (band 0.00028)           GUARD
+
+Reverted. The module stays, unwired, like `oc_features.py`.
+
+**Why this is worth having done anyway.** The Phase 2 conclusion was "these
+features do not exist"; it is now "these features do not help", which is a
+different and much harder claim to reach by argument. Defensive touchdowns are
+rare — 79 a season across 272 games, and declining as kickoff rules change — and
+a team's past takeaway rate is mostly noise about a near-random event. There is
+no reason to expect it to identify *which* game a defence scores in.
+
+The Top-3 cost is also informative beside 3e. Adding 42 columns that carry
+nothing cost 1.24pp of Top-3, which is what 3e predicts from the other
+direction: every family in the set contributes, and a family that does not
+dilutes the ones that do. Whether the cost here is misinformation or simple
+dilution of `colsample_bytree`'s candidate pool is not separated, and a second
+attempt should test the giveaway half alone — four columns rather than
+forty-two — before concluding the idea is dead.
+
+**Coaching is untouched and still half-blocked**: head coach is already used,
+offensive coordinator needs an `oc_mapping.csv` that nflverse does not ship.
+
+### 3h (survey) — what is available
 
 Phase 2 closed the defence question with "ranking defences needs features that do
 not exist". That was true of the *assembled* feature set and false of the data

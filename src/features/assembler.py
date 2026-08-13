@@ -212,6 +212,7 @@ def assemble_features() -> pl.DataFrame:
     player_feats = build_player_rolling_features(weekly_stats, spine)
     team_feats = build_team_features(pbp)
     opp_feats = build_opponent_features(pbp)
+
     game_feats = build_game_features(schedules)
 
     snap_feats = build_snap_features(snap_counts, rosters)
