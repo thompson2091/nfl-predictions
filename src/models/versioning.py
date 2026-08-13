@@ -382,11 +382,32 @@ def market_dir(market: str, version_id: str | None = None) -> Path:
     return directory
 
 
-def available_versions(market: str) -> list[dict]:
+def artifacts_key(manifest: dict, market: str) -> str:
+    """Fingerprint of a version's weights for one market.
+
+    Two versions can differ in every way that matters to the record — config,
+    metrics, the reason they exist — and still carry byte-identical weights.
+    `2026.08.12-first-td-xgb` changed only which model is served, and
+    `2026.08.12-baseline-remeasured` only re-recorded metrics after the
+    denominator was corrected. Neither retrained anything.
+    """
+    files = (manifest.get("artifacts") or {}).get(market, {})
+    payload = "|".join(f"{k}:{v}" for k, v in sorted(files.items()))
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def available_versions(market: str, distinct_weights: bool = False) -> list[dict]:
     """Versions whose artifacts are actually on disk, newest first.
 
     A manifest without weights cannot be loaded, so it is not offered. That is
     the normal state for a version locked on another machine.
+
+    `distinct_weights` collapses versions that would score identically. Offering
+    a choice that cannot change the board is worse than not offering it: the
+    selector looks broken, and the natural conclusion is that version switching
+    does not work rather than that these two versions are the same model. The
+    served version wins its group so the list always contains what is running;
+    otherwise the newest does.
     """
     served = _current_version(market)
     out = []
@@ -399,8 +420,27 @@ def available_versions(market: str) -> list[dict]:
             "note": manifest.get("note"),
             "created": manifest.get("created"),
             "metrics": (manifest.get("metrics") or {}).get(market),
+            "artifacts_key": artifacts_key(manifest, market),
         })
-    return out
+
+    if not distinct_weights:
+        return out
+
+    kept: dict[str, dict] = {}
+    for v in out:                       # already newest-first
+        key = v["artifacts_key"]
+        if key not in kept or v["served"]:
+            if key in kept and kept[key]["served"]:
+                continue
+            kept[key] = v
+    # `duplicates` records what was folded away, so the app can say so rather
+    # than silently showing a shorter list than the registry holds.
+    by_key: dict[str, list[str]] = {}
+    for v in out:
+        by_key.setdefault(v["artifacts_key"], []).append(v["id"])
+    for v in kept.values():
+        v["duplicates"] = [i for i in by_key[v["artifacts_key"]] if i != v["id"]]
+    return sorted(kept.values(), key=lambda v: v["id"], reverse=True)
 
 
 def current_version(market: str) -> dict | None:

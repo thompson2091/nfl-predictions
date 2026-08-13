@@ -239,3 +239,31 @@ def test_served_models_are_the_version_the_registry_claims():
           "did not, something overwrote models/ and the served state is "
           "unidentified."
     )
+
+
+def test_versions_with_identical_weights_are_offered_once(sandbox):
+    """A choice that cannot change the board is worse than no choice.
+
+    Two of this project's four locked versions changed config or re-recorded
+    metrics without retraining: `first-td-xgb` only switched which model is
+    served, and `baseline-remeasured` only restated metrics after the
+    denominator was corrected. Offering all four made the selector look broken
+    — you pick a different version and nothing moves.
+    """
+    V.lock("2026.01.01-one", "first")
+    V.promote("2026.01.01-one")
+    V.lock("2026.01.02-config-only", "same weights, different config")
+
+    every = V.available_versions("anytime_td")
+    assert len(every) == 2, "the registry still holds both"
+
+    offered = V.available_versions("anytime_td", distinct_weights=True)
+    assert len(offered) == 1
+    assert offered[0]["id"] == "2026.01.01-one", "the served version wins its group"
+    assert offered[0]["duplicates"] == ["2026.01.02-config-only"]
+
+    # A genuine retrain is a separate group and stays on the list.
+    _write(sandbox, b"version-two")
+    V.lock("2026.01.03-retrained", "actually different")
+    offered = V.available_versions("anytime_td", distinct_weights=True)
+    assert {v["id"] for v in offered} == {"2026.01.01-one", "2026.01.03-retrained"}

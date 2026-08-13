@@ -45,7 +45,10 @@ def version_options(tt: str) -> list[dict]:
         return []
     from src.models.versioning import available_versions
     try:
-        return available_versions(tt)
+        # Only versions that would actually score differently. Two of the four
+        # locked versions changed config or metrics without retraining, so
+        # offering them made the selector look broken.
+        return available_versions(tt, distinct_weights=True)
     except Exception:                                        # noqa: BLE001
         return []
 
@@ -125,6 +128,12 @@ with st.sidebar:
                       "app is running — otherwise it serves what it loaded at "
                       "startup."):
         st.cache_data.clear()
+        # `cache_data` and `cache_resource` are separate stores, and clearing
+        # one leaves the other. The feature matrix moved to `cache_resource` so
+        # it is held once rather than copied per caller, which quietly took it
+        # out of this button's reach — so "Reload artifacts" stopped reloading
+        # the largest artifact of all.
+        st.cache_resource.clear()
         st.rerun()
 
     # Which locked version is on screen. Without this the board is a number
@@ -146,6 +155,13 @@ with st.sidebar:
             help="Price this week against any locked version without promoting "
                  "it. Anything but the served version is read-only — nothing "
                  "is written and no prediction file is republished.")
+        _folded = sorted({d for v in _versions for d in v.get("duplicates", [])})
+        if _folded:
+            st.caption(
+                f"{len(_folded)} version(s) not listed — identical weights to "
+                f"one above ({', '.join(_folded)}). They differ only in config "
+                "or in recorded metrics, so they would score the same board.")
+
         if selected_version != _served_id:
             # Say exactly how far the preview reaches. The board is priced from
             # the snapshot; the evaluation tabs read artifacts written by the
@@ -156,8 +172,10 @@ with st.sidebar:
             _recorded = (_preview.get("metrics") or {}).get(selected_model)
             st.info(
                 f"Previewing **{selected_version}** — the board below is priced "
-                "from it, read-only. Every other tab describes the served "
-                "version.",
+                "from its weights, read-only. Every other tab describes the "
+                "served version. **Settings are not rolled back**: a version "
+                "that differed only by a config change scores identically to "
+                "what is being served.",
                 icon=":material/history:")
             if _recorded:
                 st.caption(
