@@ -471,6 +471,22 @@ def team_outlook_frame(season: int, week: int, version: str | None = None):
 
 
 @st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)
+def stale_evaluation(tt: str) -> list[dict]:
+    """Numbers on screen that were computed before the model serving them.
+
+    Nothing here is live: the strip reads walkforward.json, the head-to-head
+    reads the backtest frames, and each is produced by a command someone has to
+    remember to run. The Makefile has warned about this in a comment since those
+    targets were written. A comment is not a guard.
+    """
+    from src.evaluation.freshness import stale_artifacts
+    try:
+        return stale_artifacts(tt)
+    except Exception:                                        # noqa: BLE001
+        return []
+
+
 @st.cache_data(show_spinner=False, max_entries=32)
 def scored_season(tt: str, model: str, season: int, version: str | None = None):
     """Per-game outcomes for one season, through the path production serves.
@@ -1378,6 +1394,21 @@ def week_board(season, week, tt: str, model: str,
 if tab_board.open:
     with tab_board:
         render_accuracy_strip(target_type, selected_model)
+
+        # The strip above, and several panels below, are read from artifacts
+        # rather than computed. Say when one of them predates the model it is
+        # describing — otherwise a retrain leaves last week's accuracy sitting
+        # beside this week's picks with nothing to distinguish them.
+        _stale = stale_evaluation(target_type)
+        if _stale:
+            _lines = "\n\n".join(
+                f"- **{x['describes']}** — {x['artifact']}, "
+                f"{x['behind_seconds'] / 3600:.0f}h older than the model. "
+                f"Refresh with `{x['command']}`" for x in _stale)
+            st.warning(
+                f"**Some numbers on this page were computed before the current "
+                f"model.**\n\n{_lines}", icon=":material/update:")
+
         board, backing, overvalued, problems = week_board(
             season, week, target_type, selected_model, selected_version)
         for _problem in problems:
