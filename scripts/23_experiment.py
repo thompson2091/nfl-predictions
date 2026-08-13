@@ -246,14 +246,22 @@ def _experiment(a, tier: str) -> int:
     return 0
 
 
-def _overall_verdict(comparisons: list[dict], markets) -> str:
+def _overall_verdict(comparisons: list[dict], markets,
+                     decisive_on: str = "model") -> str:
     """The verdict for the models each market actually serves.
 
     A change that helps a model nobody serves has not helped. Only the
     production model per market decides, and the worst outcome across them wins.
+
+    `decisive_on` names which side of the comparison has to be the production
+    model. A gate asks "is the served model better under this overlay", so the
+    candidate's own name decides. A settle asks "should this replace what we
+    serve", so the *champion* side is the served model and the candidate is by
+    definition something else — reading `model` there finds no production pair
+    at all and reports NO_PRODUCTION_PAIR for a run that decided something.
     """
     decisive = [c for c in comparisons
-                if c["model"] == production_model(c["market"])
+                if c[decisive_on] == production_model(c["market"])
                 and c["market"] in markets]
     if not decisive:
         return "NO_PRODUCTION_PAIR"
@@ -309,7 +317,7 @@ def cmd_settle(a) -> int:
         "note": f"{a.model} vs {a.against}, {a.seeds} seeds, seed-averaged: "
                 + spec.get("note", ""),
         "seed": seeds, "summary": {},
-        "verdict": _overall_verdict(rows, markets),
+        "verdict": _overall_verdict(rows, markets, decisive_on="against"),
         "comparisons": [{k: v for k, v in r.items() if k != "top_k"}
                         | {"top1": {kk: vv for kk, vv in r["top_k"][1].items()
                                     if kk != "per_seed"}} for r in rows],

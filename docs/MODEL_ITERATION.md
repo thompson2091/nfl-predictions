@@ -409,6 +409,7 @@ Re-ordered by measured effect rather than by expected effect:
 | **DEF/ST out of the offensive share denominator** | **KEPT_WITH_JUSTIFICATION** | **+2.56pp, p=0.000** |
 | Conditional logit — train the objective we score (3a) | REJECTED | first TD −0.09pp (p=1.000); anytime −2.74pp (p=0.016) |
 | Ensemble including condlogit, vs served xgb | REJECTED | anytime −0.62pp (p=0.435); first TD −0.53pp (p=0.497) |
+| `{xgb, condlogit}` ensemble vs xgb, seed-averaged | first TD **PROMOTED**, anytime REJECTED | first TD +0.32pp (1.53 se, p=0.272); anytime +0.21pp (0.78 se) |
 
 The pattern is worth naming. Both rejected experiments were *theoretically*
 motivated — sound arguments about likelihoods and generative structure — and
@@ -626,12 +627,42 @@ model does not repair what lr and lgbm cost it. Averaging in weaker rankers
 dilutes the one that ranks best, and condlogit is not strong enough to carry
 them.
 
-Every lever on this experiment is now measured. The only positive number
-anywhere in it is the two-model `{xgb, condlogit}` Top-1, at p=0.345 with four
-guards tripped, which is below the standard this project has used for every
-other change. Settling it would need the seed-averaged paired test that decided
-first TD's production model — five seeds, outcomes averaged per game before
-pairing — and that is a lot of compute for a number this likely to be zero.
+**Settled 2026-08-13, five seeds, outcomes averaged per game before pairing.**
+`make settle EXP=experiments/xgb-condlogit-ensemble.yaml MODEL=ensemble
+AGAINST=xgb SEEDS=5`. Both models come from the same run at each seed, so folds
+and features are identical on each side.
+
+    anytime_td   Top-1  53.10% -> 53.32%  +0.21pp  (0.78 se)  p=0.412
+                 Top-3  85.02% -> 84.26%  -0.76pp  (-2.74 se)
+                 Top-5  93.67% -> 92.93%  -0.74pp  (-2.79 se)
+                 52 won / 43 lost, ahead in 4 of 5 seeds        REJECTED
+
+    first_td     Top-1  16.78% -> 17.10%  +0.32pp  (1.53 se)  p=0.272
+                 Top-3  37.82% -> 38.21%  +0.39pp  (1.57 se)
+                 Top-5  53.19% -> 53.37%  +0.18pp  (0.78 se)
+                 47 won / 36 lost, ahead in 4 of 5 seeds        PROMOTED
+
+Anytime behaved as predicted: the single-run +0.53pp shrank to +0.21pp once the
+seed was averaged out, which is what a margin made mostly of seed luck does, and
+Top-3 and Top-5 are both clearly worse. That one is closed.
+
+**First TD was not predicted, by me or by the single-run screens.** Both screens
+pointed the other way there — `condlogit` alone was −0.62pp and the four-model
+ensemble −0.53pp — so the two-model pairing being the one that works was not
+visible until it was measured directly. It is the only configuration in the
+whole of 3a where Top-1, Top-3 and Top-5 all move the same direction.
+
+How much to believe it: it passes this project's promotion rule, and it is the
+rule's own verdict rather than an argument for an exception. Against that, the
+sign test reads p=0.272 over 83 discordant games — it cannot distinguish the
+result from chance — and seed 0 has the ensemble behind. +0.32pp on 1,131 games
+is a real number and a small one, on a market where rank economics reports NO
+EDGE DEMONSTRATED. More seeds would not settle it much further: the standard
+error here is dominated by having 1,131 games, not by having 5 seeds.
+
+Serving it is a real config change — `models.active` becomes `{xgb, condlogit}`
+and `production_by_target.first_td` becomes `ensemble` — so it should be locked
+as a version before promotion, not after.
 
 **What this settles.** The Phase 2 conclusion — data-limited, not
 fitting-limited — was reached by measuring the feature set, and a fair objection
