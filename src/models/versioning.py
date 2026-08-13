@@ -502,6 +502,102 @@ def available_versions(market: str, distinct_weights: bool = False) -> list[dict
     return sorted(kept.values(), key=lambda v: v["id"], reverse=True)
 
 
+def snapshot_key(manifest: dict, markets=MARKETS) -> str:
+    """Fingerprint of a version's weights across every market it holds."""
+    return "|".join(artifacts_key(manifest, m) for m in markets)
+
+
+def duplicate_groups(markets=MARKETS) -> list[dict]:
+    """Versions whose snapshots are byte-identical, grouped.
+
+    Four versions locked in one evening produced two distinct sets of weights:
+    `2026.08.12-first-td-xgb` changed only which model is served, and
+    `2026.08.12-baseline-remeasured` only re-recorded metrics after the
+    denominator was corrected. Neither retrained anything, so each is a second
+    copy of the snapshot above it.
+
+    Grouping is by content, not by intent. A version that happens to reproduce
+    an earlier one bit-for-bit is a duplicate however different the reason for
+    locking it was — and the manifests keep those reasons regardless.
+    """
+    present = [m for m in list_versions() if version_dir(m["id"]).exists()]
+    groups: dict[str, list[dict]] = {}
+    for manifest in present:
+        groups.setdefault(snapshot_key(manifest, markets), []).append(manifest)
+
+    served = {(_read_current().get(m) or {}).get("version") for m in markets}
+    out = []
+    for key, members in groups.items():
+        if len(members) < 2:
+            continue
+        ids = [m["id"] for m in members]
+        # Keep what is being served; otherwise the newest, which is the one a
+        # rollback is most likely to want and the one whose manifest describes
+        # the most recent measurement of those weights.
+        keep = next((i for i in ids if i in served), max(ids))
+        out.append({
+            "key": key,
+            "keep": keep,
+            "drop": sorted(i for i in ids if i != keep),
+            "bytes": sum(p.stat().st_size
+                         for i in ids if i != keep
+                         for p in version_dir(i).rglob("*") if p.is_file()),
+        })
+    return sorted(out, key=lambda g: g["keep"], reverse=True)
+
+
+def prune_duplicates(markets=MARKETS, apply: bool = False) -> dict:
+    """Delete weight snapshots that another version already holds byte-for-byte.
+
+    **Manifests are never touched.** They are the committed record — provenance,
+    config snapshot, metrics, the justification for a guard that was tripped —
+    and they are a few kilobytes each. What goes is the redundant copy of the
+    weights, which is regenerable in principle and duplicated in fact.
+
+    Nothing unique is ever deleted, and nothing served: a version survives
+    pruning unless an identical snapshot remains on disk afterwards, so every
+    manifest still resolves to retrievable weights.
+
+    Defaults to a dry run. Deleting artifacts on the strength of a hash
+    comparison is exactly the kind of thing to look at before doing.
+    """
+    groups = duplicate_groups(markets)
+    removed, freed = [], 0
+    for group in groups:
+        for version_id in group["drop"]:
+            directory = version_dir(version_id)
+            if not directory.exists():
+                continue
+            size = sum(p.stat().st_size for p in directory.rglob("*") if p.is_file())
+            if apply:
+                shutil.rmtree(directory)
+            removed.append({"id": version_id, "identical_to": group["keep"],
+                            "bytes": size})
+            freed += size
+    return {"applied": apply, "groups": groups, "removed": removed,
+            "bytes_freed": freed}
+
+
+def identical_snapshot(version_id: str, markets=MARKETS) -> str | None:
+    """Another version whose weights match this one's, if any is on disk.
+
+    Derived from the manifests rather than recorded at prune time, so a pruned
+    version can still say where its bytes live without anyone having edited a
+    committed record to say so.
+    """
+    try:
+        target = load_manifest(version_id)
+    except VersionError:
+        return None
+    key = snapshot_key(target, markets)
+    for manifest in list_versions():
+        if manifest["id"] == version_id or not version_dir(manifest["id"]).exists():
+            continue
+        if snapshot_key(manifest, markets) == key:
+            return manifest["id"]
+    return None
+
+
 def current_version(market: str) -> dict | None:
     """What this market is serving, for anything that wants to display it.
 
@@ -631,6 +727,13 @@ def promote(version_id: str, markets=MARKETS, *, force: bool = False) -> dict:
     manifest = load_manifest(version_id)
     src_root = version_dir(version_id)
     if not src_root.exists():
+        twin = identical_snapshot(version_id)
+        if twin:
+            raise VersionError(
+                f"'{version_id}' has no weights on disk, but "
+                f"'{twin}' holds byte-identical ones — it was pruned as a "
+                f"duplicate. Promote '{twin}' instead; it serves the same "
+                "model. Their manifests differ only in why they were locked.")
         raise VersionError(
             f"Manifest for '{version_id}' exists but its artifacts do not, at "
             f"{src_root}. Weights are gitignored — this version was locked on "

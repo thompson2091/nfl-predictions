@@ -30,8 +30,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.models.versioning import (  # noqa: E402
     MARKETS, VERDICTS, VersionError, current_path, diff, list_versions,
-    load_manifest, lock, promote, registry_root, rollback, runtime_drift,
-    unlocked_markets, verify_current, version_dir,
+    identical_snapshot, load_manifest, lock, promote, prune_duplicates,
+    registry_root, rollback, runtime_drift, unlocked_markets, verify_current,
+    version_dir,
 )
 
 
@@ -189,6 +190,32 @@ def cmd_diff(a) -> int:
     return 0
 
 
+def cmd_prune(a) -> int:
+    """Delete weight snapshots another version already holds byte-for-byte."""
+    result = prune_duplicates(apply=a.apply)
+    if not result["groups"]:
+        print("No duplicate snapshots. Every version on disk holds unique weights.")
+        return 0
+
+    for group in result["groups"]:
+        print(f"{group['keep']}  <- kept")
+        for other in group["drop"]:
+            print(f"   {other}  identical bytes, {group['bytes'] / 1e6:.1f} MB")
+
+    total = result["bytes_freed"] / 1e6
+    if not result["applied"]:
+        print(f"\nDry run. {len(result['removed'])} snapshot(s), {total:.1f} MB "
+              f"would be deleted. Re-run with --apply.")
+        print("Manifests are never touched — provenance, config, metrics and any "
+              "justification stay in the registry, and in git.")
+        return 0
+
+    print(f"\nDeleted {len(result['removed'])} snapshot(s), freeing {total:.1f} MB.")
+    print("Their manifests remain. Promoting one now points at the version "
+          "holding the identical weights, and says so.")
+    return 0
+
+
 def cmd_verify(a) -> int:
     problems = verify_current()
     current = json.loads(current_path().read_text()) if current_path().exists() else {}
@@ -251,6 +278,12 @@ def main() -> int:
     p.add_argument("a")
     p.add_argument("b")
     p.set_defaults(fn=cmd_diff)
+
+    p = sub.add_parser(
+        "prune", help="delete duplicate weight snapshots, keeping manifests")
+    p.add_argument("--apply", action="store_true",
+                   help="actually delete; omit for a dry run")
+    p.set_defaults(fn=cmd_prune)
 
     p = sub.add_parser("verify", help="does models/ match what CURRENT.json claims")
     p.set_defaults(fn=cmd_verify)

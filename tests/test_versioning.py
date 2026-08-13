@@ -267,3 +267,69 @@ def test_versions_with_identical_weights_are_offered_once(sandbox):
     V.lock("2026.01.03-retrained", "actually different")
     offered = V.available_versions("anytime_td", distinct_weights=True)
     assert {v["id"] for v in offered} == {"2026.01.01-one", "2026.01.03-retrained"}
+
+
+def test_pruning_deletes_only_duplicated_weights(sandbox):
+    """Retire the redundant copy, never the only one.
+
+    Four versions locked in one evening produced two distinct sets of weights:
+    two of them changed config or re-recorded metrics without retraining. The
+    duplicate snapshots are 2.2 MB each of bytes that already exist elsewhere.
+    """
+    V.lock("2026.01.01-one", "first")
+    V.promote("2026.01.01-one")
+    V.lock("2026.01.02-config-only", "same weights, different config")
+    _write(sandbox, b"genuinely retrained")
+    V.lock("2026.01.03-retrained", "different weights")
+
+    dry = V.prune_duplicates(apply=False)
+    assert [r["id"] for r in dry["removed"]] == ["2026.01.02-config-only"]
+    assert V.version_dir("2026.01.02-config-only").exists(), "dry run must not delete"
+
+    done = V.prune_duplicates(apply=True)
+    assert done["bytes_freed"] > 0
+    assert not V.version_dir("2026.01.02-config-only").exists()
+    assert V.version_dir("2026.01.01-one").exists(), "the served copy survives"
+    assert V.version_dir("2026.01.03-retrained").exists(), "unique weights survive"
+
+
+def test_pruning_never_touches_a_manifest(sandbox):
+    """The manifest is the committed record and the reason the version exists.
+
+    Weights are regenerable in principle and duplicated in fact; the
+    justification for a tripped guard is neither.
+    """
+    V.lock("2026.01.01-one", "first")
+    V.promote("2026.01.01-one")
+    V.lock("2026.01.02-config-only", "note that must survive",
+           verdict="KEPT_WITH_JUSTIFICATION", justification="the reason")
+
+    V.prune_duplicates(apply=True)
+    manifest = V.load_manifest("2026.01.02-config-only")
+    assert manifest["justification"] == "the reason"
+    assert manifest["note"] == "note that must survive"
+    assert [v["id"] for v in V.list_versions()] == [
+        "2026.01.02-config-only", "2026.01.01-one"], "both still listed"
+
+
+def test_a_pruned_version_says_where_its_bytes_went(sandbox):
+    """Promoting one must not read as "your version is gone"."""
+    V.lock("2026.01.01-one", "first")
+    V.promote("2026.01.01-one")
+    V.lock("2026.01.02-config-only", "same weights")
+    V.prune_duplicates(apply=True)
+
+    assert V.identical_snapshot("2026.01.02-config-only") == "2026.01.01-one"
+    with pytest.raises(V.VersionError, match="byte-identical"):
+        V.promote("2026.01.02-config-only")
+
+
+def test_the_served_version_wins_its_group(sandbox):
+    """Never prune what is running, whatever the ids sort like."""
+    V.lock("2026.01.01-one", "first")
+    V.promote("2026.01.01-one")
+    V.lock("2026.01.09-later-duplicate", "same weights, newer id")
+
+    dry = V.prune_duplicates(apply=False)
+    assert dry["groups"][0]["keep"] == "2026.01.01-one"
+    assert dry["groups"][0]["drop"] == ["2026.01.09-later-duplicate"]

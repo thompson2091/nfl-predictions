@@ -5,7 +5,7 @@
 	odds-open odds-close odds-schedule-on odds-schedule-off odds-schedule-status \
 	decay shop site \
 	lock versions version-show promote rollback version-diff version-verify \
-	champion screen gate noise-floor experiments diagnose
+	champion screen gate noise-floor experiments diagnose version-prune
 
 # Defaults so the evaluation targets run without arguments. Override per call:
 #   make backtest SEASON=2024 TARGET=first_td
@@ -166,6 +166,15 @@ rollback:
 
 version-diff:
 	python scripts/22_version.py diff $(A) $(B)
+
+# Retire duplicate weight snapshots. Two versions can differ in every way that
+# matters to the record — config, metrics, why they exist — and still carry
+# byte-identical weights; a config-only change does exactly that. Manifests are
+# never touched, so provenance and metrics survive in git. Dry run by default:
+#   make version-prune          # show what would go
+#   make version-prune APPLY=1  # delete it
+version-prune:
+	python scripts/22_version.py prune $(if $(APPLY),--apply)
 
 # Does models/ actually hold what CURRENT.json claims? Run after any retrain.
 version-verify:
