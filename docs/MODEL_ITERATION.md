@@ -410,6 +410,8 @@ Re-ordered by measured effect rather than by expected effect:
 | Conditional logit — train the objective we score (3a) | REJECTED | first TD −0.09pp (p=1.000); anytime −2.74pp (p=0.016) |
 | Ensemble including condlogit, vs served xgb | REJECTED | anytime −0.62pp (p=0.435); first TD −0.53pp (p=0.497) |
 | `{xgb, condlogit}` ensemble vs xgb, seed-averaged | REVERTED after promotion | seed-averaged +0.32pp, but the served seed is −0.18pp |
+| Feature-family ablation, 33 families (3e) | REJECTED | nothing prunable; Top-3 worse in 33/33 |
+| Candidate pool and filter thresholds (3f) | REJECTED | best +0.18pp (0.21 se, p=0.915) |
 
 The pattern is worth naming. Both rejected experiments were *theoretically*
 motivated — sound arguments about likelihoods and generative structure — and
@@ -835,7 +837,46 @@ their keep — fewer features is variance reduction even at equal Top-1. This is
 also the standing answer to "does this new feature actually enhance the model":
 a new family enters via the same ablation harness that judges the existing ones.
 
-### 3f. Candidate pool and filter thresholds
+### 3f. Candidate pool and filter thresholds — **RUN 2026-08-13, REJECTED**
+
+**The premise in the original plan was wrong, and the cheap screen caught it
+before any training ran.** It recorded the filter as costing 2.1% of first-TD
+games and 0.8% of anytime games — a ceiling worth trading against. Separating
+the filter's cost from the data's own coverage:
+
+| | anytime_td | first_td |
+| --- | --- | --- |
+| games with a scorer at all, 2022-25 | 80.16% | 80.16% |
+| still have one after the filter | 80.09% | 79.02% |
+| **cost attributable to the filter** | **0.07%** | **1.13%** |
+
+The missing ~20% is not the filter; it is games whose scorer has no candidate
+row at all, which is exactly the gap between 1,411 labelled games and the 1,131
+the walk-forward scores. There is almost no ceiling to buy back by loosening,
+and tightening buys a pool only 12% smaller at the most aggressive setting
+(29.2 candidates per game down to 25.8).
+
+Gated on anytime TD, paired per game against the same baseline the ablation
+used:
+
+| setting | Top-1 | Top-3 |
+| --- | --- | --- |
+| DEF/ST removed from the pool | +0.18pp (0.21 se, p=0.915) | **−1.77pp** |
+| usage > 1.0 | +0.18pp (0.20 se, p=0.920) | −0.27pp |
+| usage > 0.5 | −0.80pp | −0.80pp |
+| snap > 10% | −0.88pp | −0.97pp |
+
+**The DEF/ST result is the one worth keeping, and it refutes a prediction I
+made.** Defences rank at chance — AUC 0.5045, measured in Phase 2 — so removing
+two unrankable candidates from every game's ranking looked like free Top-1. It
+is worth +0.18pp, which is a fifth of a standard error and p=0.915, while
+costing 1.77pp of Top-3, well outside the 0.63pp seed band. Being unrankable is
+not the same as being worthless: defences do score, and a game where one scores
+is a guaranteed miss once they are out of the pool. They earn their place by
+being *present*, not by being ranked well.
+
+Nothing here clears the promotion rule. The filter is already at a sensible
+operating point, and the config knobs stay at their served defaults.
 
 Only testable now that the denominator is fixed (1a). Trades pool ceiling
 against pool noise: 33 candidates per game survive the filter, from 51.8.

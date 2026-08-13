@@ -2574,3 +2574,49 @@ def test_first_td_never_reaches_the_rank_correction(tmp_path):
     # anytime with no team rate is the legacy fallback the guard was written
     # for, and there the correction IS reachable.
     assert would_be_applied("anytime_td", tmp_path)
+
+
+def test_candidate_filter_defaults_reproduce_the_hardcoded_rule():
+    """Phase 3f made the thresholds configurable; the defaults must change nothing.
+
+    The filter decides which players can be ranked at all, so a default that
+    quietly shifted would move every number in the project at once and look
+    like a modelling result. It is the same class of change as the denominator
+    fix, and that one moved Top-1 by 0.2pp while being invisible in the code.
+    """
+    import polars as pl
+    from src.evaluation.harness import _features
+    from src.models.trainer import _filter_low_activity
+
+    df = _features("anytime_td").filter(pl.col("target").is_not_null())
+
+    is_defst = df.select(pl.col("position_DEFST").fill_null(0) == 1).to_series()
+    has_usage = df.select(
+        (pl.col("player_carries_avg_5g").fill_null(0) > 0)
+        | (pl.col("player_targets_avg_5g").fill_null(0) > 0)
+        | (pl.col("player_receptions_avg_5g").fill_null(0) > 0)).to_series()
+    is_starter = df.select(pl.col("is_starter").fill_null(0) == 1).to_series()
+    has_snaps = df.select(pl.col("snap_pct").fill_null(0) > 0).to_series()
+    on_dc = df.select(pl.col("depth_chart_rank").fill_null(99) <= 2).to_series()
+    legacy = df.filter(is_defst | has_usage | is_starter | has_snaps | on_dc)
+
+    assert _filter_low_activity(df).height == legacy.height, (
+        "the configurable filter's defaults do not reproduce the rule they "
+        "replaced — every downstream number just moved")
+
+
+def test_candidate_filter_thresholds_actually_bite():
+    """A knob that does nothing is worse than no knob: a sweep would report
+    'this threshold does not matter' for a setting that was never applied."""
+    import polars as pl
+    from src.evaluation.harness import _features
+    from src.models.trainer import _filter_low_activity
+    from src.utils.config import config_overlay
+
+    df = _features("anytime_td").filter(pl.col("target").is_not_null())
+    base = _filter_low_activity(df).height
+    for cfg in ({"min_usage": 1.0}, {"min_snap_pct": 0.10},
+                {"keep_defst": False}, {"max_depth_chart_rank": 0}):
+        with config_overlay({"candidate_filter": cfg}):
+            assert _filter_low_activity(df).height < base, (
+                f"candidate_filter {cfg} changed nothing")

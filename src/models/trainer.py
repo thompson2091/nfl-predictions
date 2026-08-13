@@ -112,18 +112,31 @@ def _filter_low_activity(df: pl.DataFrame) -> pl.DataFrame:
     2%. It also silently skewed train against serve: a future week has no
     `target` column, so the clause could only ever fire in training and
     backtests, never in production.
+
+    The thresholds come from `candidate_filter` in config so Phase 3f can sweep
+    them. The defaults reproduce the hardcoded behaviour exactly — a strictly
+    positive usage/snap threshold and depth-chart rank 1-2 — because the trade
+    this filter makes is not obviously tuned: every candidate removed is one
+    fewer distractor above the true scorer, and every *scorer* removed is a
+    guaranteed miss under the fixed denominator. Both directions have a cost and
+    neither has been measured.
     """
+    cfg = get_config().get("candidate_filter") or {}
+    min_usage = float(cfg.get("min_usage", 0.0))
+    min_snap_pct = float(cfg.get("min_snap_pct", 0.0))
+    max_depth_rank = int(cfg.get("max_depth_chart_rank", 2))
+
     is_defst = df.select(
         pl.col("position_DEFST").fill_null(0) == 1
-        if "position_DEFST" in df.columns
+        if "position_DEFST" in df.columns and cfg.get("keep_defst", True)
         else pl.lit(False)
     ).to_series()
 
     has_usage = (
         df.select(
-            (pl.col("player_carries_avg_5g").fill_null(0) > 0)
-            | (pl.col("player_targets_avg_5g").fill_null(0) > 0)
-            | (pl.col("player_receptions_avg_5g").fill_null(0) > 0)
+            (pl.col("player_carries_avg_5g").fill_null(0) > min_usage)
+            | (pl.col("player_targets_avg_5g").fill_null(0) > min_usage)
+            | (pl.col("player_receptions_avg_5g").fill_null(0) > min_usage)
         ).to_series()
         if "player_carries_avg_5g" in df.columns
         else pl.Series([True] * df.shape[0])
@@ -131,19 +144,19 @@ def _filter_low_activity(df: pl.DataFrame) -> pl.DataFrame:
 
     is_starter = (
         df.select(pl.col("is_starter").fill_null(0) == 1).to_series()
-        if "is_starter" in df.columns
+        if "is_starter" in df.columns and cfg.get("keep_starters", True)
         else pl.Series([False] * df.shape[0])
     )
 
     has_snaps = (
-        df.select(pl.col("snap_pct").fill_null(0) > 0).to_series()
+        df.select(pl.col("snap_pct").fill_null(0) > min_snap_pct).to_series()
         if "snap_pct" in df.columns
         else pl.Series([False] * df.shape[0])
     )
 
     on_depth_chart = (
-        df.select(pl.col("depth_chart_rank").fill_null(99) <= 2).to_series()
-        if "depth_chart_rank" in df.columns
+        df.select(pl.col("depth_chart_rank").fill_null(99) <= max_depth_rank).to_series()
+        if "depth_chart_rank" in df.columns and max_depth_rank > 0
         else pl.Series([False] * df.shape[0])
     )
 
