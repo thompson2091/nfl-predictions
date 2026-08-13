@@ -63,6 +63,34 @@ if [ -z "${WEEK:-}" ]; then
     exit 1
 fi
 
+# Is a kickoff near enough that this snapshot is worth an API credit?
+#
+# The close slots are generated from the season's kickoff waves and are
+# deliberately generous — the league flexes games between windows all season, so
+# a slot that is right in September can be empty in December. Rather than
+# regenerate the schedule every week, every slot fires and this guard decides.
+# Without it, 15 weekly firings would each spend credits to learn there was
+# nothing to fetch. Set FORCE_CAPTURE=1 to override, for a manual catch-up.
+if [ -z "${FORCE_CAPTURE:-}" ]; then
+    "$PY" - "$SNAPSHOT" <<'PYEOF' >>"$LOG" 2>&1
+import sys
+from src.ingest.capture_window import should_capture
+
+capture, why = should_capture(sys.argv[1])
+print(f"  {why}")
+sys.exit(0 if capture else 3)
+PYEOF
+    GUARD=$?
+    if [ "$GUARD" -eq 3 ]; then
+        tail -1 "$LOG"
+        exit 0
+    fi
+    if [ "$GUARD" -ne 0 ]; then
+        echo "  kickoff guard failed (exit $GUARD) — capturing anyway rather " \
+             "than risk skipping a week" | tee -a "$LOG"
+    fi
+fi
+
 {
     echo "=== $(date -u +%FT%TZ)  week=$WEEK  snapshot=$SNAPSHOT ==="
     if [ -z "${ODDS_API_KEY:-}" ]; then

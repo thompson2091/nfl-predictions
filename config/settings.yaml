@@ -290,6 +290,41 @@ app:
   # describe. Turn this off if you would rather the control not exist.
   version_selector: true
 
+# ── Weekly odds capture ────────────────────────────────────────────────────
+# The Odds API serves markets only for games that have not kicked off, and every
+# request spends credits. Both facts make the capture times a scheduling
+# problem rather than a constant, so `scripts/25_odds_schedule.py` derives them
+# from the season's real kickoffs.
+#
+# The schedule this replaced fired `close` once, Sunday 12:15. In 2026 that is
+# 33 of 272 games — every Thursday, Friday, Saturday and Wednesday game, plus
+# the 09:30 London kickoffs — with no closing line obtainable at any price,
+# because by Sunday noon the API has already stopped serving them. Closing-line
+# value is the only evidence of edge that does not depend on who scored, so a
+# game with no closing price is a game that cannot testify.
+odds_capture:
+  # How long before kickoff to take the closing snapshot. Long enough that a
+  # slow fetch still lands before the game starts, short enough to be a
+  # closing price rather than a morning price.
+  lead_minutes: 30
+  # Kickoffs closer together than this share one capture, taken before the
+  # earliest of them. Sunday's 16:05 and 16:25 waves do not need separate
+  # requests; without merging, each distinct kickoff time would cost its own.
+  merge_minutes: 45
+  # The opening snapshot: one fixed weekly slot, early enough to precede every
+  # kickoff in the season and late enough that books have posted player props.
+  open_weekday: Wednesday
+  open_time: "12:00"
+  # A firing that finds no kickoff inside its window exits before calling the
+  # API. Flex scheduling moves games between windows all season, so the
+  # generated slots are deliberately generous and this guard — not the plist —
+  # is what keeps the generosity from costing credits.
+  close_window_hours: 4
+  # The same guard for the opening snapshot, in days. Stops the weekly job
+  # spending credits on props that no book has posted yet through an entire
+  # off-season.
+  open_window_days: 7
+
 paths:
   raw: data/raw
   processed: data/processed

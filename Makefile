@@ -2,7 +2,8 @@
 	docker-build docker-up docker-down docker-logs docker-shell \
 	docker-pipeline docker-prod docker-build-amd64 \
 	backtest walkforward longshot economics clusters evaluate wager wager-report \
-	odds-open odds-close odds-schedule-on odds-schedule-off odds-schedule-status \
+	odds-open odds-close odds-schedule odds-schedule-on odds-schedule-off \
+	odds-schedule-status \
 	decay shop site \
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate noise-floor experiments diagnose version-prune
@@ -222,14 +223,17 @@ odds-close:
 
 # Scheduling is via launchd, not cron: macOS blocks `crontab` behind Full Disk
 # Access and it hangs rather than failing, and launchd runs a missed job on wake
-# where cron would skip it. Currently DISABLED — run manually until the weekly
-# job has been watched through a live week.
+# where cron would skip it.
+#
+# The capture times are DERIVED from the season's kickoffs, not written down —
+# a single Sunday-noon close cannot reach the 33 of 272 games that kick off
+# earlier, and those prices are unbuyable afterwards. Re-run `odds-schedule` any
+# time `make ingest` refreshes the schedule.
+odds-schedule:
+	python scripts/25_odds_schedule.py
+
 odds-schedule-on:
-	@for l in com.mthompson.nfl-odds-open com.mthompson.nfl-odds-close; do \
-		launchctl enable "gui/$$UID/$$l"; \
-		launchctl bootstrap "gui/$$UID" $$HOME/Library/LaunchAgents/$$l.plist 2>/dev/null; \
-		echo "enabled $$l"; \
-	done
+	python scripts/25_odds_schedule.py --write --load
 
 odds-schedule-off:
 	@for l in com.mthompson.nfl-odds-open com.mthompson.nfl-odds-close; do \
