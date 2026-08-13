@@ -544,6 +544,43 @@ def historical_accuracy(tt: str, model: str) -> dict | None:
 
 
 @st.cache_data(show_spinner=False)
+def version_accuracy(tt: str, model: str, version: str | None) -> dict | None:
+    """A previewed version's own recorded accuracy, from its manifest.
+
+    `output/<market>/walkforward.json` is one global artifact describing
+    whatever was last evaluated, which is the served model. Reading it while
+    previewing an older version showed that version's board beside the current
+    model's accuracy — two different models on one screen, with nothing saying
+    so.
+
+    Every manifest records per-market, per-model walk-forward metrics as
+    measured when the version was locked, so the honest number is already
+    stored and needs no recomputation.
+    """
+    if not version:
+        return None
+    from src.models.versioning import load_manifest, VersionError
+    try:
+        manifest = load_manifest(version)
+    except VersionError:
+        return None
+    stats = ((manifest.get("metrics") or {}).get(tt) or {}).get(model)
+    if not stats:
+        return None
+    folds = stats.get("folds") or []
+    return {
+        "games": stats["games"], "pooled": True, "model": model,
+        "span": f"{min(folds)}-{max(folds)}" if folds else "",
+        "seasons": len(folds),
+        "top1": stats["top1"], "top3": stats["top3"], "top5": stats["top5"],
+        "top1_se": stats.get("top1_se"),
+        "top3_se": stats.get("top3_se"), "top5_se": stats.get("top5_se"),
+        "median_rank": None,
+        "from_version": version,
+    }
+
+
+@st.cache_data(show_spinner=False)
 def walkforward_accuracy(tt: str, model: str) -> dict | None:
     """Pooled out-of-sample accuracy from scripts/11_walkforward.py.
 
@@ -584,7 +621,7 @@ def walkforward_accuracy(tt: str, model: str) -> dict | None:
     return out
 
 
-def render_accuracy_strip(tt: str, model: str):
+def render_accuracy_strip(tt: str, model: str, version: str | None = None):
     """Track record, shown on every page — a number you act on should carry its
     accuracy beside it, not a tab away."""
     # Prefer the pooled walk-forward figure over a single season. One season is
@@ -594,7 +631,9 @@ def render_accuracy_strip(tt: str, model: str):
     # walk-forward retrains once per season and never lets a fold see its own
     # test year, so pooling four of them is the same measurement over four
     # times the games.
-    wf = walkforward_accuracy(tt, model)
+    # A previewed version carries its own measured numbers; the global
+    # walk-forward artifact describes only what is served.
+    wf = version_accuracy(tt, model, version) or walkforward_accuracy(tt, model)
     acc = wf or historical_accuracy(tt, model)
     if acc is None:
         st.caption("Model performance unavailable — run the pipeline first.")
@@ -627,7 +666,16 @@ def render_accuracy_strip(tt: str, model: str):
                      help="In a typical game, the best-ranked player who actually "
                           "scored sat this high on our list. Lower is better.")
 
+    if acc.get("from_version"):
+        strip.caption(f"as measured for {acc['from_version']}")
+
     h2h = market_headtohead(tt, model)
+    if h2h and acc.get("from_version"):
+        # Backtest frames are regenerated for the served model only, so these
+        # tiles cannot describe a preview. Hiding them beats relabelling them:
+        # a bookmaker comparison for a different model is not a weaker claim,
+        # it is a claim about something else.
+        h2h = None
     if h2h:
         spans_zero = h2h["overall_lo"] <= 0 <= h2h["overall_hi"]
         strip.metric(
@@ -1393,7 +1441,8 @@ def week_board(season, week, tt: str, model: str,
 
 if tab_board.open:
     with tab_board:
-        render_accuracy_strip(target_type, selected_model)
+        render_accuracy_strip(target_type, selected_model,
+                              selected_version)
 
         # The strip above, and several panels below, are read from artifacts
         # rather than computed. Say when one of them predates the model it is
@@ -1784,7 +1833,8 @@ def _week_money(tt: str, season: int, week: int, model: str, tiers: dict | None)
 
 if tab_results.open:
     with tab_results:
-        render_accuracy_strip(target_type, selected_model)
+        render_accuracy_strip(target_type, selected_model,
+                              selected_version)
         weeks_done = _played(season, target_type) if season else []
 
         if not weeks_done:
@@ -2285,7 +2335,8 @@ _ROI_COLS = {
 
 if tab_bet.open:
     with tab_bet:
-        render_accuracy_strip(target_type, selected_model)
+        render_accuracy_strip(target_type, selected_model,
+                              selected_version)
         econ = rank_economics(target_type, selected_model)
 
         if econ is None:
@@ -2983,7 +3034,8 @@ def cluster_how_to_read(art: dict, rep: dict, lens: str) -> str:
 
 if tab_clusters.open:
     with tab_clusters:
-        render_accuracy_strip(target_type, selected_model)
+        render_accuracy_strip(target_type, selected_model,
+                              selected_version)
 
         _art, _art_err = cluster_model(target_type, "player")
         _rep, _rep_err = cluster_report(target_type, "player", selected_model)
