@@ -1,0 +1,71 @@
+# The suite only ever ran when someone remembered to run it.
+#
+# Today alone it caught a scoring path emitting probabilities above 1, two
+# version guards contradicting each other about the same files, and a config
+# default that silently changed which players are rankable. Each was found
+# because `make test` happened to be run at the right moment, which is not a
+# process.
+#
+# Deliberately narrow: the tests that need no data run everywhere, and the ones
+# that read `data/` or `models/` skip rather than fail, because those artifacts
+# are gitignored and cannot exist on a fresh checkout. A CI job that fails for
+# want of a parquet teaches people to ignore red, which is worse than no CI.
+name: tests
+
+on:
+  push:
+    branches: [main, app]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # Dependencies live in pyproject.toml, not a requirements.txt — the first
+      # version of this workflow installed from a file that does not exist and
+      # would have failed on its first run.
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run the suite
+        run: python -m pytest tests/ -q
+
+      # The registry is committed; the weights are not. So this checks the part
+      # that CAN be checked on a fresh clone — that every manifest is readable
+      # and internally consistent — and leaves the artifact hashes to
+      # `make version-verify`, which only means anything on a machine holding
+      # the weights.
+      - name: Version registry is readable
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          root = Path("models/registry")
+          manifests = [p for p in root.glob("*.json")
+                       if p.name not in {"CURRENT.json", "noise_floor.json",
+                                         "CHAMPION.json"}]
+          assert manifests, "no version manifests committed"
+          for p in manifests:
+              m = json.loads(p.read_text())
+              for key in ("id", "created", "verdict", "markets", "artifacts"):
+                  assert key in m, f"{p.name} has no {key!r}"
+              assert m["id"] == p.stem, f"{p.name} declares id {m['id']!r}"
+          current = json.loads((root / "CURRENT.json").read_text())
+          known = {p.stem for p in manifests}
+          for market, entry in current.items():
+              v = (entry or {}).get("version")
+              assert v in known, f"CURRENT names {v!r} for {market}, which has no manifest"
+          print(f"{len(manifests)} manifests, CURRENT resolves for "
+                f"{len(current)} markets")
+          PY

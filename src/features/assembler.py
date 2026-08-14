@@ -4,6 +4,7 @@ from src.utils.paths import get_path
 from src.features.player_features import build_player_rolling_features
 from src.features.spine import player_week_spine
 from src.features.team_features import build_team_features, build_opponent_features
+from src.features.defense_features import build_giveaway_features
 from src.features.game_features import build_game_features
 from src.features.context_features import build_snap_features, build_depth_chart_features
 from src.features.target_history_features import build_player_target_history, build_team_target_tendency
@@ -212,6 +213,11 @@ def assemble_features() -> pl.DataFrame:
     player_feats = build_player_rolling_features(weekly_stats, spine)
     team_feats = build_team_features(pbp)
     opp_feats = build_opponent_features(pbp)
+    # Giveaway half only. The full defence family (42 columns) cost 1.24pp of
+    # Top-3 while moving Top-1 by nothing, and dilution was not separated from
+    # misinformation. These four are the causally prior half: a defensive
+    # touchdown needs a turnover before it needs a defence.
+    giveaway_feats = build_giveaway_features(pbp)
 
     game_feats = build_game_features(schedules)
 
@@ -382,6 +388,8 @@ def assemble_features() -> pl.DataFrame:
         box_feats = _carry_forward_team(box_feats, predict_season, "opponent")
 
         team_feats = _carry_forward_team(team_feats, predict_season, "team")
+        giveaway_feats = _carry_forward_team(giveaway_feats, predict_season,
+                                             "opponent")
         opp_feats = _carry_forward_team(opp_feats, predict_season, "opponent")
         team_ftd_feats = _carry_forward_team(team_ftd_feats, predict_season, "team")
         team_rz_feats = _carry_forward_team(team_rz_feats, predict_season, "team")
@@ -447,6 +455,8 @@ def assemble_features() -> pl.DataFrame:
     od_player_feats = od_player_feats.unique(subset=["player_id", "season", "week"], keep="last")
     h1_feats = h1_feats.unique(subset=["player_id", "season", "week"], keep="last")
     team_feats = team_feats.unique(subset=["season", "week", "team"], keep="last")
+    giveaway_feats = giveaway_feats.unique(
+        subset=["season", "week", "opponent"], keep="last")
     team_ftd_feats = team_ftd_feats.unique(subset=["season", "week", "team"], keep="last")
     team_rz_feats = team_rz_feats.unique(subset=["season", "week", "team"], keep="last")
     od_team_feats = od_team_feats.unique(subset=["season", "week", "team"], keep="last")
@@ -603,6 +613,9 @@ def assemble_features() -> pl.DataFrame:
     )
     if "is_home_gf" in df.columns:
         df = df.drop("is_home").rename({"is_home_gf": "is_home"})
+
+    df = df.join(giveaway_feats.drop("game_id"),
+                 on=["season", "week", "opponent"], how="left")
 
     # Opponent defensive stats
     df = df.join(opp_feats, left_on=["season", "week", "opponent"],
