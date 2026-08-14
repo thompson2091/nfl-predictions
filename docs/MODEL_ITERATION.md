@@ -840,21 +840,31 @@ a new family enters via the same ablation harness that judges the existing ones.
 
 ### 3f. Candidate pool and filter thresholds — **RUN 2026-08-13, REJECTED**
 
-**The premise in the original plan was wrong, and the cheap screen caught it
-before any training ran.** It recorded the filter as costing 2.1% of first-TD
-games and 0.8% of anytime games — a ceiling worth trading against. Separating
-the filter's cost from the data's own coverage:
+**A correction to what I first wrote here.** I reported that the plan's ceiling
+figures were wrong — that the filter cost 0.07% of anytime games and 1.13% of
+first-TD games rather than the recorded 0.8% and 2.1%. That was my error, not
+the plan's, and the cause is worth more than the experiment.
+
+`target.is_not_null()` does **not** mean "this game was played". Unplayed 2026
+rows carry `target = 0`, not null, so filtering on nullity swept 272 fixtures of
+the upcoming season into the denominator as games in which nobody scored. That
+turned a real 99.3% scorer coverage into an apparent 80.2% and made the plan
+look wrong.
+
+Measured over played games only, 2022-25, the plan reproduces exactly:
 
 | | anytime_td | first_td |
 | --- | --- | --- |
-| games with a scorer at all, 2022-25 | 80.16% | 80.16% |
-| still have one after the filter | 80.09% | 79.02% |
-| **cost attributable to the filter** | **0.07%** | **1.13%** |
+| games | 1,139 | 1,139 |
+| have a scorer at all | 99.30% | 99.30% |
+| **retain one after the filter** | **99.21%** | **97.89%** |
+| cost attributable to the filter | 0.09% | 1.40% |
 
-The missing ~20% is not the filter; it is games whose scorer has no candidate
-row at all, which is exactly the gap between 1,411 labelled games and the 1,131
-the walk-forward scores. There is almost no ceiling to buy back by loosening,
-and tightening buys a pool only 12% smaller at the most aggressive setting
+The plan recorded 99.2% and 97.9%. Both are right to the decimal. The 8 games
+with no scorer at all are the remaining 0.7%.
+
+So there is little ceiling to buy back by loosening — which was the plan's point
+— and tightening buys a pool only 12% smaller at the most aggressive setting
 (29.2 candidates per game down to 25.8).
 
 Gated on anytime TD, paired per game against the same baseline the ablation

@@ -2620,3 +2620,41 @@ def test_candidate_filter_thresholds_actually_bite():
         with config_overlay({"candidate_filter": cfg}):
             assert _filter_low_activity(df).height < base, (
                 f"candidate_filter {cfg} changed nothing")
+
+
+def test_an_unplayed_game_is_not_a_game_where_nobody_scored():
+    """`target.is_not_null()` does not mean "this game was played".
+
+    Rows for the upcoming season carry `target = 0`, not null. Filtering on
+    nullity therefore counts every unplayed fixture as a game in which nobody
+    scored. That is how a real 99.3% scorer coverage read as 80.2% and made the
+    plan's ceiling figures look wrong when they were right to the decimal.
+
+    Nothing in the modelling path is affected — training and the walk-forward
+    select on `season`, not on target nullity — so this is a guard for the
+    analysis code that keeps being written against these frames, which is where
+    it actually bit.
+    """
+    import polars as pl
+    from src.evaluation.harness import _features
+    from src.utils.config import get_config
+
+    predict_season = get_config()["seasons"]["predict_season"]
+    df = _features("anytime_td")
+    upcoming = df.filter(pl.col("season") == predict_season)
+    if upcoming.height == 0:
+        pytest.skip(f"no {predict_season} candidate rows yet")
+
+    assert upcoming["target"].null_count() == 0, (
+        "if unplayed rows ever become null, delete this test and the workaround "
+        "it documents")
+    assert upcoming["target"].sum() == 0, (
+        "an unplayed season cannot contain a scorer")
+
+    # The correct test for "played" is the season, not the target.
+    played = df.filter(pl.col("season") < predict_season)
+    games = played["game_id"].n_unique()
+    scored = played.filter(pl.col("target") == 1)["game_id"].n_unique()
+    assert scored / games > 0.95, (
+        f"only {scored / games:.1%} of played games have a scorer; either "
+        "coverage has collapsed or unplayed rows are being counted again")
