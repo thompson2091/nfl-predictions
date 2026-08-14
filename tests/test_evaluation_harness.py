@@ -581,3 +581,31 @@ def test_the_one_standard_error_rule_is_the_square_root_of_the_net_wins(wins):
         assert t1["p_value"] == pytest.approx(1.0)
     else:
         assert t1["p_value"] < 0.15
+
+
+def test_noise_injection_is_off_by_default_and_deterministic():
+    """The control for Phase 3e's retraction; it must never fire in production.
+
+    Adding columns of pure noise reproduced the Top-3 signature that 3e read as
+    "every family carries information", which is what withdrew that claim. The
+    mechanism has to stay available and stay off, and it has to give training
+    and scoring identical values — noise that differed between them would
+    measure train/serve skew instead of what it is for.
+    """
+    import polars as pl
+
+    from src.models.trainer import inject_noise_features
+    from src.utils.config import config_overlay, get_config
+
+    df = pl.DataFrame({"a": [1.0, 2.0, 3.0], "target": [0, 1, 0]})
+    assert not (get_config().get("models") or {}).get("inject_noise_features"), (
+        "noise injection is a control and must be off in the served config")
+    assert inject_noise_features(df).columns == df.columns, "off means untouched"
+
+    with config_overlay({"models": {"inject_noise_features": 4}}):
+        a = inject_noise_features(df)
+        b = inject_noise_features(df)
+    assert [c for c in a.columns if c.startswith("_noise_")] == [
+        f"_noise_{i}" for i in range(4)]
+    assert a["_noise_0"].to_list() == b["_noise_0"].to_list(), (
+        "two loads must agree, or training and scoring see different features")

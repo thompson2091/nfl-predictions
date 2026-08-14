@@ -83,7 +83,11 @@ def _features(target_type: str) -> pl.DataFrame:
         if not path.exists():
             raise FileNotFoundError(
                 f"No features.parquet for {target_type} — run `make features`.")
-        _FEATURE_CACHE[target_type] = pl.read_parquet(path)
+        from src.models.trainer import inject_noise_features
+        # Same injection as training, so the control does not accidentally
+        # measure train/serve skew instead of what it is for.
+        _FEATURE_CACHE[target_type] = inject_noise_features(
+            pl.read_parquet(path))
     return _FEATURE_CACHE[target_type]
 
 

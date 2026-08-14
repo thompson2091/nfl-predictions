@@ -410,9 +410,10 @@ Re-ordered by measured effect rather than by expected effect:
 | Conditional logit — train the objective we score (3a) | REJECTED | first TD −0.09pp (p=1.000); anytime −2.74pp (p=0.016) |
 | Ensemble including condlogit, vs served xgb | REJECTED | anytime −0.62pp (p=0.435); first TD −0.53pp (p=0.497) |
 | `{xgb, condlogit}` ensemble vs xgb, seed-averaged | REVERTED after promotion | seed-averaged +0.32pp, but the served seed is −0.18pp |
-| Feature-family ablation, 33 families (3e) | REJECTED | nothing prunable; Top-3 worse in 33/33 |
+| Feature-family ablation, 33 families (3e) | REJECTED | no prunable family found; the Top-3 signature turned out to be an artifact — see retraction |
 | Candidate pool and filter thresholds (3f) | REJECTED | best +0.18pp (0.21 se, p=0.915) |
-| Defensive takeaway/pressure/return + giveaway features (3h) | REJECTED | Top-1 +0.00pp; Top-3 −1.24pp; DEF/ST AUC still chance |
+| Defensive takeaway/pressure/return features (3h) | REJECTED | Top-1 +0.00pp; DEF/ST AUC still chance |
+| Giveaway features alone, 12 columns (3h retry) | REJECTED | Top-1 +0.27pp (0.36 se, p=0.813) |
 
 The pattern is worth naming. Both rejected experiments were *theoretically*
 motivated — sound arguments about likelihoods and generative structure — and
@@ -825,10 +826,43 @@ expected. Their ranking is a hint for where to look, not a finding. The Top-1
 and Top-3 orderings correlate at rho=+0.52, so there *is* per-family signal; it
 is just not resolved at one seed each.
 
-This closes 3e as a pruning exercise and reinforces the Phase 2 conclusion from
-a new direction: the feature set is not carrying dead weight that could be
-traded for variance. It is a set of small, largely non-redundant contributions,
-which is exactly the shape that resists both pruning and improvement.
+**RETRACTION, same day.** The sentence this section originally ended with —
+"every family carries something, and roughly the same something whether it is
+one column or forty-two" — is not supported by the evidence above, and the
+control that shows why was run only after two *additions* produced the same
+signature as the removals.
+
+    remove any of 33 families        Top-3  ~ -1.30pp
+    add 42 real defensive columns    Top-3    -1.24pp
+    add 12 real giveaway columns     Top-3    -1.50pp
+    ADD 12 PURE-NOISE COLUMNS        Top-3    -0.71pp
+    ADD 42 PURE-NOISE COLUMNS        Top-3    -1.50pp
+
+The noise columns are deterministic Gaussians independent of the target,
+injected identically at training and scoring. They carry nothing, and they
+reproduce the effect. So the 33/33 sign pattern cannot distinguish "this family
+carries information" from "the feature set changed".
+
+Part of it is that every comparison ran against a single baseline run, and that
+run drew Top-3 0.56 seed-standard-deviations high — worth about -0.35pp of the
+gap before anything else. The rest, about a point, appears to be a real cost of
+perturbing the served configuration in *either* direction, most plausibly
+because `colsample_bytree` samples a different candidate pool at every split.
+
+**What survives.** The 33 measurements stand; only the inference drawn from
+their Top-3 column falls. No family's removal improved Top-1 beyond noise, so
+the practical conclusion — no prunable family was identified — is unchanged.
+What cannot be claimed is the stronger and more interesting version, that each
+family is contributing distinct information. That was read off a metric which
+moves the same way when nothing is added at all.
+
+**And a standing lesson for the gate.** A Top-3 guard trip on a single run that
+changes the feature set is close to uninformative: the artifact is about a point
+and the guard band is 0.63pp. Verdicts here should rest on the paired Top-1
+figure, which is what the promotion rule already says. Every verdict in this
+document does, so none of them move — but 3h and the giveaway retry were both
+written up citing their Top-3 cost as evidence against the features, and that
+part of the reasoning is withdrawn.
 
 ### 3e as originally planned *(kept for the reasoning)*
 

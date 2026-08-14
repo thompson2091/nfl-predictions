@@ -12,6 +12,43 @@ from src.models.registry import get_model, ensure_registered
 from src.models.calibration import IsotonicCalibrator
 
 
+
+def inject_noise_features(df: "pl.DataFrame") -> "pl.DataFrame":
+    """Add N columns of pure noise, if config asks for them. A CONTROL ONLY.
+
+    Phase 3e concluded "every family carries something" from the fact that
+    removing any one of 33 families made Top-3 worse, 33 times out of 33. The
+    control for that was seed-only reruns, which are symmetric in sign — so the
+    asymmetry looked like information loss.
+
+    Then adding families made Top-3 worse too: 42 defensive columns cost 1.24pp,
+    12 giveaway columns cost 1.50pp, against ~1.30pp for removing an arbitrary
+    family. Adding and removing cannot both destroy information. Something about
+    changing the feature set at all is worth roughly a point of Top-3, and 3e
+    cannot tell that apart from what it claimed to measure.
+
+    These columns are deterministic in the row index and independent of the
+    target, so they carry exactly nothing. If Top-3 falls by about the same
+    point when they are added, 3e's conclusion is an artifact of retraining
+    rather than a fact about the features.
+
+    Deterministic and applied wherever features are loaded, so training and
+    scoring see identical values — noise that differs between them would
+    measure train/serve skew instead.
+    """
+    import numpy as np
+    import polars as pl
+
+    n = int((get_config().get("models") or {}).get("inject_noise_features") or 0)
+    if n <= 0:
+        return df
+    rng = np.random.default_rng(20260813)
+    return df.with_columns([
+        pl.Series(f"_noise_{i}", rng.standard_normal(df.height))
+        for i in range(n)
+    ])
+
+
 def excluded_families(cfg: dict | None = None) -> set[str]:
     """Columns dropped because their builder family is switched off.
 
@@ -392,6 +429,7 @@ def train_all(target_type: str = None, splits: dict | None = None,
     active_models = cfg["models"]["active"]
 
     df = pl.read_parquet(get_path("processed", target_type) / "features.parquet")
+    df = inject_noise_features(df)
     df = df.filter(pl.col("target").is_not_null())
     feature_cols = get_feature_cols(df)
     print(f"Features: {len(feature_cols)} columns")
