@@ -2665,3 +2665,39 @@ def test_an_unplayed_game_is_not_a_game_where_nobody_scored():
     assert scored / games > 0.95, (
         f"only {scored / games:.1%} of played games have a scorer; either "
         "coverage has collapsed or unplayed rows are being counted again")
+
+
+def test_kickoff_time_is_eastern_and_converted_to_an_instant():
+    """The schedule's `gametime` is US Eastern for every game, including London.
+
+    Treating that number as the venue's local hour fetched the wrong hour's
+    weather for every non-Eastern stadium — one hour out in Chicago, three in
+    Seattle, five at Wembley, always earlier and therefore always colder. It did
+    not look like a bug on any single stadium; it showed up as validation error
+    growing monotonically with distance from Eastern (2.2F median for the 17
+    Eastern venues, 5.8F for the two London ones).
+
+    The same indexing would have gone into the feature builder, where hundreds
+    of Pacific and Mountain games would have carried weather from hours before
+    kickoff with nothing downstream to complain.
+    """
+    import importlib.util
+    from datetime import timezone
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "28_weather.py"
+    spec = importlib.util.spec_from_file_location("_weather_under_test", path)
+    w = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(w)
+
+    # A London kickoff listed as 09:30 ET is 13:30 UTC, which is 2:30pm local
+    # in BST — when those games actually start.
+    assert w.kickoff_utc("2024-10-20", "09:30").isoformat() == \
+        "2024-10-20T13:30:00+00:00"
+    # A 1pm Eastern kickoff in autumn is 17:00 UTC (EDT, UTC-4).
+    assert w.kickoff_utc("2024-10-20", "13:00").hour == 17
+    # ...and in December it is 18:00 UTC, because EST is UTC-5. A fixed offset
+    # would be wrong for a third of the season.
+    assert w.kickoff_utc("2024-12-15", "13:00").hour == 18
+    # ZoneInfo("UTC") rather than timezone.utc, so compare the offset.
+    assert w.kickoff_utc("2024-10-20", "13:00").utcoffset().total_seconds() == 0
