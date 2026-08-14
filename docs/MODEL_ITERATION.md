@@ -414,6 +414,8 @@ Re-ordered by measured effect rather than by expected effect:
 | Candidate pool and filter thresholds (3f) | REJECTED | best +0.18pp (0.21 se, p=0.915) |
 | Defensive takeaway/pressure/return features (3h) | REJECTED | Top-1 +0.00pp; DEF/ST AUC still chance |
 | Giveaway features alone, 12 columns (3h retry) | REJECTED | Top-1 +0.27pp (0.36 se, p=0.813) |
+| Pre-kickoff weather forecast, 6 columns (3g) | REJECTED | Top-1 +0.18pp (0.22 se, p=0.913) — every Top-K positive, none near a standard error |
+| **Three features constant at predict time, removed** | **FIXED** | `is_cold`, `is_windy`, `season_right` — Top-1 cost −0.09pp (p=1.000) |
 
 The pattern is worth naming. Both rejected experiments were *theoretically*
 motivated — sound arguments about likelihoods and generative structure — and
@@ -1034,6 +1036,36 @@ and it is still not obviously a Top-1 lever. It is the only remaining item that
 adds information rather than rearranging what is already there.
 
 ### 3g. Weather forecasts *(optional, has an external dependency)*
+
+**RUN 2026-08-14, REJECTED.** Gated against a baseline that already had the
+leaky flags removed, so the only difference is the forecast itself:
+
+    Top-1  53.4% -> 53.6%   +0.18pp (0.22 se, p=0.913)   43 won, 41 lost
+    Top-3  84.4% -> 85.1%   +0.71pp
+    Top-5  93.6% -> 93.7%   +0.09pp
+    Brier  better by 0.00012;  AUC worse by 0.00091 (band 0.00028)
+
+It is the only experiment in this phase where every Top-K moves positive *and*
+Brier improves. It is also a fifth of a standard error, and it would buy a
+standing weekly dependency on an external feed to serve. Not close enough to
+take that on.
+
+**What the build was worth anyway.** Chasing it found three features the model
+could only ever see one value of at predict time — `is_cold`, `is_windy` and
+`season_right` — and produced the guard that catches that shape in general. The
+weather code stays, unwired: `scripts/28_weather.py` fetches and validates,
+`src/features/weather_features.py` builds the family, and
+`src/features/stadium_coords.py` holds coordinates verified against recorded
+kickoff temperatures to a median bias of 0.9F.
+
+**What a second attempt would need.** 2026 weather cannot be fetched until games
+are inside the 15-day forecast horizon, so today every 2026 row takes the
+neutral fill and the family is constant exactly where it has to vary. Retrying
+this in season — with real forecasts on the board — is a different experiment
+from retrying it now, and the guard in `tests/test_leakage.py` will refuse the
+promotion until that is true.
+
+---
 
 **Approved 2026-08-13.** 3a–3f are exhausted and all rejected, so this and 3h
 are what remain.

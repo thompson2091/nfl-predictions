@@ -1,22 +1,24 @@
 {
   "first_td": {
-    "version": "2026.08.12-first-td-xgb",
-    "promoted_at": "2026-08-13T15:49:23+00:00",
+    "version": "2026.08.14-drop-predict-constant-features",
+    "promoted_at": "2026-08-14T21:51:08+00:00",
     "history": [
       "2026.08.12-baseline",
       "2026.08.12-baseline-remeasured",
       "2026.08.12-defst-share-fix",
-      "2026.08.12-first-td-xgb"
+      "2026.08.12-first-td-xgb",
+      "2026.08.14-drop-predict-constant-features"
     ]
   },
   "anytime_td": {
-    "version": "2026.08.12-first-td-xgb",
-    "promoted_at": "2026-08-13T15:49:23+00:00",
+    "version": "2026.08.14-drop-predict-constant-features",
+    "promoted_at": "2026-08-14T21:51:08+00:00",
     "history": [
       "2026.08.12-baseline",
       "2026.08.12-baseline-remeasured",
       "2026.08.12-defst-share-fix",
-      "2026.08.12-first-td-xgb"
+      "2026.08.12-first-td-xgb",
+      "2026.08.14-drop-predict-constant-features"
     ]
   }
 }

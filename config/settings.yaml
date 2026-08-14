@@ -31,16 +31,17 @@ models:
   # with a scorer in the pool, so a scorer the candidate filter removed counts
   # as a miss rather than vanishing from the count (src/evaluation/ranking.py) —
   # and again after holding DEF/ST out of the offensive share denominator
-  # (joint.exclude_defst_from_shares, below). Re-derived 2026-08-13 after the
-  # tie-break fix in src/models/scoring.py, which moved 3 of 1,131 games:
-  #   xgb   Top-1 53.5%  Top-3 85.9%  AUC 0.8314  Brier 0.09034   <- production
-  #   ens   Top-1 51.8%  Top-3 83.9%  AUC 0.8330  Brier 0.09149
-  #   lgbm  Top-1 51.1%  Top-3 84.3%  AUC 0.8295  Brier 0.09127   <- was production
-  #   lr    Top-1 48.4%  Top-3 82.5%  AUC 0.8233  Brier 0.09349
+  # (joint.exclude_defst_from_shares, below). Re-derived 2026-08-14 after
+  # removing is_cold, is_windy and season_right — three features that took a
+  # single value for every predict-season row (316 features, was 319):
+  #   xgb   Top-1 53.8%  Top-3 84.0%  AUC 0.8314  Brier 0.09047   <- production
+  #   ens   Top-1 51.6%  Top-3 83.6%  AUC 0.8330  Brier 0.09161
+  #   lgbm  Top-1 50.8%  Top-3 83.3%  AUC 0.8291  Brier 0.09153   <- was production
+  #   lr    Top-1 49.1%  Top-3 82.9%  AUC 0.8238  Brier 0.09357
   #
-  # xgb now leads on Top-1 by 1.7 points over the ensemble and 2.4 over lgbm,
-  # against a 1.5-point unpaired standard error, and leads on Top-3 and Brier
-  # too. It was previously kept on a tie, for the reason that the headline
+  # xgb leads Top-1 by 2.2 points over the ensemble and 3.0 over lgbm, against
+  # a 1.5-point unpaired standard error, and leads on Top-3 and Brier too.
+  # It was previously kept on a tie, for the reason that the headline
   # strategy backs the top three; the DEF/ST fix turned that tie into a lead,
   # because xgb was the model ranking defences highest and therefore had the
   # most to gain from no longer inflating them.
@@ -59,17 +60,23 @@ models:
   # Anytime TD do not want the same model — see production_model() in
   # src/utils/config.py for the walk-forward numbers behind each choice.
   #
-  # first_td, pooled over 1,131 games, same four folds, same 2026-08-12
-  # re-measurement over the corrected denominator (this market lost 16 games to
-  # the old one, the most of either), re-derived 2026-08-13 after the tie-break
-  # fix in src/models/scoring.py:
-  #   xgb   Top-1 16.8%  Top-3 37.1%  AUC 0.8215  Brier 0.02744   <- production
-  #   ens   Top-1 16.0%  Top-3 36.6%  AUC 0.8220  Brier 0.02741   <- was production
+  # first_td, pooled over 1,131 games, same four folds, re-derived 2026-08-14
+  # after the three predict-constant features were removed:
+  #   xgb   Top-1 16.5%  Top-3 37.5%  AUC 0.8207  Brier 0.02741   <- production
+  #   ens   Top-1 16.8%  Top-3 36.9%  AUC 0.8221  Brier 0.02736   <- was production
   #
-  # This used to read "ensemble Top-1 17.1% vs xgb's 17.0%, and it leads on AUC
-  # (0.8216 vs 0.8179)". The direction no longer holds: xgb leads Top-1 by 0.8
-  # points, leaving the ensemble ahead only on AUC by 0.0005 and Brier by
-  # 0.00003, both of which are inside the seed noise floor.
+  # READ THE NEXT PARAGRAPH BEFORE TRUSTING THAT TABLE. On this single-seed
+  # walk-forward the ensemble is now AHEAD of xgb on first-TD Top-1, 16.8%
+  # against 16.5% — the reverse of what the choice below assumes, and the
+  # reverse of what the same artifact said yesterday at 16.8% against 16.0%.
+  #
+  # It is not being acted on, for a reason this file has already learned once.
+  # A single seed cannot resolve 0.3 points: the measured seed-to-seed band on
+  # this market is about 0.5 points, and the whole reason `make settle` exists
+  # is that a walk-forward run is one draw. The seed-averaged test below scored
+  # both models at five seeds and put xgb ahead by 0.42pp. That test predates
+  # the feature removal, so it is stale in a different way — and re-running it
+  # is the only thing that would settle this properly.
   #
   # Settled 2026-08-12 by the strongest test available, and it changed the
   # answer. Both models were scored on identical folds at five seeds; each
