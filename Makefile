@@ -1,6 +1,6 @@
 .PHONY: all ingest targets candidates features train predict clean \
 	docker-build docker-up docker-down docker-logs docker-shell \
-	docker-pipeline docker-prod docker-build-amd64 \
+	docker-pipeline docker-prod docker-prod-down docker-build-amd64 \
 	backtest walkforward longshot economics clusters evaluate wager wager-report \
 	odds-open odds-close odds-schedule odds-schedule-on odds-schedule-off \
 	odds-schedule-status \
@@ -124,8 +124,6 @@ screen:
 gate:
 	python scripts/23_experiment.py gate $(EXP) $(if $(MARKET),--market $(MARKET))
 
-# What is the random seed alone worth? Every guard band in the gate is this
-# number. Without it, a 0.4-point difference has no scale to be read on.
 # Settle a close call the seed cannot be ruled out of: run the same overlay at
 # N seeds, average each game's outcome across them, then pair on the averages.
 # Both models come from the same run, so folds and features are identical on
@@ -136,6 +134,8 @@ settle:
 	python scripts/23_experiment.py settle $(EXP) --model $(MODEL) \
 		--against $(AGAINST) --seeds $(SEEDS) $(if $(MARKET),--market $(MARKET))
 
+# What is the random seed alone worth? Every guard band in the gate is this
+# number. Without it, a 0.4-point difference has no scale to be read on.
 noise-floor:
 	python scripts/23_experiment.py noise-floor --seeds $(SEEDS)
 
@@ -303,8 +303,22 @@ docker-pipeline:
 	docker compose --profile pipeline run --rm pipeline $(STAGE)
 
 # Serve the baked image with no bind mounts — what Fargate will actually run.
+#
+# A CHECK, NOT A SERVICE. Run it to verify a build before pushing to ECR, then
+# stop it. Because it has no mounts it serves whatever artifacts were baked in,
+# so it goes stale the moment you retrain or re-evaluate — and a second
+# dashboard on :8502 quietly disagreeing with the live one on :8501 is how you
+# read last month's accuracy and believe it is this month's. Left running, it
+# was 20+ hours behind and needed rebuilding twice in one day just to stop it
+# contradicting the dev app.
+#
+#   make docker-prod        # foreground; Ctrl-C when you have seen enough
+#   make docker-prod-down   # if you started it detached
 docker-prod:
 	docker compose --profile prod up --build prod
+
+docker-prod-down:
+	docker compose --profile prod down prod
 
 # Fargate runs linux/amd64 (unless the task is configured for ARM64).
 docker-build-amd64:
