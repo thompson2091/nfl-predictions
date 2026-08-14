@@ -333,17 +333,25 @@ def longshot_skill(tt: str) -> dict | None:
 
 
 @st.cache_data(show_spinner=False)
-def _conversion(tt: str):
+def _conversion(tt: str, model_dir=None):
     """Fitted count->probability conversion, or None on an older model dir."""
     from src.models.joint import load_conversion
-    return load_conversion(get_path("models", tt) / "td_conversion.json")
+    return load_conversion((model_dir or get_path("models", tt))
+                           / "td_conversion.json")
 
 
 @st.cache_data(show_spinner=False)
-def _team_rate_model(tt: str):
-    """The fitted team touchdown rate, or None on a model dir predating it."""
+def _team_rate_model(tt: str, model_dir=None):
+    """The fitted team touchdown rate, or None on a model dir predating it.
+
+    Takes the directory rather than reading production's, so a previewed
+    version's bookmaker comparison uses that version's team rate. Scoring one
+    version's weights through another's joint model is a third model neither
+    of them is.
+    """
     from src.models.joint import load_team_rate
-    return load_team_rate(get_path("models", tt) / "team_td_rate.json")
+    return load_team_rate((model_dir or get_path("models", tt))
+                          / "team_td_rate.json")
 
 
 @st.cache_data
@@ -740,22 +748,18 @@ def render_accuracy_strip(tt: str, model: str, version: str | None = None):
     if acc.get("from_version"):
         strip.caption(f"as measured for {acc['from_version']}")
 
-    # Backtest frames are regenerated for the served model only, so these three
-    # tiles always describe what is served — never the preview. They used to be
-    # hidden while previewing on the argument that a bookmaker comparison for a
-    # different model is a claim about something else. True, but hiding them
-    # answers it by removing the most informative numbers on the page, and a
-    # reader who switches version to compare boards loses the one figure that
-    # says whether any of this beats the book. They are shown and labelled
-    # instead, which makes the same point without taking anything away.
-    h2h = market_headtohead(tt, model)
-    previewing = bool(acc.get("from_version"))
-    served = (served_version(tt) or {}).get("id")
-    suffix = " (served)" if previewing else ""
+    # These follow the selected version, like the Top-K tiles above. They are
+    # not read from backtest frames — `market_headtohead` re-scores the graded
+    # odds archive through whichever model directory is selected — so there is
+    # no reason for them to sit still while everything beside them moves. They
+    # were hidden during a preview, then shown with a "(served)" label, and both
+    # were working around this function reading production's directory instead
+    # of the one on screen.
+    h2h = market_headtohead(tt, model, version)
     if h2h:
         spans_zero = h2h["overall_lo"] <= 0 <= h2h["overall_hi"]
         strip.metric(
-            f"vs bookmaker{suffix}", f"{h2h['overall_better_pct']:+.1f}%",
+            "vs bookmaker", f"{h2h['overall_better_pct']:+.1f}%",
             delta=f"{h2h['overall_lo']:+.1f} to {h2h['overall_hi']:+.1f}",
             delta_color="off",
             help=f"How much closer our estimates were to reality than the "
@@ -778,7 +782,7 @@ def render_accuracy_strip(tt: str, model: str, version: str | None = None):
         hi, lo = h2h.get("disagree_higher_pct"), h2h.get("disagree_lower_pct")
         if hi is not None:
             strip.metric(
-                f"Closer — backable{suffix}", f"{hi:+.0f}%",
+                "Closer — backable", f"{hi:+.0f}%",
                 delta=f"{h2h.get('disagree_higher_n', 0):,} players",
                 delta_color="off",
                 help=f"On the tenth of players we differ from the book on most, "
@@ -790,7 +794,7 @@ def render_accuracy_strip(tt: str, model: str, version: str | None = None):
                      f"baseline.")
         if lo is not None:
             strip.metric(
-                f"Closer — fade{suffix}", f"{lo:+.0f}%",
+                "Closer — fade", f"{lo:+.0f}%",
                 delta=f"{h2h.get('disagree_lower_n', 0):,} players",
                 delta_color="off",
                 help=f"The same comparison for players we rate **lower** than "
@@ -804,15 +808,7 @@ def render_accuracy_strip(tt: str, model: str, version: str | None = None):
                      f"half, which is why it reads higher than what you can "
                      f"actually act on.")
 
-    if h2h and previewing:
-        # A tooltip nobody opens is not a caveat. The Top-K tiles above moved
-        # with the selector and these three did not, so the difference has to be
-        # visible without hovering.
-        strip.caption(
-            f"The three market tiles describe **{served}**, the served version — "
-            f"not the preview. They are computed from backtest frames, which are "
-            f"regenerated for the served model only. The Top-K figures above do "
-            f"follow your selection.")
+
 
 
 @st.cache_data(show_spinner=False)
@@ -1091,7 +1087,8 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
 
 
 @st.cache_data(show_spinner=False)
-def market_headtohead(tt: str, model: str) -> dict | None:
+def market_headtohead(tt: str, model: str,
+                      version: str | None = None) -> dict | None:
     """Us vs the sportsbook on identical players, pooled over every priced season.
 
     The headline claim of the app, so it gets the same treatment as the
@@ -1113,14 +1110,18 @@ def market_headtohead(tt: str, model: str) -> dict | None:
 
     graded = load_graded_history(tt)
     df = load_features(tt)
-    model_dir = get_path("models", tt)
+    # Follow the selected version, exactly as the board does. Reading
+    # production's directory here is what made these tiles sit still while the
+    # Top-K figures beside them moved.
+    version_dir, _ = selected_model_dir(tt, version)
+    model_dir = version_dir or get_path("models", tt)
     fc_path = model_dir / "feature_cols.pkl"
     if graded is None or df is None or not fc_path.exists():
         return None
 
     seasons = sorted(graded["season"].unique().to_list())
     feature_cols = pickle.loads(fc_path.read_bytes())
-    team_model = _team_rate_model(tt)
+    team_model = _team_rate_model(tt, model_dir)
 
     parts = []
     for season in seasons:
@@ -1136,7 +1137,7 @@ def market_headtohead(tt: str, model: str) -> dict | None:
         if tt != "first_td" and team_model is not None:
             from src.models.joint import apply_joint
             d = apply_joint(d, d, team_model, score_col="mp", out_col="mp",
-                            conversion=_conversion(tt))
+                            conversion=_conversion(tt, model_dir))
 
         j = d.select(["game_id", "player_id", "mp", "target"]).join(
             graded.filter(pl.col("season") == season)

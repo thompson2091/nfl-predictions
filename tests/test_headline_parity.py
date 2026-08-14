@@ -131,15 +131,15 @@ def test_selecting_the_served_version_is_not_previewing(source):
         "and must fall through to the live walk-forward when they match")
 
 
-def test_the_betting_tiles_survive_a_preview_and_say_what_they_describe(source):
-    """They are shown while previewing, and labelled — not hidden.
+def test_the_market_tiles_follow_the_selected_version(source):
+    """They must move with the selector, like the Top-K tiles beside them.
 
-    They were hidden on the argument that a bookmaker comparison for a
-    different model is a claim about something else. That is true, and hiding
-    answers it by deleting the most informative numbers on the page: someone
-    switching version to compare boards lost the one figure saying whether any
-    of this beats the book. Labelling makes the same point without taking
-    anything away.
+    Two earlier attempts worked around the same root cause instead of fixing
+    it: the tiles were hidden during a preview, then shown with a "(served)"
+    label. Both existed because `market_headtohead` read production's model
+    directory rather than the one on screen. It re-scores the graded odds
+    archive through a model directory, so it can follow the selection — there
+    was never a reason for these three to sit still.
     """
     strip = source[source.index("def render_accuracy_strip("):]
     strip = strip[:strip.index("\n@st.cache_data")]
@@ -147,11 +147,15 @@ def test_the_betting_tiles_survive_a_preview_and_say_what_they_describe(source):
     for tile in ("vs bookmaker", "Closer — backable", "Closer — fade"):
         assert tile in strip, f"the {tile!r} tile is gone from the strip"
     assert "h2h = None" not in strip, (
-        "the market tiles are being suppressed again; label them instead")
-    # Each tile carries the served/preview marker...
-    assert strip.count("{suffix}") >= 3, (
-        "every market tile must say whether it describes the served version")
-    # ...and it is stated in prose too, because a tooltip nobody opens is not a
-    # caveat and the Top-K tiles beside them DO follow the selector.
-    assert "previewing" in strip and "strip.caption(" in strip
-    assert "served version" in strip
+        "the market tiles are being suppressed again; make them follow the "
+        "version instead")
+    assert "market_headtohead(tt, model, version)" in strip, (
+        "the market comparison must be passed the selected version")
+
+    fn = source[source.index("def market_headtohead("):]
+    fn = fn[:fn.index("\n@st.cache_data")] if "\n@st.cache_data" in fn else fn
+    assert "selected_model_dir(tt, version)" in fn, (
+        "market_headtohead must resolve the selected version's model directory")
+    assert "_team_rate_model(tt, model_dir)" in fn, (
+        "the joint model must come from the same directory as the weights; "
+        "mixing them is a third model neither version is")
