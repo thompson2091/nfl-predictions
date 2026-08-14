@@ -2701,3 +2701,60 @@ def test_kickoff_time_is_eastern_and_converted_to_an_instant():
     assert w.kickoff_utc("2024-12-15", "13:00").hour == 18
     # ZoneInfo("UTC") rather than timezone.utc, so compare the offset.
     assert w.kickoff_utc("2024-10-20", "13:00").utcoffset().total_seconds() == 0
+
+
+def test_no_feature_is_constant_in_the_predict_season_while_varying_in_training():
+    """A fill value at predict time is a skew that null-rate checks cannot see.
+
+    `is_cold` was `(temp < 40).fill_null(False)`. `temp` is measured at kickoff
+    and is 100% null for an unplayed season, so every 2026 row read "not cold"
+    while 11-15% of training rows were cold. The model learned a distinction it
+    would never once encounter on the board.
+
+    It hid because it looks healthy from every angle the pipeline checks: no
+    nulls, a plausible mean, a sensible name, and `check_feature_skew` compares
+    null RATES — and these columns are not null at predict time, they are zero.
+    The trainer's own comment recommended them as the safe alternative to
+    `temp`/`wind`, which is how an audit would have walked past it.
+
+    This catches the shape rather than the instance: anything the model can
+    learn from but will always see as one value when it matters.
+    """
+    import polars as pl
+
+    from src.models.trainer import get_feature_cols
+    from src.utils.config import get_config
+
+    df = _features()
+    predict_season = get_config()["seasons"]["predict_season"]
+    upcoming = df.filter(pl.col("season") == predict_season)
+    played = df.filter(pl.col("season") < predict_season)
+    if upcoming.height == 0:
+        pytest.skip(f"no {predict_season} rows yet")
+
+    # Features that are empty in an unplayed season only because the source
+    # data has not been published yet — injury reports and full position
+    # designations arrive with the season. They are listed rather than filtered
+    # by rule, so each is a decision someone made and can revisit.
+    PRESEASON_EMPTY = {"position_FB", "ix_teammate_out_x_snap"}
+
+    offenders = []
+    for col in get_feature_cols(df):
+        if col in PRESEASON_EMPTY:
+            continue
+        if col not in upcoming.columns:
+            continue
+        if upcoming[col].n_unique() > 1:
+            continue                      # varies when it matters; fine
+        if played[col].drop_nulls().n_unique() <= 1:
+            continue                      # constant everywhere; inert, not skewed
+        # Constant ahead, varying behind. Null everywhere ahead is a different
+        # thing — the model handles absence — so only a filled value counts.
+        if upcoming[col].null_count() == upcoming.height:
+            continue
+        offenders.append(col)
+
+    assert not offenders, (
+        f"these features take a single value in {predict_season} but vary in "
+        f"training, so the model learned a distinction it will never see on the "
+        f"board: {sorted(offenders)}")

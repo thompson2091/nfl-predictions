@@ -97,6 +97,14 @@ def get_feature_cols(df: pl.DataFrame) -> list[str]:
         "rest_advantage", "is_post_bye", "is_season_opener",
         # Exact duplicates of other features
         "week_right", "is_divisional_gf", "snap_pct_filled", "is_dome_right",
+        # `season_right` is a join artifact identical to `season` in 100% of
+        # rows, and `season` is excluded above precisely because the calendar
+        # year is not a predictor. Worse than a redundant column: every predict
+        # row carries a value no training row ever held (2026 against a 2025
+        # maximum), and a tree cannot extrapolate — it drops the whole season
+        # into whichever leaf the previous one occupied. `week_right` was
+        # caught; its sibling was not.
+        "season_right",
         "recent_td_rate", "implied_player_tds",
         "team_team_scored_first_flag_rate_5g",
         "team_team_scored_first_flag_rate_szn",
@@ -106,9 +114,20 @@ def get_feature_cols(df: pl.DataFrame) -> list[str]:
         "depth_chart_rank",
         # Measured at kickoff, so never known when we actually predict. They were
         # 34% null in training and 100% null at predict time — a guaranteed
-        # train/serve skew. The derived is_cold / is_windy / is_dome flags come
-        # from the schedule and ARE available ahead of time; use those instead.
+        # train/serve skew.
         "temp", "wind",
+        # And so are these two, which this comment used to recommend as the
+        # safe alternative. `is_cold` is `(temp < 40).fill_null(False)` and
+        # `is_windy` the same on `wind` — derived from the very columns above,
+        # with the nulls silently reading as "not cold". Measured: 11-15% of
+        # training rows are cold, and 0.0% of 2026 rows are, because every 2026
+        # temperature is null. Even in played seasons they are wrong for the
+        # 33-62% of games with no recorded temperature.
+        #
+        # `is_dome` is genuinely from the schedule's `roof` and stays.
+        # Pre-kickoff forecasts are the honest replacement — see
+        # scripts/28_weather.py and src/features/weather_features.py.
+        "is_cold", "is_windy",
     }
     return [c for c in df.columns
             if c not in exclude

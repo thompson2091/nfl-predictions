@@ -46,6 +46,13 @@ from src.features.stadium_coords import coordinates  # noqa: E402
 from src.utils.paths import get_path  # noqa: E402
 
 ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
+#: Forecasts as they were issued. `*_previous_day1` is the value this hour was
+#: forecast to have, from the model run 24 hours earlier — the lead time a board
+#: is actually priced at. Archived from roughly mid-2021; before that the field
+#: comes back null and the analysis is used instead. See `fetch` for why that is
+#: an acceptable substitution and what it costs.
+PREVIOUS_RUNS = "https://previous-runs-api.open-meteo.com/v1/forecast"
+WEATHER_PATH = Path(__file__).resolve().parents[1] / "data" / "processed" / "weather.parquet"
 OUT = Path(__file__).resolve().parents[1] / "diagnostics" / "weather_validation.json"
 
 #: Open-Meteo returns Celsius; nflverse records Fahrenheit.
@@ -104,6 +111,118 @@ def hourly_temps(lat: float, lon: float, start: str, end: str) -> dict | None:
         "timezone": "UTC",
         "wind_speed_unit": "mph",
     })
+
+
+def fetch(seasons: list[int] | None = None) -> "pl.DataFrame":
+    """One row per outdoor game: what was forecast at kickoff, 24 hours out.
+
+    **Forecast, not observation.** Training rows carry what was *forecast*
+    before the game. Using what actually happened would train the model against
+    a precision it never has when a board goes up. Measured over 34 games, a
+    24-hour forecast misses kickoff temperature by 2.2F on average against a
+    signal that varies by 17.6F, so the forecast carries essentially all of the
+    signal and none of the hindsight.
+
+    **The pre-2021 substitution.** Open-Meteo archives forecasts from around
+    mid-2021. Earlier games fall back to the analysis, and the row is marked
+    `wx_is_forecast = 0`. That is a real inconsistency and it is bounded: the
+    two differ by 2.2F, an eighth of the signal's standard deviation. The
+    alternative — nulling six of nine training seasons — would leave the 2022
+    and 2023 folds training on a feature that is absent from every row they see,
+    which measures nothing at all.
+
+    Note what this does NOT reintroduce. `temp` was excluded because it is 100%
+    null at predict time: nobody has recorded a kickoff temperature for a game
+    that has not kicked off. That is a total break, not a precision problem, and
+    a forecast fixes exactly it.
+
+    Requests are batched per stadium-season rather than per game — 37 sites over
+    a dozen seasons is a few hundred calls against a free service, where one
+    call per game would be several thousand.
+    """
+    sched = pl.read_parquet(get_path("raw") / "schedules.parquet")
+    games = sched.filter(
+        pl.col("roof").is_in(["outdoors", "open"])
+        & pl.col("gameday").is_not_null() & pl.col("gametime").is_not_null())
+    if seasons:
+        games = games.filter(pl.col("season").is_in(seasons))
+
+    rows = []
+    pairs = games.select(["stadium", "season"]).unique().sort(["season", "stadium"])
+    for i, pr in enumerate(pairs.iter_rows(named=True), 1):
+        coords = coordinates(pr["stadium"])
+        if coords is None:
+            continue
+        lat, lon = coords
+        sub = games.filter((pl.col("stadium") == pr["stadium"])
+                           & (pl.col("season") == pr["season"]))
+        days = sorted({str(d)[:10] for d in sub["gameday"]})
+        print(f"[{i}/{pairs.height}] {pr['stadium'][:34]:34s} {pr['season']} "
+              f"({len(days)} game days)")
+        # Two sources, because neither covers the whole span. The previous-runs
+        # archive holds forecasts-as-issued but only from 2016-01-01, and its
+        # analysis field is empty for the early years — the first version of this
+        # relied on that fallback and silently produced nothing before 2017. The
+        # reanalysis archive covers everything but holds no forecasts. So: ask
+        # both, prefer the forecast, fall back to the reanalysis.
+        forecast = _get(PREVIOUS_RUNS, {
+            "latitude": lat, "longitude": lon,
+            "start_date": min(days), "end_date": max(days),
+            "timezone": "UTC", "wind_speed_unit": "mph",
+            "hourly": ["temperature_2m_previous_day1",
+                       "wind_speed_10m_previous_day1",
+                       "precipitation_previous_day1"],
+        }) or {}
+        analysis = _get(ARCHIVE, {
+            "latitude": lat, "longitude": lon,
+            "start_date": min(days), "end_date": max(days),
+            "timezone": "UTC", "wind_speed_unit": "mph",
+            "hourly": ["temperature_2m", "wind_speed_10m", "precipitation"],
+        }) or {}
+        fh, ah = forecast.get("hourly"), analysis.get("hourly")
+        if not fh and not ah:
+            print("    no data from either source")
+            continue
+
+        fidx = {t: k for k, t in enumerate(fh["time"])} if fh else {}
+        aidx = {t: k for k, t in enumerate(ah["time"])} if ah else {}
+        for g in sub.iter_rows(named=True):
+            ko = kickoff_utc(str(g["gameday"])[:10], g["gametime"])
+            key = ko.strftime("%Y-%m-%dT%H:00")
+
+            def pick(fc: str, an: str):
+                """The 24h forecast if it was archived, else the reanalysis."""
+                k = fidx.get(key)
+                if k is not None and fh.get(fc) and fh[fc][k] is not None:
+                    return fh[fc][k], True
+                k = aidx.get(key)
+                if k is not None and ah.get(an) and ah[an][k] is not None:
+                    return ah[an][k], False
+                return None, False
+
+            t, is_fc = pick("temperature_2m_previous_day1", "temperature_2m")
+            wind, _ = pick("wind_speed_10m_previous_day1", "wind_speed_10m")
+            precip, _ = pick("precipitation_previous_day1", "precipitation")
+            if t is None:
+                continue
+            rows.append({
+                "game_id": g["game_id"], "season": g["season"],
+                "wx_temp_f": _c_to_f(t),
+                "wx_wind_mph": float(wind) if wind is not None else None,
+                "wx_precip_mm": float(precip) if precip is not None else None,
+                "wx_is_forecast": int(is_fc),
+            })
+        time.sleep(0.5)
+
+    out = pl.DataFrame(rows)
+    WEATHER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    out.write_parquet(WEATHER_PATH)
+    print(f"\n{out.height:,} games -> {WEATHER_PATH}")
+    if out.height:
+        fc = out["wx_is_forecast"].mean()
+        print(f"  {fc:.1%} from an archived 24h forecast, the rest analysis "
+              f"(pre-2021)")
+    return out
 
 
 def validate(limit: int | None = None) -> dict:
@@ -223,9 +342,14 @@ def report(payload: dict) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--validate", action="store_true")
+    ap.add_argument("--fetch", action="store_true",
+                    help="build data/processed/weather.parquet")
     ap.add_argument("--limit", type=int, default=None,
                     help="check only the N busiest stadiums")
     a = ap.parse_args()
+    if a.fetch:
+        fetch()
+        return 0
     if not a.validate:
         ap.print_help()
         return 0
