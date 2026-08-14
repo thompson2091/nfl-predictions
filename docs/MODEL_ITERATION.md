@@ -416,6 +416,7 @@ Re-ordered by measured effect rather than by expected effect:
 | Giveaway features alone, 12 columns (3h retry) | REJECTED | Top-1 +0.27pp (0.36 se, p=0.813) |
 | Pre-kickoff weather forecast, 6 columns (3g) | REJECTED | Top-1 +0.18pp (0.22 se, p=0.913) — every Top-K positive, none near a standard error |
 | **Three features constant at predict time, removed** | **FIXED** | `is_cold`, `is_windy`, `season_right` — Top-1 cost −0.09pp (p=1.000) |
+| First TD: ensemble vs xgb, re-settled on 316 features | REJECTED, xgb stands | −0.16pp (0.41 se, p=0.729); ensemble ahead in 2 of 5 seeds |
 
 The pattern is worth naming. Both rejected experiments were *theoretically*
 motivated — sound arguments about likelihoods and generative structure — and
@@ -857,6 +858,20 @@ the practical conclusion — no prunable family was identified — is unchanged.
 What cannot be claimed is the stronger and more interesting version, that each
 family is contributing distinct information. That was read off a metric which
 moves the same way when nothing is added at all.
+
+**The seed-average and the served seed disagree, and they have now done so
+twice out of twice — in opposite directions.**
+
+    {xgb, condlogit} on first TD   average said PROMOTE   seed 42 said no
+    ensemble vs xgb on first TD    average said no        seed 42 said SWITCH
+
+Both times the incumbent survived, and both times it would have been possible to
+justify the opposite by quoting whichever number was checked. That is the
+argument for reading both every time: whichever one is consulted alone will
+eventually be the wrong one. `make settle` prints the per-seed breakdown for
+this reason, and the second case is the cleaner illustration — the walk-forward
+artifact showed the ensemble ahead 16.8% to 16.5%, which was not an error but
+seed 42 reproduced exactly, while the five-seed average put xgb ahead.
 
 **And a standing lesson for the gate.** A Top-3 guard trip on a single run that
 changes the feature set is close to uninformative: the artifact is about a point

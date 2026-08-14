@@ -65,18 +65,26 @@ models:
   #   xgb   Top-1 16.5%  Top-3 37.5%  AUC 0.8207  Brier 0.02741   <- production
   #   ens   Top-1 16.8%  Top-3 36.9%  AUC 0.8221  Brier 0.02736   <- was production
   #
-  # READ THE NEXT PARAGRAPH BEFORE TRUSTING THAT TABLE. On this single-seed
-  # walk-forward the ensemble is now AHEAD of xgb on first-TD Top-1, 16.8%
-  # against 16.5% — the reverse of what the choice below assumes, and the
-  # reverse of what the same artifact said yesterday at 16.8% against 16.0%.
+  # That table shows the ensemble ahead of xgb, and xgb is still served. The
+  # reason is worth reading, because the table is not wrong — it is one draw.
   #
-  # It is not being acted on, for a reason this file has already learned once.
-  # A single seed cannot resolve 0.3 points: the measured seed-to-seed band on
-  # this market is about 0.5 points, and the whole reason `make settle` exists
-  # is that a walk-forward run is one draw. The seed-averaged test below scored
-  # both models at five seeds and put xgb ahead by 0.42pp. That test predates
-  # the feature removal, so it is stale in a different way — and re-running it
-  # is the only thing that would settle this properly.
+  # Re-settled 2026-08-14 on this 316-feature set, five seeds, each game's
+  # outcome averaged before pairing:
+  #
+  #   Top-1  xgb 16.59%  ->  ensemble 16.43%   -0.16pp (0.41 se), p=0.729
+  #   Top-3  37.58% -> 37.15%,  Top-5  53.37% -> 53.17%
+  #   ensemble ahead in 2 of 5 seeds; 133 games differ, 64 won and 69 lost
+  #
+  # So xgb wins on average and on both guards. The walk-forward table above
+  # disagrees because it runs at model.seed = 42 alone, and seed 42 is one of
+  # the two seeds favouring the ensemble — 16.80% against 16.53%, reproducing
+  # the table exactly.
+  #
+  # Note this is the MIRROR of the {xgb, condlogit} case below. There the
+  # average said promote and the served seed said no. Here the served seed says
+  # switch and the average says no. They have now disagreed twice out of twice,
+  # which is the argument for always reading both: whichever one is checked
+  # alone will eventually be the wrong one.
   #
   # Settled 2026-08-12 by the strongest test available, and it changed the
   # answer. Both models were scored on identical folds at five seeds; each

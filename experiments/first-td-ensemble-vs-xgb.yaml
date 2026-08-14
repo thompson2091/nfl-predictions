@@ -1,0 +1,23 @@
+# Does first TD still want xgb, now that three features have gone?
+#
+# No overlay — this changes nothing. It re-runs the same recipe at five seeds so
+# `settle` can pair the ensemble against xgb on averaged per-game outcomes. Both
+# models come from the same run at each seed, so folds and features are
+# identical on each side and the model is the only difference.
+#
+# Why it is being re-run. The choice of xgb for this market was settled on
+# 2026-08-12 by exactly this test, which put xgb ahead by 0.42pp over five
+# seeds. That was measured on 319 features. After removing is_cold, is_windy and
+# season_right the single-seed walk-forward reversed — the ensemble reads 16.8%
+# against xgb's 16.5% — which is not evidence at 0.3 points against a 0.5 point
+# seed band, but is enough to make the old answer stale rather than merely old.
+#
+#   make settle EXP=experiments/first-td-ensemble-vs-xgb.yaml \
+#       MODEL=ensemble AGAINST=xgb SEEDS=5 MARKET=first_td
+#
+# Read the per-seed lines, not just the mean. The {xgb, condlogit} ensemble
+# passed this test on the average and lost on seed 42 — the seed the pipeline
+# actually trains at — and was promoted and reverted the same day for it.
+id: 2026.08.14-first-td-ensemble-vs-xgb
+note: "Re-settle first TD's production model on the 316-feature set"
+overlay: {}
