@@ -3,6 +3,7 @@
 
     python scripts/20_export_html.py                 # -> site/index.html
     python scripts/20_export_html.py --open
+    python scripts/20_export_html.py --full           # keep the app's long form
 
 The app is the source of truth. This runs app.py against a recording Streamlit
 (src/export/capture.py) and lays the captured numbers and prose out for a reader
@@ -12,6 +13,10 @@ board's columns, the tier thresholds or any sentence in the app changes.
 Both markets go into the one file behind a switch, each on the model config
 names as its production choice. The output has no external requests: open the
 file anywhere, or copy it to any static host.
+
+By default the page is the trimmed version of the app: no expanders, no `help=`
+tooltips, and each run of prose cut to the sentence it opens with — src/export/
+simplify.py has the reasoning. `--full` publishes the app's own long form.
 """
 from __future__ import annotations
 
@@ -69,7 +74,7 @@ def _meta(cap, target_type: str) -> list[str]:
     return bits
 
 
-def main(out_dir: str, open_after: bool, quiet: bool) -> int:
+def main(out_dir: str, open_after: bool, quiet: bool, simple: bool) -> int:
     markets = []
     for key, label in MARKETS:
         print(f"capturing {key} ...", file=sys.stderr)
@@ -94,7 +99,7 @@ def main(out_dir: str, open_after: bool, quiet: bool) -> int:
 
     built = datetime.now(timezone.utc).astimezone().strftime("%-d %B %Y")
     page = build_page(markets, panes=PANES, built=built,
-                      title="NFL Touchdown Predictions", dek=DEK)
+                      title="NFL Touchdown Predictions", dek=DEK, simple=simple)
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -112,7 +117,10 @@ if __name__ == "__main__":
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--out", default="site", help="directory for index.html")
     p.add_argument("--open", action="store_true", help="open it when done")
+    p.add_argument("--full", action="store_true",
+                   help="publish the app's long form: expanders, tooltips, "
+                        "and every paragraph of its explanations")
     p.add_argument("--verbose", action="store_true",
                    help="let the pipeline's own stdout through")
     a = p.parse_args()
-    raise SystemExit(main(a.out, a.open, not a.verbose))
+    raise SystemExit(main(a.out, a.open, not a.verbose, not a.full))

@@ -7,6 +7,7 @@ edit without touching the tree walk.
 from __future__ import annotations
 
 from .render import Renderer, esc, plain
+from .simplify import expander_labels, simplify
 
 CSS = """
 *, *::before, *::after { box-sizing: border-box; }
@@ -494,17 +495,29 @@ JS = r"""
 """
 
 
-def _pane(capture, tab_label: str, pane_id: str, prefix: str) -> str:
+def _pane(capture, tab_label: str, pane_id: str, prefix: str,
+          simple: bool = True, published: set[str] | None = None) -> str:
     tabs = next(c for c in capture.root["children"]
                 if c["t"] == "group" and c["kind"] == "tabs")
     tab = next(t for t in tabs["children"] if t["label"] == tab_label)
-    body = Renderer(prefix).nodes(tab["children"])
+    children = tab["children"]
+    if simple:
+        # The app's own tabs that this page does not publish are pointed at in
+        # its prose ("see Betting reality") exactly the way a dropped expander
+        # is, and read the same way on a page that has neither.
+        absent = {t["label"] for t in tabs["children"]
+                  if t["label"] not in (published or {tab_label})}
+        children = simplify(children, expander_labels(children) | absent)
+    body = Renderer(prefix).nodes(children)
     return f'<section class="pane" data-pane="{pane_id}">{body}</section>'
 
 
 def build_page(markets: list[dict], *, panes: list[tuple[str, str]],
-               built: str, title: str, dek: str) -> str:
-    """markets: [{key, label, capture, meta}] in the order they should appear."""
+               built: str, title: str, dek: str, simple: bool = True) -> str:
+    """markets: [{key, label, capture, meta}] in the order they should appear.
+
+    `simple` publishes the trimmed page: see simplify.py for what comes out.
+    """
     switch = "".join(
         f'<button type="button" data-market="{esc(m["key"])}" '
         f'aria-pressed="{"true" if i == 0 else "false"}">{esc(m["label"])}</button>'
@@ -518,7 +531,9 @@ def build_page(markets: list[dict], *, panes: list[tuple[str, str]],
     blocks = []
     for i, m in enumerate(markets):
         meta = " ".join(f"<span>{v}</span>" for v in m["meta"])
-        body = "".join(_pane(m["capture"], label, pid, f'{m["key"]}-{pid}')
+        published = {label for _, label in panes}
+        body = "".join(_pane(m["capture"], label, pid, f'{m["key"]}-{pid}', simple,
+                             published)
                        for pid, label in panes)
         blocks.append(
             f'<div class="marketpane" data-market="{esc(m["key"])}"'
