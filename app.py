@@ -494,7 +494,21 @@ def team_outlook_frame(season: int, week: int, version: str | None = None):
     except Exception:                                        # noqa: BLE001
         lam = None
 
-    out = T.build(preds.get("first_td"), preds.get("anytime_td"), lam)
+    # The bookmaker's own first-TD prices, de-vigged, read from the board so
+    # the column beside ours is the number the board publishes rather than a
+    # second de-vigging that could drift from it. Priced players only, which is
+    # the point: `first_td_share` normalises within the game, so what this
+    # measures is how the book splits the game between the two sides.
+    book = None
+    try:
+        _fb, _ = load_board(season, week, "first_td",
+                            production_model("first_td"), version)
+        if _fb is not None and {"game_id", "team", "market_prob"} <= set(_fb.columns):
+            book = pl.from_pandas(_fb[["game_id", "team", "market_prob"]])
+    except Exception:                                        # noqa: BLE001
+        book = None
+
+    out = T.build(preds.get("first_td"), preds.get("anytime_td"), lam, book)
     if out.is_empty():
         return None
     if preds.get("anytime_td") is not None:
@@ -2167,6 +2181,9 @@ if tab_board.open:
                     "Which side scores first is a true coin-flip question, and "
                     "the model beats the coin: **AUC 0.674** over 2,278 "
                     "walk-forward team-games, calibrated from 6% to 94%. "
+                    "**Bookmaker says** is the same split read off their own "
+                    "first-TD prices, and it is blank for a game they have not "
+                    "priced yet — most of the slate, early in a week. "
                     "Expected touchdowns is the fitted team rate; shut-out risk "
                     "is the chance of no offensive touchdown at all."
                 )
@@ -2197,6 +2214,26 @@ if tab_board.open:
                         help="Chance this team scores the game's first "
                              "touchdown. The two teams add to 100%.")
                     _t["first_td_pct"] = _t["first_td_pct"] * 100
+                if ("book_first_td_pct" in _t.columns
+                        and _t["book_first_td_pct"].notna().any()):
+                    _t["book_first_td_pct"] = _t["book_first_td_pct"] * 100
+                    _cols["book_first_td_pct"] = st.column_config.NumberColumn(
+                        "Bookmaker says", format="%.0f%%",
+                        help="The same arithmetic on the bookmaker's own "
+                             "first-TD prices, with their margin removed: "
+                             "their players' chances summed by team and "
+                             "normalised within the game. Same question, their "
+                             "answer — which is what makes the gap beside it "
+                             "worth reading. Blank where too few of a game's "
+                             "players carry a price to split it.")
+                    _t["team_first_diff"] = (_t["first_td_pct"]
+                                             - _t["book_first_td_pct"])
+                    _cols["team_first_diff"] = st.column_config.NumberColumn(
+                        "Difference", format="%+.0f pts",
+                        help="How far our split sits above (+) or below (-) "
+                             "theirs. It is the same number with opposite "
+                             "signs on the two sides of a game, because both "
+                             "columns add to 100%.")
                 if "expected_tds" in _t.columns:
                     _cols["expected_tds"] = st.column_config.NumberColumn(
                         "Expected TDs", format="%.2f",

@@ -137,3 +137,39 @@ def test_a_thin_roster_does_not_publish_a_confident_split():
     ok = T.first_td_share(_preds(healthy))
     assert ok["first_td_pct"].null_count() == 0
     assert ok["first_td_pct"].sum() == pytest.approx(1.0)
+
+
+# ── The bookmaker's own split ──────────────────────────────────────────────
+
+
+def _market(rows: list[tuple]) -> pl.DataFrame:
+    return pl.DataFrame(
+        [{"game_id": g, "team": t, "player_name": n, "market_prob": p}
+         for g, t, n, p in rows])
+
+
+def test_the_book_split_is_the_same_arithmetic_on_their_prices():
+    """Both columns are shares of one game, so both add to one."""
+    first = _preds([("g", "KC", f"a{i}", 0.03) for i in range(6)]      # 0.18
+                   + [("g", "BUF", f"b{i}", 0.01) for i in range(6)])  # 0.06
+    market = _market([("g", "KC", f"a{i}", 0.02) for i in range(6)]    # 0.12
+                     + [("g", "BUF", f"b{i}", 0.02) for i in range(6)])
+    out = T.build(first, None, None, market)
+    assert out["first_td_pct"].to_list() == pytest.approx([0.25, 0.75])
+    assert out["book_first_td_pct"].to_list() == pytest.approx([0.5, 0.5])
+
+
+def test_the_book_split_needs_a_priced_game_and_says_nothing_otherwise():
+    """A game the book has not priced gets a blank, not our number twice."""
+    first = _preds([("g", "KC", f"a{i}", 0.03) for i in range(6)]
+                   + [("g", "BUF", f"b{i}", 0.01) for i in range(6)])
+    thin = _market([("g", "KC", "a0", 0.2), ("g", "BUF", "b0", 0.2)])
+    out = T.build(first, None, None, thin)
+    assert out["first_td_pct"].null_count() == 0
+    assert out["book_first_td_pct"].null_count() == 2
+
+
+def test_without_a_market_there_is_no_book_column_at_all():
+    first = _preds([("g", "KC", f"a{i}", 0.03) for i in range(6)]
+                   + [("g", "BUF", f"b{i}", 0.01) for i in range(6)])
+    assert "book_first_td_pct" not in T.build(first, None, None).columns

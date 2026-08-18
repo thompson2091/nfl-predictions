@@ -112,17 +112,33 @@ def team_scoring_rate(team_lambda: pl.DataFrame,
 
 def build(first_td_preds: pl.DataFrame | None,
           anytime_preds: pl.DataFrame | None,
-          team_lambda: pl.DataFrame | None = None) -> pl.DataFrame:
-    """One row per team-game, with whichever of the three numbers are available.
+          team_lambda: pl.DataFrame | None = None,
+          first_td_market: pl.DataFrame | None = None) -> pl.DataFrame:
+    """One row per team-game, with whichever of the numbers are available.
 
     Every input is optional because the app can be pointed at a week where one
     market has been scored and the other has not. A column that cannot be
     computed is absent rather than filled with a placeholder — a blank is
     honest, a zero is a claim.
+
+    `first_td_market` is the bookmaker's own first-TD prices, de-vigged, and it
+    goes through the *same* `first_td_share` — summed within the team and
+    normalised within the game. Computing it any other way would put two
+    numbers side by side that are not answers to the same question, which is
+    the only thing that makes a difference column mean anything.
+
+    The other columns get no bookmaker counterpart because they already are
+    one: the team rate is fitted on the betting lines, so a "book says" beside
+    it would be the same number wearing a different hat.
     """
     frames = []
     if first_td_preds is not None and first_td_preds.height:
         frames.append(first_td_share(first_td_preds))
+    if first_td_market is not None and first_td_market.height:
+        frames.append(
+            first_td_share(first_td_market, prob_col="market_prob")
+            .select(["game_id", "team",
+                     pl.col("first_td_pct").alias("book_first_td_pct")]))
     if anytime_preds is not None and anytime_preds.height:
         frames.append(expected_scorers(anytime_preds))
     if team_lambda is not None and team_lambda.height:

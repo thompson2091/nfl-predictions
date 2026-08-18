@@ -263,9 +263,14 @@ class Capture:
         spec = []
         for c in cols:
             conf = cfg.get(c) or {}
+            # An empty label is a deliberate one: the app leaves a column
+            # blank where its header would repeat the one beside it. Only a
+            # missing label falls back to the raw column name, which is how
+            # `top_player_pct` ended up as a heading on the published page.
+            label = conf.get("label")
             spec.append({
                 "key": c,
-                "label": conf.get("label") or c,
+                "label": c if label is None else label,
                 "type": conf.get("kind", "text"),
                 "format": conf.get("format"),
                 "help": conf.get("help"),
