@@ -1086,6 +1086,72 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
     }
 
 
+def combo_columns(decimals: int = 1) -> dict:
+    """The combination table, described in the board's own terms.
+
+    Deliberately the same five quantities the board shows for one player —
+    price, our estimate, theirs, the gap, and the money — so a slip can be read
+    against a single without translating anything.
+    """
+    return {
+    "Players": st.column_config.TextColumn(
+        "Players",
+        help="Every one of these has to score for the slip to pay. That is the "
+             "whole difference between this table and the board above it."),
+    "Game": st.column_config.TextColumn(
+        "Game", width="small",
+        help="A game named here means both legs come from it — a same-game "
+             "slip. The price beside it is this board's two prices multiplied, "
+             "which is what a book pays for legs in *different* games; on one "
+             "game they price their own correlation in and quote shorter. "
+             "**2 games** and up is the arithmetic a book will actually honour."),
+    "Odds": st.column_config.TextColumn(
+        "Odds", width="small",
+        help="The slip's price: the legs' prices multiplied. +300 means a "
+             "\\$100 bet wins \\$300."),
+    "Ours": st.column_config.NumberColumn(
+        "Our estimate", format=f"%.{decimals}f%%",
+        help="Our chance that every leg lands — the board's own estimates "
+             "multiplied together. What that multiplication assumes, and what "
+             "was measured to justify it, is under the table."),
+    "Book": st.column_config.NumberColumn(
+        "Bookmaker says", format=f"%.{decimals}f%%",
+        help="The same multiplication on the bookmaker's numbers, with their "
+             "margin removed from each leg first, so both columns measure the "
+             "same thing."),
+    "edge_pp": st.column_config.NumberColumn(
+        "Difference", format=f"%+.{decimals}f pts",
+        help="How far our estimate sits above (+) or below (-) theirs on the "
+             "whole slip. It compounds with the legs: so does any error in it, "
+             "which is why the biggest numbers in this column are the least "
+             "trustworthy rows in the table."),
+    "EV": st.column_config.NumberColumn(
+        "Expected on $100", format="$%+.2f",
+        help="What a flat \\$100 on this slip returns **on average** if our "
+             "numbers are right — judged on our pre-blend number and paid at "
+             "the price to its left, the same pairing the board above uses.\n\n"
+             "Unlike the board's, this column has never been backtested. Every "
+             "profitability figure in this app was measured on single bets at "
+             "closing prices."),
+    }
+
+
+@st.cache_data(show_spinner=False)
+def leg_correlation(tt: str) -> dict | None:
+    """Do teammates' outcomes actually move together? Re-measured, not assumed.
+
+    Multiplying legs is the one modelling assumption the combination table
+    makes, so the table quotes what this currently says rather than a number
+    written into the page. `fit_correlation` reads the backtest residuals, so a
+    retrain that breaks the assumption changes the sentence under the table.
+    """
+    try:
+        from src.prediction.portfolio import fit_correlation
+        return fit_correlation(tt)
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
 @st.cache_data(show_spinner=False)
 def market_headtohead(tt: str, model: str,
                       version: str | None = None) -> dict | None:
@@ -1790,6 +1856,161 @@ if tab_board.open:
                 f"We're higher than the bookmaker on {len(backing)}, lower on "
                 f"{len(overvalued)}, and close to them on {agree}."
             )
+
+            # ── Combinations ──────────────────────────────────────────────
+            # The board prices one player. This is the question it provokes and
+            # has never answered: what if two or three of them go on one slip.
+            # Nothing here is refitted — every number is the columns above,
+            # multiplied out — and the note under the table is the price of
+            # doing that multiplication.
+            from src.prediction import combos
+
+            st.markdown("#### Combinations")
+            _cbar = st.container(horizontal=True)
+            _legs = _cbar.selectbox(
+                "Legs", [2, 3, 4], key="combo_legs",
+                help="How many players on the slip. Each one you add lengthens "
+                     "the price and shortens the chance, and both move faster "
+                     "than they look: three 40% legs is a 6% shot.",
+            )
+            _pool_n = _cbar.slider(
+                "From each game's top", min_value=2, max_value=6, value=4,
+                key="combo_pool",
+                help="Which players are eligible: each game's top N, ranked by "
+                     "**#** in the board above. Widening this reaches further "
+                     "down every game rather than deeper into one.",
+            )
+            _rank_by = _cbar.selectbox(
+                "Rank by", ["Expected value", "Most likely"], key="combo_rank",
+                help="**Expected value** ranks on what \\$100 expects to return, "
+                     "measured on our pre-blend number like every other money "
+                     "figure here. **Most likely** ranks on the chance the slip "
+                     "lands. They are different questions and usually different "
+                     "tables — the likeliest slips are short-priced and the best "
+                     "value ones are not.",
+            )
+            _show_n = _cbar.slider(
+                "Show", min_value=5, max_value=50, value=25, step=5,
+                key="combo_show", help="How many rows to list.",
+            )
+
+            # Follows the board's own Game selector, so filtering to one game
+            # gives that game's slips. Search and depth are left out on purpose:
+            # they narrow which rows you are reading, not which bets exist.
+            _combo_src = (board if pick == "All games"
+                          else board[board["game_label"] == pick])
+            _combo_metric = "ev" if _rank_by == "Expected value" else "likely"
+            _combos = combos.build(
+                _combo_src, legs=int(_legs), per_game=int(_pool_n),
+                top_k=int(_show_n), metric=_combo_metric,
+                target_type=target_type,
+            )
+
+            if _combos.empty:
+                if target_type == "first_td" and pick != "All games":
+                    st.info(
+                        "**One game has no combinations on this market.** "
+                        "Exactly one player scores a game's first touchdown, so "
+                        "two legs from the same game cannot both land. Choose "
+                        "**All games** to combine across the slate.",
+                        icon=":material/info:")
+                else:
+                    st.info("Not enough priced players here to build a "
+                            "combination.", icon=":material/info:")
+            else:
+                _cshow = _combos.copy()
+                _cshow["Odds"] = _cshow["Odds"].map(bp.american)
+                # A first-TD double lands under 1% of the time and a two-leg
+                # anytime slip around a fifth of the time. One decimal place
+                # prints the first as "0.5%" for everything.
+                _dp = 2 if float(_cshow["Ours"].max()) < 5 else 1
+                st.dataframe(
+                    _cshow[["Players", "Game", "Odds", "Ours", "Book", "edge_pp",
+                            "EV"]],
+                    hide_index=True, column_config=combo_columns(_dp),
+                    use_container_width=True)
+
+                _leg_word = {2: "two", 3: "three", 4: "four"}[int(_legs)]
+                _ranked = ("expected value" if _combo_metric == "ev"
+                           else "how likely the slip is to land")
+                _where = ("every game on the slate" if pick == "All games"
+                          else pick)
+                # Say when the search was bounded, and why that is not a
+                # shortcut — a silent cap reads as "these are all of them".
+                _searched = ""
+                if _combos.attrs["n_candidates"] < _combos.attrs["n_pool"]:
+                    _searched = (
+                        f" Built from the {_combos.attrs['n_candidates']} "
+                        f"strongest of the {_combos.attrs['n_pool']} eligible "
+                        f"players, which is enough to find them: every number "
+                        f"here is a product of the legs', so a slip using a "
+                        f"weaker leg cannot outrank {len(_cshow)} built without "
+                        f"it.")
+                st.caption(
+                    f":material/functions: The {len(_cshow)} best {_leg_word}-leg "
+                    f"combinations of the top {int(_pool_n)} in {_where}, ranked "
+                    f"by {_ranked}.{_searched}"
+                )
+
+                # The assumption, re-measured rather than asserted, and the two
+                # things this table is not. One paragraph on purpose: it is the
+                # small print, and small print that runs to three panels does not
+                # get read.
+                _rho = leg_correlation(target_type)
+                if target_type == "first_td":
+                    # The teammate measurement below is beside the point here:
+                    # same-game slips are already excluded, so the only thing
+                    # being multiplied is one game against another.
+                    _independence = (
+                        "Legs on this market always come from different games, "
+                        "so multiplying them assumes only that separate games "
+                        "are independent of each other.")
+                elif _rho is None:
+                    _independence = (
+                        "Legs are multiplied as if independent. The check that "
+                        "justifies that — teammates' outcomes moving together in "
+                        "the backtest — has not been run here; `make backtest` "
+                        "produces what it reads.")
+                elif _rho["independence_reasonable"]:
+                    _independence = (
+                        f"Legs are multiplied as if independent. Re-measured on "
+                        f"{_rho['n_team_games']:,} team-games of backtest "
+                        f"residuals, teammates' outcomes correlate "
+                        f"{_rho['teammate_rho']:+.3f} — sharing a scoring game "
+                        f"and competing for the same touchdowns very nearly "
+                        f"cancel — so the correction would be smaller than the "
+                        f"error in measuring it.")
+                else:
+                    _independence = (
+                        f"**Read these as optimistic.** Legs are multiplied as if "
+                        f"independent, but teammates' outcomes correlate "
+                        f"{_rho['teammate_rho']:+.3f} across "
+                        f"{_rho['n_team_games']:,} team-games of backtest "
+                        f"residuals — enough that a product is the wrong "
+                        f"arithmetic, most of all on the same-game rows.")
+
+                if target_type == "first_td":
+                    _exclusion = (
+                        " Same-game slips are left out entirely: one player "
+                        "scores a game's first touchdown, so two legs from one "
+                        "game cannot both land.")
+                elif bool(_cshow["SameGame"].any()):
+                    _n_same = int(_cshow["SameGame"].sum())
+                    _exclusion = (
+                        f" {_n_same} of these rows are same-game slips, named by "
+                        f"their game above. Their price is arithmetic, not a "
+                        f"quote — a book prices its own correlation into a "
+                        f"same-game parlay and will come back shorter.")
+                else:
+                    _exclusion = ""
+
+                st.caption(
+                    f":material/warning: {_independence}{_exclusion} And nothing "
+                    f"in this table has been backtested: every profitability "
+                    f"figure in this app was measured on single bets at closing "
+                    f"prices, and multiplying legs multiplies the model's "
+                    f"calibration error along with them."
+                )
 
             # ── By team ───────────────────────────────────────────────────
             # The board answers "which player". This is the question underneath

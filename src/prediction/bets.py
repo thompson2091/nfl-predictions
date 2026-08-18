@@ -30,6 +30,19 @@ def american_to_decimal(odds: float) -> float:
     return 1.0 + (odds / 100.0 if odds > 0 else 100.0 / -odds)
 
 
+def decimal_to_american(decimal: float) -> float:
+    """The inverse, for a price we computed rather than read off a book.
+
+    A parlay's price is the product of its legs' decimal prices, and decimal is
+    the only form that multiplies. Coming back to American is what makes it
+    comparable to every other price on the board.
+    """
+    if decimal <= 1.0:
+        raise ValueError(f"decimal odds must exceed 1.0, got {decimal}")
+    profit = decimal - 1.0
+    return profit * 100.0 if profit >= 1.0 else -100.0 / profit
+
+
 def _decimal_expr(col: str) -> pl.Expr:
     return (
         pl.when(pl.col(col) > 0)
