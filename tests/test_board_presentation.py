@@ -336,13 +336,22 @@ def test_a_slip_with_no_reads_says_nothing():
     assert bp.combo_read(["something else"]) == ""
 
 
-def test_backing_counts_legs_rather_than_grading_the_slip():
-    assert bp.combo_backing(["Strong", "Standard"]) == "2 of 2"
-    assert bp.combo_backing(["Strong", ""]) == "1 of 2"
+def test_backing_spells_out_each_legs_tier():
+    assert bp.combo_backing(["Strong", "Standard"]) == "Strong + Standard"
+    assert bp.combo_backing(["Strong", "Standard", "Strong"]) == \
+        "Strong + Standard + Strong"
+
+
+def test_an_unmarked_leg_reads_as_a_dash_rather_than_a_gap():
+    """"Strong + \u2014" cannot be misread as a one-leg slip; "Strong +" can."""
+    assert bp.combo_backing(["Strong", ""]) == "Strong + \u2014"
+    assert bp.combo_backing(["", "Standard"]) == "\u2014 + Standard"
+
+
+def test_a_slip_with_nothing_marked_says_nothing():
     assert bp.combo_backing(["", "", ""]) == ""
 
 
-def test_one_fade_leg_outranks_the_count():
-    """The book prices that group far above what it hits — it ends the slip."""
-    assert bp.combo_backing(["Strong", "Fade"]) == "Fade leg"
-    assert bp.combo_backing(["Fade", ""]) == "Fade leg"
+def test_a_fade_leg_is_named_like_any_other():
+    """It needs no special case: "Strong + Fade" says exactly what it is."""
+    assert bp.combo_backing(["Strong", "Fade"]) == "Strong + Fade"

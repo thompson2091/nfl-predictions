@@ -105,24 +105,21 @@ def combo_read(reads) -> str:
 
 
 def combo_backing(labels) -> str:
-    """What the fitted single-bet rule says about a slip's legs.
+    """Each leg's own tier, in the order the slip names its players.
 
-    A count of legs, deliberately, and never a tier name for the slip itself:
-    the tiers and their returns were fitted on single bets at closing prices,
-    and $131 per $100 on a Strong single says nothing about two of them
-    multiplied. What can be said honestly is how many legs the rule would have
-    marked on their own.
+    Per leg, deliberately, and never one tier name for the slip: the tiers and
+    the returns behind them were fitted on single bets at closing prices, and
+    $131 per $100 on a Strong single says nothing about two of them multiplied.
+    Spelling the legs out claims nothing the measurement does not support, and
+    still says which of the players a reader is looking at earned a mark.
 
-    A fade leg outranks the count because it is the only label that is a
-    warning rather than a recommendation — the book prices that group far above
-    what it hits, and one of them on a slip is the leg that ends it.
+    A leg the rule does not mark reads as an em dash rather than a blank, so
+    "Strong + —" cannot be misread as one leg on the slip.
     """
-    labels = [l for l in labels]
-    if TIER_LABEL["fade"] in labels:
-        return "Fade leg"
-    backed = sum(1 for l in labels
-                 if l in (TIER_LABEL["strong"], TIER_LABEL["standard"]))
-    return f"{backed} of {len(labels)}" if backed else ""
+    labels = ["" if l is None else str(l) for l in labels]
+    if not any(labels):
+        return ""
+    return " + ".join(l if l else "\u2014" for l in labels)
 
 
 def preblend_columns_differ(frame) -> bool:

@@ -1133,15 +1133,17 @@ def combo_columns(decimals: int = 1, graded: dict | None = None) -> dict:
              "exactly where the book does is a slip resting on the book's own "
              "opinion, and it says so."),
     "InRange": st.column_config.TextColumn(
-        "Worth backing", width="small",
-        help="How many legs the fitted rule would have marked as a bet on "
-             "their own — a count, never a grade for the slip. Those tiers and "
-             "the returns behind them were measured on **single** bets at "
-             "closing prices, and \\$131 per \\$100 on a Strong single says "
-             "nothing about two of them multiplied.\n\n"
-             "**Fade leg** overrides the count: the book prices that group far "
-             "above what it actually hits, so one of them is usually the leg "
-             "that ends the slip."),
+        "Worth backing", width="medium",
+        help="What the fitted rule would have marked each leg as **on its "
+             "own**, in the order the players are named. Per leg, and never "
+             "one tier for the slip: those tiers and the returns behind them "
+             "were measured on **single** bets at closing prices, and "
+             "\\$131 per \\$100 on a Strong single says nothing about two of "
+             "them multiplied. What slips like these actually returned is the "
+             "strip above the table.\n\n"
+             "An em dash is a leg the rule does not mark. **Fade** is a "
+             "warning rather than a bet — the book prices that group far above "
+             "what it hits, so it is usually the leg that ends the slip."),
     "EV": st.column_config.NumberColumn(
         "Expected on $100", format="$%+.2f",
         help="What a flat \\$100 on this slip returns **on average** if our "

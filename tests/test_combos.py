@@ -188,3 +188,12 @@ def test_a_single_leg_is_not_a_combination():
 def test_an_unknown_ranking_is_refused_rather_than_guessed():
     with pytest.raises(ValueError):
         build(slate(), legs=2, metric="vibes")
+
+
+def test_a_slips_legs_are_in_the_order_it_names_them():
+    """The app labels legs positionally, so the order has to match `Players`."""
+    frame = board([player("Zeta", "X @ Y", 0.50, 100, rank=1),
+                   player("Alpha", "P @ Q", 0.45, 150, rank=1)])
+    row = build(frame, legs=2, per_game=1).iloc[0]
+    names = [n.strip() for n in row["Players"].split("+")]
+    assert [frame.iloc[i]["player_name"] for i in row["_legs"]] == names

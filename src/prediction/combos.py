@@ -213,8 +213,12 @@ def build(frame: pd.DataFrame, *, legs: int = 2, per_game: int = 4,
             "EV": float(ev[r]),
             "SameGame": bool(same_game[r]),
             "Legs": int(legs),
-            # Which rows of the board this slip is, for anyone grading it.
-            "_legs": tuple(sorted(int(keys[i]) for i in legs_idx)),
+            # Which rows of the board this slip is, for anyone grading it —
+            # in the order `Players` names them, so a caller can line per-leg
+            # labels up against the names a reader is looking at. Sorting
+            # these was silently pairing the first name with whichever leg had
+            # the lower row number.
+            "_legs": tuple(int(keys[i]) for i in legs_idx),
         })
 
     if not rows:
