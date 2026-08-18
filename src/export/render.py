@@ -33,6 +33,34 @@ BOARD_FILTERS = {
     "Show per game": {"mode": "top_n", "column": "#", "all": "Everyone"},
 }
 
+# ── Combination controls ───────────────────────────────────────────────────
+#
+# Unlike the board's filters, these do not hide rows — they change which
+# combinations exist, which means recomputing them. The page can do that: a
+# slip's numbers are products of its legs', every leg is a row of the board
+# table above, and every cell there carries its exact value in `data-v`
+# alongside the rounded one it displays. So the export rebuilds these as real
+# controls driven by the page's own board, rather than publishing a screenshot
+# of a control that does nothing.
+#
+# Keyed by the app's label, like BOARD_FILTERS, so a renamed control stops
+# appearing instead of quietly driving the wrong parameter.
+COMBO_CONTROLS = {
+    "Legs": "legs",
+    "From each game's top": "perGame",
+    "Rank by": "metric",
+    "Show": "show",
+}
+
+#: Board columns the engine needs, by the label app.py gives them. `Bet edge`
+#: is optional: a market that is not blended has no pre-blend column, and there
+#: the published number is already the one a bet is judged on.
+COMBO_INPUTS = {
+    "player": "Player", "game": "Game", "odds": "Odds", "rank": "#",
+    "ours": "Our estimate", "book": "Bookmaker says", "betEdge": "Bet edge",
+    "read": "Our read", "tier": "Worth backing",
+}
+
 #: Streamlit's `icon=":material/x:"`, reduced to the four states a callout can
 #: be in. The glyphs are drawn in CSS; this only picks the tone.
 ICON_TONE = {
@@ -182,7 +210,7 @@ def help_button(text: str | None) -> str:
             f'<span class="tip" role="tooltip">{md(text)}</span></button>')
 
 
-def tiles(nodes: list[dict]) -> str:
+def tiles(nodes: list[dict], tid: str | None = None) -> str:
     """A strip of stat tiles, in rows that come out even.
 
     The column count is chosen to divide the number of tiles rather than left
@@ -191,7 +219,8 @@ def tiles(nodes: list[dict]) -> str:
     """
     n = len(nodes)
     cols = next((c for c in (5, 4, 3) if c <= n and n % c == 0), min(n, 4))
-    return (f'<div class="tiles" style="--cols:{cols}">'
+    ident = f' id="{tid}"' if tid else ""
+    return (f'<div class="tiles"{ident} style="--cols:{cols}">'
             + "".join(tile(t) for t in nodes) + "</div>")
 
 
@@ -287,6 +316,48 @@ def _control_bar(tid: str, controls: list[dict], keys: list[str],
     if not bits:
         return ""
     return f'<div class="controls">{"".join(bits)}</div>'
+
+
+def combo_controls(widgets: list[dict], spec: dict) -> str:
+    """The section's own controls, rebuilt against the page's engine.
+
+    Ranges come from the capture rather than from here, so the page can only
+    offer settings the app offers.
+    """
+    bits = []
+    for w in widgets:
+        param = COMBO_CONTROLS.get(w["label"])
+        if param is None:
+            continue
+        common = f'class="combo-input" data-param="{param}"'
+        if w["kind"] == "slider":
+            lo, hi = w.get("min_value"), w.get("max_value")
+            step = w.get("step") or 1
+            opts = "".join(
+                f'<option{" selected" if v == w["value"] else ""}>{v}</option>'
+                for v in range(int(lo), int(hi) + 1, int(step)))
+            field = f'<select {common}>{opts}</select>'
+        else:
+            opts = "".join(
+                f'<option value="{esc(o)}"'
+                f'{" selected" if o == w["value"] else ""}>{esc(o)}</option>'
+                for o in (w.get("options") or []))
+            field = f'<select {common}>{opts}</select>'
+        bits.append(f'<label class="ctl"><span>{esc(w["label"])}</span>'
+                    f'{field}</label>')
+    if not bits:
+        return ""
+    # The graded grid rides in a script block rather than an attribute: it is a
+    # few hundred rows, and HTML-escaping every quote of it tripled the size of
+    # the page for no benefit.
+    record = spec.pop("record", None) or []
+    blob = ""
+    if record:
+        spec["recordId"] = f'{spec["table"]}-record'
+        blob = (f'<script type="application/json" id="{spec["recordId"]}">'
+                f'{json.dumps(record, separators=(",", ":"))}</script>')
+    return (f'<div class="controls combo-controls" '
+            f"data-combo='{esc(json.dumps(spec))}'>{''.join(bits)}</div>{blob}")
 
 
 # ── Chart ──────────────────────────────────────────────────────────────────
@@ -389,9 +460,21 @@ class Renderer:
     other market's table, since getElementById returns whichever came first.
     """
 
-    def __init__(self, prefix: str = "t"):
+    def __init__(self, prefix: str = "t", market: str = "",
+                 record: dict | None = None):
         self.prefix = prefix
         self.n = 0
+        #: Which market this pane is, and how it has been graded. Both only
+        #: matter to the combinations engine: one game cannot supply two legs
+        #: on a single-winner market, and the strip above the table reports the
+        #: measured row for whatever the controls currently say.
+        self.market = market
+        self.record = record or {}
+        #: The table a recomputed slip draws its legs from, and the strip that
+        #: describes it — both are simply the last of each drawn before it.
+        self.last_table = None
+        self.last_tiles = None
+        self.pending_combo: list[dict] = []
 
     def nodes(self, children: list[dict]) -> str:
         out: list[str] = []
@@ -400,7 +483,9 @@ class Renderer:
 
         def flush_tiles():
             if run:
-                out.append(tiles(run))
+                self.n += 1
+                self.last_tiles = f"{self.prefix}-s{self.n}"
+                out.append(tiles(run, self.last_tiles))
                 run.clear()
 
         for node in children:
@@ -412,11 +497,17 @@ class Renderer:
             if node["t"] == "widget":
                 if node["label"] in BOARD_FILTERS:
                     pending.append(node)
+                elif node["label"] in COMBO_CONTROLS:
+                    self.pending_combo.append(node)
                 continue
 
             if node["t"] == "table":
                 self.n += 1
-                out.append(table(node, f"{self.prefix}-t{self.n}", pending))
+                tid = f"{self.prefix}-t{self.n}"
+                if self.pending_combo:
+                    out.append(self.combos(tid))
+                out.append(table(node, tid, pending))
+                self.last_table = tid
                 pending = []
             elif node["t"] == "chart":
                 self.n += 1
@@ -435,6 +526,26 @@ class Renderer:
 
         flush_tiles()
         return "".join(out)
+
+    def combos(self, tid: str) -> str:
+        """Controls for the combinations table about to be drawn.
+
+        Degrades to nothing rather than to a control that does not work: with
+        no board table on the page there is nothing to build legs from, and a
+        select that reorders no rows is worse than no select.
+        """
+        widgets, self.pending_combo = self.pending_combo, []
+        if not self.last_table:
+            return ""
+        spec = {
+            "board": self.last_table,
+            "table": tid,
+            "strip": self.last_tiles,
+            "singleWinner": self.market == "first_td",
+            "columns": COMBO_INPUTS,
+            "record": self.record,
+        }
+        return combo_controls(widgets, spec)
 
     def text(self, node: dict) -> str:
         kind, body = node["kind"], node["body"]
@@ -456,6 +567,8 @@ class Renderer:
         # to the table that follows, so hand them upward rather than render here.
         if node["kind"] == "container" and kids and all(k["t"] == "widget" for k in kids):
             pending.extend(k for k in kids if k["label"] in BOARD_FILTERS)
+            self.pending_combo.extend(k for k in kids
+                                      if k["label"] in COMBO_CONTROLS)
             return ""
         if node["kind"] == "expander":
             return (f'<details class="disclosure"><summary>'

@@ -451,6 +451,301 @@ JS = r"""
     f.addEventListener('change', run);
   });
 
+
+  /* ── Combinations ────────────────────────────────────────────────────────
+     The section's controls, made to work on a page with no server.
+
+     A slip's numbers are products of its legs', and every leg is a row of the
+     board table above with its exact value in `data-v` — so the same table a
+     reader is looking at is the input. The arithmetic here mirrors
+     src/prediction/combos.py deliberately, including the candidate cut and the
+     tie-break, because a published page that ranks slips differently from the
+     app is worse than one that cannot rank them at all. */
+
+  var READ_ORDER = ['Matches book', 'Leans', 'Strong call'];
+  var BLOCKING = ['Out', 'Doubtful'];
+
+  function american(dec) {
+    /* Truncated, not rounded: `bets.decimal_to_american` returns a float and
+       `board.american` prints it through int(), so rounding here published a
+       price one point away from the app's on about a third of rows. */
+    var profit = dec - 1;
+    return profit >= 1 ? Math.trunc(profit * 100) : -Math.trunc(100 / profit);
+  }
+
+  function toDecimal(odds) {
+    var n = parseFloat(String(odds).replace('+', ''));
+    if (!isFinite(n) || n === 0) return null;
+    return 1 + (n > 0 ? n / 100 : 100 / -n);
+  }
+
+  function headings(table) {
+    return Array.prototype.map.call(table.tHead.rows[0].cells, function (th) {
+      var span = th.querySelector('span');
+      var node = span ? span.childNodes[0] : th.firstChild;
+      return (node ? node.textContent : th.textContent).trim();
+    });
+  }
+
+  function readLegs(board, spec) {
+    var heads = headings(board);
+    var at = {};
+    Object.keys(spec.columns).forEach(function (k) {
+      at[k] = heads.indexOf(spec.columns[k]);
+    });
+    if (at.player < 0 || at.game < 0 || at.odds < 0 || at.rank < 0 ||
+        at.ours < 0 || at.book < 0) return null;
+    var injury = heads.indexOf('Injury');
+
+    /* The board's own game filter, mirrored: in the app the combinations
+       follow it, and its search and depth filters deliberately do not. */
+    var pick = null;
+    var sel = document.querySelector(
+      'select.filter[data-table="' + spec.board + '"][data-mode="equals"]');
+    if (sel && sel.value && sel.value !== sel.dataset.all) pick = sel.value;
+
+    var legs = [];
+    Array.prototype.forEach.call(board.tBodies[0].rows, function (row) {
+      var raw = function (i) { return i < 0 ? null : row.cells[i].dataset.v; };
+      var dec = toDecimal(raw(at.odds));
+      var ours = parseFloat(raw(at.ours)), book = parseFloat(raw(at.book));
+      if (dec === null || !isFinite(ours) || !isFinite(book)) return;
+      if (injury >= 0 && BLOCKING.indexOf(raw(injury)) >= 0) return;
+      var game = raw(at.game);
+      if (pick !== null && game !== pick) return;
+      var edge = at.betEdge >= 0 ? parseFloat(raw(at.betEdge)) : NaN;
+      legs.push({
+        player: raw(at.player), game: game, rank: parseInt(raw(at.rank), 10),
+        dec: dec, ours: ours / 100, book: book / 100,
+        bet: isFinite(edge) ? (book + edge) / 100 : ours / 100,
+        read: at.read >= 0 ? raw(at.read) : '',
+        tier: at.tier >= 0 ? (raw(at.tier) || '') : '',
+      });
+    });
+    return legs;
+  }
+
+  function chooseCandidates(legs, cfg) {
+    var factor = cfg.metric === 'ev'
+      ? function (l) { return l.bet * l.dec; }
+      : function (l) { return l.ours; };
+    var pool = legs.filter(function (l) { return l.rank <= cfg.perGame; });
+    pool.sort(function (a, b) {
+      var d = factor(b) - factor(a);
+      return d || a.player.localeCompare(b.player);
+    });
+    return pool.slice(0, Math.max(24, cfg.show + cfg.legs));
+  }
+
+  function combinations(n, k) {
+    var out = [], idx = [];
+    (function walk(start) {
+      if (idx.length === k) { out.push(idx.slice()); return; }
+      for (var i = start; i < n; i++) { idx.push(i); walk(i + 1); idx.pop(); }
+    })(0);
+    return out;
+  }
+
+  function buildSlips(legs, cfg, singleWinner) {
+    var cand = chooseCandidates(legs, cfg);
+    if (cand.length < cfg.legs) return [];
+    var slips = [];
+    combinations(cand.length, cfg.legs).forEach(function (pick) {
+      var games = {}, n = 0;
+      pick.forEach(function (i) {
+        if (!games[cand[i].game]) { games[cand[i].game] = 1; n++; }
+      });
+      var same = n < cfg.legs;
+      if (singleWinner && same) return;
+      var dec = 1, ours = 1, book = 1, bet = 1;
+      pick.forEach(function (i) {
+        dec *= cand[i].dec; ours *= cand[i].ours;
+        book *= cand[i].book; bet *= cand[i].bet;
+      });
+      slips.push({
+        players: pick.map(function (i) { return cand[i].player; }).join(' + '),
+        game: n === 1 ? cand[pick[0]].game : n + ' games',
+        dec: dec, ours: ours * 100, book: book * 100,
+        edge: (ours - book) * 100, ev: (bet * dec - 1) * 100,
+        read: readOf(pick.map(function (i) { return cand[i].read; })),
+        tier: tierOf(pick.map(function (i) { return cand[i].tier; })),
+      });
+    });
+    var key = cfg.metric === 'ev' ? 'ev' : 'ours';
+    slips.sort(function (a, b) {
+      return (b[key] - a[key]) || a.players.localeCompare(b.players);
+    });
+    return slips.slice(0, cfg.show);
+  }
+
+  function readOf(reads) {
+    var ranks = reads.map(function (r) { return READ_ORDER.indexOf(r); })
+                     .filter(function (i) { return i >= 0; });
+    return ranks.length ? READ_ORDER[Math.min.apply(null, ranks)] : '';
+  }
+
+  function tierOf(tiers) {
+    if (!tiers.some(function (t) { return t; })) return '';
+    return tiers.map(function (t) { return t || '—'; }).join(' + ');
+  }
+
+  function signed(x, places, unit) {
+    return (x >= 0 ? '+' : '-') + Math.abs(x).toFixed(places) + (unit || '');
+  }
+
+  function drawSlips(table, slips) {
+    var heads = headings(table);
+    /* First TD doubles land under 1% and anytime ones around a fifth of the
+       time; one decimal prints the first as "0.5%" for every row. */
+    var dp = slips.length && Math.max.apply(null, slips.map(function (s) {
+      return s.ours; })) < 5 ? 2 : 1;
+    var cell = function (value, sort, num) {
+      return '<td class="' + (num ? 'num' : '') + '" data-v="' + sort + '">' +
+             value + '</td>';
+    };
+    var body = slips.map(function (s) {
+      var by = {
+        'Players': cell(s.players, s.players),
+        'Game': cell(s.game, s.game),
+        'Odds': cell(signed(american(s.dec), 0), american(s.dec), true),
+        'Our estimate': cell(s.ours.toFixed(dp) + '%', s.ours, true),
+        'Bookmaker says': cell(s.book.toFixed(dp) + '%', s.book, true),
+        'Difference': cell(signed(s.edge, dp, ' pts'), s.edge, true),
+        'Our read': cell(s.read, s.read),
+        'Expected on $100': cell('$' + signed(s.ev, 2), s.ev, true),
+        'Worth backing': cell(s.tier, s.tier),
+      };
+      return '<tr>' + heads.map(function (h) {
+        return by[h] !== undefined ? by[h] : cell('', '');
+      }).join('') + '</tr>';
+    }).join('');
+    table.tBodies[0].innerHTML = body;
+  }
+
+  function drawStrip(strip, row, span) {
+    if (!strip) return;
+    if (!row) { strip.hidden = true; return; }
+    strip.hidden = false;
+    var money = function (x) { return '$' + signed(x, 0); };
+    var values = {
+      'Slips graded': [row.slips.toLocaleString(),
+                       row.weeks + ' weeks, ' + span],
+      'Landed': [(row.landed * 100).toFixed(1) + '%', null],
+      'We said': [(row.we_said * 100).toFixed(1) + '%',
+                  signed((row.landed - row.we_said) * 100, 1, '% vs landed')],
+      'Book said': [(row.book_said * 100).toFixed(1) + '%', null],
+      'Return per $100': [money(row.return_per_100),
+                          row.return_ex_top10 === null ? null :
+                          money(row.return_ex_top10) + ' without the 10 biggest wins'],
+      'As singles': [money(row.as_singles_per_100), null],
+    };
+    Array.prototype.forEach.call(strip.querySelectorAll('.tile'), function (tile) {
+      var label = tile.querySelector('.tile-label').textContent.trim();
+      var found = values[label];
+      if (!found) return;
+      tile.querySelector('.tile-value').textContent = found[0];
+      var delta = tile.querySelector('.tile-delta');
+      if (delta) delta.textContent = found[1] || '';
+      else if (found[1]) {
+        var el = document.createElement('div');
+        el.className = 'tile-delta';
+        el.textContent = found[1];
+        tile.appendChild(el);
+      }
+    });
+  }
+
+  document.querySelectorAll('.combo-controls').forEach(function (bar) {
+    var spec;
+    try { spec = JSON.parse(bar.dataset.combo); } catch (e) { return; }
+    var board = document.getElementById(spec.board);
+    var table = document.getElementById(spec.table);
+    var strip = spec.strip ? document.getElementById(spec.strip) : null;
+    if (!board || !table || !readLegs(board, spec)) { bar.remove(); return; }
+
+    var inputs = Array.prototype.slice.call(bar.querySelectorAll('.combo-input'));
+    var published = settings();
+    /* The prose under the table describes the setting that was published. It
+       is hidden while the controls say something else rather than rewritten:
+       those sentences are the app's, and a page that paraphrases them would be
+       a second copy to keep in step. */
+    var notes = [], sib = table.parentNode.nextElementSibling;
+    while (sib && sib.classList.contains('caption')) {
+      notes.push(sib);
+      sib = sib.nextElementSibling;
+    }
+    var note = document.createElement('p');
+    note.className = 'caption';
+    note.hidden = true;
+    if (notes.length) notes[notes.length - 1].after(note);
+
+    function settings() {
+      var cfg = {};
+      Array.prototype.forEach.call(bar.querySelectorAll('.combo-input'),
+        function (el) { cfg[el.dataset.param] = el.value; });
+      return cfg;
+    }
+
+    function config() {
+      var raw = settings();
+      return {
+        legs: parseInt(raw.legs, 10),
+        perGame: parseInt(raw.perGame, 10),
+        show: parseInt(raw.show, 10),
+        metric: raw.metric === 'Most likely' ? 'likely' : 'ev',
+      };
+    }
+
+    var record = {rows: [], span: ''};
+    if (spec.recordId) {
+      var blob = document.getElementById(spec.recordId);
+      if (blob) { try { record = JSON.parse(blob.textContent); } catch (e) {} }
+    }
+
+    function measured(cfg) {
+      for (var i = 0; i < (record.rows || []).length; i++) {
+        var r = record.rows[i];
+        if (r.legs === cfg.legs && r.per_game === cfg.perGame &&
+            r.metric === cfg.metric && r.show === cfg.show) return r;
+      }
+      return null;
+    }
+
+    function render() {
+      var cfg = config();
+      var slips = buildSlips(readLegs(board, spec), cfg, spec.singleWinner);
+      drawSlips(table, slips);
+      var row = measured(cfg);
+      drawStrip(strip, row, record.span);
+
+      var raw = settings();
+      var changed = Object.keys(published).some(function (k) {
+        return published[k] !== raw[k];
+      });
+      notes.forEach(function (n) { n.hidden = changed; });
+      note.hidden = !changed;
+      if (changed) {
+        var words = {2: 'two', 3: 'three', 4: 'four'}[cfg.legs] || cfg.legs;
+        note.textContent =
+          'The ' + slips.length + ' best ' + words + '-leg combinations of the top ' +
+          cfg.perGame + ', ranked by ' +
+          (cfg.metric === 'ev' ? 'expected value' : 'how likely the slip is to land') +
+          '. ' + (row
+            ? 'Replayed over ' + record.span + ', this setting graded ' +
+              row.slips.toLocaleString() + ' slips, of which ' +
+              (row.landed * 100).toFixed(1) + '% landed against the ' +
+              (row.we_said * 100).toFixed(1) + '% we said.'
+            : 'This setting has not been graded.');
+      }
+    }
+
+    inputs.forEach(function (el) { el.addEventListener('change', render); });
+    /* The board's game filter feeds the legs, so it has to redraw them too. */
+    var gameSel = document.querySelector(
+      'select.filter[data-table="' + spec.board + '"][data-mode="equals"]');
+    if (gameSel) gameSel.addEventListener('change', render);
+  });
+
   /* ── Chart hover ─────────────────────────────────────────────────────── */
   var RAMP = ['--ramp-1', '--ramp-2', '--ramp-3'];
   document.querySelectorAll('.figure[data-chart]').forEach(function (fig) {
@@ -496,7 +791,8 @@ JS = r"""
 
 
 def _pane(capture, tab_label: str, pane_id: str, prefix: str,
-          simple: bool = True, published: set[str] | None = None) -> str:
+          simple: bool = True, published: set[str] | None = None,
+          market: str = "", record: dict | None = None) -> str:
     tabs = next(c for c in capture.root["children"]
                 if c["t"] == "group" and c["kind"] == "tabs")
     tab = next(t for t in tabs["children"] if t["label"] == tab_label)
@@ -508,7 +804,7 @@ def _pane(capture, tab_label: str, pane_id: str, prefix: str,
         absent = {t["label"] for t in tabs["children"]
                   if t["label"] not in (published or {tab_label})}
         children = simplify(children, expander_labels(children) | absent)
-    body = Renderer(prefix).nodes(children)
+    body = Renderer(prefix, market=market, record=record).nodes(children)
     return f'<section class="pane" data-pane="{pane_id}">{body}</section>'
 
 
@@ -533,7 +829,7 @@ def build_page(markets: list[dict], *, panes: list[tuple[str, str]],
         meta = " ".join(f"<span>{v}</span>" for v in m["meta"])
         published = {label for _, label in panes}
         body = "".join(_pane(m["capture"], label, pid, f'{m["key"]}-{pid}', simple,
-                             published)
+                             published, m["key"], m.get("record"))
                        for pid, label in panes)
         blocks.append(
             f'<div class="marketpane" data-market="{esc(m["key"])}"'

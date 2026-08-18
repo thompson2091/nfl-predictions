@@ -60,6 +60,29 @@ def capture(target_type: str, quiet: bool):
     return cap
 
 
+def _record(target_type: str) -> dict:
+    """The graded combination replay, if it has been run.
+
+    Carried into the page so the strip above the combinations table answers for
+    whatever its controls currently say, rather than for the one setting that
+    happened to be captured. Empty is fine: the section then reads as it does
+    in the app before `make combos`.
+    """
+    from src.evaluation.combo_backtest import load
+    from src.utils.paths import get_path
+    stats = load(get_path("output", target_type) / "combo_backtest.json")
+    if not stats:
+        return {}
+    # Rounded on the way in: five decimals is far past what a tile prints, and
+    # the raw floats were most of the page's weight.
+    def _tidy(row: dict) -> dict:
+        return {k: (round(v, 5) if isinstance(v, float) else v)
+                for k, v in row.items()}
+
+    return {"span": stats.get("span", ""),
+            "rows": [_tidy(r) for r in stats["rows"]]}
+
+
 def _meta(cap, target_type: str) -> list[str]:
     """The sidebar selections, restated on the page — the sidebar is gone."""
     picked = {w["label"]: w["value"] for w in cap.widgets}
@@ -95,7 +118,7 @@ def main(out_dir: str, open_after: bool, quiet: bool, simple: bool) -> int:
                   file=sys.stderr)
             return 1
         markets.append({"key": key, "label": label, "capture": cap,
-                        "meta": _meta(cap, key)})
+                        "meta": _meta(cap, key), "record": _record(key)})
 
     built = datetime.now(timezone.utc).astimezone().strftime("%-d %B %Y")
     page = build_page(markets, panes=PANES, built=built,

@@ -409,9 +409,18 @@ class Capture:
         return self._widget(dest, "number_input", label, v, None, help)
 
     def _el_slider(self, dest, label, min_value=None, max_value=None,
-                   value=None, help=None, **kw):
+                   value=None, step=None, help=None, **kw):
+        """The bounds travel with the value.
+
+        A page that rebuilds this control needs the range the app offered, and
+        inventing one would let the export propose a setting the app does not
+        have — the same failure as a filter that guesses its own cut-off.
+        """
         v = value if value is not None else min_value
-        return self._widget(dest, "slider", label, v, None, help)
+        return self._widget(dest, "slider", label, v, None, help,
+                            min_value=_plain(min_value),
+                            max_value=_plain(max_value),
+                            step=_plain(step))
 
     def _el_button(self, dest, label, **kw):
         self._widget(dest, "button", label, False, None, kw.get("help"))
