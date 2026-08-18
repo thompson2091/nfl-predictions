@@ -32,7 +32,7 @@ replayed against results. It is what the model expects, not what it returned.
 """
 from __future__ import annotations
 
-from itertools import combinations
+from itertools import chain, combinations
 
 import numpy as np
 import pandas as pd
@@ -76,7 +76,14 @@ def pool(frame: pd.DataFrame, per_game: int) -> pd.DataFrame:
     if missing:
         raise KeyError(f"board is missing {missing}")
 
-    df = frame.dropna(subset=["odds", "probability", "market_prob"]).copy()
+    df = frame.copy()
+    # Where each row sat in the board handed in, kept through every filter and
+    # sort below so a caller can map a slip back to its legs — which is what
+    # grading one against results needs. Positional rather than the index,
+    # because a board arrives from several merges and its labels need not be
+    # unique.
+    df["_row"] = np.arange(len(df))
+    df = df.dropna(subset=["odds", "probability", "market_prob"])
     # A player the injury report has ruled out is not a long shot, he is a
     # guaranteed losing leg, and a combination is only as live as its worst one.
     if "is_blocked" in df.columns:
@@ -122,7 +129,7 @@ def build(frame: pd.DataFrame, *, legs: int = 2, per_game: int = 4,
 
     picked = pool(frame, per_game)
     empty = pd.DataFrame(columns=["Players", "Game", "Odds", "Ours", "Book",
-                                  "edge_pp", "EV", "SameGame", "Legs"])
+                                  "edge_pp", "EV", "SameGame", "Legs", "_legs"])
     if len(picked) < legs:
         return empty
 
@@ -143,34 +150,71 @@ def build(frame: pd.DataFrame, *, legs: int = 2, per_game: int = 4,
 
     names = cand["player_name"].tolist()
     games = cand["game_label"].tolist()
+    keys = cand["_row"].to_numpy()
     p_pub = cand["probability"].astype(float).to_numpy()
     p_bet = cand["bet_prob"].astype(float).to_numpy()
     p_book = cand["market_prob"].astype(float).to_numpy()
     dec = cand["decimal_odds"].astype(float).to_numpy()
 
+    # Every combination at once, as an index matrix. Four legs from a 54-player
+    # candidate list is 316,000 of them: cheap as four array multiplications
+    # and prohibitive as a Python loop building a dict per row, which is what
+    # this was — a four-leg board took half a minute to draw and the backtest
+    # took twelve.
+    idx = np.fromiter(chain.from_iterable(combinations(range(len(cand)), legs)),
+                      dtype=np.int64)
+    idx = idx.reshape(-1, int(legs))
+
+    game_code = pd.factorize(pd.Series(games))[0]
+    codes = game_code[idx]
+    # Two legs from one game, for any pair of leg positions.
+    same_game = np.zeros(len(idx), dtype=bool)
+    for a in range(legs):
+        for b in range(a + 1, legs):
+            same_game |= codes[:, a] == codes[:, b]
+    if single_winner:
+        keep_rows = ~same_game
+        if not keep_rows.any():
+            return empty
+        idx, same_game = idx[keep_rows], same_game[keep_rows]
+
+    d = np.prod(dec[idx], axis=1)
+    ours = np.prod(p_pub[idx], axis=1)
+    book = np.prod(p_book[idx], axis=1)
+    bet = np.prod(p_bet[idx], axis=1)
+    ev = (bet * d - 1.0) * 100
+    score = ev if metric == "ev" else ours
+
+    # Materialise the top of the table only: the names, the game labels and the
+    # American prices are the expensive part, and 316,000 of them are thrown
+    # away. Ties at the cut-off come along so the tie-break below picks from
+    # all of them rather than from wherever the partition happened to slice.
+    take = min(int(top_k), len(idx))
+    cut = np.partition(score, -take)[-take]
+    shown = np.flatnonzero(score >= cut)
+    # Stable, so identical scores stay in combination order before the
+    # name tie-break in the sort below.
+    shown = shown[np.argsort(-score[shown], kind="stable")]
+
     rows = []
-    for idx in combinations(range(len(cand)), int(legs)):
-        legs_games = {games[i] for i in idx}
-        same_game = len(legs_games) < legs
-        if single_winner and same_game:
-            continue
-        d = float(np.prod(dec[list(idx)]))
-        ours = float(np.prod(p_pub[list(idx)]))
-        book = float(np.prod(p_book[list(idx)]))
-        bet = float(np.prod(p_bet[list(idx)]))
+    for r in shown:
+        legs_idx = idx[r]
+        legs_games = {games[i] for i in legs_idx}
         rows.append({
-            "Players": " + ".join(names[i] for i in idx),
+            "Players": " + ".join(names[i] for i in legs_idx),
             "Game": (next(iter(legs_games)) if len(legs_games) == 1
                      else f"{len(legs_games)} games"),
-            "Odds": decimal_to_american(d),
-            "Ours": ours * 100,
-            "Book": book * 100,
-            "edge_pp": (ours - book) * 100,
+            "Odds": decimal_to_american(float(d[r])),
+            "Ours": float(ours[r]) * 100,
+            "Book": float(book[r]) * 100,
+            "edge_pp": (float(ours[r]) - float(book[r])) * 100,
             # Judged on our pre-blend number and paid at the product of the
             # posted prices, which is the same pairing the board's own EV uses.
-            "EV": (bet * d - 1.0) * 100,
-            "SameGame": same_game,
+            "EV": float(ev[r]),
+            "SameGame": bool(same_game[r]),
             "Legs": int(legs),
+            # Which rows of the board this slip is, for anyone grading it.
+            "_legs": tuple(sorted(int(keys[i]) for i in legs_idx)),
         })
 
     if not rows:
