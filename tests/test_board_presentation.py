@@ -320,3 +320,29 @@ def test_a_pooled_positive_built_on_one_good_season_is_called_out():
     do, _ = bp.bet_guidance(econ, 3)
     assert any("Be sceptical of the headline" in line for line in do)
     assert any("only profitable in 1 season out of 2" in line for line in do)
+
+
+# ── Verdicts on a combination ──────────────────────────────────────────────
+
+
+def test_a_slip_reads_as_its_weakest_leg():
+    assert bp.combo_read(["Strong call", "Matches book"]) == "Matches book"
+    assert bp.combo_read(["Strong call", "Leans"]) == "Leans"
+    assert bp.combo_read(["Strong call", "Strong call"]) == "Strong call"
+
+
+def test_a_slip_with_no_reads_says_nothing():
+    assert bp.combo_read([]) == ""
+    assert bp.combo_read(["something else"]) == ""
+
+
+def test_backing_counts_legs_rather_than_grading_the_slip():
+    assert bp.combo_backing(["Strong", "Standard"]) == "2 of 2"
+    assert bp.combo_backing(["Strong", ""]) == "1 of 2"
+    assert bp.combo_backing(["", "", ""]) == ""
+
+
+def test_one_fade_leg_outranks_the_count():
+    """The book prices that group far above what it hits — it ends the slip."""
+    assert bp.combo_backing(["Strong", "Fade"]) == "Fade leg"
+    assert bp.combo_backing(["Fade", ""]) == "Fade leg"

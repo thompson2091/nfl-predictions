@@ -4,7 +4,7 @@
 	backtest walkforward longshot economics clusters evaluate wager wager-report \
 	odds-open odds-close odds-schedule odds-schedule-on odds-schedule-off \
 	odds-schedule-status \
-	decay shop site \
+	decay shop site combos \
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune
 
@@ -97,6 +97,14 @@ economics:
 clusters:
 	$(PYTHON) scripts/21_clusters.py --target $(TARGET)
 
+# What combinations of the board's top players actually did: replays the
+# section's own rule over every graded backtest week and grades each slip on
+# whether every leg scored. Needs the backtest CSVs (make evaluate) — until it
+# has run, the app says in as many words that nothing in that table has been
+# backtested, which is the truth.
+combos:
+	$(PYTHON) scripts/29_combos.py --target $(TARGET)
+
 # Everything the app reads, rebuilt in dependency order, for both markets.
 # Run this after `make train` or the app will quote a model that no longer exists.
 # --walk-forward retrains on earlier seasons before scoring each one. Without
@@ -112,6 +120,7 @@ evaluate:
 		$(PYTHON) scripts/11_walkforward.py --target $$t; \
 		$(PYTHON) scripts/21_clusters.py --target $$t; \
 		$(PYTHON) scripts/13_clv.py --target $$t; \
+		$(PYTHON) scripts/29_combos.py --target $$t; \
 	done
 	$(PYTHON) scripts/12_longshot.py --target anytime_td
 

@@ -1086,7 +1086,7 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
     }
 
 
-def combo_columns(decimals: int = 1) -> dict:
+def combo_columns(decimals: int = 1, graded: dict | None = None) -> dict:
     """The combination table, described in the board's own terms.
 
     Deliberately the same five quantities the board shows for one player —
@@ -1125,15 +1125,49 @@ def combo_columns(decimals: int = 1) -> dict:
              "whole slip. It compounds with the legs: so does any error in it, "
              "which is why the biggest numbers in this column are the least "
              "trustworthy rows in the table."),
+    "Confidence": st.column_config.TextColumn(
+        "Our read", width="small",
+        help="The **weakest** read among the legs, on the same cuts the board "
+             "above uses. Not the average and not the best of them: a slip "
+             "needs every leg, so a **Strong call** beside a player we price "
+             "exactly where the book does is a slip resting on the book's own "
+             "opinion, and it says so."),
+    "InRange": st.column_config.TextColumn(
+        "Worth backing", width="small",
+        help="How many legs the fitted rule would have marked as a bet on "
+             "their own — a count, never a grade for the slip. Those tiers and "
+             "the returns behind them were measured on **single** bets at "
+             "closing prices, and \\$131 per \\$100 on a Strong single says "
+             "nothing about two of them multiplied.\n\n"
+             "**Fade leg** overrides the count: the book prices that group far "
+             "above what it actually hits, so one of them is usually the leg "
+             "that ends the slip."),
     "EV": st.column_config.NumberColumn(
         "Expected on $100", format="$%+.2f",
         help="What a flat \\$100 on this slip returns **on average** if our "
              "numbers are right — judged on our pre-blend number and paid at "
              "the price to its left, the same pairing the board above uses.\n\n"
-             "Unlike the board's, this column has never been backtested. Every "
-             "profitability figure in this app was measured on single bets at "
-             "closing prices."),
+             + ("This is a forecast, not a record. What slips like these "
+                "actually returned is the strip above the table, replayed over "
+                f"{graded['slips']:,} graded slips."
+                if graded else
+                "Unlike the board's, this column has never been backtested. "
+                "Every profitability figure in this app was measured on single "
+                "bets at closing prices — `scripts/29_combos.py` grades "
+                "this one.")),
     }
+
+
+@st.cache_data(show_spinner=False)
+def combo_record(tt: str, model: str) -> dict | None:
+    """How the combinations table has actually done, or None if never graded.
+
+    Written by scripts/29_combos.py. Absent is a meaningful state rather than
+    an error: until it has run, the section says in as many words that nothing
+    in it has been backtested, which is true and is what the reader needs.
+    """
+    from src.evaluation.combo_backtest import load
+    return load(get_path("output", tt) / "combo_backtest.json")
 
 
 @st.cache_data(show_spinner=False)
@@ -1894,6 +1928,79 @@ if tab_board.open:
                 key="combo_show", help="How many rows to list.",
             )
 
+            # What this configuration has actually done, from the graded
+            # replay. It sits above the table rather than below it because it
+            # is the context for reading any row: a table of expected values
+            # built on a probability that runs hot is a table of fiction, and
+            # `landed` against `we said` is the only thing that says which.
+            _rec = None
+            _record = combo_record(target_type, selected_model)
+            if _record:
+                from src.evaluation.combo_backtest import lookup
+                _rec = lookup(_record, legs=int(_legs), per_game=int(_pool_n),
+                              metric=("ev" if _rank_by == "Expected value"
+                                      else "likely"), show=int(_show_n))
+            if _rec:
+                _strip = st.container(horizontal=True)
+                _strip.metric(
+                    "Slips graded", f"{_rec['slips']:,}",
+                    delta=f"{_rec['weeks']} weeks, {_record['span']}",
+                    delta_color="off",
+                    help=f"Every slip this setting would have shown, replayed "
+                         f"week by week over {_record['span']} and graded on "
+                         f"results. Each season was predicted by a model that "
+                         f"never trained on it, and each slip priced at the "
+                         f"same closing prices the single-bet figures use.")
+                _strip.metric(
+                    "Landed", f"{_rec['landed']:.1%}",
+                    help="How often **every** leg scored. One leg short is the "
+                         "same as all of them short, which is the whole "
+                         "difference between this and the board's accuracy.")
+                _strip.metric(
+                    "We said", f"{_rec['we_said']:.1%}",
+                    delta=f"{_rec['landed'] - _rec['we_said']:+.1%} vs landed",
+                    delta_color="off",
+                    help="What we thought that chance was, averaged over the "
+                         "same slips. This is the number that matters most on "
+                         "this strip: multiplying legs multiplies any "
+                         "calibration error, so a gap here is the reason to "
+                         "distrust every expected value in the table below.")
+                _strip.metric(
+                    "Book said", f"{_rec['book_said']:.1%}",
+                    help="The same product on the bookmaker's de-vigged "
+                         "prices. It sits well below what these slips actually "
+                         "landed because they are selected on disagreement — "
+                         "we only build from players we rate above the price.")
+                _ex = _rec.get("return_ex_top10")
+                _strip.metric(
+                    "Return per $100", bp.signed_money(_rec["return_per_100"],
+                                                       0, escape=False),
+                    delta=(f"{bp.signed_money(_ex, 0, escape=False)} without "
+                           f"the 10 biggest wins" if _ex is not None else None),
+                    delta_color="off",
+                    help="What a flat \$100 on every one of these slips came "
+                         "back with — measured, not expected. Read it next to "
+                         "the figure without the ten biggest wins: a parlay's "
+                         "profit is concentrated by construction, and where "
+                         "the two disagree sharply the headline is a handful "
+                         "of afternoons rather than a strategy.")
+                _strip.metric(
+                    "As singles", bp.signed_money(_rec["as_singles_per_100"],
+                                                  0, escape=False),
+                    help="The same players, the same money, staked as separate "
+                         "bets instead — \$50 a leg on a two-leg slip. A "
+                         "parlay compounds an edge rather than creating one, "
+                         "so this is the number the one beside it is built "
+                         "out of. It compounds a *wrong* edge exactly as "
+                         "eagerly, which is the risk in the whole table.")
+            elif _record:
+                st.caption(
+                    f":material/warning: This setting has not been graded — "
+                    f"the replay in `output/{target_type}/combo_backtest.json` "
+                    f"covers the settings these controls offer, so this means "
+                    f"it predates a control that has changed. Re-run "
+                    f"`python scripts/29_combos.py --target {target_type}`.")
+
             # Follows the board's own Game selector, so filtering to one game
             # gives that game's slips. Search and depth are left out on purpose:
             # they narrow which rows you are reading, not which bets exist.
@@ -1920,14 +2027,38 @@ if tab_board.open:
             else:
                 _cshow = _combos.copy()
                 _cshow["Odds"] = _cshow["Odds"].map(bp.american)
+
+                # The board's two verdicts, carried onto a slip. Both are
+                # derived per leg and then reduced, rather than recomputed on
+                # the slip's own numbers: the cuts behind "Our read" and the
+                # thresholds behind "Worth backing" were both fitted on single
+                # players, and a slip's edge is a different quantity on a
+                # different scale. See bp.combo_read / bp.combo_backing.
+                _lo, _hi = confidence_cuts(target_type)
+                _leg_read = [bp.confidence(e, _lo, _hi)
+                             for e in _combo_src["edge_pp"]]
+                _cshow["Confidence"] = [
+                    bp.combo_read([_leg_read[i] for i in legs])
+                    for legs in _combos["_legs"]]
+                _combo_cols = ["Players", "Game", "Odds", "Ours", "Book",
+                               "edge_pp", "Confidence", "EV"]
+
+                _combo_rule = betting_rule(target_type, selected_model)
+                if _combo_rule:
+                    _leg_tier = bp.highlight_tier(_combo_src, _combo_rule)
+                    if not isinstance(_leg_tier, str):
+                        _leg_tier = list(_leg_tier)
+                        _cshow["InRange"] = [
+                            bp.combo_backing([_leg_tier[i] for i in legs])
+                            for legs in _combos["_legs"]]
+                        _combo_cols = _combo_cols + ["InRange"]
                 # A first-TD double lands under 1% of the time and a two-leg
                 # anytime slip around a fifth of the time. One decimal place
                 # prints the first as "0.5%" for everything.
                 _dp = 2 if float(_cshow["Ours"].max()) < 5 else 1
                 st.dataframe(
-                    _cshow[["Players", "Game", "Odds", "Ours", "Book", "edge_pp",
-                            "EV"]],
-                    hide_index=True, column_config=combo_columns(_dp),
+                    _cshow[_combo_cols],
+                    hide_index=True, column_config=combo_columns(_dp, _rec),
                     use_container_width=True)
 
                 _leg_word = {2: "two", 3: "three", 4: "four"}[int(_legs)]
@@ -2004,12 +2135,24 @@ if tab_board.open:
                 else:
                     _exclusion = ""
 
+                if _rec:
+                    _graded = (
+                        f" The strip above is this exact setting replayed over "
+                        f"{_record['span']}: {_rec['slips']:,} slips, of which "
+                        f"{_rec['landed']:.1%} landed against the "
+                        f"{_rec['we_said']:.1%} we said beforehand. The "
+                        f"**Expected on $100** column below is still a forecast "
+                        f"rather than that measurement.")
+                else:
+                    _graded = (
+                        f" And nothing in this table has been backtested: every "
+                        f"profitability figure in this app was measured on "
+                        f"single bets at closing prices, and multiplying legs "
+                        f"multiplies the model's calibration error along with "
+                        f"them. `python scripts/29_combos.py --target "
+                        f"{target_type}` grades it.")
                 st.caption(
-                    f":material/warning: {_independence}{_exclusion} And nothing "
-                    f"in this table has been backtested: every profitability "
-                    f"figure in this app was measured on single bets at closing "
-                    f"prices, and multiplying legs multiplies the model's "
-                    f"calibration error along with them."
+                    f":material/warning: {_independence}{_exclusion}{_graded}"
                 )
 
             # ── By team ───────────────────────────────────────────────────

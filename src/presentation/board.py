@@ -86,6 +86,45 @@ def confidence(edge_pp: float, lo: float, hi: float) -> str:
     return "Strong call"
 
 
+#: The reads a row can carry, weakest first. A combination inherits the weakest
+#: of its legs': a slip is a single bet that needs all of them, so the leg we
+#: have the least to say about is the one that decides what the slip is.
+READ_ORDER = ("Matches book", "Leans", "Strong call")
+
+
+def combo_read(reads) -> str:
+    """One read for a whole slip: the weakest its legs carry.
+
+    Not the average and not the strongest. Two strong calls beside a player we
+    price exactly where the book does is a slip whose third leg is the book's
+    opinion, and calling that a strong call would be claiming an edge on a leg
+    where we have said we have none.
+    """
+    ranks = [READ_ORDER.index(r) for r in reads if r in READ_ORDER]
+    return READ_ORDER[min(ranks)] if ranks else ""
+
+
+def combo_backing(labels) -> str:
+    """What the fitted single-bet rule says about a slip's legs.
+
+    A count of legs, deliberately, and never a tier name for the slip itself:
+    the tiers and their returns were fitted on single bets at closing prices,
+    and $131 per $100 on a Strong single says nothing about two of them
+    multiplied. What can be said honestly is how many legs the rule would have
+    marked on their own.
+
+    A fade leg outranks the count because it is the only label that is a
+    warning rather than a recommendation — the book prices that group far above
+    what it hits, and one of them on a slip is the leg that ends it.
+    """
+    labels = [l for l in labels]
+    if TIER_LABEL["fade"] in labels:
+        return "Fade leg"
+    backed = sum(1 for l in labels
+                 if l in (TIER_LABEL["strong"], TIER_LABEL["standard"]))
+    return f"{backed} of {len(labels)}" if backed else ""
+
+
 def preblend_columns_differ(frame) -> bool:
     """Do Bet # / Bet edge say anything the # / Difference columns do not?
 
