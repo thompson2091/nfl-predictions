@@ -26,7 +26,8 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-from src.ingest.odds_history import HISTORY_PATH
+from src.ingest.odds_history import (HISTORY_PATH, SCHEMA, _conform,
+                                     market_for_target)
 
 #: Columns that already contain the closing price, and so cannot be scored
 #: against it. `final` is `blend(prob_calibrated, market_prob)` and market_prob
@@ -42,6 +43,12 @@ MARKET_CONTAMINATED = {"final", "market_prob", "prob_blended"}
 #: player's own closing prop price, and this column has none of it.
 CLEAN_PROB_COL = "prob_calibrated"
 
+#: Below this many scored player-games the answer is not worth printing. It is
+#: a floor on the *measurement*, not on the archive: a run that scores only one
+#: season still clears it easily, while a join that has silently gone wrong
+#: does not, which is how the season/week key bug above was caught.
+MIN_ROWS = 50
+
 
 def line_movement(target_type: str = "anytime_td") -> pl.DataFrame | None:
     """Opening and closing price for every player-game holding both."""
@@ -50,11 +57,15 @@ def line_movement(target_type: str = "anytime_td") -> pl.DataFrame | None:
     hist = pl.read_parquet(HISTORY_PATH)
     if "snapshot" not in hist.columns:
         return None
+    hist = _conform(hist, SCHEMA)
 
-    market = "anytime_td" if target_type == "anytime_td" else "first_td"
-    hist = hist.filter(pl.col("market") == market)
+    hist = hist.filter(pl.col("market") == market_for_target(target_type))
 
-    keys = ["season", "week", "game_id", "player_name_norm"]
+    # `point` joins the key so an open and a close are only ever compared at
+    # the same line. Without it, a book moving a receptions line from 4.5 to
+    # 3.5 would read as a huge price move rather than a different bet. Null for
+    # yes/no markets, where it changes nothing.
+    keys = ["season", "week", "game_id", "player_name_norm", "point"]
     opens = (
         hist.filter(pl.col("snapshot") == "open")
         .sort("captured_at").unique(subset=keys, keep="first")
@@ -70,12 +81,94 @@ def line_movement(target_type: str = "anytime_td") -> pl.DataFrame | None:
     if opens.height == 0 or closes.height == 0:
         return None
 
-    both = opens.join(closes, on=keys, how="inner")
+    # `nulls_equal` because `point` is null for every yes/no market, and a
+    # polars join drops null keys by default — which silently returned zero
+    # rows for anytime and first TD the moment `point` entered the key.
+    both = opens.join(closes, on=keys, how="inner", nulls_equal=True)
     if both.height == 0:
         return None
     return both.with_columns(
         (pl.col("close_prob") - pl.col("open_prob")).alias("move")
     )
+
+
+def hit_rows(predictions: pl.DataFrame, target_type: str = "anytime_td",
+             prob_col: str = CLEAN_PROB_COL) -> pl.DataFrame | None:
+    """One row per scored player-game: did we call the line's direction?
+
+    Split out of `measure` so two runs can be *paired* on it. A pooled
+    agreement rate compares two numbers; pairing compares the same player-games
+    scored twice, which is the same reason `paired_top_k` exists and the
+    difference between "these two rates differ" and "this change is an
+    improvement". Every caller that only wants the headline should keep using
+    `measure`.
+    """
+    moves = line_movement(target_type)
+    if moves is None:
+        return None
+
+    # game_id already encodes season and week, so it is the whole key. Joining
+    # on season/week as well looks harmless and is not: the backtest frames
+    # carry no week, and a null never matches, which silently produced an empty
+    # join and a "not enough data" message on 26,758 usable pairs.
+    join_on = ["game_id", "player_name_norm"]
+
+    # Deduplicate deterministically, and prefer the walk-forward value.
+    #
+    # A player-game can carry two different probabilities: one from a published
+    # weekly prediction file and one from the backtest frame for the same
+    # season. 367 keys do on anytime TD, 48 on first TD. `unique(keep="any")`
+    # resolved those arbitrarily, so the headline agreement rate moved between
+    # runs on identical inputs — measured at 58.25% and 58.33% on consecutive
+    # runs, which is small but fatal for a metric meant to gate promotions.
+    #
+    # `_src_rank` (set by the caller, 0 = backtest) breaks the tie toward the
+    # walk-forward probability, which is the one trained only on earlier
+    # seasons and therefore the honest out-of-sample view of a historical week.
+    # Sorting on the probability as the final key makes the result reproducible
+    # even when no caller supplies a rank.
+    rank = "_src_rank" if "_src_rank" in predictions.columns else None
+    cols = join_on + [prob_col] + ([rank] if rank else [])
+    preds = (predictions.select(cols)
+             .sort(by=join_on + ([rank] if rank else []) + [prob_col])
+             .unique(subset=join_on, keep="first")
+             .select(join_on + [prob_col]))
+    j = moves.join(preds, on=join_on, how="inner")
+    if j.height < MIN_ROWS:
+        return None
+
+    # Two corrections without which this measures the wrong thing.
+    #
+    # De-vig the opening price before asking whether we are above it. Raw
+    # implied probability carries the book's margin, so we sit below it on 73%
+    # of players purely by construction — that is the vig, not an opinion.
+    # Against the de-vigged open it is 40%, which is a real disagreement rate.
+    #
+    # Drop prices that never moved. A price that closes where it opened says
+    # nothing about who was right, and counting it as agreement inflated the
+    # result by treating 14% of rows as free wins.
+    expected = 1.0 if target_type == "first_td" else _expected_scorers()
+    j = j.with_columns(
+        (pl.col("open_prob") / pl.col("open_prob").sum().over("game_id") * expected)
+        .alias("open_fair")
+    ).filter(pl.col("move") != 0)
+    if j.height < MIN_ROWS:
+        return None
+
+    # Sorted on the way out, and not for tidiness. A polars join does not
+    # promise row order, so `j` came back ordered differently between runs on
+    # identical inputs. Nothing downstream cared until the permutation null,
+    # which shuffles `we_are_higher` within each game from a fixed seed — a
+    # fixed seed applied to a different starting order is a different shuffle,
+    # so the null drifted by ~0.04pp per run and took `edge_pts` with it. A
+    # deterministic order makes the whole measurement reproducible, which is
+    # the bar for something that gates promotions.
+    return j.with_columns([
+        (pl.col(prob_col) > pl.col("open_fair")).alias("we_are_higher"),
+        (pl.col("move") > 0).alias("market_shortened"),
+    ]).with_columns(
+        (pl.col("we_are_higher") == pl.col("market_shortened")).alias("hit")
+    ).sort(["game_id", "player_name_norm"])
 
 
 def measure(predictions: pl.DataFrame, target_type: str = "anytime_td",
@@ -96,42 +189,9 @@ def measure(predictions: pl.DataFrame, target_type: str = "anytime_td",
             f"before any prop price enters."
         )
 
-    moves = line_movement(target_type)
-    if moves is None:
+    j = hit_rows(predictions, target_type, prob_col)
+    if j is None:
         return None
-
-    # game_id already encodes season and week, so it is the whole key. Joining
-    # on season/week as well looks harmless and is not: the backtest frames
-    # carry no week, and a null never matches, which silently produced an empty
-    # join and a "not enough data" message on 26,758 usable pairs.
-    join_on = ["game_id", "player_name_norm"]
-    preds = predictions.select(join_on + [prob_col]).unique(subset=join_on)
-    j = moves.join(preds, on=join_on, how="inner")
-    if j.height < 50:
-        return None
-
-    # Two corrections without which this measures the wrong thing.
-    #
-    # De-vig the opening price before asking whether we are above it. Raw
-    # implied probability carries the book's margin, so we sit below it on 73%
-    # of players purely by construction — that is the vig, not an opinion.
-    # Against the de-vigged open it is 40%, which is a real disagreement rate.
-    #
-    # Drop prices that never moved. A price that closes where it opened says
-    # nothing about who was right, and counting it as agreement inflated the
-    # result by treating 14% of rows as free wins.
-    expected = 1.0 if target_type == "first_td" else _expected_scorers()
-    j = j.with_columns(
-        (pl.col("open_prob") / pl.col("open_prob").sum().over("game_id") * expected)
-        .alias("open_fair")
-    ).filter(pl.col("move") != 0)
-    if j.height < 50:
-        return None
-
-    j = j.with_columns([
-        (pl.col(prob_col) > pl.col("open_fair")).alias("we_are_higher"),
-        (pl.col("move") > 0).alias("market_shortened"),
-    ])
     hit = (j["we_are_higher"] == j["market_shortened"]).to_numpy()
     n = len(hit)
 
@@ -166,6 +226,117 @@ def measure(predictions: pl.DataFrame, target_type: str = "anytime_td",
         "n_higher": higher.height,
         "n_lower": lower.height,
     }
+
+
+# --------------------------------------------------------------------------
+# Judging an experiment on closing-line value
+# --------------------------------------------------------------------------
+
+def from_players(players: pl.DataFrame | None, *, market: str,
+                 model: str) -> pl.DataFrame | None:
+    """Harness player rows, keyed the way `hit_rows` needs them.
+
+    `harness.run(keep_rows=True)` already scores every held-out season through
+    the production path and keeps the per-player probability. That column is
+    the model's own view — the joint model inside it reads the game total and
+    spread, which are market numbers, but they are known at the open, and it
+    never sees the player's own prop price. So it is the honest input here, and
+    it means judging a candidate on closing-line value costs one walk-forward
+    rather than a separate scoring path.
+    """
+    if players is None or players.height == 0:
+        return None
+    from src.features.odds_features import _normalize_name
+
+    sub = players.filter((pl.col("target_type") == market)
+                         & (pl.col("model") == model))
+    if sub.height == 0 or "prob" not in sub.columns:
+        return None
+    return sub.with_columns([
+        pl.col("prob").alias(CLEAN_PROB_COL),
+        pl.col("player_name").map_elements(_normalize_name, return_dtype=pl.Utf8)
+        .alias("player_name_norm"),
+    ])
+
+
+def measure_run(result: dict, *, market: str, model: str) -> dict | None:
+    """Closing-line value for one (market, model) of a harness run."""
+    preds = from_players(result.get("players"), market=market, model=model)
+    if preds is None:
+        return None
+    return measure(preds, market)
+
+
+def paired_clv(champion: dict, candidate: dict, *, market: str, model: str,
+               against: str | None = None) -> dict | None:
+    """Paired closing-line value between two runs of the same folds.
+
+    The reason this exists rather than subtracting two `measure` calls: the two
+    runs score the same player-games, so the informative quantity is how often
+    they disagree about a line's direction and who was right when they did.
+    Pooled rates hide that — two models agreeing on 95% of rows and differing
+    on 5% produce almost identical headlines while the paired view shows
+    exactly what changed. Same statistic as `paired_top_k`, one row per scored
+    player-game instead of one per game.
+
+    `against` names the champion-side model when the candidate introduces one
+    the champion does not have.
+    """
+    against = against or model
+    a = from_players(champion.get("players"), market=market, model=against)
+    b = from_players(candidate.get("players"), market=market, model=model)
+    if a is None or b is None:
+        return None
+
+    ra, rb = hit_rows(a, market), hit_rows(b, market)
+    if ra is None or rb is None:
+        return None
+
+    key = ["game_id", "player_name_norm"]
+    j = (ra.select(key + ["hit"]).rename({"hit": "_a"})
+         .join(rb.select(key + ["hit"]).rename({"hit": "_b"}),
+               on=key, how="inner"))
+    if j.height < MIN_ROWS:
+        return None
+
+    x = j["_a"].to_numpy().astype(int)
+    y = j["_b"].to_numpy().astype(int)
+    d = y - x
+    n = len(d)
+    se = float(d.std(ddof=1) / np.sqrt(n)) if n > 1 else 0.0
+    delta = float(d.mean())
+    wins = int(((x == 0) & (y == 1)).sum())
+    losses = int(((x == 1) & (y == 0)).sum())
+
+    p_value = 1.0
+    if wins + losses > 0:
+        from scipy.stats import binomtest
+        p_value = float(binomtest(wins, wins + losses, 0.5).pvalue)
+
+    return {
+        "market": market, "model": model, "against": against,
+        "n_compared": n,
+        "champion": float(x.mean()), "candidate": float(y.mean()),
+        "delta": delta, "se": se,
+        "se_multiple": (delta / se) if se > 0 else (0.0 if delta == 0 else float("inf")),
+        "wins": wins, "losses": losses, "discordant": wins + losses,
+        "p_value": p_value,
+    }
+
+
+def format_clv(row: dict | None) -> str:
+    """One block of the gate report, in the same shape as the Top-K lines."""
+    if row is None:
+        return "    CLV    not measurable — no open/close pairs overlap this run"
+    name = (f"{row['model']} vs {row['against']}"
+            if row["model"] != row["against"] else row["model"])
+    return (
+        f"    CLV    {row['champion']:.2%} -> {row['candidate']:.2%}  "
+        f"{row['delta']*100:+.2f}pp  ({row['se_multiple']:+.2f} se, "
+        f"p={row['p_value']:.3f})  [{name}]\n"
+        f"           {row['discordant']:,} of {row['n_compared']:,} player-games "
+        f"differ: {row['wins']} won, {row['losses']} lost"
+    )
 
 
 def _expected_scorers() -> float:

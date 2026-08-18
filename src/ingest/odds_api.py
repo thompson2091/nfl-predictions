@@ -1,8 +1,10 @@
 """Fetch player TD props from The Odds API and cache locally."""
 import json
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import Iterable, Sequence
 
 import requests
 
@@ -11,6 +13,151 @@ from src.utils.paths import get_path
 API_BASE = "https://api.the-odds-api.com/v4"
 SPORT = "americanfootball_nfl"
 CACHE_DIR = get_path("raw") / "odds_cache"
+
+
+@dataclass(frozen=True)
+class MarketSpec:
+    """A market the API serves, and how to read it."""
+
+    #: The Odds API market key, as sent in the `markets` query parameter.
+    key: str
+    #: What it is archived as. Equals the target type by convention — see
+    #: odds_history.MARKET_BY_TARGET.
+    market: str
+    #: "yes_no" or "over_under". Not cosmetic: see MARKET_SPECS.
+    shape: str
+
+
+#: Every market this project knows how to read, with the shape of its outcomes.
+#:
+#: The shape has to be declared rather than assumed, because getting it wrong
+#: does not raise. First and anytime TD publish Yes/No outcomes with no line.
+#: Rushing and reception touchdowns publish **Over/Under** outcomes carrying a
+#: `point`, even though the line is nearly always 0.5 and the proposition is
+#: identical. Pointed at those markets, a yes/no reader matches no outcome,
+#: skips every one of them, and archives an empty market — silently, and after
+#: the credits have been spent. The historical endpoint sells each snapshot
+#: once, so that is not a mistake you get to make twice.
+MARKET_SPECS: tuple[MarketSpec, ...] = (
+    MarketSpec("player_1st_td", "first_td", "yes_no"),
+    MarketSpec("player_anytime_td", "anytime_td", "yes_no"),
+    MarketSpec("player_rush_tds", "rush_td", "over_under"),
+    MarketSpec("player_reception_tds", "reception_td", "over_under"),
+)
+SPEC_BY_MARKET = {s.market: s for s in MARKET_SPECS}
+
+#: Markets fetched when a caller does not say. Deliberately the two we model:
+#: every extra market multiplies the credit cost of a fetch, so widening this
+#: is a spending decision and belongs at the call site.
+DEFAULT_MARKETS: tuple[str, ...] = ("first_td", "anytime_td")
+
+#: Over/under outcomes are normalised onto the yes/no vocabulary the archive
+#: already speaks. "Over" is the side that wins when the player does more,
+#: which is exactly what "Yes" means on an anytime-TD ticket, so they share one
+#: word and every downstream `side == "yes"` filter keeps working unchanged.
+#: Which line the side refers to lives in `point`.
+SIDE_ALIASES = {"yes": "yes", "over": "yes", "no": "no", "under": "no"}
+
+
+def specs_for(markets: Sequence[str]) -> tuple[MarketSpec, ...]:
+    """Resolve archive market names to specs, refusing unknown ones."""
+    unknown = [m for m in markets if m not in SPEC_BY_MARKET]
+    if unknown:
+        raise KeyError(
+            f"unknown market(s) {unknown}; known markets are "
+            f"{sorted(SPEC_BY_MARKET)}. Add a MarketSpec — including its "
+            f"outcome shape — before fetching it."
+        )
+    return tuple(SPEC_BY_MARKET[m] for m in markets)
+
+
+def parse_event_markets(
+    event: dict,
+    specs: Iterable[MarketSpec],
+    *,
+    game_id: str | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """Consensus prices and per-book quotes for one event payload.
+
+    One reader for both fetch paths. The live fetch and the historical backfill
+    used to carry separate copies of this loop, identical down to the
+    `side not in ("yes", "no")` filter — so any market shape either one learned,
+    the other did not, and only one of them spends five figures of credits.
+
+    Returns `(consensus_rows, book_rows)` in archive vocabulary: consensus is
+    one row per (player, line) per market, book rows are one per bookmaker
+    behind it. Both carry `point`, null for yes/no markets.
+    """
+    consensus: list[dict] = []
+    book_rows: list[dict] = []
+
+    for spec in specs:
+        # (player, point) -> {"yes": [prob], "no": [prob], "odds": [american]}
+        #
+        # Keyed on the line as well as the player: a book quoting Over 0.5 and
+        # a book quoting Over 1.5 are not two opinions about one price, and a
+        # median across them describes no bet that exists.
+        quotes: dict[tuple[str, float | None], dict] = {}
+
+        for bk in event.get("bookmakers", []):
+            for mkt in bk.get("markets", []):
+                if mkt.get("key") != spec.key:
+                    continue
+                for out in mkt.get("outcomes", []):
+                    side = SIDE_ALIASES.get(str(out.get("name", "")).lower())
+                    player = out.get("description")
+                    price = out.get("price")
+                    if side is None or not player or price is None:
+                        continue
+                    point = out.get("point")
+                    point = float(point) if point is not None else None
+                    if spec.shape == "over_under" and point is None:
+                        # An over/under with no line prices nothing. Dropping it
+                        # is right; doing so quietly is not.
+                        print(f"    WARNING: {spec.key} outcome for {player} "
+                              f"has no point; skipped.")
+                        continue
+
+                    q = quotes.setdefault((player, point),
+                                          {"yes": [], "no": [], "odds": []})
+                    q[side].append(_american_to_implied(price))
+                    if side == "yes":
+                        q["odds"].append(price)
+                    book_rows.append({
+                        "game_id": game_id,
+                        "bookmaker": bk.get("key"),
+                        "book_last_update": mkt.get("last_update")
+                                            or bk.get("last_update"),
+                        "player_name_raw": player,
+                        "market": spec.market,
+                        "point": point,
+                        "side": side,
+                        "odds": int(price),
+                        "implied_prob": round(_american_to_implied(price), 6),
+                    })
+
+        for (player, point), q in quotes.items():
+            if not q["yes"]:
+                continue
+            p_yes = _median(q["yes"])
+            p_no = _median(q["no"]) if q["no"] else None
+            consensus.append({
+                "game_id": game_id,
+                "player_name_raw": player,
+                "market": spec.market,
+                "point": point,
+                "odds": _prob_to_american(p_yes),
+                # Raw two-way price, vig included.
+                "implied_prob": round(p_yes, 4),
+                # Vig removed where the book posts both sides. Over/under
+                # markets always do, which is why they need none of the
+                # one-sided normalisation in blend.devig_market.
+                "fair_prob": round(p_yes / (p_yes + p_no), 4) if p_no else None,
+                "n_books": len(q["yes"]),
+                "overround": round(p_yes + p_no, 4) if p_no else None,
+            })
+
+    return consensus, book_rows
 
 
 def _get_api_key() -> str:
@@ -64,13 +211,22 @@ def _median(values: list[float]) -> float:
     return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2.0
 
 
-def _cache_path(week_start: str) -> Path:
-    """Cache file for a given week (by start date)."""
+def _cache_path(week_start: str, markets: Sequence[str] = DEFAULT_MARKETS) -> Path:
+    """Cache file for a given week (by start date) and market set.
+
+    The market set is part of the key. Without it, a cache written by a
+    two-market fetch would be served to a four-market one, which reads as "the
+    book priced nothing in those markets" rather than "we never asked".
+    """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    return CACHE_DIR / f"td_props_{week_start}.json"
+    if tuple(markets) == DEFAULT_MARKETS:
+        # Unsuffixed, so caches written before this existed still hit.
+        return CACHE_DIR / f"td_props_{week_start}.json"
+    return CACHE_DIR / f"td_props_{week_start}__{'-'.join(markets)}.json"
 
 
-def fetch_week_td_props(week_start: str = None, force_refresh: bool = False) -> dict:
+def fetch_week_td_props(week_start: str = None, force_refresh: bool = False,
+                        markets: Sequence[str] = DEFAULT_MARKETS) -> dict:
     """Fetch first TD and anytime TD props for upcoming NFL games.
 
     Args:
@@ -93,7 +249,8 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False) -> 
     if week_start is None:
         week_start = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    cache = _cache_path(week_start)
+    specs = specs_for(markets)
+    cache = _cache_path(week_start, markets)
     if not force_refresh and cache.exists():
         # Use cache if less than 6 hours old
         age_hours = (time.time() - cache.stat().st_mtime) / 3600
@@ -154,7 +311,7 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False) -> 
                 params={
                     "apiKey": api_key,
                     "regions": "us",
-                    "markets": "player_1st_td,player_anytime_td",
+                    "markets": ",".join(sp.key for sp in specs),
                     "oddsFormat": "american",
                 },
             )
@@ -168,64 +325,36 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False) -> 
             "home_team": home,
             "away_team": away,
             "commence_time": event["commence_time"],
-            "first_td": [],
-            "anytime_td": [],
+            **{sp.market: [] for sp in specs},
         }
 
-        # Aggregate across bookmakers. Consensus (median across books) is more
-        # stable than any single book and is what we de-vig against.
+        # Consensus (median across books) is more stable than any single book
+        # and is what we de-vig against.
         #
         # Every individual quote is also kept, in `book_rows`. The response
         # already contains them, so this costs no extra API credits — and the
         # detail cannot be bought back later, because the endpoint only sells
         # each snapshot once. See odds_history.BOOKS_PATH for what it is for.
-        for market_key, target in (("player_1st_td", "first_td"),
-                                   ("player_anytime_td", "anytime_td")):
-            # player -> {"yes": [probs], "no": [probs], "odds": [american]}
-            quotes: dict[str, dict] = {}
-            for bk in data.get("bookmakers", []):
-                for market in bk.get("markets", []):
-                    if market["key"] != market_key:
-                        continue
-                    for outcome in market.get("outcomes", []):
-                        side = outcome["name"].lower()
-                        if side not in ("yes", "no"):
-                            continue
-                        player = outcome["description"]
-                        q = quotes.setdefault(player, {"yes": [], "no": [], "odds": []})
-                        q[side].append(_american_to_implied(outcome["price"]))
-                        if side == "yes":
-                            q["odds"].append(outcome["price"])
-                        book_rows.append({
-                            "game_id": game_key,
-                            "bookmaker": bk.get("key"),
-                            "book_last_update": market.get("last_update")
-                                                or bk.get("last_update"),
-                            "player_name_raw": player,
-                            "market": target,
-                            "side": side,
-                            "odds": int(outcome["price"]),
-                            "implied_prob": round(
-                                _american_to_implied(outcome["price"]), 6),
-                        })
+        consensus, quotes = parse_event_markets(data, specs, game_id=game_key)
+        book_rows.extend(quotes)
 
-            for player, q in quotes.items():
-                if not q["yes"]:
-                    continue
-                p_yes = _median(q["yes"])
-                p_no = _median(q["no"]) if q["no"] else None
-                game_data[target].append({
-                    "player": player,
-                    "odds": _prob_to_american(p_yes),
-                    # Raw two-way price, vig included.
-                    "implied_prob": round(p_yes, 4),
-                    # Vig removed where the book posts both sides.
-                    "fair_prob": round(p_yes / (p_yes + p_no), 4) if p_no else None,
-                    "n_books": len(q["yes"]),
-                    "overround": round(p_yes + p_no, 4) if p_no else None,
-                })
+        for row in consensus:
+            # `player` rather than `player_name_raw`: this dict is the on-disk
+            # cache shape that `build_odds_parquet` has always read, and old
+            # cache files are still on disk.
+            game_data[row["market"]].append({
+                "player": row["player_name_raw"],
+                "point": row["point"],
+                "odds": row["odds"],
+                "implied_prob": row["implied_prob"],
+                "fair_prob": row["fair_prob"],
+                "n_books": row["n_books"],
+                "overround": row["overround"],
+            })
 
-            game_data[target].sort(key=lambda x: x["implied_prob"], reverse=True)
+        for sp in specs:
+            game_data[sp.market].sort(key=lambda x: x["implied_prob"],
+                                      reverse=True)
 
         results[game_key] = game_data
 

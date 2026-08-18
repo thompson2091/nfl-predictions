@@ -1,5 +1,6 @@
 {
-  "run": "2026.08.13-champion-defst",
-  "version": "2026.08.12-first-td-xgb",
-  "recorded": "2026-08-13T14:17:26+00:00"
+  "run": "2026.08.17-champion-clv",
+  "version": "2026.08.17-depth-chart-wiring",
+  "recorded": "2026-08-18T00:03:24+00:00",
+  "note": "Rows were scored at 00:03:24, 80s before 2026.08.17-depth-chart-wiring was locked at 00:04:44, against the same working tree \u2014 the run's Top-1 (anytime xgb 53.58, first_td xgb 16.53) reproduces that manifest exactly. Pointer corrected rather than re-baselined: re-running would have produced identical rows and the only thing stale was the label."
 }

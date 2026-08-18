@@ -379,7 +379,32 @@ odds_capture:
   # The same guard for the opening snapshot, in days. Stops the weekly job
   # spending credits on props that no book has posted yet through an entire
   # off-season.
-  open_window_days: 7
+  #
+  # Eight, not seven, and the extra day is load-bearing. The opening slot fires
+  # Wednesday 12:00; the 2026 season opener kicks off Wednesday 20:20. Any
+  # window of exactly seven days therefore falls 8h20m short of the only
+  # firing that could take a genuine opening line for week 1:
+  #
+  #   Wed 2026-09-02 12:00   next kickoff 7d8h away   7-day window -> SKIP
+  #   Wed 2026-09-09 12:00   next kickoff 8h20m away  7-day window -> capture
+  #
+  # So a seven-day window does not merely delay the first snapshot, it converts
+  # it into a second closing price taken eight hours before the season starts,
+  # and week 1 never gets an opening line at all.
+  #
+  # This bites only when the opener falls on the same weekday as the slot, at
+  # or after 12:00. A Thursday opener is 1d8h from the Wednesday before it and
+  # captures under any window; a Wednesday opener is 7d8h from the Wednesday
+  # before it and captures under none below eight days. Once the season is
+  # running the guard is inert — the next kickoff is never more than a week
+  # away — so this setting governs the season boundary and long gaps, which is
+  # exactly where the opening line is scarcest.
+  #
+  # The cost of the extra day is at most one credit per week, in the stretch
+  # where the next kickoff sits between seven and eight days out. The cost of
+  # the missing day is a price that cannot be bought back, which is the
+  # asymmetry src/ingest/capture_window.py is built around.
+  open_window_days: 8
 
 paths:
   raw: data/raw

@@ -881,10 +881,62 @@ def test_clv_compares_against_the_devigged_open():
     import inspect
     from src.evaluation import clv
 
-    src = inspect.getsource(clv.measure)
-    assert "open_fair" in src, "CLV no longer de-vigs the opening price"
-    assert 'pl.col("move") != 0' in src, "CLV counts prices that never moved"
-    assert "null" in src, "CLV reports no permutation null to compare against"
+    # `hit_rows` builds the scored rows and `measure` turns them into the
+    # headline; the de-vig and the zero-movement filter live in the first, the
+    # permutation null in the second. Inspecting both keeps the guard on the
+    # behaviour rather than on which function currently holds it — the split
+    # happened so two runs could be paired on the same rows, and a guard that
+    # broke on the move would have argued against making it.
+    rows_src = inspect.getsource(clv.hit_rows)
+    measure_src = inspect.getsource(clv.measure)
+    assert "open_fair" in rows_src, "CLV no longer de-vigs the opening price"
+    assert 'pl.col("move") != 0' in rows_src, "CLV counts prices that never moved"
+    assert "null" in measure_src, "CLV reports no permutation null to compare against"
+
+    # The same rows must reach the paired comparison, or a gate would judge a
+    # candidate on a different population than the headline describes.
+    assert "hit_rows" in inspect.getsource(clv.paired_clv)
+
+
+def test_clv_is_reproducible_when_a_player_game_has_two_probabilities():
+    """The same inputs must give the same answer twice.
+
+    A player-game can appear in both a published weekly prediction file and the
+    backtest frame for that season, carrying different probabilities — 367 keys
+    do on anytime TD. Deduplicating with `keep="any"` resolved those
+    arbitrarily, and the headline agreement rate moved between runs on
+    identical data. That is tolerable for a report and disqualifying for a
+    metric used to gate promotions, which is what this is now for.
+    """
+    import polars as pl
+    from src.evaluation.clv import hit_rows, line_movement
+
+    moves = line_movement("anytime_td")
+    if moves is None or moves.height < 200:
+        pytest.skip("no opening/closing pairs captured yet")
+
+    base = moves.select(["game_id", "player_name_norm"]).head(200)
+    # Two rows per key with different probabilities, interleaved so row order
+    # alone would decide the winner.
+    duped = pl.concat([
+        base.with_columns([pl.lit(0.9).alias("prob_calibrated"),
+                           pl.lit(0).alias("_src_rank")]),
+        base.with_columns([pl.lit(0.1).alias("prob_calibrated"),
+                           pl.lit(1).alias("_src_rank")]),
+    ]).sample(fraction=1.0, shuffle=True, seed=7)
+
+    first = hit_rows(duped, "anytime_td")
+    second = hit_rows(duped.sample(fraction=1.0, shuffle=True, seed=99),
+                      "anytime_td")
+    if first is None or second is None:
+        pytest.skip("not enough overlap to measure")
+    key = ["game_id", "player_name_norm"]      # game_id alone is not unique
+    assert (first.sort(key)["hit"].to_list()
+            == second.sort(key)["hit"].to_list())
+
+    # And the rank must decide it: _src_rank 0 carries 0.9, so every row should
+    # have been scored on that value, not on 0.1.
+    assert first["prob_calibrated"].unique().to_list() == [0.9]
 
 
 def test_clv_result_beats_its_own_null():
@@ -1305,8 +1357,10 @@ def test_book_quotes_are_captured_not_just_the_median():
     import inspect
     from src.ingest import odds_api, odds_history
 
-    src = inspect.getsource(odds_api.fetch_week_td_props)
+    src = inspect.getsource(odds_api.parse_event_markets)
     assert "book_rows.append" in src, "per-book quotes are being discarded again"
+    assert "book_rows" in inspect.getsource(odds_api.fetch_week_td_props), \
+        "the fetch no longer carries per-book quotes through to the archive"
     assert hasattr(odds_history, "append_book_quotes")
     assert "bookmaker" in odds_history.BOOK_SCHEMA
 
@@ -1324,8 +1378,8 @@ def test_best_prices_prefers_the_longest_available(tmp_path, monkeypatch):
             "captured_at": "2026-01-01T00:00:00+00:00", "snapshot": "close",
             "season": 2026, "week": 1, "game_id": "g1", "bookmaker": book,
             "book_last_update": None, "player_name_raw": "P",
-            "player_name_norm": "p", "market": "anytime_td", "side": "yes",
-            "odds": odds, "implied_prob": 0.4,
+            "player_name_norm": "p", "market": "anytime_td", "point": None,
+            "side": "yes", "odds": odds, "implied_prob": 0.4,
         })
     pl.DataFrame(rows).cast(odds_history.BOOK_SCHEMA).write_parquet(path)
 
@@ -2758,3 +2812,132 @@ def test_no_feature_is_constant_in_the_predict_season_while_varying_in_training(
         f"these features take a single value in {predict_season} but vary in "
         f"training, so the model learned a distinction it will never see on the "
         f"board: {sorted(offenders)}")
+
+
+# ---------------------------------------------------------------------------
+# Adding a target type: the three ways it used to go wrong silently.
+# ---------------------------------------------------------------------------
+
+def test_an_unregistered_target_cannot_borrow_another_markets_prices():
+    """A new target used to resolve to first-TD prices without a word.
+
+    Both `odds_history.load_graded_history` and `clv.line_movement` picked their
+    market with:
+
+        market = "anytime_td" if target_type == "anytime_td" else "first_td"
+
+    With two markets that is redundant. With a third it fits the blend weight
+    against the wrong prices, measures closing-line value against the wrong
+    prices, and grades a rushing-touchdown model on first-touchdown odds — all
+    of it plausible on screen, none of it raising. Registration is now the only
+    way in.
+    """
+    from src.ingest.odds_history import (MARKET_BY_TARGET, UnknownMarket,
+                                         market_for_target)
+
+    assert market_for_target("anytime_td") == "anytime_td"
+    assert market_for_target("first_td") == "first_td"
+    for unregistered in ("rush_td", "reception_td", "player_receptions", ""):
+        if unregistered in MARKET_BY_TARGET:
+            continue
+        with pytest.raises(UnknownMarket):
+            market_for_target(unregistered)
+
+
+def test_no_module_still_guesses_the_market_from_the_target():
+    """The fallback existed in two files and would be re-typed in a third."""
+    import re
+
+    pattern = re.compile(r'if\s+target_type\s*==\s*["\']anytime_td["\']\s*else')
+
+    def code_only(path: Path) -> str:
+        # The fallback is quoted verbatim in MARKET_BY_TARGET's comment, which
+        # is the documentation of why it is gone rather than a use of it.
+        return "\n".join(
+            line for line in path.read_text(encoding="utf-8").splitlines()
+            if not line.lstrip().startswith("#")
+        )
+
+    offenders = [p for p in Path("src").rglob("*.py") if pattern.search(code_only(p))]
+    assert not offenders, (
+        f"{offenders} still infers the archive market from the target type. "
+        f"Use odds_history.market_for_target, which raises on an unknown one.")
+
+
+def test_over_under_markets_are_read_rather_than_silently_skipped():
+    """Rush and reception TD props are Over/Under, not Yes/No.
+
+    Both fetch paths filtered outcomes with `side not in ("yes", "no")`, which
+    matches nothing in an over/under market. Pointed at these keys the reader
+    would have archived an empty market — after the credits were spent, and the
+    historical endpoint sells each snapshot only once.
+    """
+    from src.ingest.odds_api import parse_event_markets, specs_for
+
+    event = {"bookmakers": [
+        {"key": "a", "markets": [{"key": "player_reception_tds", "outcomes": [
+            {"name": "Over", "description": "P One", "point": 0.5, "price": 100},
+            {"name": "Under", "description": "P One", "point": 0.5, "price": -130},
+        ]}]},
+        {"key": "b", "markets": [{"key": "player_reception_tds", "outcomes": [
+            {"name": "Over", "description": "P One", "point": 0.5, "price": -120},
+            {"name": "Under", "description": "P One", "point": 0.5, "price": -110},
+        ]}]},
+    ]}
+    consensus, books = parse_event_markets(event, specs_for(["reception_td"]))
+
+    assert len(consensus) == 1, "an over/under market produced no consensus price"
+    row = consensus[0]
+    assert row["point"] == 0.5 and row["n_books"] == 2
+    # Both sides posted, so the vig comes off directly and none of the
+    # one-sided expected-scorers normalisation in blend.devig_market applies.
+    assert row["fair_prob"] is not None and row["overround"] > 1.0
+    # One vocabulary in the archive, so `side == "yes"` filters keep working.
+    assert {b["side"] for b in books} == {"yes", "no"}
+
+
+def test_two_lines_for_one_player_are_not_averaged_into_one_price():
+    """`point` is part of the grain, not a label.
+
+    A book quoting Over 0.5 and a book quoting Over 1.5 are not two opinions
+    about one price. A median across them describes no bet that exists, and the
+    archive's dedup key would have kept whichever sorted last.
+    """
+    from src.ingest.odds_api import parse_event_markets, specs_for
+    from src.ingest.odds_history import SCHEMA, BOOK_SCHEMA
+
+    event = {"bookmakers": [
+        {"key": "a", "markets": [{"key": "player_rush_tds", "outcomes": [
+            {"name": "Over", "description": "P One", "point": 0.5, "price": -140},
+            {"name": "Over", "description": "P One", "point": 1.5, "price": 450},
+        ]}]},
+    ]}
+    consensus, _ = parse_event_markets(event, specs_for(["rush_td"]))
+    assert sorted(r["point"] for r in consensus) == [0.5, 1.5]
+
+    assert "point" in SCHEMA and "point" in BOOK_SCHEMA
+    import inspect
+    from src.ingest import odds_history
+    src = inspect.getsource(odds_history.append_snapshot)
+    assert '"point"' in src, "point dropped out of the consensus dedup key"
+    src = inspect.getsource(odds_history.append_book_quotes)
+    assert '"point"' in src, "point dropped out of the per-book dedup key"
+
+
+def test_both_fetch_paths_share_one_market_reader():
+    """The live fetch and the backfill carried identical copies of the parser.
+
+    Only one of them spends five figures of credits, and it was the copy that
+    would not have been exercised until the moment it mattered.
+    """
+    import inspect
+    from src.ingest import odds_api
+
+    backfill = Path("scripts/09_backfill_odds.py").read_text(encoding="utf-8")
+    assert "parse_event_markets" in backfill, \
+        "the backfill has stopped using the shared reader"
+    assert 'if side not in ("yes", "no")' not in backfill, \
+        "the backfill has grown its own yes/no-only parser again"
+    assert "book_rows.append" not in inspect.getsource(
+        odds_api.fetch_week_td_props), \
+        "the live fetch has grown its own copy of the parser again"

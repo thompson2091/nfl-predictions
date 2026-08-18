@@ -25,6 +25,48 @@ from src.utils.paths import get_path
 ARCHIVE_DIR = get_path("raw").parent / "archive"
 HISTORY_PATH = ARCHIVE_DIR / "odds_history.parquet"
 
+
+class UnknownMarket(KeyError):
+    """A target type with no archived market. Raised rather than guessed at."""
+
+
+#: Target type -> the `market` value its prices are archived under.
+#:
+#: The two are deliberately the same string, and this map exists so that being
+#: the same string is an assertion rather than a coincidence. What it replaces,
+#: in this module and again in `src/evaluation/clv.py`:
+#:
+#:     market = "anytime_td" if target_type == "anytime_td" else "first_td"
+#:
+#: Every target that was not anytime resolved to first TD. With two markets
+#: that is merely redundant. With a third it silently fits the blend weight
+#: against the wrong prices, measures closing-line value against the wrong
+#: prices, and grades a rushing-touchdown model on first-touchdown odds — none
+#: of which raises, and none of which looks wrong on screen. That is the same
+#: failure shape as the weekly-stats lag in docs/DATA_SOURCES.md: a plausible
+#: number, silently wrong.
+#:
+#: A new target belongs here once its prices are being archived. Until then it
+#: gets an exception instead of another market's numbers.
+MARKET_BY_TARGET: dict[str, str] = {
+    "first_td": "first_td",
+    "anytime_td": "anytime_td",
+}
+
+
+def market_for_target(target_type: str) -> str:
+    """The archive market for a target type. Raises on anything unregistered."""
+    try:
+        return MARKET_BY_TARGET[target_type]
+    except KeyError:
+        raise UnknownMarket(
+            f"no archived market for target type {target_type!r}; known targets "
+            f"are {sorted(MARKET_BY_TARGET)}. Add it to MARKET_BY_TARGET once "
+            f"its prices are in the archive — do not let it fall back to "
+            f"another market's prices."
+        ) from None
+
+
 #: Every individual bookmaker's price, kept alongside the consensus median.
 #:
 #: The API returns all books in the same response, so this costs nothing extra —
@@ -56,6 +98,15 @@ BOOK_SCHEMA = {
     "player_name_raw": pl.Utf8,
     "player_name_norm": pl.Utf8,
     "market": pl.Utf8,
+    # See SCHEMA["point"]. Per book, because two books can post different lines
+    # for the same player — which is precisely what line shopping on an
+    # over/under market means, and is invisible if only the median is kept.
+    "point": pl.Float64,
+    # "yes"/"no". Over/under markets are normalised onto the same two words:
+    # "over" is stored as "yes", "under" as "no". The semantics are identical —
+    # the side that wins when the player does more — and one vocabulary means
+    # `best_prices` and `line_shopping` need no per-market branch. Which line
+    # the side refers to is in `point`, not in this column.
     "side": pl.Utf8,
     "odds": pl.Int64,
     "implied_prob": pl.Float64,
@@ -88,12 +139,40 @@ SCHEMA = {
     "player_name_raw": pl.Utf8,
     "player_name_norm": pl.Utf8,
     "market": pl.Utf8,
+    # The line this price is for, as the API reports it. Null for yes/no
+    # markets, which have no line — anytime and first TD only ask whether it
+    # happened. Over/under markets always carry one: 0.5 for rush and reception
+    # touchdowns, though books do post 1.5 on a heavy favourite, and receptions
+    # lines routinely differ between books for the same player.
+    #
+    # It is part of the archive's grain, not decoration. A consensus median
+    # taken across books quoting different lines is not a price for anything,
+    # so `point` sits in the dedup key beside player and market. Added before
+    # the first over/under backfill rather than after: this archive is
+    # append-only, cost real money, and cannot be re-fetched.
+    "point": pl.Float64,
     "odds": pl.Int64,
     "implied_prob": pl.Float64,
     "fair_prob": pl.Float64,
     "n_books": pl.Int64,
     "overround": pl.Float64,
 }
+
+
+def _conform(df: pl.DataFrame, schema: dict) -> pl.DataFrame:
+    """Fill in any column the schema has gained since a file was written.
+
+    Everything missing becomes null, with one exception: rows predating the
+    `snapshot` column all came from the historical endpoint at CLOSING_OFFSET,
+    so they are closing lines by construction rather than unknown ones.
+    """
+    if "snapshot" in schema and "snapshot" not in df.columns:
+        df = df.with_columns(pl.lit("close").alias("snapshot"))
+    missing = [c for c in schema if c not in df.columns]
+    if missing:
+        df = df.with_columns(
+            [pl.lit(None, dtype=schema[c]).alias(c) for c in missing])
+    return df.select(list(schema)).cast(schema)
 
 
 def append_snapshot(odds: pl.DataFrame, season: int, week: int,
@@ -110,20 +189,19 @@ def append_snapshot(odds: pl.DataFrame, season: int, week: int,
         pl.lit(week, dtype=pl.Int64).alias("week"),
         pl.lit(snapshot).alias("snapshot"),
     ])
-    for col, dtype in SCHEMA.items():
-        if col not in snap.columns:
-            snap = snap.with_columns(pl.lit(None, dtype=dtype).alias(col))
-    snap = snap.select(list(SCHEMA)).cast(SCHEMA)
+    snap = _conform(snap, SCHEMA)
 
     if HISTORY_PATH.exists():
-        existing = pl.read_parquet(HISTORY_PATH)
-        if "snapshot" not in existing.columns:
-            existing = existing.with_columns(pl.lit("close").alias("snapshot"))
-        existing = existing.select(list(SCHEMA)).cast(SCHEMA)
+        existing = _conform(pl.read_parquet(HISTORY_PATH), SCHEMA)
         snap = pl.concat([existing, snap], how="vertical")
 
+    # `point` is in the key because it is part of the grain: a player can be
+    # quoted at two lines in the same market, and collapsing them would keep
+    # whichever happened to sort last. Null compares equal to null in polars,
+    # so yes/no markets — where every point is null — dedup exactly as before.
     snap = snap.unique(
-        subset=["game_id", "player_name_norm", "market", "captured_at"], keep="last"
+        subset=["game_id", "player_name_norm", "market", "point", "captured_at"],
+        keep="last",
     )
     _ensure_dir()
     # Write-then-rename: a crash mid-write must not corrupt an archive that cost
@@ -144,11 +222,20 @@ def load_graded_history(target_type: str = "anytime_td") -> pl.DataFrame | None:
     if not HISTORY_PATH.exists():
         return None
 
-    hist = pl.read_parquet(HISTORY_PATH)
-    market = "anytime_td" if target_type == "anytime_td" else "first_td"
+    hist = _conform(pl.read_parquet(HISTORY_PATH), SCHEMA)
+    market = market_for_target(target_type)
     hist = hist.filter(pl.col("market") == market)
     if hist.height == 0:
         return None
+
+    # Grading below keeps one price per player-game, which is only meaningful
+    # while the market has one line. Say so rather than quietly averaging a
+    # player quoted at 0.5 with the same player quoted at 1.5.
+    n_lines = hist["point"].drop_nulls().n_unique()
+    if n_lines > 1:
+        print(f"  WARNING: {market} holds {n_lines} distinct lines; grading "
+              f"keeps one price per player-game and will mix them. Grade a "
+              f"multi-line market per point instead.")
 
     # Closing line: the "close" snapshot where one exists, else the latest we
     # hold. Grading against an opening line would score a price nobody could
@@ -224,18 +311,15 @@ def append_book_quotes(rows: list[dict], season: int, week: int,
         pl.lit(snapshot).alias("snapshot"),
         _norm_expr("player_name_raw").alias("player_name_norm"),
     ])
-    for col, dtype in BOOK_SCHEMA.items():
-        if col not in snap.columns:
-            snap = snap.with_columns(pl.lit(None, dtype=dtype).alias(col))
-    snap = snap.select(list(BOOK_SCHEMA)).cast(BOOK_SCHEMA)
+    snap = _conform(snap, BOOK_SCHEMA)
 
     if BOOKS_PATH.exists():
-        existing = pl.read_parquet(BOOKS_PATH).select(list(BOOK_SCHEMA)).cast(BOOK_SCHEMA)
+        existing = _conform(pl.read_parquet(BOOKS_PATH), BOOK_SCHEMA)
         snap = pl.concat([existing, snap], how="vertical")
 
     snap = snap.unique(
-        subset=["game_id", "player_name_norm", "market", "side", "bookmaker",
-                "captured_at"],
+        subset=["game_id", "player_name_norm", "market", "point", "side",
+                "bookmaker", "captured_at"],
         keep="last",
     )
     _ensure_dir()

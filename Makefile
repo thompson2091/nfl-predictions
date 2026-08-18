@@ -8,6 +8,15 @@
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune
 
+# The interpreter, resolved once. Every recipe used to call a bare `python`,
+# which does not exist on a machine where the venv is not activated — this is
+# not hypothetical, `make clv` failed on it. A Makefile that only works from an
+# already-activated shell is a trap during a live week, when the thing running
+# it may be launchd or a fresh terminal rather than the shell you developed in.
+# Prefer the project venv, fall back to whatever python3 resolves to.
+PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; \
+	else command -v python3 2>/dev/null || echo python; fi)
+
 # Defaults so the evaluation targets run without arguments. Override per call:
 #   make backtest SEASON=2024 TARGET=first_td
 TARGET ?= anytime_td
@@ -17,28 +26,28 @@ SEEDS ?= 5
 all: ingest targets candidates features train
 
 ingest:
-	python scripts/01_ingest.py
+	$(PYTHON) scripts/01_ingest.py
 
 targets:
-	python scripts/02_targets.py
+	$(PYTHON) scripts/02_targets.py
 
 candidates:
-	python scripts/03_candidates.py
+	$(PYTHON) scripts/03_candidates.py
 
 features:
-	python scripts/04_features.py
+	$(PYTHON) scripts/04_features.py
 
 train:
-	python scripts/05_train.py
+	$(PYTHON) scripts/05_train.py
 
 predict:
-	python scripts/06_predict.py
+	$(PYTHON) scripts/06_predict.py
 
 # Snapshot sportsbook prices into the append-only archive. Run weekly in season —
 # unarchived weeks can never be used to calibrate model vs market.
 # Usage: make odds WEEK=1
 odds:
-	python scripts/07_odds.py --week $(WEEK)
+	$(PYTHON) scripts/07_odds.py --week $(WEEK)
 
 # Closing-line value needs both ends of the market. Run `open-line` once when
 # the week's board first goes up (usually Tuesday) and `odds` again near
@@ -47,15 +56,15 @@ odds:
 # within one season that an edge survives contact with money — bet outcomes are
 # far too few and too skewed to settle it. Usage: make open-line WEEK=1
 open-line:
-	python scripts/07_odds.py --week $(WEEK) --snapshot open --force-refresh
+	$(PYTHON) scripts/07_odds.py --week $(WEEK) --snapshot open --force-refresh
 
 clv:
-	python scripts/13_clv.py
+	$(PYTHON) scripts/13_clv.py
 
 # Actionable bet card: model vs de-vigged market, ranked by EV, Kelly-staked.
 # Needs cached prices — run `make odds WEEK=n` first. Usage: make bets WEEK=1
 bets:
-	python scripts/08_bets.py --week $(WEEK)
+	$(PYTHON) scripts/08_bets.py --week $(WEEK)
 
 # ── Evaluation ────────────────────────────────────────────────────────────
 # These read the odds archive and the backtest frames. Re-run them after any
@@ -65,28 +74,28 @@ bets:
 # Replay a season through the production path. Needs an odds archive.
 # Usage: make backtest SEASON=2025 TARGET=anytime_td
 backtest:
-	python scripts/10_backtest.py --season $(SEASON) --target $(TARGET)
+	$(PYTHON) scripts/10_backtest.py --season $(SEASON) --target $(TARGET)
 
 # Retrain per test season and score each on data it never saw. The honest
 # accuracy numbers on the Model performance tab come from here.
 walkforward:
-	python scripts/11_walkforward.py --target $(TARGET)
+	$(PYTHON) scripts/11_walkforward.py --target $(TARGET)
 
 # Does our ranking beat the book inside the longshot band?
 longshot:
-	python scripts/12_longshot.py --target $(TARGET)
+	$(PYTHON) scripts/12_longshot.py --target $(TARGET)
 
 # Does being right pay? Rank/price profitability and the fitted edge rule that
 # the board's "Worth backing" column reads.
 economics:
-	python scripts/14_rank_economics.py --target $(TARGET)
+	$(PYTHON) scripts/14_rank_economics.py --target $(TARGET)
 
 # What kinds of player, and what kinds of bet, are these? Fits both groupings on
 # the training seasons and scores them on the seasons after. The Player types tab
 # reads the JSON this writes; leaving it stale makes the tab describe roles fitted
 # from a feature set that no longer exists.
 clusters:
-	python scripts/21_clusters.py --target $(TARGET)
+	$(PYTHON) scripts/21_clusters.py --target $(TARGET)
 
 # Everything the app reads, rebuilt in dependency order, for both markets.
 # Run this after `make train` or the app will quote a model that no longer exists.
@@ -97,13 +106,13 @@ clusters:
 evaluate:
 	@for t in anytime_td first_td; do \
 		for s in 2023 2024 2025; do \
-			python scripts/10_backtest.py --season $$s --target $$t --walk-forward; \
+			$(PYTHON) scripts/10_backtest.py --season $$s --target $$t --walk-forward; \
 		done; \
-		python scripts/14_rank_economics.py --target $$t; \
-		python scripts/11_walkforward.py --target $$t; \
-		python scripts/21_clusters.py --target $$t; \
+		$(PYTHON) scripts/14_rank_economics.py --target $$t; \
+		$(PYTHON) scripts/11_walkforward.py --target $$t; \
+		$(PYTHON) scripts/21_clusters.py --target $$t; \
 	done
-	python scripts/12_longshot.py --target anytime_td
+	$(PYTHON) scripts/12_longshot.py --target anytime_td
 
 # ── Experiments ───────────────────────────────────────────────────────────
 # An experiment is a config overlay in a YAML file, scored on the same folds
@@ -116,13 +125,13 @@ evaluate:
 #   make screen EXP=experiments/depth4.yaml     # minutes, never promotes
 #   make gate   EXP=experiments/depth4.yaml     # both markets, every model
 champion:
-	python scripts/23_experiment.py baseline --id $(ID)
+	$(PYTHON) scripts/23_experiment.py baseline --id $(ID)
 
 screen:
-	python scripts/23_experiment.py screen $(EXP) $(if $(MARKET),--market $(MARKET))
+	$(PYTHON) scripts/23_experiment.py screen $(EXP) $(if $(MARKET),--market $(MARKET))
 
 gate:
-	python scripts/23_experiment.py gate $(EXP) $(if $(MARKET),--market $(MARKET))
+	$(PYTHON) scripts/23_experiment.py gate $(EXP) $(if $(MARKET),--market $(MARKET))
 
 # Settle a close call the seed cannot be ruled out of: run the same overlay at
 # N seeds, average each game's outcome across them, then pair on the averages.
@@ -131,17 +140,17 @@ gate:
 # first TD's production model, which was done by hand and so was never repeatable.
 #   make settle EXP=experiments/x.yaml MODEL=ensemble AGAINST=xgb SEEDS=5
 settle:
-	python scripts/23_experiment.py settle $(EXP) --model $(MODEL) \
+	$(PYTHON) scripts/23_experiment.py settle $(EXP) --model $(MODEL) \
 		--against $(AGAINST) --seeds $(SEEDS) $(if $(MARKET),--market $(MARKET))
 
 # What is the random seed alone worth? Every guard band in the gate is this
 # number. Without it, a 0.4-point difference has no scale to be read on.
 noise-floor:
-	python scripts/23_experiment.py noise-floor --seeds $(SEEDS)
+	$(PYTHON) scripts/23_experiment.py noise-floor --seeds $(SEEDS)
 
 # What has been tried, and what came of it.
 experiments:
-	python scripts/23_experiment.py ledger
+	$(PYTHON) scripts/23_experiment.py ledger
 
 # Where is Top-1 actually lost? Headroom against the book, whether the misses
 # are the wrong team or the wrong player on the right team, how many games were
@@ -149,7 +158,7 @@ experiments:
 # exists to order the model work by evidence rather than by hunch.
 # Writes a dated snapshot to diagnostics/, which is committed.
 diagnose:
-	python scripts/24_diagnose.py --target $(TARGET) $(if $(REUSE),--reuse)
+	$(PYTHON) scripts/24_diagnose.py --target $(TARGET) $(if $(REUSE),--reuse)
 
 # ── Model versions ────────────────────────────────────────────────────────
 # `models/` holds one state and every `make train` overwrites it. Lock a state
@@ -159,24 +168,24 @@ diagnose:
 # See docs/MODEL_ITERATION.md.
 #   make lock ID=2026.08.12-baseline NOTE="baseline lock"
 lock:
-	python scripts/22_version.py lock $(ID) --note "$(NOTE)"
+	$(PYTHON) scripts/22_version.py lock $(ID) --note "$(NOTE)"
 
 versions:
-	python scripts/22_version.py list
+	$(PYTHON) scripts/22_version.py list
 
 version-show:
-	python scripts/22_version.py show $(ID)
+	$(PYTHON) scripts/22_version.py show $(ID)
 
 # Make a version the default the app and pipeline read. Per-market with
 # MARKET=first_td; both markets otherwise.
 promote:
-	python scripts/22_version.py promote $(ID) $(if $(MARKET),--market $(MARKET))
+	$(PYTHON) scripts/22_version.py promote $(ID) $(if $(MARKET),--market $(MARKET))
 
 rollback:
-	python scripts/22_version.py rollback $(if $(MARKET),--market $(MARKET))
+	$(PYTHON) scripts/22_version.py rollback $(if $(MARKET),--market $(MARKET))
 
 version-diff:
-	python scripts/22_version.py diff $(A) $(B)
+	$(PYTHON) scripts/22_version.py diff $(A) $(B)
 
 # Retire duplicate weight snapshots. Two versions can differ in every way that
 # matters to the record — config, metrics, why they exist — and still carry
@@ -185,33 +194,33 @@ version-diff:
 #   make version-prune          # show what would go
 #   make version-prune APPLY=1  # delete it
 version-prune:
-	python scripts/22_version.py prune $(if $(APPLY),--apply)
+	$(PYTHON) scripts/22_version.py prune $(if $(APPLY),--apply)
 
 # Does models/ actually hold what CURRENT.json claims? Run after any retrain.
 version-verify:
-	python scripts/22_version.py verify
+	$(PYTHON) scripts/22_version.py verify
 
 # ── Betting ───────────────────────────────────────────────────────────────
 # Log a bet you actually placed, at the price you actually got. The only
 # measurement of what the backtest's assumptions cost in practice.
 #   make wager ARGS="--season 2026 --week 1 --player 'Blake Corum' --odds 125 --stake 1"
 wager:
-	python scripts/15_wager.py add $(ARGS)
+	$(PYTHON) scripts/15_wager.py add $(ARGS)
 
 wager-report:
-	python scripts/15_wager.py report
+	$(PYTHON) scripts/15_wager.py report
 
 # Is the edge still there? Run after every completed week. Exits non-zero when
 # the recent numbers fall below what the backtest says to expect — a model that
 # stops working does not announce it.
 decay:
-	python scripts/17_decay.py --target $(TARGET)
+	$(PYTHON) scripts/17_decay.py --target $(TARGET)
 
 # What the best available price is worth against the consensus we modelled on.
 # Needs per-book quotes, which only exist for weeks captured since 2026-08-11.
 # Usage: make shop WEEK=1
 shop:
-	python scripts/18_shop.py --week $(WEEK) --target $(TARGET)
+	$(PYTHON) scripts/18_shop.py --week $(WEEK) --target $(TARGET)
 
 # ── Publishing ────────────────────────────────────────────────────────────
 # One self-contained site/index.html, for sending to someone who does not have
@@ -219,7 +228,7 @@ shop:
 # what the live app would show — but only at the moment you build it. Rebuild
 # after `make predict` or `make odds`, or the board goes stale silently.
 site:
-	python scripts/20_export_html.py
+	$(PYTHON) scripts/20_export_html.py
 
 # ── Weekly odds capture ───────────────────────────────────────────────────
 # The week number is derived from the schedule, so these take no arguments.
@@ -240,10 +249,10 @@ odds-close:
 # earlier, and those prices are unbuyable afterwards. Re-run `odds-schedule` any
 # time `make ingest` refreshes the schedule.
 odds-schedule:
-	python scripts/25_odds_schedule.py
+	$(PYTHON) scripts/25_odds_schedule.py
 
 odds-schedule-on:
-	python scripts/25_odds_schedule.py --write --load
+	$(PYTHON) scripts/25_odds_schedule.py --write --load
 
 odds-schedule-off:
 	@for l in com.mthompson.nfl-odds-open com.mthompson.nfl-odds-close; do \
@@ -257,7 +266,7 @@ odds-schedule-status:
 	@launchctl print-disabled "gui/$$UID" 2>/dev/null | grep nfl-odds || true
 
 test:
-	python -m pytest tests/ -q
+	$(PYTHON) -m pytest tests/ -q
 
 # Deletes only what can be regenerated for free. data/archive/ is NEVER touched —
 # it holds purchased historical odds that the API sells once and cannot be
@@ -275,7 +284,7 @@ backup-odds:
 		|| echo "No archive yet — nothing to back up."
 
 test-ingest:
-	python scripts/01_ingest.py --test-mode
+	$(PYTHON) scripts/01_ingest.py --test-mode
 
 # ── Docker ──────────────────────────────────────────────────────────────────
 

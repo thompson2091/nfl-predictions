@@ -11,6 +11,7 @@ src/evaluation/clv.py for why this is the measurement worth waiting for.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 sys.path.insert(0, ".")
@@ -20,6 +21,29 @@ import polars as pl
 from src.evaluation.clv import measure, line_movement
 from src.utils.config import get_config
 from src.utils.paths import get_path
+
+
+def _write(stats: dict, moves: pl.DataFrame, target_type: str):
+    """Persist the result, because a number nobody can look up later is not evidence.
+
+    Every other evaluation here leaves an artifact — walkforward.json,
+    rank_economics.json, longshot_skill.json — and CLV printed to stdout and
+    kept nothing. That gap is not cosmetic: closing-line value is the highest-
+    powered measurement this project has, roughly fifteen times the
+    observations of the Top-1 walk-forward, and with no file on disk there is
+    no way to ask whether a promoted version moved it, or to diff two versions
+    on it at all. The verdict vocabulary matches rank_economics.json so the two
+    economic readings can be compared without translating between them.
+    """
+    payload = dict(stats)
+    payload["pairs"] = moves.height
+    payload["games"] = moves["game_id"].n_unique()
+    payload["verdict"] = ("positive" if stats["agree_pct"] > stats["null_hi"]
+                          else "indistinguishable from zero")
+    path = get_path("output", target_type) / "clv.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2))
+    return path
 
 
 def _predictions(target_type: str) -> pl.DataFrame | None:
@@ -46,6 +70,9 @@ def _predictions(target_type: str) -> pl.DataFrame | None:
         rows.append(d.with_columns([
             pl.lit(int(m.group(1))).alias("season"),
             pl.lit(int(m.group(2))).alias("week"),
+            # Loses to the backtest frame where both cover a player-game — see
+            # the dedup note in clv.hit_rows.
+            pl.lit(1).alias("_src_rank"),
         ]))
     from src.features.odds_features import _normalize_name  # noqa
 
@@ -64,7 +91,8 @@ def _predictions(target_type: str) -> pl.DataFrame | None:
                 continue
             rows.append(
                 d.select(["game_id", "player_name", "prob_calibrated"])
-                 .with_columns(pl.lit(season).alias("season"))
+                 .with_columns([pl.lit(season).alias("season"),
+                                pl.lit(0).alias("_src_rank")])
             )
         if not rows:
             return None
@@ -132,6 +160,8 @@ def main(target_type: str) -> int:
     else:
         print("  Inside the null. On this evidence our disagreements do not "
               "anticipate the market.")
+
+    print(f"\nSaved to {_write(stats, moves, target_type)}")
     return 0
 
 

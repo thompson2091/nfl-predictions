@@ -38,6 +38,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.evaluation import clv as CLV  # noqa: E402
 from src.evaluation import compare as C  # noqa: E402
 from src.evaluation import harness as H  # noqa: E402
 from src.models.versioning import (  # noqa: E402
@@ -129,7 +130,59 @@ def load_experiment(path: str) -> dict:
 def _run(overlay: dict, tier: str, markets, seed=None, models=None) -> dict:
     print(f"Running {tier} — markets {', '.join(markets)}"
           + (f", seed {seed}" if seed is not None else ""))
-    return H.run(overlay, markets=markets, models=models, seed=seed)
+    # `keep_rows` because closing-line value is measured per player-game, not
+    # per game, and the per-player probability is not recoverable from the
+    # outcomes frame. Every experiment before this one was saved without it,
+    # so none of them can be re-judged on CLV without re-running — which is the
+    # whole reason it is on by default here rather than behind a flag. The cost
+    # is about 3 MB of parquet per saved run.
+    return H.run(overlay, markets=markets, models=models, seed=seed,
+                 keep_rows=True)
+
+
+def _print_clv(champion: dict | None, candidate: dict,
+               comparisons: list[dict]) -> list[dict]:
+    """Paired closing-line value beside the Top-K gate, on the same pairs.
+
+    Reported, not gated. Top-1 stays the promotion rule; this is a second
+    reading with roughly fifteen times the observations, which is what makes it
+    worth printing next to a metric that cannot resolve a half-point. Where the
+    two disagree, that is information about the change rather than a tie to be
+    broken by whichever number is larger.
+    """
+    if champion is None:
+        return []
+    rows = []
+    for c in comparisons:
+        row = CLV.paired_clv(champion, candidate, market=c["market"],
+                             model=c["model"], against=c.get("against"))
+        if row is not None:
+            rows.append(row)
+    if not rows:
+        print("\nClosing-line value: not measurable for this run — no "
+              "open/close pairs overlap the folds it scored.")
+        return []
+
+    # A model the overlay did not touch scores identically on both sides, so
+    # its row is all zeros. Those rows are a useful check that the pairing is
+    # exact — and printing eight of them buries the two that changed. Counted
+    # instead, which says the same thing in one line.
+    moved = [r for r in rows if r["discordant"]]
+    unchanged = len(rows) - len(moved)
+
+    print("\nClosing-line value (reported, not gated):\n")
+    last_market = None
+    for row in sorted(moved, key=lambda r: (r["market"], r["model"])):
+        if row["market"] != last_market:
+            print(f"  {row['market']}")
+            last_market = row["market"]
+        print(CLV.format_clv(row))
+    if unchanged:
+        print(f"\n  {unchanged} model(s) scored identically on both sides — "
+              "untouched by this overlay, and paired exactly.")
+    if not moved:
+        print("  Nothing moved.")
+    return rows
 
 
 def _print_summary(summary: dict) -> None:
@@ -201,7 +254,7 @@ def _experiment(a, tier: str) -> int:
     champion_ref = _read(CHAMPION)
     for warning in champion_drift(champion_ref):
         print(warning)
-    comparisons, verdict = [], "NO_CHAMPION"
+    comparisons, verdict, clv_rows = [], "NO_CHAMPION", []
     if champion_ref:
         try:
             champion = H.load(champion_ref["run"])
@@ -219,6 +272,7 @@ def _experiment(a, tier: str) -> int:
             print(f"\nAgainst champion '{champion_ref['run']}':\n")
             print(C.format_gate(comparisons))
             verdict = _overall_verdict(comparisons, markets)
+            clv_rows = _print_clv(champion, result, comparisons)
     else:
         print("\nNo champion recorded — run `23_experiment.py baseline` first. "
               "Reporting this run's own numbers only.")
@@ -230,7 +284,7 @@ def _experiment(a, tier: str) -> int:
         "feature_hash": result["meta"]["feature_hash"],
         "seed": result["meta"]["seed"], "summary": summary,
         "champion": (champion_ref or {}).get("run"),
-        "comparisons": comparisons, "verdict": verdict,
+        "comparisons": comparisons, "clv": clv_rows, "verdict": verdict,
     }
     append_ledger(row)
     print(f"VERDICT: {verdict}")
@@ -391,6 +445,11 @@ def cmd_compare(a) -> int:
     rows = C.compare_all(champion, candidate, noise=_read(NOISE))
     print(f"{a.a} (champion)  ->  {a.b} (candidate)\n")
     print(C.format_gate(rows))
+    # Silently absent for runs saved before `keep_rows` was on by default,
+    # which is every run up to 2026-08-17 — those have outcomes but no
+    # per-player probability, and CLV cannot be reconstructed from a per-game
+    # hit indicator. Re-run the experiment to get it.
+    _print_clv(champion, candidate, rows)
     return 0
 
 

@@ -15,28 +15,32 @@ sys.path.insert(0, ".")
 
 import polars as pl
 
-from src.ingest.odds_api import (fetch_week_td_props, build_odds_parquet,
-                                 load_cached_book_quotes)
+from src.ingest.odds_api import (DEFAULT_MARKETS, fetch_week_td_props,
+                                 build_odds_parquet, load_cached_book_quotes)
 from src.ingest.odds_history import append_snapshot, append_book_quotes
 from src.utils.config import get_config
 
 
-def _to_rows(odds: dict) -> pl.DataFrame:
-    """Flatten the API payload into one row per player per market."""
+def _to_rows(odds: dict, markets=DEFAULT_MARKETS) -> pl.DataFrame:
+    """Flatten the API payload into one row per player per line per market."""
     from src.features.odds_features import TEAM_ABBREV, _normalize_name
 
     rows = []
     for game in odds.values():
         home = TEAM_ABBREV.get(game.get("home_team", ""))
         away = TEAM_ABBREV.get(game.get("away_team", ""))
-        for market in ("first_td", "anytime_td"):
+        for market in markets:
             for p in game.get(market, []):
                 rows.append({
                     # game_id is resolved against schedules downstream; the
                     # team pair plus date is enough to join on.
                     "game_id": f"{away}_{home}" if home and away else None,
+                    "player_name_raw": p["player"],
                     "player_name_norm": _normalize_name(p["player"]),
                     "market": market,
+                    # Null for yes/no markets; the line for over/under ones.
+                    # Part of the archive's key, so it has to survive the trip.
+                    "point": p.get("point"),
                     "odds": p.get("odds"),
                     "implied_prob": p.get("implied_prob"),
                     "fair_prob": p.get("fair_prob"),
@@ -58,16 +62,24 @@ if __name__ == "__main__":
              "week with --snapshot open and again near kickoff with the "
              "default; the pair is what makes closing-line value measurable.",
     )
+    ap.add_argument(
+        "--markets", nargs="+", default=list(DEFAULT_MARKETS),
+        help="Archive market names to fetch (see odds_api.MARKET_SPECS). "
+             "Credits are billed per market, so every addition costs money "
+             "every week the season is live.",
+    )
     args = ap.parse_args()
 
-    odds = fetch_week_td_props(force_refresh=args.force_refresh)
+    markets = tuple(args.markets)
+    odds = fetch_week_td_props(force_refresh=args.force_refresh,
+                               markets=markets)
     if not odds:
         print("No odds returned. Is ODDS_API_KEY set in .env?")
         sys.exit(1)
 
     print(f"Fetched {len(odds)} games")
-    append_snapshot(_to_rows(odds), season=args.season, week=args.week,
-                    snapshot=args.snapshot)
+    append_snapshot(_to_rows(odds, markets), season=args.season,
+                    week=args.week, snapshot=args.snapshot)
     # Same response, no extra credits, and unbuyable afterwards.
     append_book_quotes(load_cached_book_quotes(), season=args.season,
                        week=args.week, snapshot=args.snapshot)

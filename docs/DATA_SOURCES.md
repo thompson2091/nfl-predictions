@@ -17,14 +17,29 @@ bootstrap, and replaced automatically once real data exists.
 |---|---|---|
 | ~~`nfl_data_py` is deprecated~~ | Was the *root cause* of the 2025 weekly-stats gap | ✅ **Migrated to [`nflreadpy`](https://nflreadpy.nflverse.com/)**. Weekly stats went from 54,479 rows stopping at 2024 to **199,865 rows covering 2015–2025**. Returns Polars natively — no pandas round-trip |
 | ~~Depth charts stale~~ | Drove the `snap_pct` zeroing bug and the phantom Week-1 fades | ✅ Current-format depth charts now **974,305 rows, refreshed daily** (was 554,215 stale to March). Still re-run ingest close to kickoff |
-| **No historical odds** | The model/market blend weight can't be fitted, so it sits at the config bootstrap; no true ROI backtest is possible | The Odds API sells a historical endpoint — player props available from **2023-05-03**, 5-minute snapshots, included on the Business plan at zero extra credit cost. This is the single highest-value purchase for this project |
-| Injuries stop at 2025 | Injury features go stale for the predict season | Same migration |
+| ~~No historical odds~~ | Made every market claim unfalsifiable | ✅ **Backfilled 2026-08-10/11 from The Odds API historical endpoint.** `data/archive/odds_history.parquet` now holds **119,320 rows over 2023–2025**, of which **50,281 player-game-market keys carry both an `open` and a `close` price** and 47,248 of those moved |
+| **Line movement is not a feature** | Three seasons of open→close revision sit on disk and no model reads them. `src/features/` contains no reference to the archive | Open. This is the one input that is not another summary of on-field events, and the 33 existing feature families do not cover it |
+| **`practice_status` unused** | `injuries.parquet` carries the Wed/Thu/Fri DNP / Limited / Full progression back to 2015; `injury_features.py` reads only `report_status` | Open. Four injury features exist where the source supports more |
+| Injuries stop at 2025 | Injury features go stale for the predict season | Same migration. Verify coverage populates before week 1 — a block of features going null→0 at predict time is the exact shape of the `is_cold`/`season_right` defect |
 
-**The historical-odds gap is the one worth money.** Everything the model claims
-about beating the market is currently unfalsifiable — we can only compare to
-*today's* prices for *this* week. With the historical archive you could fit the
-blend weight properly, backtest closing-line value, and measure real ROI instead
-of Top-1 accuracy, which is not a betting metric.
+**The historical-odds gap was the one worth money, and it is closed.** What
+replaced it as the top problem is smaller and free: the archive is bought,
+graded and sitting there, and nothing downstream of the blend weight consumes
+it.
+
+Two things it now makes possible that were not:
+
+- **Closing-line value is measurable.** `make clv` reads the archive and writes
+  `output/<market>/clv.json`. Both markets beat their shuffled null by ~5
+  points — anytime 58.3% against 53.1% on 17,589 observations, first TD 61.1%
+  against 55.9% on 15,991. The players we rate above the de-vigged open are the
+  ones the market then shortens.
+- **It is the highest-powered metric here by an order of magnitude.** The Top-1
+  walk-forward sees 1,131 games against a ~0.5pp seed band; CLV sees ~16,000
+  player-games per market. Feature experiments judged only on Top-1 have been
+  rejected at effect sizes that instrument cannot resolve — first TD reads NO
+  EDGE DEMONSTRATED on ROI (−2.4%, [−11.2, +6.7]) and +5.3 points on CLV. Read
+  both before concluding a candidate is worthless.
 
 ---
 
@@ -136,19 +151,34 @@ to the fitted expected scorer count. Both paths live in `blend.devig_market`.
 The raw price is kept as `implied_prob` and the fair one as `fair_prob` — **never
 compare model output to `implied_prob`, that comparison is biased by the vig.**
 
-### Odds history (`data/raw/odds_history.parquet`)
+### Odds history (`data/archive/odds_history.parquet`)
 
 The API only serves *current* markets; once kickoff passes those prices are gone
 forever. `src/ingest/odds_history.py` snapshots every fetch, append-only, and
 grades resolved weeks against play-by-play outcomes.
 
 This archive is the **only** path to a defensible model-vs-market blend weight.
-It starts empty and compounds. Until it holds `blend.min_history_rows` graded
+It no longer starts empty: 2023–2025 was backfilled from the paid historical
+endpoint on 2026-08-10/11. Until it holds `blend.min_history_rows` graded
 player-games, the blend falls back to the declared bootstrap and says so in the
 prediction output (`blend_source` column).
 
+| | rows |
+|---|---|
+| Total | 119,320 (2023: 46,778 · 2024: 37,099 · 2025: 35,277 · 2026: 166) |
+| Distinct player-game-market keys | 69,039 |
+| With both an `open` and a `close` | 50,281 |
+| Where the price moved between them | 47,248 |
+
+`make clean` never touches `data/archive/` — the endpoint sells these once and
+re-downloading costs again. `make backup-odds` takes a timestamped copy; run it
+before anything that writes here.
+
 **Fetch odds every week even when you aren't betting.** A week not snapshotted is
-a week that can never be used to calibrate.
+a week that can never be used to calibrate. The capture is automated
+(`make odds-schedule-on`) and guarded by `odds_capture.*` in
+`config/settings.yaml` — see the note on `open_window_days` there for why the
+opening snapshot needs an eight-day window rather than seven.
 
 ---
 

@@ -31,18 +31,27 @@ sys.path.insert(0, ".")
 import polars as pl
 import requests
 
-from src.ingest.odds_api import (API_BASE, SPORT, _get_api_key, _median,
-                                 _american_to_implied, _prob_to_american)
+from src.ingest.odds_api import (API_BASE, SPORT, MARKET_SPECS, SPEC_BY_MARKET,
+                                 _get_api_key, parse_event_markets, specs_for)
 from src.ingest.odds_history import HISTORY_PATH, append_snapshot
 from src.features.odds_features import TEAM_ABBREV, _normalize_name
 from src.utils.paths import get_path
 
 #: Credits are billed per market, so pulling only the market you actually bet
-#: halves the cost of a backfill.
-MARKET_KEYS = {
-    "anytime": "player_anytime_td",
-    "first": "player_1st_td",
-    "both": "player_anytime_td,player_1st_td",
+#: is the difference between a backfill you can afford and one you cannot.
+#: Values are archive market names; `specs_for` turns them into API keys, which
+#: is also where an unknown one is refused.
+MARKET_SETS: dict[str, tuple[str, ...]] = {
+    "anytime": ("anytime_td",),
+    "first": ("first_td",),
+    "both": ("anytime_td", "first_td"),
+    "rush": ("rush_td",),
+    "reception": ("reception_td",),
+    # The two new touchdown-type markets, which are over/under rather than
+    # yes/no. See odds_api.MARKET_SPECS for why that distinction is declared
+    # rather than inferred.
+    "td_types": ("rush_td", "reception_td"),
+    "all": tuple(sp.market for sp in MARKET_SPECS),
 }
 REGIONS = "us"
 #: Player props exist in the historical archive only from this date.
@@ -163,45 +172,20 @@ def _find_event(snapshot: str, home: str, away: str, budget: Budget) -> str | No
     return None
 
 
-def _parse_event_odds(payload: dict) -> list[dict]:
-    """Consensus median per player per market, with vig removed where possible."""
-    event = payload.get("data") or {}
-    rows: list[dict] = []
-    for market_key, market_name in (("player_anytime_td", "anytime_td"),
-                                    ("player_1st_td", "first_td")):
-        quotes: dict[str, dict] = {}
-        for bk in event.get("bookmakers", []):
-            for mkt in bk.get("markets", []):
-                if mkt.get("key") != market_key:
-                    continue
-                for out in mkt.get("outcomes", []):
-                    side = str(out.get("name", "")).lower()
-                    if side not in ("yes", "no"):
-                        continue
-                    player = out.get("description")
-                    if not player:
-                        continue
-                    q = quotes.setdefault(player, {"yes": [], "no": [], "odds": []})
-                    q[side].append(_american_to_implied(out["price"]))
-                    if side == "yes":
-                        q["odds"].append(out["price"])
+def _parse_event_odds(payload: dict, specs) -> list[dict]:
+    """Consensus median per player per line per market.
 
-        for player, q in quotes.items():
-            if not q["yes"]:
-                continue
-            p_yes = _median(q["yes"])
-            p_no = _median(q["no"]) if q["no"] else None
-            rows.append({
-                "player_name_raw": player,
-                "player_name_norm": _normalize_name(player),
-                "market": market_name,
-                "odds": _prob_to_american(p_yes),
-                "implied_prob": round(p_yes, 4),
-                "fair_prob": round(p_yes / (p_yes + p_no), 4) if p_no else None,
-                "n_books": len(q["yes"]),
-                "overround": round(p_yes + p_no, 4) if p_no else None,
-            })
-    return rows
+    The parsing itself lives in `odds_api.parse_event_markets`, shared with the
+    live fetch. This module used to carry its own copy — identical down to the
+    `side not in ("yes", "no")` filter that silently drops every over/under
+    outcome — and this is the copy that spends the credits.
+    """
+    event = payload.get("data") or {}
+    consensus, _ = parse_event_markets(event, specs)
+    for row in consensus:
+        row["player_name_norm"] = _normalize_name(row["player_name_raw"])
+        row.pop("game_id", None)
+    return consensus
 
 
 def main() -> int:
@@ -219,16 +203,16 @@ def main() -> int:
     ap.add_argument("--sleep", type=float, default=0.3, help="Seconds between calls.")
     ap.add_argument("--limit", type=int, default=None,
                     help="Only process the first N games. Use for a trial run.")
-    ap.add_argument("--markets", choices=sorted(MARKET_KEYS), default="anytime",
+    ap.add_argument("--markets", choices=sorted(MARKET_SETS), default="anytime",
                     help="Which prop markets to archive. Credits are billed per "
                          "market, so 'anytime' costs half what 'both' costs.")
     args = ap.parse_args()
-    markets = MARKET_KEYS[args.markets]
-    n_markets = len(markets.split(","))
+    market_names = list(MARKET_SETS[args.markets])
+    specs = specs_for(market_names)
+    markets = ",".join(sp.key for sp in specs)
+    n_markets = len(specs)
 
     games = _games(args.seasons)
-    market_names = ["anytime_td" if k == "player_anytime_td" else "first_td"
-                    for k in markets.split(",")]
     done = _already_archived(market_names, args.snapshot)
     todo = [r for r in games.iter_rows(named=True) if r["game_id"] not in done]
 
@@ -289,7 +273,7 @@ def main() -> int:
             time.sleep(args.sleep)
             continue
 
-        rows = _parse_event_odds(payload)
+        rows = _parse_event_odds(payload, specs)
         if not rows:
             skipped += 1
             print(f"  [{i}/{n}] {row['game_id']}: no TD props in snapshot")
