@@ -111,6 +111,7 @@ evaluate:
 		$(PYTHON) scripts/14_rank_economics.py --target $$t; \
 		$(PYTHON) scripts/11_walkforward.py --target $$t; \
 		$(PYTHON) scripts/21_clusters.py --target $$t; \
+		$(PYTHON) scripts/13_clv.py --target $$t; \
 	done
 	$(PYTHON) scripts/12_longshot.py --target anytime_td
 

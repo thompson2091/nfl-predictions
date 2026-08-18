@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 import sys
 
 sys.path.insert(0, ".")
@@ -38,6 +39,11 @@ def _write(stats: dict, moves: pl.DataFrame, target_type: str):
     payload = dict(stats)
     payload["pairs"] = moves.height
     payload["games"] = moves["game_id"].n_unique()
+    # Stamped because this is rebuilt by `make evaluate`, alongside the
+    # backtests it reads, and the app shows it beside a live board. A figure
+    # measured before the last retrain describes a model nobody is serving, and
+    # without a date there is no way to tell from looking at it.
+    payload["measured"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     payload["verdict"] = ("positive" if stats["agree_pct"] > stats["null_hi"]
                           else "indistinguishable from zero")
     path = get_path("output", target_type) / "clv.json"

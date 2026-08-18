@@ -2395,6 +2395,28 @@ def clv_by_rank(tt: str) -> list[dict] | None:
     return by_rank(tt)
 
 
+@st.cache_data(show_spinner=False)
+def clv_headline(tt: str) -> dict | None:
+    """The pooled closing-line result `clv_by_rank` decomposes, or None.
+
+    Read from the artifact rather than recomputed, for the same reason
+    walkforward.json and rank_economics.json are: it is measured over the
+    walk-forward backtests and rebuilt by `make evaluate`, so recomputing it
+    per page view would be several seconds of work to reproduce a file that
+    already exists.
+
+    The two are different questions and the table alone cannot answer this
+    one. `by_rank` asks whether the effect fades as the group widens; this asks
+    whether, across every scored player-game, the direction we disagreed with
+    the opening price in is the direction the line then moved — against a
+    permutation null, which is what makes the number mean anything. The market
+    drifts longer overall, so a model with no skill at all still scores about
+    53%.
+    """
+    from src.evaluation.rank_economics import load
+    return load(get_path("output", tt) / "clv.json")
+
+
 @st.cache_data(show_spinner=False, max_entries=8)
 @guarded
 def allocation_backtest(tt: str, top_n: int, bankroll: float) -> list[dict]:
@@ -2720,9 +2742,62 @@ matter and none of them are in this data.
                     f"no signal.",
                     icon=":material/error:",
                 )
-            if clv:
+            _head = clv_headline(target_type)
+            if _head:
                 st.markdown("##### Does the betting market drift toward our picks?")
+                _beats = _head["agree_pct"] > _head["null_hi"]
+                c1, c2, c3 = st.columns(3)
+                c1.metric(
+                    "Market moved our way", f"{_head['agree_pct']:.1%}",
+                    delta=f"{_head['edge_pts']:+.1f} pts vs chance",
+                    delta_color="normal" if _beats else "off",
+                    help=f"Across {_head['n']:,} player-games where the price "
+                         f"actually moved, this is how often the direction we "
+                         f"disagreed with the opening price in is the direction "
+                         f"the line then went. Measured on the walk-forward "
+                         f"backtests over {', '.join(str(s) for s in _head['seasons'])}.")
+                c2.metric(
+                    "Chance alone would give", f"{_head['null_pct']:.1%}",
+                    help="Shuffling *which* players we like, within each game, "
+                         "200 times. The whole board drifts longer between the "
+                         "open and kickoff, so a model with no skill still "
+                         "scores well above 50% — this is the bar that matters, "
+                         "not a coin flip. 95% of shuffles land between "
+                         f"{_head['null_lo']:.1%} and {_head['null_hi']:.1%}.")
+                c3.metric(
+                    "Player-games measured", f"{_head['n']:,}",
+                    help=f"From {_head['pairs']:,} paired open/close prices "
+                         f"across {_head['games']:,} games. Prices that closed "
+                         f"where they opened are excluded — they say nothing "
+                         f"about who was right.")
+                if _beats:
+                    st.caption(
+                        f":material/check_circle: **Clear of the null.** The "
+                        f"players we rate above the opening price are the ones "
+                        f"the market then shortens. This is the highest-powered "
+                        f"evidence here — every priced player counts, not just "
+                        f"the ones who scored, which is why it rests on "
+                        f"{_head['n']:,} observations where the accuracy figures "
+                        f"above rest on about 1,100 games.")
+                else:
+                    st.caption(
+                        ":material/help: **Inside the null.** On this evidence "
+                        "our disagreements with the opening price do not "
+                        "anticipate where the line goes.")
                 st.caption(
+                    "It is a proxy, not a bank statement. Beating the close does "
+                    "not put money in your pocket, and a book that will not take "
+                    "the bet at the opening price makes it moot.")
+
+            if clv:
+                if not _head:
+                    st.markdown("##### Does the betting market drift toward our picks?")
+                st.caption(
+                    "**Broken down by how highly we rate the player.** A real "
+                    "effect should be strongest at the top and fade as the group "
+                    "widens — that pattern is harder to produce by accident than "
+                    "the single figure above, which is why both are here."
+                    if _head else
                     "A different kind of evidence, and the only one that does not "
                     "depend on who happened to score. Prices move during the week as "
                     "money comes in. If the players we rate highest tend to get "
