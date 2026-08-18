@@ -1381,7 +1381,10 @@ def test_best_prices_prefers_the_longest_available(tmp_path, monkeypatch):
             "player_name_norm": "p", "market": "anytime_td", "point": None,
             "side": "yes", "odds": odds, "implied_prob": 0.4,
         })
-    pl.DataFrame(rows).cast(odds_history.BOOK_SCHEMA).write_parquet(path)
+    # `_conform` rather than a bare cast, so a column added to BOOK_SCHEMA
+    # does not break a fixture that is not about that column.
+    odds_history._conform(pl.DataFrame(rows), odds_history.BOOK_SCHEMA
+                          ).write_parquet(path)
 
     best = odds_history.best_prices(2026, 1)
     assert best.height == 1
@@ -2941,3 +2944,48 @@ def test_both_fetch_paths_share_one_market_reader():
     assert "book_rows.append" not in inspect.getsource(
         odds_api.fetch_week_td_props), \
         "the live fetch has grown its own copy of the parser again"
+
+
+def test_a_widened_region_set_is_not_reported_as_already_archived():
+    """`us` was hardcoded in both fetch paths for the life of the archive.
+
+    Measured on one 2024 game, anytime TD: `us` returns 7 books and `us2`
+    another 4 — including the only book that posts both sides of the market,
+    and the two that quote 34-51 players a game against 21-28 at the majors.
+    Every consensus median, every line-shopping figure and the whole longshot
+    tail was computed without them.
+
+    Widening the region set is therefore a top-up, not a no-op, and the archive
+    has to be able to tell the two apart. Keyed on market and snapshot alone,
+    `_already_archived` reported all 855 games covered and the top-up fetched
+    nothing.
+    """
+    import importlib.util
+    import polars as pl
+    from src.ingest.odds_history import LEGACY_REGIONS, SCHEMA, _conform
+
+    spec = importlib.util.spec_from_file_location(
+        "backfill", Path("scripts/09_backfill_odds.py"))
+    backfill = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(backfill)
+
+    rows = pl.DataFrame([{
+        "captured_at": "2024-11-24T17:00:00+00:00", "snapshot": "close",
+        "season": 2024, "week": 12, "game_id": "g1",
+        "player_name_raw": "P", "player_name_norm": "p",
+        "market": "anytime_td", "regions": LEGACY_REGIONS, "point": None,
+        "odds": 120, "implied_prob": 0.45, "fair_prob": None,
+        "n_books": 7, "overround": None,
+    }])
+    path = Path(backfill.HISTORY_PATH)
+    original = backfill.HISTORY_PATH
+    tmp = path.with_name("odds_history_regiontest.parquet")
+    try:
+        _conform(rows, SCHEMA).write_parquet(tmp)
+        backfill.HISTORY_PATH = tmp
+        assert backfill._already_archived(["anytime_td"], "close", "us") == {"g1"}
+        assert backfill._already_archived(["anytime_td"], "close", "us,us2") == set(), \
+            "a wider region set was reported as already covered"
+    finally:
+        backfill.HISTORY_PATH = original
+        tmp.unlink(missing_ok=True)

@@ -31,9 +31,11 @@ sys.path.insert(0, ".")
 import polars as pl
 import requests
 
-from src.ingest.odds_api import (API_BASE, SPORT, MARKET_SPECS, SPEC_BY_MARKET,
-                                 _get_api_key, parse_event_markets, specs_for)
-from src.ingest.odds_history import HISTORY_PATH, append_snapshot
+from src.ingest.odds_api import (API_BASE, DEFAULT_REGIONS, SPORT, MARKET_SPECS,
+                                 SPEC_BY_MARKET, _get_api_key,
+                                 parse_event_markets, specs_for)
+from src.ingest.odds_history import (HISTORY_PATH, LEGACY_REGIONS,
+                                     append_book_quotes, append_snapshot)
 from src.features.odds_features import TEAM_ABBREV, _normalize_name
 from src.utils.paths import get_path
 
@@ -51,9 +53,14 @@ MARKET_SETS: dict[str, tuple[str, ...]] = {
     # yes/no. See odds_api.MARKET_SPECS for why that distinction is declared
     # rather than inferred.
     "td_types": ("rush_td", "reception_td"),
+    "receptions": ("receptions",),
     "all": tuple(sp.market for sp in MARKET_SPECS),
 }
-REGIONS = "us"
+#: Default region set. See odds_api.DEFAULT_REGIONS for what `us` alone was
+#: costing us — briefly, four books, the deepest longshot coverage on the
+#: board, and the only two-sided anytime-TD price anyone posts. Overridable per
+#: run because credits are billed markets x regions.
+REGIONS = DEFAULT_REGIONS
 #: Player props exist in the historical archive only from this date.
 PROPS_AVAILABLE_FROM = datetime(2023, 5, 3, 5, 30, tzinfo=timezone.utc)
 #: Snapshots are published every 5 minutes; ask for the last one before kickoff.
@@ -133,13 +140,16 @@ def _kickoff(row: dict) -> datetime | None:
     return naive.replace(tzinfo=timezone.utc) + timedelta(hours=4)
 
 
-def _already_archived(market_names: list[str], snapshot: str = "close") -> set[str]:
+def _already_archived(market_names: list[str], snapshot: str = "close",
+                      regions: str | None = None) -> set[str]:
     """Games already archived *for every market being requested*.
 
-    Keyed by market and by snapshot phase, not just game_id: otherwise a first
-    pass for anytime-TD would make a later first-TD pass skip every game as
-    "done", and a closing-line backfill would make an opening-line pass skip
-    everything it has never actually fetched.
+    Keyed by market, snapshot phase and region set, not just game_id. A first
+    pass for anytime-TD would otherwise make a later first-TD pass skip every
+    game as "done", a closing-line backfill would make an opening-line pass
+    skip everything it has never fetched — and a `us` backfill would make a
+    `us,us2` top-up skip all 855 games while adding none of the four books it
+    was run to collect.
     """
     if not HISTORY_PATH.exists():
         return set()
@@ -150,6 +160,10 @@ def _already_archived(market_names: list[str], snapshot: str = "close") -> set[s
     if "snapshot" not in hist.columns:
         hist = hist.with_columns(pl.lit("close").alias("snapshot"))
     hist = hist.filter(pl.col("snapshot") == snapshot)
+    if regions is not None:
+        if "regions" not in hist.columns:
+            hist = hist.with_columns(pl.lit(LEGACY_REGIONS).alias("regions"))
+        hist = hist.filter(pl.col("regions") == regions)
 
     done: set[str] | None = None
     for m in market_names:
@@ -172,20 +186,29 @@ def _find_event(snapshot: str, home: str, away: str, budget: Budget) -> str | No
     return None
 
 
-def _parse_event_odds(payload: dict, specs) -> list[dict]:
-    """Consensus median per player per line per market.
+def _parse_event_odds(payload: dict, specs, game_id: str | None = None):
+    """Consensus median per player per line per market, plus every book behind it.
 
     The parsing itself lives in `odds_api.parse_event_markets`, shared with the
     live fetch. This module used to carry its own copy — identical down to the
     `side not in ("yes", "no")` filter that silently drops every over/under
     outcome — and this is the copy that spends the credits.
+
+    It also used to return the consensus alone and drop the per-book detail on
+    the floor. That detail arrives in the same response for no extra credits,
+    is what line shopping is measured from, and the historical endpoint will
+    not sell the snapshot a second time — so a backfill that discards it is
+    paying full price for a fraction of the data. The live fetch has archived
+    it since `BOOKS_PATH` existed; this path never did.
     """
     event = payload.get("data") or {}
-    consensus, _ = parse_event_markets(event, specs)
+    consensus, book_rows = parse_event_markets(event, specs, game_id=game_id)
     for row in consensus:
         row["player_name_norm"] = _normalize_name(row["player_name_raw"])
         row.pop("game_id", None)
-    return consensus
+    for row in book_rows:
+        row["player_name_norm"] = _normalize_name(row["player_name_raw"])
+    return consensus, book_rows
 
 
 def main() -> int:
@@ -203,6 +226,10 @@ def main() -> int:
     ap.add_argument("--sleep", type=float, default=0.3, help="Seconds between calls.")
     ap.add_argument("--limit", type=int, default=None,
                     help="Only process the first N games. Use for a trial run.")
+    ap.add_argument("--regions", default=REGIONS,
+                    help="Bookmaker regions, comma separated. Credits are "
+                         "billed markets x regions, so widening this widens "
+                         "the bill in proportion.")
     ap.add_argument("--markets", choices=sorted(MARKET_SETS), default="anytime",
                     help="Which prop markets to archive. Credits are billed per "
                          "market, so 'anytime' costs half what 'both' costs.")
@@ -213,7 +240,7 @@ def main() -> int:
     n_markets = len(specs)
 
     games = _games(args.seasons)
-    done = _already_archived(market_names, args.snapshot)
+    done = _already_archived(market_names, args.snapshot, args.regions)
     todo = [r for r in games.iter_rows(named=True) if r["game_id"] not in done]
 
     # Props only exist in the archive after PROPS_AVAILABLE_FROM.
@@ -224,8 +251,13 @@ def main() -> int:
     n = len(todo)
     print(f"Seasons {args.seasons}: {games.height} scheduled games, "
           f"{len(done)} already archived, {n} to fetch.")
-    lo, hi = n_markets, n_markets * 10   # docs disagree on the 10x multiplier
-    print(f"Markets: {markets} ({n_markets})  Regions: {REGIONS} (1)")
+    n_regions = len([r for r in args.regions.split(",") if r.strip()])
+    # The estimate used to assume one region and quietly halve the bill the
+    # moment a second one was asked for.
+    lo = n_markets * n_regions
+    hi = lo * 10                          # docs disagree on the 10x multiplier
+    print(f"Markets: {markets} ({n_markets})  "
+          f"Regions: {args.regions} ({n_regions})")
     print(f"Cost per game: {lo} credits if billed markets x regions, "
           f"{hi} if the 10x historical multiplier applies.")
     print(f"Estimated total: {n * lo + n:,} - {n * hi + n:,} credits "
@@ -264,7 +296,7 @@ def main() -> int:
 
         payload = _get(
             f"/historical/sports/{SPORT}/events/{eid}/odds",
-            {"apiKey": _get_api_key(), "date": snapshot, "regions": REGIONS,
+            {"apiKey": _get_api_key(), "date": snapshot, "regions": args.regions,
              "markets": markets, "oddsFormat": "american"},
             budget,
         )
@@ -273,7 +305,7 @@ def main() -> int:
             time.sleep(args.sleep)
             continue
 
-        rows = _parse_event_odds(payload, specs)
+        rows, book_rows = _parse_event_odds(payload, specs, row["game_id"])
         if not rows:
             skipped += 1
             print(f"  [{i}/{n}] {row['game_id']}: no TD props in snapshot")
@@ -282,7 +314,10 @@ def main() -> int:
 
         snap = pl.DataFrame(rows).with_columns(pl.lit(row["game_id"]).alias("game_id"))
         append_snapshot(snap, season=row["season"], week=row["week"],
-                        snapshot=args.snapshot)
+                        snapshot=args.snapshot, regions=args.regions)
+        # Same response, no extra credits, unbuyable afterwards.
+        append_book_quotes(book_rows, season=row["season"], week=row["week"],
+                           snapshot=args.snapshot, regions=args.regions)
         fetched += 1
         print(f"  [{i}/{n}] {row['game_id']}: {len(rows)} prices "
               f"(spent {budget.used}, remaining {budget.remaining_reported})")

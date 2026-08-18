@@ -15,8 +15,9 @@ sys.path.insert(0, ".")
 
 import polars as pl
 
-from src.ingest.odds_api import (DEFAULT_MARKETS, fetch_week_td_props,
-                                 build_odds_parquet, load_cached_book_quotes)
+from src.ingest.odds_api import (DEFAULT_MARKETS, DEFAULT_REGIONS,
+                                 fetch_week_td_props, build_odds_parquet,
+                                 load_cached_book_quotes)
 from src.ingest.odds_history import append_snapshot, append_book_quotes
 from src.utils.config import get_config
 
@@ -68,19 +69,25 @@ if __name__ == "__main__":
              "Credits are billed per market, so every addition costs money "
              "every week the season is live.",
     )
+    ap.add_argument(
+        "--regions", default=DEFAULT_REGIONS,
+        help="Bookmaker regions, comma separated. Billed markets x regions.",
+    )
     args = ap.parse_args()
 
     markets = tuple(args.markets)
     odds = fetch_week_td_props(force_refresh=args.force_refresh,
-                               markets=markets)
+                               markets=markets, regions=args.regions)
     if not odds:
         print("No odds returned. Is ODDS_API_KEY set in .env?")
         sys.exit(1)
 
     print(f"Fetched {len(odds)} games")
     append_snapshot(_to_rows(odds, markets), season=args.season,
-                    week=args.week, snapshot=args.snapshot)
+                    week=args.week, snapshot=args.snapshot,
+                    regions=args.regions)
     # Same response, no extra credits, and unbuyable afterwards.
     append_book_quotes(load_cached_book_quotes(), season=args.season,
-                       week=args.week, snapshot=args.snapshot)
+                       week=args.week, snapshot=args.snapshot,
+                       regions=args.regions)
     build_odds_parquet()

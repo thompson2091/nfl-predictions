@@ -65,7 +65,12 @@ def line_movement(target_type: str = "anytime_td") -> pl.DataFrame | None:
     # the same line. Without it, a book moving a receptions line from 4.5 to
     # 3.5 would read as a huge price move rather than a different bet. Null for
     # yes/no markets, where it changes nothing.
-    keys = ["season", "week", "game_id", "player_name_norm", "point"]
+    # `regions` joins the key for the same reason `point` does. A 7-book `us`
+    # open differenced against an 11-book `us,us2` close would report the
+    # change in who was quoting as though it were the market moving — and
+    # manufacture closing-line value out of a top-up. Only compare an open and
+    # a close drawn from the same set of books.
+    keys = ["season", "week", "game_id", "player_name_norm", "point", "regions"]
     opens = (
         hist.filter(pl.col("snapshot") == "open")
         .sort("captured_at").unique(subset=keys, keep="first")

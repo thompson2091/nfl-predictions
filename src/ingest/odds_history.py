@@ -26,6 +26,11 @@ ARCHIVE_DIR = get_path("raw").parent / "archive"
 HISTORY_PATH = ARCHIVE_DIR / "odds_history.parquet"
 
 
+#: The region set every row written before 2026-08-17 was fetched with, back
+#: when `regions="us"` was hardcoded in both fetch paths.
+LEGACY_REGIONS = "us"
+
+
 class UnknownMarket(KeyError):
     """A target type with no archived market. Raised rather than guessed at."""
 
@@ -98,6 +103,18 @@ BOOK_SCHEMA = {
     "player_name_raw": pl.Utf8,
     "player_name_norm": pl.Utf8,
     "market": pl.Utf8,
+    # Which bookmaker regions this price was a consensus of. Provenance, and
+    # the only thing that can tell a 7-book `us` median from an 11-book
+    # `us,us2` one after the fact — they are different numbers for the same
+    # player and nothing else in the row distinguishes them.
+    #
+    # It also decides what a backfill considers done. Without it,
+    # `_already_archived` reports every game covered and a top-up for a newly
+    # added region silently fetches nothing.
+    #
+    # Rows written before this column existed were all fetched with "us",
+    # which is why the migration stamps that rather than null.
+    "regions": pl.Utf8,
     # See SCHEMA["point"]. Per book, because two books can post different lines
     # for the same player — which is precisely what line shopping on an
     # over/under market means, and is invisible if only the median is kept.
@@ -139,6 +156,18 @@ SCHEMA = {
     "player_name_raw": pl.Utf8,
     "player_name_norm": pl.Utf8,
     "market": pl.Utf8,
+    # Which bookmaker regions this price was a consensus of. Provenance, and
+    # the only thing that can tell a 7-book `us` median from an 11-book
+    # `us,us2` one after the fact — they are different numbers for the same
+    # player and nothing else in the row distinguishes them.
+    #
+    # It also decides what a backfill considers done. Without it,
+    # `_already_archived` reports every game covered and a top-up for a newly
+    # added region silently fetches nothing.
+    #
+    # Rows written before this column existed were all fetched with "us",
+    # which is why the migration stamps that rather than null.
+    "regions": pl.Utf8,
     # The line this price is for, as the API reports it. Null for yes/no
     # markets, which have no line — anytime and first TD only ask whether it
     # happened. Over/under markets always carry one: 0.5 for rush and reception
@@ -168,6 +197,9 @@ def _conform(df: pl.DataFrame, schema: dict) -> pl.DataFrame:
     """
     if "snapshot" in schema and "snapshot" not in df.columns:
         df = df.with_columns(pl.lit("close").alias("snapshot"))
+    if "regions" in schema and "regions" not in df.columns:
+        # Every fetch before 2026-08-17 hardcoded regions=us.
+        df = df.with_columns(pl.lit(LEGACY_REGIONS).alias("regions"))
     missing = [c for c in schema if c not in df.columns]
     if missing:
         df = df.with_columns(
@@ -176,7 +208,8 @@ def _conform(df: pl.DataFrame, schema: dict) -> pl.DataFrame:
 
 
 def append_snapshot(odds: pl.DataFrame, season: int, week: int,
-                    snapshot: str = "close") -> Path:
+                    snapshot: str = "close",
+                    regions: str | None = None) -> Path:
     """Archive one fetch. Deduplicates on (game_id, player, market, captured_at)."""
     if odds is None or odds.height == 0:
         print("  Odds history: nothing to archive")
@@ -189,6 +222,8 @@ def append_snapshot(odds: pl.DataFrame, season: int, week: int,
         pl.lit(week, dtype=pl.Int64).alias("week"),
         pl.lit(snapshot).alias("snapshot"),
     ])
+    if regions is not None:
+        snap = snap.with_columns(pl.lit(regions).alias("regions"))
     snap = _conform(snap, SCHEMA)
 
     if HISTORY_PATH.exists():
@@ -200,7 +235,8 @@ def append_snapshot(odds: pl.DataFrame, season: int, week: int,
     # whichever happened to sort last. Null compares equal to null in polars,
     # so yes/no markets — where every point is null — dedup exactly as before.
     snap = snap.unique(
-        subset=["game_id", "player_name_norm", "market", "point", "captured_at"],
+        subset=["game_id", "player_name_norm", "market", "point", "regions",
+                "captured_at"],
         keep="last",
     )
     _ensure_dir()
@@ -287,7 +323,8 @@ def load_graded_history(target_type: str = "anytime_td") -> pl.DataFrame | None:
 
 
 def append_book_quotes(rows: list[dict], season: int, week: int,
-                       snapshot: str = "close") -> Path | None:
+                       snapshot: str = "close",
+                       regions: str | None = None) -> Path | None:
     """Archive every bookmaker's individual price for one fetch.
 
     Append-only and deduplicated on (game, player, market, side, book, capture),
@@ -311,6 +348,8 @@ def append_book_quotes(rows: list[dict], season: int, week: int,
         pl.lit(snapshot).alias("snapshot"),
         _norm_expr("player_name_raw").alias("player_name_norm"),
     ])
+    if regions is not None:
+        snap = snap.with_columns(pl.lit(regions).alias("regions"))
     snap = _conform(snap, BOOK_SCHEMA)
 
     if BOOKS_PATH.exists():
@@ -318,8 +357,8 @@ def append_book_quotes(rows: list[dict], season: int, week: int,
         snap = pl.concat([existing, snap], how="vertical")
 
     snap = snap.unique(
-        subset=["game_id", "player_name_norm", "market", "point", "side",
-                "bookmaker", "captured_at"],
+        subset=["game_id", "player_name_norm", "market", "point", "regions",
+                "side", "bookmaker", "captured_at"],
         keep="last",
     )
     _ensure_dir()

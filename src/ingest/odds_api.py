@@ -43,8 +43,41 @@ MARKET_SPECS: tuple[MarketSpec, ...] = (
     MarketSpec("player_anytime_td", "anytime_td", "yes_no"),
     MarketSpec("player_rush_tds", "rush_td", "over_under"),
     MarketSpec("player_reception_tds", "reception_td", "over_under"),
+    MarketSpec("player_receptions", "receptions", "over_under"),
 )
 SPEC_BY_MARKET = {s.market: s for s in MARKET_SPECS}
+
+#: Bookmaker regions to ask for. Credits are billed markets x regions, so this
+#: is a spending decision — but `us` alone was leaving real data on the table
+#: for the entire life of the archive, in three separate ways.
+#:
+#: Measured on one 2024 game, anytime TD:
+#:
+#:     us    7 books   betmgm betonlineag betrivers bovada draftkings
+#:                     fanduel williamhill_us
+#:     us2   4 books   ballybet espnbet fliff hardrockbet
+#:
+#:   * **Consensus.** The median we de-vig against, and every profitability
+#:     figure computed from it, was a median of 7 where 11 were available.
+#:   * **Line shopping.** `evaluation/line_shopping.py` is best-of-N by
+#:     construction, and N was 4 books short of what we were paying to be able
+#:     to see.
+#:   * **The longshot tail.** fliff and hardrockbet quote 34-51 players a game
+#:     against 21-28 at the majors. That extra depth is precisely the band where
+#:     `evaluation/longshot.py` measures our largest edge over the book
+#:     (AUC 0.76 against theirs at 0.54) — and we were not pricing most of it.
+#:
+#: fliff also posts **both sides** of anytime TD, which no `us` book does. That
+#: turns `fair_prob` into a real two-sided de-vig for the market we actually
+#: bet, instead of the one-sided `expected_scorers` normalisation whose own
+#: docstring records it moving a favourite from 41% to 49% as book coverage
+#: thinned. See blend.devig_market.
+DEFAULT_REGIONS: str = "us,us2"
+
+#: What every cache file and every archived row before 2026-08-17 was fetched
+#: with. Kept so those files are still addressable, and so nothing written
+#: under the narrower set is silently reused under the wider one.
+_LEGACY_REGIONS: str = "us"
 
 #: Markets fetched when a caller does not say. Deliberately the two we model:
 #: every extra market multiplies the credit cost of a fetch, so widening this
@@ -211,22 +244,31 @@ def _median(values: list[float]) -> float:
     return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2.0
 
 
-def _cache_path(week_start: str, markets: Sequence[str] = DEFAULT_MARKETS) -> Path:
-    """Cache file for a given week (by start date) and market set.
+def _cache_path(week_start: str, markets: Sequence[str] = DEFAULT_MARKETS,
+                regions: str = DEFAULT_REGIONS) -> Path:
+    """Cache file for a given week (by start date), market set and region set.
 
-    The market set is part of the key. Without it, a cache written by a
-    two-market fetch would be served to a four-market one, which reads as "the
-    book priced nothing in those markets" rather than "we never asked".
+    Both are part of the key. Without them, a cache written by a narrower fetch
+    would be served to a wider one, which reads as "the book priced nothing in
+    those markets" rather than "we never asked" — the same shape of silence
+    that hid the us2 books for the life of the archive.
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    if tuple(markets) == DEFAULT_MARKETS:
-        # Unsuffixed, so caches written before this existed still hit.
-        return CACHE_DIR / f"td_props_{week_start}.json"
-    return CACHE_DIR / f"td_props_{week_start}__{'-'.join(markets)}.json"
+    suffix = ""
+    if tuple(markets) != DEFAULT_MARKETS:
+        suffix += "__" + "-".join(markets)
+    # Unsuffixed means `us` — the region set every cache on disk was written
+    # with. The default has since widened to us,us2, and reusing those files
+    # under the new default would serve 7-book prices as though they were the
+    # 11-book consensus that was asked for.
+    if regions != _LEGACY_REGIONS:
+        suffix += "__" + regions.replace(",", "+")
+    return CACHE_DIR / f"td_props_{week_start}{suffix}.json"
 
 
 def fetch_week_td_props(week_start: str = None, force_refresh: bool = False,
-                        markets: Sequence[str] = DEFAULT_MARKETS) -> dict:
+                        markets: Sequence[str] = DEFAULT_MARKETS,
+                        regions: str = DEFAULT_REGIONS) -> dict:
     """Fetch first TD and anytime TD props for upcoming NFL games.
 
     Args:
@@ -250,7 +292,7 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False,
         week_start = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     specs = specs_for(markets)
-    cache = _cache_path(week_start, markets)
+    cache = _cache_path(week_start, markets, regions)
     if not force_refresh and cache.exists():
         # Use cache if less than 6 hours old
         age_hours = (time.time() - cache.stat().st_mtime) / 3600
@@ -310,7 +352,7 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False,
                 f"{API_BASE}/sports/{SPORT}/events/{event_id}/odds",
                 params={
                     "apiKey": api_key,
-                    "regions": "us",
+                    "regions": regions,
                     "markets": ",".join(sp.key for sp in specs),
                     "oddsFormat": "american",
                 },
