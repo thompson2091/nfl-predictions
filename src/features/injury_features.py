@@ -4,9 +4,16 @@ import polars as pl
 
 def build_injury_features(
     injuries: pl.DataFrame,
-    depth_charts: pl.DataFrame,
+    starters: pl.DataFrame,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Build player-level and team-context injury features.
+
+    `starters` is the normalised frame from
+    `src.features.context_features.starter_lookup` — season, week, team,
+    position, starter_id — covering both depth-chart formats. It used to be the
+    raw old-format depth-chart file, which ends at 2024, so the starter join
+    came back empty for 2025+ and `fill_null(0.0)` turned the result into a
+    hard zero rather than a missing value.
 
     Returns:
         player_injury_feats: per player-season-week (is_out, is_questionable)
@@ -60,37 +67,38 @@ def build_injury_features(
         )
     )
 
-    # --- Starter out at position: is the depth_chart #1 at this position OUT? ---
-    # Get starters from depth charts
-    if not depth_charts.is_empty() and "depth_team" in depth_charts.columns:
-        starters = (
-            depth_charts.filter(
-                pl.col("depth_team").cast(pl.Utf8).is_in(["1", "1.0"])
-            )
-            .select([
-                pl.col("gsis_id").alias("starter_id"),
-                pl.col("season").cast(pl.Int64),
-                pl.col("week").cast(pl.Int64),
-                pl.col("club_code").alias("team"),
-                pl.col("position").alias("starter_position"),
-            ])
-            .unique(subset=["season", "week", "team", "starter_position"], keep="last")
-        )
-
+    # --- Starter out at position: is the depth chart #1 at this position OUT? ---
+    if starters is not None and not starters.is_empty():
         # Check if starter is OUT
         starter_out = starters.join(
             out_players.select(["player_id", "season", "week"]).rename({"player_id": "starter_id"}),
             on=["starter_id", "season", "week"],
             how="inner",
-        ).select(["season", "week", "team", pl.col("starter_position").alias("position")])
+        ).select(["season", "week", "team", "position"]).unique()
         starter_out = starter_out.with_columns(pl.lit(1.0).alias("starter_out_at_position"))
 
-        teammate_boost = teammate_boost.join(
-            starter_out, on=["season", "week", "team", "position"], how="left"
-        ).with_columns(pl.col("starter_out_at_position").fill_null(0.0))
+        # Only fill zeros for team-weeks a depth chart actually covers. Filling
+        # everywhere is how this became a constant 0.0 across 2025: "no chart"
+        # and "starter is playing" are different facts, and collapsing them
+        # taught the model a value the live pipeline can never reproduce.
+        covered = starters.select(["season", "week", "team"]).unique().with_columns(
+            pl.lit(True).alias("_dc_covered"))
+
+        teammate_boost = (
+            teammate_boost
+            .join(starter_out, on=["season", "week", "team", "position"], how="left")
+            .join(covered, on=["season", "week", "team"], how="left")
+            .with_columns(
+                pl.when(pl.col("_dc_covered").fill_null(False))
+                .then(pl.col("starter_out_at_position").fill_null(0.0))
+                .otherwise(None)
+                .alias("starter_out_at_position")
+            )
+            .drop("_dc_covered")
+        )
     else:
         teammate_boost = teammate_boost.with_columns(
-            pl.lit(0.0).alias("starter_out_at_position")
+            pl.lit(None, dtype=pl.Float64).alias("starter_out_at_position")
         )
 
     team_feats = teammate_boost.select([

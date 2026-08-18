@@ -222,18 +222,27 @@ def assemble_features() -> pl.DataFrame:
 
     dc_feats = build_depth_chart_features(depth_charts)
 
-    # Load new-format depth charts for 2025+ if available
+    # New-format depth charts (2025+). The feed changed schema in 2025 and the
+    # old file simply stops at 2024, so without this half the seasons have no
+    # chart at all. Read once here and reused for the injury starter lookup —
+    # two readers deriving "who started" separately is what let
+    # `starter_out_at_position` sit at a constant 0.0 through 2025 while
+    # `is_starter` was merely degraded.
     dc_new_path = get_path("raw") / "depth_charts_new.parquet"
-    try:
-        dc_new = pl.read_parquet(dc_new_path)
-        if not dc_new.is_empty():
-            from src.features.context_features import _build_dc_new_format
-            dc_new_feats = _build_dc_new_format(dc_new)
-            dc_feats = pl.concat([dc_feats, dc_new_feats], how="diagonal_relaxed")
-            dc_feats = dc_feats.unique(subset=["player_id", "season", "week"], keep="last")
-            print(f"  Depth charts (combined): {dc_feats.shape}")
-    except Exception:
-        pass
+    dc_new = _load_optional_parquet("depth_charts_new")
+    if dc_new is not None and not dc_new.is_empty():
+        from src.features.context_features import (
+            _build_dc_new_format, starter_slots)
+        # No try/except: a schema change here silently reverts every 2025+ row
+        # to "no depth chart", which is the failure this call is fixing.
+        slots = starter_slots(depth_charts)
+        print(f"  Starter slots fitted from 2015-2024: {slots}")
+        dc_new_feats = _build_dc_new_format(dc_new, schedules, slots)
+        dc_feats = pl.concat([dc_feats, dc_new_feats], how="diagonal_relaxed")
+        dc_feats = dc_feats.unique(subset=["player_id", "season", "week"], keep="last")
+        print(f"  Depth charts (combined): {dc_feats.shape}")
+    elif dc_new_path.exists():
+        print(f"  WARNING: {dc_new_path.name} present but empty — 2025+ has no depth chart")
 
     # === Target-specific features ===
     player_ftd_feats = build_player_target_history(target_type)
@@ -293,7 +302,12 @@ def assemble_features() -> pl.DataFrame:
     print(f"  Rushing efficiency features: {rushing_eff_feats.shape}")
 
     # === NEW Round 2: Injury features ===
-    injury_player_feats, injury_team_feats = build_injury_features(injuries, depth_charts)
+    from src.features.context_features import starter_lookup, starter_slots
+    starters = starter_lookup(depth_charts, dc_new, schedules,
+                              starter_slots(depth_charts))
+    print(f"  Starter lookup: {starters.shape} "
+          f"({starters['season'].n_unique()} seasons)")
+    injury_player_feats, injury_team_feats = build_injury_features(injuries, starters)
     print(f"  Injury player features: {injury_player_feats.shape}")
     print(f"  Injury team features: {injury_team_feats.shape}")
 
