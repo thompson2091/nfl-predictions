@@ -2171,6 +2171,22 @@ if tab_board.open:
                     "is the chance of no offensive touchdown at all."
                 )
                 _t = _teams.copy()
+                # Its own game selector rather than the board's. This table
+                # covers every game on the slate; the board's list is only the
+                # games a book has priced, which on an early-week slate is a
+                # handful of them — so sharing that selector would offer no way
+                # to reach most of the rows below.
+                if "game_label" in _t.columns:
+                    _tgames = ["All games"] + sorted(
+                        _teams["game_label"].dropna().unique().tolist())
+                    _tpick = st.container(horizontal=True).selectbox(
+                        "Game", _tgames, key="team_game",
+                        help="One game is two rows that answer each other: the "
+                             "two sides' chances of striking first add to 100%, "
+                             "so reading them together is the point.")
+                    if _tpick != "All games":
+                        _t = _t[_t["game_label"] == _tpick]
+
                 _cols = {}
                 if "game_label" in _t.columns:
                     _cols["game_label"] = st.column_config.TextColumn("Game")
@@ -2213,8 +2229,10 @@ if tab_board.open:
                 # A blank "scores first" is a roster outage, not a close game.
                 # Say so, and name the teams — otherwise the empty cell reads as
                 # a rendering glitch and the game quietly gets ignored.
-                if "candidates" in _teams.columns:
-                    _thin = _teams[_teams["candidates"] < 5]
+                # Read from the filtered frame: a warning about ARI while you
+                # are looking at DAL @ NYG reads as a fault in the rows shown.
+                if "candidates" in _t.columns:
+                    _thin = _t[_t["candidates"] < 5]
                     if len(_thin):
                         _names = ", ".join(sorted(set(_thin["team"].tolist())))
                         st.warning(
