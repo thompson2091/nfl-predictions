@@ -42,6 +42,8 @@ EVALUATION_ARTIFACTS = [
      "the longshot highlight"),
     ("clusters_player_report.json", "make clusters TARGET={market}",
      "the Player types tab"),
+    ("combo_backtest.json", "make combos TARGET={market}",
+     "how combinations have actually done"),
 ]
 
 
