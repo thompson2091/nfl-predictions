@@ -106,6 +106,34 @@ def served_version(tt: str) -> dict | None:
 
 # ── Sidebar ────────────────────────────────────────────────────────────────
 
+def guarded(fn):
+    """Turn a section's loader into one that returns `(value, error)`.
+
+    A swallowed exception used to remove a whole panel from the page with
+    nothing said, which is indistinguishable from "this market has no data" and
+    sends you looking in the wrong place. The first version of this fix wrote
+    the message into a module-level dict, which was wrong three ways: the dict
+    was defined ~850 lines below its earliest writer, so the `except` branch
+    raised `NameError` and took the page down instead of reporting; it was
+    written *inside* `@st.cache_data` functions, so on a cache hit the message
+    was never re-recorded and the section went quiet again; and being module
+    state on a shared server, one visitor's error rendered on another's page.
+
+    Returning the message alongside the value fixes all three: it is cached
+    with the result it belongs to, it exists wherever the value does, and it
+    travels with the call rather than with the process.
+
+    Wrap *under* `@st.cache_data` so the tuple is what gets cached.
+    """
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs), None
+        except Exception as e:
+            return None, f"{type(e).__name__}: {e}"
+    return wrapper
+
+
 @st.cache_data(show_spinner=False)
 @guarded
 def receptions_summary():
@@ -122,6 +150,38 @@ def receptions_backtests():
     if not files:
         return None
     return pl.concat([pl.read_csv(f) for f in files], how="diagonal_relaxed").to_pandas()
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+@guarded
+def receptions_projections(season: int, week: int):
+    """Every candidate's projected catches, whether or not a book priced him.
+
+    The lines table can only show players a bookmaker has quoted, and for
+    receptions that is nobody until close to kickoff. The model has a number
+    for every player on a roster the whole time, so this is the view that does
+    not depend on the market existing yet — expected catches, and the chance of
+    clearing each standard line, from one fitted distribution.
+    """
+    from src.models.count import XGBCountModel, prob_over
+
+    model_path = get_path("models", "receptions") / "xgb_count.pkl"
+    if not model_path.exists():
+        return None
+    m = XGBCountModel.load(model_path)
+    feats = pl.read_parquet(get_path("processed", "anytime_td") / "features.parquet")
+    wk = feats.filter((pl.col("season") == season) & (pl.col("week") == week))
+    if wk.height == 0:
+        return None
+    fcols = [c for c in m.feature_names if c in wk.columns]
+    mu = m.predict_mu(wk.select(fcols).to_numpy())
+    out = wk.select(["game_id", "player_name", "team"]).with_columns(pl.Series("mu", mu))
+    import numpy as _np
+    for line in (0.5, 1.5, 2.5, 3.5, 4.5, 5.5):
+        over, _ = prob_over(out["mu"].to_numpy(),
+                            _np.full(out.height, line), m.dispersion)
+        out = out.with_columns(pl.Series(f"p_{line}", over))
+    return out.sort("mu", descending=True).to_pandas()
 
 
 @st.cache_data(show_spinner=False, max_entries=8)
@@ -233,6 +293,51 @@ def render_receptions_page():
         )
 
     season = cfg["seasons"]["predict_season"]
+
+    # Projections first: they exist for every player from the moment the
+    # feature matrix is built, where the lines table waits on a bookmaker.
+    st.markdown(f"**Projected catches, {season}**")
+    _weeks = sorted(pl.read_parquet(
+        get_path("processed", "anytime_td") / "features.parquet"
+    ).filter(pl.col("season") == season)["week"].unique().to_list())
+    _wk_sel = st.selectbox("Week", _weeks, key="receptions_week") if _weeks else None
+    proj, proj_err = (receptions_projections(season, _wk_sel)
+                      if _wk_sel is not None else (None, None))
+    if proj_err:
+        st.caption(f":material/error: `{proj_err}`")
+    elif proj is None or not len(proj):
+        st.info("No feature rows for that week — run the pipeline.")
+    else:
+        _min = st.slider("Minimum projected catches", 0.0, 6.0, 1.0, 0.5,
+                         key="receptions_min_mu")
+        show = proj[proj["mu"] >= _min].copy()
+        disp = show.assign(
+            Player=show["player_name"], Team=show["team"],
+            Projected=show["mu"],
+            **{f"{ln}+": show[f"p_{ln}"] * 100 for ln in (0.5, 1.5, 2.5, 3.5, 4.5, 5.5)},
+        )
+        cols = ["Player", "Team", "Projected"] + [f"{ln}+" for ln in
+                                                  (0.5, 1.5, 2.5, 3.5, 4.5, 5.5)]
+        st.dataframe(
+            disp[cols], hide_index=True,
+            column_config={
+                "Projected": st.column_config.NumberColumn(
+                    "Projected catches", format="%.2f",
+                    help="Expected receptions — the count model's mean."),
+                **{f"{ln}+": st.column_config.NumberColumn(
+                    f"{ln}+", format="%.0f%%",
+                    help=f"Chance of more than {ln} catches, from the same "
+                         f"fitted distribution as every other column.")
+                   for ln in (0.5, 1.5, 2.5, 3.5, 4.5, 5.5)},
+            },
+        )
+        st.caption(
+            f"{len(show)} of {len(proj)} players projected at {_min:.1f}+ catches. "
+            f"Every column comes from one distribution per player, so they are "
+            f"consistent by construction — a player cannot be likelier to clear "
+            f"3.5 than 2.5."
+        )
+
     wk, wk_err = receptions_week_lines(season)
     st.markdown(f"**Posted lines, {season}**")
     if wk_err:
@@ -432,32 +537,10 @@ tab_board, tab_results, tab2, tab_bet, tab_clusters = st.tabs(
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 
-def guarded(fn):
-    """Turn a section's loader into one that returns `(value, error)`.
-
-    A swallowed exception used to remove a whole panel from the page with
-    nothing said, which is indistinguishable from "this market has no data" and
-    sends you looking in the wrong place. The first version of this fix wrote
-    the message into a module-level dict, which was wrong three ways: the dict
-    was defined ~850 lines below its earliest writer, so the `except` branch
-    raised `NameError` and took the page down instead of reporting; it was
-    written *inside* `@st.cache_data` functions, so on a cache hit the message
-    was never re-recorded and the section went quiet again; and being module
-    state on a shared server, one visitor's error rendered on another's page.
-
-    Returning the message alongside the value fixes all three: it is cached
-    with the result it belongs to, it exists wherever the value does, and it
-    travels with the call rather than with the process.
-
-    Wrap *under* `@st.cache_data` so the tuple is what gets cached.
-    """
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        try:
-            return fn(*args, **kwargs), None
-        except Exception as e:
-            return None, f"{type(e).__name__}: {e}"
-    return wrapper
+# (guarded is defined near the top of the file: the receptions
+# loaders decorate with it before the sidebar runs, and a decorator
+# executes at def time — which is how its old position here produced
+# a NameError that took the whole page down at import.)
 
 
 @st.cache_resource(show_spinner=False)
@@ -1941,6 +2024,34 @@ def render_selectivity(tt: str, board=None):
     if not s or not s.get("cuts"):
         return
 
+    # The strongest picks, before anything else. "McCaffrey against a
+    # bottom-five run defence" weeks are the reason a reader opens this page,
+    # and they were living three widgets deep. The bar is the highest measured
+    # cut (0.55 -> 64-66% hit rate); when nothing clears it the strip says so
+    # against the 0.50 bar instead of showing an empty box.
+    if board is not None and len(board):
+        frame0, _ = top_pick_outcomes(tt)
+        for bar in (0.55, 0.50):
+            strongest = (board[board["probability"] >= bar]
+                         .sort_values("probability", ascending=False))
+            if not strongest.empty:
+                import polars as _pl0
+                from src.evaluation.hit_rates import rate_at as _rate_at
+                r0 = (_rate_at(_pl0.from_pandas(frame0), bar)
+                      if frame0 is not None and len(frame0) else None)
+                names = "  ·  ".join(
+                    f"**{r.player_name}** ({r.game_label}) {r.probability:.0%}"
+                    for r in strongest.head(6).itertuples())
+                rate_txt = (f" — players rated this highly have scored "
+                            f"**{r0['hit_rate']:.0%}** of the time"
+                            if r0 and not r0.get("too_few") else "")
+                st.success(f"**Strongest this week (above {bar:.2f})**: {names}"
+                           f"{rate_txt}.", icon=":material/star:")
+                break
+        else:
+            st.caption("No player on this week's priced board clears 0.50 — "
+                       "the bar working, not a gap.")
+
     with st.expander("How often is the top pick right?", icon=":material/target:",
                      expanded=True):
         best = None
@@ -1995,10 +2106,9 @@ def render_selectivity(tt: str, board=None):
                           delta=f"{(r['share_of_games'] - 1) * 100:+.0f}% coverage",
                           delta_color="inverse")
                 st.caption(
-                    f"90% interval {r['lo_ci']:.1%} to {r['hi_ci']:.1%}, resampling "
-                    f"whole games. Accuracy and coverage trade against each other — "
-                    f"raising the bar makes the picks better and rarer at the same "
-                    f"time, and neither number means much without the other."
+                    f"90% interval {r['lo_ci']:.1%}–{r['hi_ci']:.1%}, resampling "
+                    f"whole games. Raising the bar makes picks better and rarer "
+                    f"at once."
                 )
 
             # This week's players that clear the same bar.
@@ -2060,10 +2170,8 @@ def render_selectivity(tt: str, board=None):
                     ngames = qual["game_label"].nunique()
                     st.caption(
                         f"{len(qual)} players across {ngames} "
-                        f"{'game' if ngames == 1 else 'games'}. This is every "
-                        f"qualifying player, so the rate quoted above it is the "
-                        f"any-player one — not the top-pick figure in the table "
-                        f"below, which describes a narrower population."
+                        f"{'game' if ngames == 1 else 'games'} — every qualifying "
+                        f"player, measured by the any-player rate above."
                     )
 
         table = pd.DataFrame([
@@ -2292,6 +2400,16 @@ if tab_board.open:
                        icon=":material/error:")
         if board is not None:
             h2h = market_headtohead(target_type, selected_model)
+            # Collected under one heading rather than narrated inline. This
+            # block used to open with a green "where we disagree is where this
+            # model is worth reading" banner, which read as advice to act on
+            # the edge columns — and directly contradicted the purpose panel
+            # above it, which reports the measured return on doing exactly that
+            # as negative. Two panels giving opposite instructions is worse
+            # than either one alone, so the betting material now sits in one
+            # collapsed place and describes skill rather than recommending it.
+            _bet_box = st.expander("Betting view — measured negative on this market",
+                                   icon=":material/payments:")
             if h2h and h2h["disagree_better_pct"] > 0:
                 # The numbers themselves now sit in the strip above as metrics.
                 # What a banner can add is the reading of them, which is not
@@ -2300,9 +2418,9 @@ if tab_board.open:
                 _hi = h2h.get("disagree_higher_pct")
                 _lo = h2h.get("disagree_lower_pct")
                 if _hi is not None and _lo is not None:
-                    st.success(
-                        f"**Where we disagree with the bookmaker is where this "
-                        f"model is worth reading.** On the tenth of players we "
+                    _bet_box.info(
+                        f"**Where we differ from the bookmaker, our estimate is "
+                        f"closer.** On the tenth of players we "
                         f"differ from the book on most across {h2h['span']}, our "
                         f"estimate landed **{h2h['disagree_better_pct']:.0f}% "
                         f"closer** to what actually happened.\n\n"
@@ -2317,8 +2435,9 @@ if tab_board.open:
                     # skill score, so 0% is the break-even point and both halves
                     # above are wins -- without saying so, 17% reads like a loss
                     # against an imagined 50% coin flip.
-                    with st.expander("What does “closer” mean here?"):
+                    with _bet_box:
                         st.markdown(
+                            f"**What 'closer' means.** "
                             f"Both our estimate and the book's are probabilities, "
                             f"and the player either scored or did not. Square the "
                             f"miss for each, average over the players, and compare. "
@@ -2343,9 +2462,9 @@ if tab_board.open:
                             f"“no” price on touchdown props."
                         )
                 else:
-                    st.success(
-                        f"**Where we disagree with the bookmaker is where this "
-                        f"model is worth reading.** On the players we differed from "
+                    _bet_box.info(
+                        f"**Where we differ from the bookmaker, our estimate is "
+                        f"closer.** On the players we differed from "
                         f"the book on most across {h2h['span']}, our estimate "
                         f"landed **{h2h['disagree_better_pct']:.0f}% closer** to "
                         f"what actually happened.",
@@ -2355,8 +2474,8 @@ if tab_board.open:
             _rule = betting_rule(target_type, selected_model)
             _preblend = bp.preblend_columns_differ(board)
             if _rule and _preblend:
-                st.caption(
-                    f":material/payments: The last three columns answer a different "
+                _bet_box.caption(
+                    f"The last three columns answer a different "
                     f"question from the rest of the table. Everything to their left "
                     f"is our best guess at **who scores**, blended with the "
                     f"bookmaker because that predicts better. **Bet #** and **Bet "
@@ -2370,7 +2489,7 @@ if tab_board.open:
                 )
                 _legend = bp.tier_legend(_rule)
                 if _legend is not None:
-                    with st.expander("What the labels mean"):
+                    with _bet_box:
                         st.dataframe(_legend, hide_index=True, column_config={
                             "Label": st.column_config.TextColumn(width="small"),
                             "Historically": st.column_config.TextColumn(
@@ -2390,8 +2509,8 @@ if tab_board.open:
                 _t = (_rule.get("tiers") or {})
                 _names = [t["tier"] for t in (_t.get("tiers") or [])]
                 _has_fade = bool(_t.get("fade"))
-                st.caption(
-                    f":material/payments: **Worth backing** carries the labels "
+                _bet_box.caption(
+                    f"**Worth backing** carries the labels "
                     f"fitted across {_rule['games']:,} games in {_rule['span']}"
                     + bp.tier_summary(_rule) +
                     " There is no separate **Bet #** or **Bet edge** on this "
@@ -2400,8 +2519,8 @@ if tab_board.open:
                     "reality**."
                 )
             else:
-                st.caption(
-                    ":material/info: No betting markers on this market. Its "
+                _bet_box.caption(
+                    "No betting markers on this market. Its "
                     "accuracy is measured and real, but backing our picks against "
                     "these prices has not been shown to make money — see **Betting "
                     "reality**. Marking rows anyway would imply evidence we do not "
