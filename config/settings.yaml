@@ -198,6 +198,72 @@ models:
   production_by_target:
     anytime_td: xgb
     first_td: xgb
+  # Feature-set size, per market. Anytime TD trains on 25 of 33 builder
+  # families (242 of 318 columns); first TD is deliberately untouched and
+  # trains on everything.
+  #
+  # MEASURED 2026-08-19, and the direction matters. Leave-one-out ablation says
+  # no family is prunable and has said so 33 times on two different matrices
+  # (`make ablate`). That is not evidence the set is the right size: families
+  # are redundant with each other, so dropping one alone lets a correlated
+  # survivor cover for it and the measurement reads zero however replaceable
+  # the family was. `make retention` builds UP instead, and that is where this
+  # came from.
+  #
+  # Seed-averaged over 5 seeds, paired per game against the full set at matched
+  # seeds (`make settle-overlay`, 1,131 games):
+  #
+  #     Top-1  46.63pct -> 48.28pct   +1.64pp  (+2.70 se, p=0.018)
+  #     Top-3  81.06pct -> 81.75pct   +0.69pp  (+1.48 se)
+  #     Top-5  92.25pct -> 91.72pct   -0.53pp  (-1.56 se)  <- the guard it trips
+  #     ahead in 5 of 5 seeds
+  #
+  # Top-5 is the cost and it is real, not noise. It is accepted because the
+  # product goal is naming the most likely scorer, which Top-1 and Top-3 read
+  # and Top-5 does not. Revisit this trade if that goal changes.
+  #
+  # The ordering came from ablation costs measured on the SAME folds, so the
+  # ranked curve is optimistically biased, and K=25 was chosen after seeing all
+  # seven ladder points. Neither objection survives the seed-averaged test
+  # above, but both are why this is 25 families rather than the 20 that read
+  # higher on a single seed.
+  #
+  # The control that makes the curve readable: the same ladder on a RANDOM
+  # family ordering loses AUC 0.008-0.011 at every K, while the ranked set at
+  # K=25 holds it at -0.0002. Dropping the right families is not the same as
+  # dropping that many families.
+  #
+  # Dropped: coach, coverage, first_half, interaction, opp_target,
+  # opponent_position, rushing_efficiency, team_redzone. `opponent_position` is
+  # worth noting - it read -2.74pp (p=0.006) on the leaked matrix and +1.50pp
+  # on the clean one.
+  include_feature_families_by_target:
+    anytime_td:
+    - _build_game_context_features
+    - build_box_features
+    - build_depth_chart_features
+    - build_game_features
+    - build_goalline_features
+    - build_injury_features
+    - build_matchup_interaction_features
+    - build_momentum_features
+    - build_opening_drive_features
+    - build_opponent_features
+    - build_pace_features
+    - build_personnel_features
+    - build_player_redzone_features
+    - build_player_rolling_features
+    - build_player_share_features
+    - build_player_target_history
+    - build_qb_features
+    - build_receiver_features
+    - build_score_first_features
+    - build_snap_features
+    - build_td_proxy_features
+    - build_td_streak_features
+    - build_team_features
+    - build_team_target_tendency
+    - build_vegas_features
 # Hyperparameters. Every key here reaches the model, and every key the model
 # reads is declared here — tests/test_leakage.py asserts both directions
 # against DEFAULTS in each wrapper. That check exists because this block used
