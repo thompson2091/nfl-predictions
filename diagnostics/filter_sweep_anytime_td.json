@@ -1,54 +1,99 @@
 {
-  "no-defst-pool": {
-    "cfg": {
-      "keep_defst": false
+  "variants": {
+    "no-defst-pool": {
+      "cfg": {
+        "keep_defst": false
+      },
+      "top1_delta": -0.021220159151193633,
+      "se": 0.008367938267687896,
+      "p_value": 0.014866752945626234,
+      "wins": 33,
+      "losses": 57,
+      "top3_delta": -0.0035366931918656055,
+      "top5_delta": -0.0017683465959328027,
+      "verdict": "REJECTED"
     },
-    "top1_delta": 0.0017683465959328027,
-    "se": 0.213110724792684,
-    "p": 0.915186504842877,
-    "wins": 45,
-    "losses": 43,
-    "top3_delta": -0.01768346595932803,
-    "top5_delta": -0.0035366931918656055,
-    "verdict": "REJECTED"
+    "usage-gt-0.5": {
+      "cfg": {
+        "min_usage": 0.5
+      },
+      "top1_delta": -0.01856763925729443,
+      "se": 0.008603955978338398,
+      "p_value": 0.03960823767054588,
+      "wins": 37,
+      "losses": 58,
+      "top3_delta": -0.014146772767462422,
+      "top5_delta": -0.009725906277630416,
+      "verdict": "REJECTED"
+    },
+    "usage-gt-1.0": {
+      "cfg": {
+        "min_usage": 1.0
+      },
+      "top1_delta": -0.014146772767462422,
+      "se": 0.00874662271211682,
+      "p_value": 0.12929258395357313,
+      "wins": 41,
+      "losses": 57,
+      "top3_delta": -0.023872679045092837,
+      "top5_delta": -0.007957559681697613,
+      "verdict": "REJECTED"
+    },
+    "usage-gt-2.0": {
+      "cfg": {
+        "min_usage": 2.0
+      },
+      "top1_delta": -0.020335985853227233,
+      "se": 0.00841649338382257,
+      "p_value": 0.020584209038374254,
+      "wins": 34,
+      "losses": 57,
+      "top3_delta": -0.01768346595932803,
+      "top5_delta": -0.008841732979664015,
+      "verdict": "REJECTED"
+    },
+    "snap-gt-10pct": {
+      "cfg": {
+        "min_snap_pct": 0.1
+      },
+      "top1_delta": -0.015915119363395226,
+      "se": 0.00799606758488383,
+      "p_value": 0.059808338334316175,
+      "wins": 32,
+      "losses": 50,
+      "top3_delta": 0.0008841732979664014,
+      "top5_delta": -0.002652519893899204,
+      "verdict": "REJECTED"
+    },
+    "snap-gt-25pct": {
+      "cfg": {
+        "min_snap_pct": 0.25
+      },
+      "top1_delta": -0.013262599469496022,
+      "se": 0.008145732026648122,
+      "p_value": 0.12839640292640084,
+      "wins": 35,
+      "losses": 50,
+      "top3_delta": -0.002652519893899204,
+      "top5_delta": 0.0008841732979664014,
+      "verdict": "REJECTED"
+    },
+    "depth-rank-1": {
+      "cfg": {
+        "max_depth_chart_rank": 1
+      },
+      "top1_delta": -0.002652519893899204,
+      "se": 0.0015300772240652595,
+      "p_value": 0.25,
+      "wins": 0,
+      "losses": 3,
+      "top3_delta": -0.0017683465959328027,
+      "top5_delta": 0.0,
+      "verdict": "REJECTED"
+    }
   },
-  "usage-gt-0.5": {
-    "cfg": {
-      "min_usage": 0.5
-    },
-    "top1_delta": -0.007957559681697613,
-    "se": -1.0,
-    "p": 0.37417441760470777,
-    "wins": 36,
-    "losses": 45,
-    "top3_delta": -0.007957559681697613,
-    "top5_delta": 0.004420866489832007,
-    "verdict": "REJECTED"
-  },
-  "usage-gt-1.0": {
-    "cfg": {
-      "min_usage": 1.0
-    },
-    "top1_delta": 0.0017683465959328027,
-    "se": 0.20194481816501694,
-    "p": 0.9196068309220421,
-    "wins": 50,
-    "losses": 48,
-    "top3_delta": -0.002652519893899204,
-    "top5_delta": 0.007957559681697613,
-    "verdict": "REJECTED"
-  },
-  "snap-gt-10pct": {
-    "cfg": {
-      "min_snap_pct": 0.1
-    },
-    "top1_delta": -0.008841732979664015,
-    "se": -1.0660679080092728,
-    "p": 0.3373990368531197,
-    "wins": 39,
-    "losses": 49,
-    "top3_delta": -0.009725906277630416,
-    "top5_delta": -0.0008841732979664014,
-    "verdict": "REJECTED"
-  }
+  "feature_hash": "2a171be0bc82c309",
+  "market": "anytime_td",
+  "model": "xgb",
+  "measured": "2026-08-19T19:54:27+00:00"
 }

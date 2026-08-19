@@ -7,7 +7,7 @@
 	decay shop site combos \
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune \
-	families ablate retention settle-overlay line-movement
+	families ablate retention settle-overlay line-movement filter-sweep
 
 # The interpreter, resolved once. Every recipe used to call a bare `python`,
 # which does not exist on a machine where the venv is not activated — this is
@@ -218,6 +218,14 @@ retention:
 # See docs/MODEL_ITERATION.md 3j.
 line-movement:
 	$(PYTHON) scripts/32_line_movement.py --market $(TARGET)
+
+# Does trimming the candidate pool help? Swept on 2026-08-13 and rejected, but
+# on the leaked matrix — the same vintage that made the ablation table wrong in
+# sign. Re-runnable for that reason, and because the pool moves Top-1 through
+# two channels the 99.9% ceiling does not cover: the model refits on the
+# survivors, and within-team share normalisation rescales teammates.
+filter-sweep:
+	$(PYTHON) scripts/36_filter_sweep.py --market $(TARGET) $(if $(SHOW),--show)
 
 # ── Model versions ────────────────────────────────────────────────────────
 # `models/` holds one state and every `make train` overwrites it. Lock a state
