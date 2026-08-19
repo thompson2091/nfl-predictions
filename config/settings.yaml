@@ -198,8 +198,8 @@ models:
   production_by_target:
     anytime_td: xgb
     first_td: xgb
-  # Feature-set size, per market. Anytime TD trains on 25 of 33 builder
-  # families (242 of 318 columns); first TD is deliberately untouched and
+  # Feature-set size, per market. Anytime TD trains on 24 of 33 builder
+  # families (236 of 318 columns); first TD is deliberately untouched and
   # trains on everything.
   #
   # MEASURED 2026-08-19, and the direction matters. Leave-one-out ablation says
@@ -213,20 +213,34 @@ models:
   # Seed-averaged over 5 seeds, paired per game against the full set at matched
   # seeds (`make settle-overlay`, 1,131 games):
   #
-  #     Top-1  46.63pct -> 48.28pct   +1.64pp  (+2.70 se, p=0.018)
-  #     Top-3  81.06pct -> 81.75pct   +0.69pp  (+1.48 se)
-  #     Top-5  92.25pct -> 91.72pct   -0.53pp  (-1.56 se)  <- the guard it trips
+  #     Top-1  46.63pct -> 48.84pct   +2.21pp  (+3.58 se, p=0.007)
+  #     Top-3  81.06pct -> 81.87pct   +0.81pp  (+1.71 se)
+  #     Top-5  92.25pct -> 91.53pct   -0.73pp  (-2.17 se)  <- the guard it trips
   #     ahead in 5 of 5 seeds
   #
   # Top-5 is the cost and it is real, not noise. It is accepted because the
   # product goal is naming the most likely scorer, which Top-1 and Top-3 read
   # and Top-5 does not. Revisit this trade if that goal changes.
   #
+  # K=24 rather than K=25, decided 2026-08-19 on a finer ladder. Every K from 16
+  # to 30 beats the full set, and adjacent points differ by more than the 0.64pp
+  # seed band, so one seed cannot order them. Seed-averaged against the full
+  # set: K=20 +1.82pp, K=24 +2.21pp, K=25 +1.64pp. Head to head at matched
+  # seeds, K=24 over K=25 is +0.57pp (+1.38 se, p=0.183), ahead in 4 of 5 seeds
+  # — it clears the promotion rule without being decisive.
+  #
+  # What makes K=24 more than a curve peak is WHICH family it drops. K=24 is
+  # exactly K=25 minus `build_vegas_features` — spread, total, implied team
+  # total, is_favorite. Every one is team-or-game level, and `make diagnose`
+  # established that the team is almost never what separates a right pick from a
+  # wrong one: 91.9pct of team-games contain a scorer and 84pct of games contain
+  # one on BOTH teams. The retention curve and the diagnosis found the same
+  # thing from opposite directions.
+  #
   # The ordering came from ablation costs measured on the SAME folds, so the
-  # ranked curve is optimistically biased, and K=25 was chosen after seeing all
-  # seven ladder points. Neither objection survives the seed-averaged test
-  # above, but both are why this is 25 families rather than the 20 that read
-  # higher on a single seed.
+  # ranked curve is optimistically biased, and K=24 was the peak of 13 ladder
+  # points. The seed-averaged tests answer the first objection and only partly
+  # the second.
   #
   # The control that makes the curve readable: the same ladder on a RANDOM
   # family ordering loses AUC 0.008-0.011 at every K, while the ranked set at
@@ -263,7 +277,6 @@ models:
     - build_td_streak_features
     - build_team_features
     - build_team_target_tendency
-    - build_vegas_features
 # Hyperparameters. Every key here reaches the model, and every key the model
 # reads is declared here — tests/test_leakage.py asserts both directions
 # against DEFAULTS in each wrapper. That check exists because this block used

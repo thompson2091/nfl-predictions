@@ -154,6 +154,44 @@ def receptions_backtests():
 
 @st.cache_data(show_spinner=False)
 @guarded
+def feature_set_state(tt: str):
+    """Which builder families this market trains on, and what that cost.
+
+    Reads the same three files the pipeline does — the config allow-list, the
+    column-to-builder map, and the retention curve — so the page cannot drift
+    from what is actually trained. Nothing here is recomputed.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    from src.models.trainer import included_families
+    from src.utils.config import get_config
+
+    root = _Path(__file__).resolve().parent
+    fam = _json.loads((root / "diagnostics" / "feature_families.json").read_text())
+    families, unattributed = fam["families"], fam.get("unattributed") or []
+
+    keep = included_families(get_config(), tt)
+    on = sorted(families) if keep is None else sorted(
+        f for f in families if set(families[f]) <= set(keep))
+    off = [f for f in sorted(families) if f not in on]
+
+    ab_path = root / "diagnostics" / f"ablation_{tt}.json"
+    ablation = (_json.loads(ab_path.read_text()).get("families", {})
+                if ab_path.exists() else {})
+    ret_path = root / "diagnostics" / f"retention_{tt}.json"
+    retention = _json.loads(ret_path.read_text()) if ret_path.exists() else None
+
+    return {"on": on, "off": off, "all": sorted(families),
+            "sizes": {f: len(c) for f, c in families.items()},
+            "unattributed": len(unattributed),
+            "columns_on": sum(len(families[f]) for f in on) + len(unattributed),
+            "columns_all": sum(len(c) for c in families.values()) + len(unattributed),
+            "ablation": ablation, "retention": retention}
+
+
+@st.cache_data(show_spinner=False)
+@guarded
 def receptions_calibration():
     """When this model says 80%, how often is it right? Measured, by band."""
     from src.evaluation.receptions_hit_rates import calibration
@@ -239,6 +277,150 @@ def receptions_week_lines(season: int):
                                j["point"].to_numpy()[has], m.dispersion)
         p[has] = fair_two_way(over, push)
     return j.with_columns(pl.Series("p_model", p)).to_pandas()
+
+
+def render_feature_set(tt: str, version: str | None = None):
+    """Which families this market trains on, what it cost, and how to change it.
+
+    The allow-list lives in `config/settings.yaml` and the alternatives live in
+    the version registry, so before this panel the only way to know what the
+    served model could see was to read a YAML comment. A choice you cannot see
+    is not a choice.
+
+    Read-only by design. The controls below build an experiment file; they do
+    not retrain, and the reason is in `render_feature_lab`.
+    """
+    st.markdown("**Feature set — what this model is allowed to see**")
+    state, err = feature_set_state(tt)
+    if err:
+        st.caption(f":material/error: feature set unavailable — `{err}`")
+        return
+    on, off, sizes = state["on"], state["off"], state["sizes"]
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Builder families", f"{len(on)} of {len(state['all'])}")
+    c2.metric("Feature columns", f"{state['columns_on']} of {state['columns_all']}")
+    ret = state["retention"] or {}
+    pt = (ret.get("points") or {}).get(f"ranked-{len(on):02d}")
+    c3.metric("Top-1 vs the full set",
+              f"{pt['top1_delta']*100:+.2f}pp" if pt else "not measured",
+              help="Paired per game against training on every family.")
+
+    if not off:
+        st.caption("This market trains on every family. `make retention "
+                   f"TARGET={tt}` measures whether a smaller set would rank "
+                   "better — on anytime TD it did.")
+    else:
+        rows = []
+        for f in off:
+            a = (state["ablation"] or {}).get(f) or {}
+            rows.append({
+                "Family held out": f.replace("build_", "").replace("_features", ""),
+                "Columns": sizes.get(f, 0),
+                "Cost when dropped alone": (a.get("top1_delta") or 0) * 100,
+                "p": a.get("p_value"),
+            })
+        st.dataframe(
+            pd.DataFrame(rows), hide_index=True,
+            column_config={
+                "Cost when dropped alone": st.column_config.NumberColumn(
+                    format="%+.2f%%",
+                    help="Top-1 change from removing this family ALONE from the "
+                         "full set. Near zero for most: families cover for each "
+                         "other, so leave-one-out cannot find a prunable set. "
+                         "That is why these were chosen by building up instead."),
+                "p": st.column_config.NumberColumn(format="%.3f"),
+            })
+        st.caption(
+            f"Nothing is deleted — all {len(state['all'])} builders still run and "
+            f"every column is still in `features.parquet`. These {len(off)} are "
+            f"excluded by an allow-list in `config/settings.yaml`, and the "
+            f"full-feature model stays locked and switchable: "
+            f"`make promote ID=2026.08.19-clean-matrix MARKET={tt}`."
+        )
+
+
+def render_feature_lab(tt: str):
+    """Choose a feature set, and get the commands that would test it honestly.
+
+    **Why this does not retrain in the browser.** One walk-forward is minutes,
+    and a single seed cannot resolve what it would show: the seed-to-seed band
+    on anytime TD Top-1 is 0.64pp, and adjacent points on the retention ladder
+    differ by more than that. A button that returns one number after a four
+    minute wait would be a slot machine.
+
+    The deeper reason is that picking a feature set by looking at held-out
+    accuracy IS fitting to the held-out season, one toggle at a time. Every set
+    tried is a comparison, and trying twenty and keeping the best finds roughly
+    one 5%-significant result by chance. That is not hypothetical here: 13
+    ladder points were measured and the peak read p=0.043, which is about what
+    13 tries produce from nothing. It survived only because it was then
+    seed-averaged and paired head to head.
+
+    So this builds the experiment file, and the honest path runs outside the
+    app where it leaves a ledger row: screen, then settle across seeds, then
+    lock. Nothing here can change what is served.
+    """
+    state, err = feature_set_state(tt)
+    if err:
+        return
+    import json as _json
+    from pathlib import Path as _Path
+
+    with st.expander("Build a custom feature set", expanded=False):
+        st.caption(
+            "Pick families, get a runnable experiment. This never retrains and "
+            "never promotes — see below for why that is deliberate.")
+        chosen = st.multiselect(
+            "Families to train on", state["all"], default=state["on"],
+            format_func=lambda f: f"{f.replace('build_', '').replace('_features', '')} "
+                                  f"({state['sizes'].get(f, 0)})",
+            key=f"lab-{tt}")
+        cols = sum(state["sizes"].get(f, 0) for f in chosen) + state["unattributed"]
+        st.caption(f"{len(chosen)} families, {cols} of {state['columns_all']} "
+                   f"columns (the {state['unattributed']} unattributed columns — "
+                   f"position dummies, week number, usage flags — are always kept; "
+                   f"no builder claims them and a model without them is broken, "
+                   f"not lean).")
+
+        if not chosen:
+            st.warning("A set with no families is not a model.", icon=":material/block:")
+            return
+        if sorted(chosen) == state["on"]:
+            st.info("That is the set already being served.", icon=":material/check:")
+
+        slug = f"custom-{tt}-{len(chosen)}"
+        body = "\n".join(f"      - {f}" for f in sorted(chosen))
+        yaml_text = (
+            f"# Built from the app on the Model performance tab.\n"
+            f"# {len(chosen)} of {len(state['all'])} families, {cols} of "
+            f"{state['columns_all']} columns.\n"
+            f"id: {slug}\n"
+            f'note: "custom feature set, {len(chosen)} families"\n'
+            f"overlay:\n  models:\n"
+            f"    include_feature_families_by_target:\n      {tt}:\n{body}\n")
+        st.code(yaml_text, language="yaml")
+        st.code(
+            f"# 1. write it\n"
+            f"cat > experiments/{slug}.yaml <<'EOF'\n{yaml_text}EOF\n\n"
+            f"# 2. one seed, minutes — never promotes\n"
+            f"make screen EXP=experiments/{slug}.yaml MARKET={tt}\n\n"
+            f"# 3. the test that decides: five seeds, paired per game\n"
+            f"make settle-overlay EXP=experiments/{slug}.yaml SEEDS=5 MARKET={tt}\n\n"
+            f"# 4. only if step 3 holds\n"
+            f"make train && make lock ID=YYYY.MM.DD-{slug} NOTE=\"...\"\n",
+            language="bash")
+
+        tried = len(list((_Path(__file__).resolve().parent / "experiments")
+                         .glob("*.yaml")))
+        st.caption(
+            f"{tried} experiment files exist in this repo. Every feature set "
+            f"tried is a comparison against the same held-out seasons, so at "
+            f"p<0.05 roughly one in twenty will look significant having changed "
+            f"nothing. Step 3 is what separates the two: it averages each "
+            f"game's outcome over five seeds before pairing, and the served "
+            f"K=24 set clears it at p=0.007 while its single-seed ladder point "
+            f"read p=0.043.")
 
 
 def render_receptions_selectivity():
@@ -3414,6 +3596,10 @@ if tab2.open:
             f"tuning, and {cfg['splits']['test_season']} is held back entirely so these "
             f"numbers aren't flattering themselves."
         )
+
+        render_feature_set(target_type, selected_version)
+        render_feature_lab(target_type)
+        st.divider()
 
         if not metrics and df is None:
             st.warning(f"No data found for {target_type}. Run the pipeline first.")
