@@ -891,3 +891,45 @@ def test_an_overlay_that_reaches_nothing_reports_no_change_overall():
     # One market scored, one untouched: the scored one decides.
     rows[0]["verdict"] = "PROMOTED"
     assert mod._overall_verdict(rows, ("anytime_td", "first_td")) == "PROMOTED"
+
+
+def test_the_line_movement_rejection_is_backed_by_its_own_measurement():
+    """A rejected idea gets retried blind unless the numbers stay checkable.
+
+    `docs/MODEL_ITERATION.md` 3j and the docstring of
+    `scripts/32_line_movement.py` both claim open-to-close movement adds
+    nothing over the closing price. This asserts the saved measurement still
+    says that, so the claim cannot outlive the evidence for it.
+    """
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    found = False
+    for market in ("anytime_td", "first_td"):
+        path = root / "diagnostics" / f"line_movement_{market}.json"
+        if not path.exists():
+            continue
+        found = True
+        d = json.loads(path.read_text())
+        assert d["verdict"] == "REJECTED", (
+            f"{market}: the docs record this as rejected; the measurement now "
+            f"says {d['verdict']}. Update both together or neither.")
+
+        # The residual is what carries the claim: if the close already contains
+        # the movement, the gap between outcome and close does not vary with it.
+        residuals = [b["residual"] for b in d["bands"]]
+        assert max(residuals) - min(residuals) < 0.15, (
+            f"{market}: residual spread {max(residuals) - min(residuals):.4f} "
+            "across movement bands. A close that already carried the movement "
+            "would show a flat residual.")
+
+        # Within-game ranking must stay inside its own error bar, or the Top-1
+        # sentence in 3j is no longer true.
+        assert d["ranking_spread"] <= d["ranking_se"] * 1.5, (
+            f"{market}: Top-1 varies by {d['ranking_spread']:.4f} across "
+            f"movement weights against a standard error of "
+            f"{d['ranking_se']:.4f} — no longer 'inside the noise'.")
+
+    if not found:
+        pytest.skip("line movement not measured — python scripts/32_line_movement.py")

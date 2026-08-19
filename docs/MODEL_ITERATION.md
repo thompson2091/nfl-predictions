@@ -1109,6 +1109,73 @@ feature from a 3-hour one, and mixing them silently is the same class of error).
 `is_dome` already exists and must zero the whole family, or domes will carry the
 local outdoor weather as though it reached the field.
 
+### 3j. Line movement as a feature — **RUN 2026-08-19, REJECTED**
+
+The best idea left on the list, and the only one that added information rather
+than rearranging it. 47,750 credits bought open *and* close prices for three
+seasons; they are used only to *measure* closing-line value and had never been
+fed to a model. Where a line moves is where money went, and that is knowledge
+nflverse cannot contain.
+
+It does not survive the closing price. `scripts/32_line_movement.py`, three
+tests, anytime TD over 20,907 player-games and first TD over 20,341:
+
+**1. Banded by movement, the level moves and the residual does not.**
+
+| movement | n | scored | close said | residual |
+| --- | --- | --- | --- | --- |
+| drifted out >2pp | 4,444 | 14.87% | 19.44% | −0.0457 |
+| flat ±0.5pp | 5,042 | 13.21% | 17.17% | −0.0396 |
+| steamed in >2pp | 2,188 | 22.71% | 27.70% | −0.0499 |
+
+Scoring rate climbs 14.9% → 22.7% across the bands, which is what a real signal
+would look like. But the close climbs with it, and the residual is flat to
+within 0.011 — a constant offset that is the overround, not information.
+
+**2. Conditioned on the close, the coefficient is zero.** Walk-forward logistic
+regression of the outcome on the closing price, then on close + movement:
+
+    2024   log loss 0.35681 -> 0.35681   AUC 0.79483 -> 0.79474   move coef +0.013
+    2025   log loss 0.36451 -> 0.36451   AUC 0.78995 -> 0.78985   move coef +0.008
+
+Against a close coefficient of +1.25 on the same logit scale. First TD reads
+the same verdict by a more instructive route: its movement coefficient is
+−0.000 in 2024 and −7.972 in 2025. A coefficient that flips two orders of
+magnitude between consecutive folds is fitting the 289-row "steamed in >2pp"
+band, and sign instability across folds is the cheapest available tell that a
+result is noise.
+
+**3. Within-game ranking, which Top-1 reads and a global AUC hides.**
+Re-ranking each game by `close + w * movement`:
+
+    w        0.00    0.25    0.50    1.00    2.00
+    anytime  52.80%  53.04%  52.31%  52.92%  51.46%   (822 games, se 1.74pp)
+    first    18.55%  18.16%  17.64%  16.86%  16.86%   (771 games, se 1.80pp)
+
+Anytime is flat with no ordering. First TD declines monotonically — movement
+actively hurts, though the whole spread sits inside one standard error.
+
+**This is what an efficient closing line looks like.** The movement is how the
+market reached its number; the number is already the answer. Nothing here says
+the market is beatable or unbeatable — only that *how it got there* adds nothing
+to *where it got to*.
+
+**And it could never have been served.** `open` is captured 72h before kickoff
+and `close` five minutes before (`OPENING_OFFSET`, `CLOSING_OFFSET` in
+`scripts/09_backfill_odds.py`). The board is built mid-week, so at the moment a
+bet is placed the closing price does not exist. A feature trained on open→close
+and served on open→whatever-exists-now is the same train/serve skew that
+removed `temp`, `wind`, `is_cold` and `is_windy`. Worth checking availability
+*before* measuring value next time: this was two tests' worth of work to reach a
+conclusion the capture schedule already implied.
+
+What would change the answer: intermediate snapshots. Movement measured from
+open to a fixed lead time that still exists when the board is built is a
+different quantity from movement to the close, and this result does not speak
+to it. That costs credits per snapshot per week and, on the evidence above,
+would at best recover a fraction of a signal already shown to be empty at full
+strength.
+
 ---
 
 ## Phase 4 — The config sweep surface

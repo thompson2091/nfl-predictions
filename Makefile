@@ -7,7 +7,7 @@
 	decay shop site combos \
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune \
-	families ablate retention settle-overlay
+	families ablate retention settle-overlay line-movement
 
 # The interpreter, resolved once. Every recipe used to call a bare `python`,
 # which does not exist on a machine where the venv is not activated — this is
@@ -211,6 +211,13 @@ ablate:
 
 retention:
 	$(PYTHON) scripts/31_retention.py --market $(TARGET) $(if $(SHOW),--show)
+
+# Does open-to-close movement say anything the closing price does not?
+# Measured 2026-08-19: no, on both markets. Kept runnable because the archive
+# grows every week and a rejection should stay checkable, not become folklore.
+# See docs/MODEL_ITERATION.md 3j.
+line-movement:
+	$(PYTHON) scripts/32_line_movement.py --market $(TARGET)
 
 # ── Model versions ────────────────────────────────────────────────────────
 # `models/` holds one state and every `make train` overwrites it. Lock a state
