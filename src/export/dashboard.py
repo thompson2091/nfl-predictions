@@ -314,6 +314,11 @@ const S = {
   cut: {},          // per market — see paneHits; one number cannot serve both
   curve: 'top',
   p: { game: '', q: '', depth: 0, priced: 'all', longshot: false, differ: false },
+  // Five players, one per game. Five because 31 slips is the size the question
+  // is usually asked at, and one-per-game because taking the top five from a
+  // single fixture is usually five teammates — which correlates the legs and
+  // guts the all-score tail.
+  cover: { n: 5, pool: 'per_game' },
   // `priced` mirrors the master table's control and defaults the same way:
   // the whole slate. A priced-only default answered "what can I bet on"
   // while being read as "which players go together".
@@ -1245,6 +1250,172 @@ function paneCombos() {
 
 JS_TEAMS = r"""
 // ── Pane: by team ───────────────────────────────────────────────────────
+// ── Cover the field ─────────────────────────────────────────────────────
+// Back every non-empty subset of the top N. The tables are computed in
+// `src/prediction/cover.py` and embedded per (pool, N), not recomputed here:
+// the Streamlit app renders the same numbers from that module, and a second
+// implementation of a payout formula in JavaScript is a second place for it to
+// drift. Switching a control reads a table rather than deriving one.
+function paneCover() {
+  const m = M();
+  const cov = m.cover || {};
+  const key = S.cover.pool + '-' + S.cover.n;
+  const v = (cov.variants || {})[key];
+
+  const controls = bar([
+    select('Players', String(S.cover.n),
+      Object.keys(cov.variants || {})
+        .filter(k => k.startsWith(S.cover.pool + '-'))
+        .map(k => k.split('-')[1]),
+      x => { S.cover.n = +x; render(); },
+      'N players means 2^N - 1 slips: five gives 31.'),
+    select('Taken from', S.cover.pool,
+      [['per_game', 'One per game'], ['all', 'Anywhere on the board']],
+      x => { S.cover.pool = x; render(); },
+      'One per game spreads the legs across fixtures. Anywhere lets the top N ' +
+      'come from a single game, where they share a defence and a game script.'),
+  ]);
+
+  if (!v) {
+    return card('Cover the field',
+      'Back every combination of the top N and see what it would take to profit.',
+      [controls, el('p', { class: 'muted',
+        text: 'Not enough players on this board for that many legs.' })]);
+  }
+
+  const staked = v.staked;
+  const legCols = [
+    { k: 'player', label: 'Player', t: 1 },
+    { k: 'team', label: 'Team', t: 1 },
+    { k: 'chance', label: 'Chance', fmt: x => pct(x, 1) },
+    { k: 'price', label: 'Price', t: 1,
+      fmt: x => x || '<span class="dim">unpriced</span>' },
+    { k: 'dec', label: 'Returns', fmt: x => x.toFixed(2),
+      title: 'Decimal payout per unit staked.' },
+  ];
+  const legRows = v.legs.map(l => ({
+    player: l.name, team: l.team, chance: l.prob,
+    price: l.priced && has(l.odds) ? (l.odds > 0 ? '+' + l.odds : String(l.odds)) : '',
+    dec: l.decimal,
+  }));
+
+  const rowCols = [
+    { k: 'who', label: 'Players who score', t: 1 },
+    { k: 'chance', label: 'Chance of this', fmt: x => pct(x, 1) },
+    { k: 'wins', label: 'Winning bets' },
+    { k: 'ret', label: 'Total returned', fmt: x => '$' + x.toFixed(2) },
+    { k: 'net', label: 'Net on $' + staked.toFixed(2),
+      fmt: x => money(x), cls: x => cls(x) },
+  ];
+  const rows = v.rows.map(r => ({
+    who: r.scored + ' of ' + v.n, chance: r.probability,
+    wins: r.winning_bets, ret: r.returned, net: r.net,
+  }));
+
+  const be = v.breakeven_scored;
+  const better = v.expected_roi > v.singles_only.expected_roi;
+  const kids = [
+    controls,
+    el('p', { class: 'muted', html:
+      '<b>' + v.bets + ' slips</b> on ' + v.n + ' players — ' +
+      v.counts.map(c => c.combinations + '\u00d7' + c.legs + '-leg').join(' \u00b7 ') +
+      ' — at $' + v.stake.toFixed(2) + ' each, <b>$' + staked.toFixed(2) +
+      '</b> staked.' }),
+    table('cover-legs', legCols, legRows, {}),
+  ];
+  if (!v.all_priced) {
+    kids.push(el('p', { class: 'muted', html:
+      'Legs without a market price are shown at an assumed <b>' +
+      v.assumed_decimal.toFixed(2) + '</b>. Those returns are an assumption, ' +
+      'not a quote \u2014 the chance column is the model\u2019s, the payout ' +
+      'column is yours.' }));
+  }
+  kids.push(table('cover-rows', rowCols, rows, {}));
+
+  kids.push(el('div', { class: 'warn-box' + (be == null ? ' bad-box' : ''), html:
+    be == null
+      ? '<b>No number of scorers turns a profit at these prices.</b> The ' +
+        'all-score slip does not pay for the slips underneath it.'
+      : '<b>Breakeven is ' + be + ' of ' + v.n + '</b>, and that happens <b>' +
+        pct(v.p_breakeven, 1) + '</b> of the time on the model\u2019s own ' +
+        'numbers' + (v.rho ? ' (teammate correlation ' + v.rho.toFixed(3) +
+        ' applied)' : ' (legs treated as independent)') + '.' }));
+
+  if (!v.all_priced) {
+    kids.push(el('div', { class: 'warn-box', html:
+      '<b>The expected result below is not a measured edge.</b> These legs ' +
+      'have no market price, so it compares the model\u2019s own ' +
+      'probabilities against the assumed ' + v.assumed_decimal.toFixed(2) +
+      '. A book that agreed with these numbers would not offer that price ' +
+      '\u2014 the reason a positive figure appears at all is that the assumed ' +
+      'payout is generous relative to what the model believes.' }));
+  }
+  kids.push(el('p', { class: 'muted', html:
+    'Expected result <b>' + money(v.expected_net) + '</b> (' +
+    pct(v.expected_roi, 1) + ') against <b>' +
+    money(v.singles_only.expected_net) + '</b> (' +
+    pct(v.singles_only.expected_roi, 1) + ') for the same $' +
+    staked.toFixed(2) + ' on the ' + v.n + ' singles alone. ' +
+    'A cover is leverage on the edge in each leg: per dollar a single returns ' +
+    '<i>e</i> and a k-fold returns <i>(1+e)<sup>k</sup> \u2212 1</i>. ' +
+    (better
+      ? 'These prices leave a positive edge on the legs, so multiplying them ' +
+        'compounds it and the cover comes out ahead \u2014 at far higher ' +
+        'variance, and on the model\u2019s probabilities rather than a ' +
+        'measured result.'
+      : 'These prices leave a negative edge on the legs, so multiplying them ' +
+        'pays the margin once per leg and the cover loses harder than the ' +
+        'singles do. Nothing about the structure fixes that; only a better ' +
+        'price or a better probability would.') }));
+
+  // How it scales, and where it is structurally forgiving.
+  const lad = (cov.ladder || {})[S.cover.pool];
+  if (lad) {
+    const ladCols = [
+      { k: 'players', label: 'Players' },
+      { k: 'bets', label: 'Bets' },
+      { k: 'risk', label: 'Risk', fmt: x => '$' + x.toFixed(0) },
+      { k: 'need', label: 'Need', t: 1 },
+      { k: 'rate', label: 'Hit rate needed', fmt: x => pct(x, 1) },
+      { k: 'chance', label: 'Chance of that',
+        fmt: x => has(x) ? pct(x, 2) : '<span class="dim">—</span>' },
+      { k: 'all', label: 'If all score', fmt: x => '$' + x.toFixed(2) },
+      { k: 'profit', label: 'Profit if all', fmt: x => money(x), cls: x => cls(x) },
+    ];
+    const ladRows = lad.rows.map(r => ({
+      players: r.players, bets: r.bets, risk: r.risk,
+      need: r.need ? r.need + ' of ' + r.players : '—',
+      rate: r.need_rate, chance: r.p_need, all: r.all_return,
+      profit: r.all_profit,
+    }));
+    const rates = lad.rows.map(r => r.need_rate);
+    let best = null;
+    rates.forEach((v, i) => { if (v != null && (best === null || v < rates[best])) best = i; });
+    kids.push(el('details', {}, [
+      el('summary', { text:
+        'How this scales with pool size, at an average price of ' +
+        lad.decimal.toFixed(2) }),
+      table('cover-ladder', ladCols, ladRows, {}),
+      el('p', { class: 'muted', html:
+        '<b>The hit rate you need is not monotone in pool size.</b> It runs ' +
+        rates.slice(0, 8).map(v => pct(v, 0)).join(', ') + ' for 1 to 8 ' +
+        'players, so <b>' + (best === null ? '—' : lad.rows[best].players) +
+        '</b> asks the least of you at this price. The outlay doubles with ' +
+        'each player while the return multiplies by ' + lad.decimal.toFixed(2) +
+        ', so a pool sometimes lands just below the point where one fewer ' +
+        'scorer starts paying \u2014 and where it does, a whole scorer comes ' +
+        'off the requirement. Which sizes those are moves with the price, so ' +
+        'this is computed rather than looked up. Read it beside <b>Chance of ' +
+        'that</b>: a size that asks less of you is only better if you reach it ' +
+        'more often.' }),
+    ]));
+  }
+
+  return card('Cover the field',
+    'Back every combination of the top N, and see what it would take to profit.',
+    kids);
+}
+
 function paneTeams() {
   const m = M(), out = el('div');
   // The named scorers follow the market — see `teams()` in the exporter.
@@ -1312,6 +1483,7 @@ const TABS = [
   ['hits', 'How often it is right', paneHits],
   ['players', 'Every player', paneMPlayers],
   ['combos', 'Combinations', paneCombos],
+  ['cover', 'Cover the field', paneCover],
   ['teams', 'By team', paneTeams],
 ];
 function paneMPlayers() { return panePlayers(); }

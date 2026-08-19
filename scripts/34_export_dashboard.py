@@ -624,7 +624,75 @@ def market(target_type: str, label: str, season: int | None,
         "players": pl_out["rows"],
         "problems": pl_out["problems"] + tm["problems"],
         "teams": tm["rows"],
+        "cover": cover_variants(pl_out["rows"], target_type),
     }
+
+
+def cover_variants(rows: list[dict], target_type: str) -> dict:
+    """Back every subset of the top N: one table per (N, pool), precomputed.
+
+    Computed here rather than in the page, and the reason is not performance —
+    255 slips over 256 patterns is nothing in a browser. It is that the app
+    renders the same tables from `src.prediction.cover`, and a second
+    implementation in JavaScript would be a second place for the arithmetic to
+    drift. This project has spent a day on numbers that described a different
+    model than the one they claimed; two copies of a payout formula is the same
+    defect waiting to happen. One module, both consumers.
+
+    Every (N, pool) the controls offer is enumerated, so switching a control
+    reads a table rather than recomputing one.
+    """
+    from src.prediction.cover import portfolio
+    from src.prediction.portfolio import fit_correlation
+
+    try:
+        rho = float((fit_correlation(target_type) or {}).get("teammate_rho") or 0.0)
+    except Exception:                                        # noqa: BLE001
+        rho = 0.0
+
+    ranked = sorted((r for r in rows if r.get("ours") is not None),
+                    key=lambda r: -float(r["ours"]))
+    per_game, seen = [], set()
+    for r in ranked:
+        if r.get("game_id") in seen:
+            continue
+        seen.add(r.get("game_id"))
+        per_game.append(r)
+
+    def legs(src, n):
+        return [{"name": r.get("player"), "team": r.get("team"),
+                 "prob": float(r["ours"]),
+                 "odds": r.get("odds_num") if r.get("priced") else None}
+                for r in src[:n]]
+
+    out = {"rho": rho, "variants": {}, "ladder": {}}
+    for pool_name, src in (("per_game", per_game), ("all", ranked)):
+        for n in range(2, 9):
+            if len(src) < n:
+                continue
+            try:
+                out["variants"][f"{pool_name}-{n}"] = portfolio(
+                    legs(src, n), stake=1.0, rho=rho, assumed_decimal=2.0)
+            except Exception:                                # noqa: BLE001
+                continue
+
+    # The scaling table, per pool, at that pool's own average price. Computed
+    # here for the same reason the variants are: one implementation of
+    # (1 + d)^k - 1, shared with the app.
+    from src.prediction.cover import ladder as _ladder
+    for pool_name, src in (("per_game", per_game), ("all", ranked)):
+        v = out["variants"].get(f"{pool_name}-5") or out["variants"].get(
+            f"{pool_name}-2")
+        if not v:
+            continue
+        avg = sum(l["decimal"] for l in v["legs"]) / len(v["legs"])
+        probs = [float(r["ours"]) for r in src[:10]]
+        try:
+            out["ladder"][pool_name] = {
+                "decimal": avg, "rows": _ladder(avg, max_n=10, probs=probs)}
+        except Exception:                                    # noqa: BLE001
+            continue
+    return out
 
 
 def clean(x):

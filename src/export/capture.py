@@ -384,6 +384,34 @@ class Capture:
     def _el_radio(self, dest, label, options, index=0, help=None, **kw):
         return self._el_selectbox(dest, label, options, index, help, **kw)
 
+    def _el_segmented_control(self, dest, label, options, default=None,
+                              help=None, format_func=None,
+                              selection_mode="single", **kw):
+        """A selectbox that renders as buttons; identical for an export.
+
+        Keyed on `default` rather than `index`, which is the only thing that
+        stops it being an alias. Multi-select mode is refused rather than
+        silently collapsed to its first value — the page would publish one
+        answer to a control that offered several, and a static page cannot say
+        which the reader would have picked.
+        """
+        if selection_mode != "single":
+            raise NotImplementedError(
+                f"segmented_control({label!r}) is multi-select, which an export "
+                "cannot represent — it would publish one of several answers "
+                "with nothing saying so. Use single selection, or give the "
+                "export a deliberate override.")
+        opts = list(options)
+        index = opts.index(default) if default in opts else 0
+        return self._el_selectbox(dest, label, opts, index, help,
+                                  format_func=format_func)
+
+    def _el_pills(self, dest, label, options, default=None, help=None,
+                  format_func=None, selection_mode="single", **kw):
+        """Same shape as `segmented_control`; Streamlit draws it differently."""
+        return self._el_segmented_control(
+            dest, label, options, default, help, format_func, selection_mode)
+
     def _el_multiselect(self, dest, label, options, default=None, help=None, **kw):
         value = list(default or [])
         self._widget(dest, "multiselect", label, None, list(options), help)
