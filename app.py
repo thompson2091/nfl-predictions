@@ -106,15 +106,188 @@ def served_version(tt: str) -> dict | None:
 
 # ── Sidebar ────────────────────────────────────────────────────────────────
 
+@st.cache_data(show_spinner=False)
+@guarded
+def receptions_summary():
+    import json as _json
+    path = get_path("output", "receptions") / "summary.json"
+    return _json.loads(path.read_text()) if path.exists() else None
+
+
+@st.cache_data(show_spinner=False)
+@guarded
+def receptions_backtests():
+    import glob as _glob
+    files = sorted(_glob.glob(str(get_path("output", "receptions") / "backtest_2*.csv")))
+    if not files:
+        return None
+    return pl.concat([pl.read_csv(f) for f in files], how="diagonal_relaxed").to_pandas()
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+@guarded
+def receptions_week_lines(season: int):
+    """Posted lines for the predict season, scored by the count model."""
+    from src.ingest.odds_history import HISTORY_PATH, SCHEMA, _conform, _resolve_player_id
+    from src.models.count import XGBCountModel, fair_two_way, prob_over
+
+    if not HISTORY_PATH.exists():
+        return None
+    h = _conform(pl.read_parquet(HISTORY_PATH), SCHEMA).filter(
+        (pl.col("market") == "receptions") & (pl.col("season") == season)
+        & pl.col("point").is_not_null())
+    if h.height == 0:
+        return None
+    h = (h.sort("captured_at").unique(
+            subset=["season", "week", "game_id", "player_name_norm", "point"],
+            keep="last")
+         .with_columns(_resolve_player_id(h)))
+
+    model_path = get_path("models", "receptions") / "xgb_count.pkl"
+    if not model_path.exists():
+        return h.to_pandas()
+    m = XGBCountModel.load(model_path)
+    feats = pl.read_parquet(get_path("processed", "anytime_td") / "features.parquet")
+    wk = feats.filter(pl.col("season") == season)
+    if wk.height == 0:
+        return h.to_pandas()
+    fcols = [c for c in m.feature_names if c in wk.columns]
+    mu = m.predict_mu(wk.select(fcols).to_numpy())
+    wk = wk.select(["season", "week", "player_id"]).with_columns(pl.Series("mu", mu))
+    j = h.join(wk, on=["season", "week", "player_id"], how="left")
+    has = j["mu"].is_not_null().to_numpy()
+    import numpy as _np
+    p = _np.full(j.height, _np.nan)
+    if has.any():
+        over, push = prob_over(j["mu"].to_numpy()[has],
+                               j["point"].to_numpy()[has], m.dispersion)
+        p[has] = fair_two_way(over, push)
+    return j.with_columns(pl.Series("p_model", p)).to_pandas()
+
+
+def render_receptions_page():
+    """The receptions market: a viewer with a measured second opinion.
+
+    Framed as what the measurement supports and nothing more. This model does
+    not beat this market — log loss 0.669 vs the book's 0.644 on 2024, 0.689
+    vs 0.673 on 2025, both held out — and the version that appeared to beat it
+    by +17-22% ROI is how the NGS existence leak was found. The page says so
+    at the top, because the one thing worse than no receptions view is a
+    receptions view that implies an edge nobody measured.
+    """
+    smry, err = receptions_summary()
+    if err:
+        st.error(f"Receptions summary unavailable — `{err}`")
+        return
+    if not smry:
+        st.info("Run `python scripts/30_receptions.py` to train and grade the model.")
+        return
+
+    with st.container(border=True):
+        st.markdown(
+            "#### The book prices this market better than we do\n\n"
+            "One count model prices every line (see the dispersion note below), "
+            "and on held-out seasons the market's de-vigged price is closer to "
+            "what happened than our number is:"
+        )
+        cols = st.columns(len(smry["seasons"]) or 1)
+        for c, r in zip(cols, smry["seasons"]):
+            better = r["model"]["log_loss"] < r["market"]["log_loss"]
+            c.metric(
+                f"{r['season']} log loss (n={r['n']:,})",
+                f"{r['model']['log_loss']:.4f}",
+                delta=f"market {r['market']['log_loss']:.4f}",
+                delta_color="off",
+            )
+        st.caption(
+            f"Negative binomial dispersion r = {smry['dispersion']:.1f}, fitted on "
+            f"{smry['splits']['val_season']} — large r means the residuals are "
+            f"nearly Poisson once {smry['n_features']} features have explained the "
+            f"mean. Use this page to see the lines and our second opinion, not to "
+            f"find edges: the first version that appeared to beat this market "
+            f"(+17-22% ROI) is how the NGS data leak was found."
+        )
+
+    bt, bt_err = receptions_backtests()
+    if bt_err:
+        st.caption(f":material/error: backtests unavailable — `{bt_err}`")
+    elif bt is not None and len(bt):
+        st.markdown("**Calibration by line, held-out seasons**")
+        g = (pl.from_pandas(bt).group_by("point").agg([
+                pl.len().alias("n"),
+                pl.col("y_over").mean().alias("actual"),
+                pl.col("p_model").mean().alias("model"),
+                pl.col("fair_prob").mean().alias("market"),
+             ]).filter(pl.col("n") >= 100).sort("point")).to_pandas()
+        g["actual"] *= 100; g["model"] *= 100; g["market"] *= 100
+        st.dataframe(
+            g.rename(columns={"point": "Line", "n": "Bets graded",
+                              "actual": "Over hit", "model": "We said",
+                              "market": "Book said"}),
+            hide_index=True,
+            column_config={
+                "Over hit": st.column_config.NumberColumn(format="%.1f%%"),
+                "We said": st.column_config.NumberColumn(format="%.1f%%"),
+                "Book said": st.column_config.NumberColumn(format="%.1f%%"),
+            },
+        )
+
+    season = cfg["seasons"]["predict_season"]
+    wk, wk_err = receptions_week_lines(season)
+    st.markdown(f"**Posted lines, {season}**")
+    if wk_err:
+        st.caption(f":material/error: `{wk_err}`")
+    elif wk is None or not len(wk):
+        st.info(
+            f"No receptions lines posted for {season} yet — books post these "
+            f"much closer to kickoff than TD props. The weekly capture "
+            f"(`make odds WEEK=n`) archives them automatically once they appear."
+        )
+    else:
+        show = wk.assign(
+            Player=wk["player_name_raw"], Week=wk["week"], Line=wk["point"],
+            Odds=wk["odds"].map(bp.american),
+            Book=wk["fair_prob"] * 100, Ours=wk["p_model"] * 100,
+        ).sort_values(["Week", "Line"])
+        st.dataframe(
+            show[["Player", "Week", "Line", "Odds", "Book", "Ours"]],
+            hide_index=True,
+            column_config={
+                "Book": st.column_config.NumberColumn(
+                    "Book (fair)", format="%.0f%%",
+                    help="The de-vigged two-sided price — on held-out data, the "
+                         "better predictor."),
+                "Ours": st.column_config.NumberColumn(
+                    "We say", format="%.0f%%",
+                    help="P(over) from the count model. Blank when the player "
+                         "is not in this week's feature rows."),
+            },
+        )
+
+
 with st.sidebar:
     st.header("Settings")
     target_type = st.selectbox(
         "Target Type",
-        ["first_td", "anytime_td"],
-        format_func=lambda x: "First TD Scorer" if x == "first_td" else "Anytime TD Scorer",
+        ["first_td", "anytime_td", "receptions"],
+        format_func=lambda x: {"first_td": "First TD Scorer",
+                               "anytime_td": "Anytime TD Scorer",
+                               "receptions": "Receptions (over/under)"}[x],
         key="sidebar_target_type",
     )
 
+    # Receptions is a count market, not a scorer market: graded per
+    # (player, line), served by one count model rather than the classifier
+    # ensemble, with no joint model, no blend and no version registry yet.
+    # Everything below this point in the sidebar — versions, model choice —
+    # describes the TD machinery, so this market branches to its own page
+    # rather than running that machinery against artifacts it does not have.
+    if target_type == "receptions":
+        st.caption("Count market — its own model, measured on 21k archived lines.")
+
+
+    if target_type == "receptions":
+        selected_version, selected_model = None, "xgb_count"
     # Which locked version is on screen. Without this the board is a number
     # from an unidentified model: `models/` holds one state, every `make train`
     # overwrites it, and nothing on the page said which one you were looking
@@ -122,8 +295,9 @@ with st.sidebar:
     # feature-set hash and the walk-forward metrics behind it.
     # Optional version control, off unless `app.version_selector` is set. See
     # the note beside that flag in config/settings.yaml for why it defaults off.
-    _versions = version_options(target_type)
-    selected_version = None
+    _versions = [] if target_type == "receptions" else version_options(target_type)
+    if target_type != "receptions":
+        selected_version = None
     if _versions:
         _ids = [v["id"] for v in _versions]
         _served_id = next((v["id"] for v in _versions if v["served"]), _ids[0])
@@ -163,8 +337,10 @@ with st.sidebar:
                     f"Its recorded walk-forward Top-1 for {_version_model}: "
                     f"{_recorded['top1']:.1%} over {_recorded['games']:,} games.")
 
-    _version = served_version(target_type)
-    if _version is None:
+    _version = None if target_type == "receptions" else served_version(target_type)
+    if target_type == "receptions":
+        pass
+    elif _version is None:
         st.caption("No locked version — `make lock ID=... NOTE=\"...\"`")
     else:
         _dirty = " · uncommitted tree" if _version.get("dirty") else ""
@@ -178,8 +354,8 @@ with st.sidebar:
                        icon=":material/warning:")
 
     # Build model options: individual models + ensemble (if >1 active)
-    model_options = list(active_models)
-    if len(active_models) > 1:
+    model_options = ["xgb_count"] if target_type == "receptions" else list(active_models)
+    if target_type != "receptions" and len(active_models) > 1:
         model_options.append("ensemble")
     # Resolved from the market AND from the version being viewed. The two
     # markets are best served by different models, and a single default meant
@@ -190,8 +366,11 @@ with st.sidebar:
     # shows that version's weights running the current model's role, which is a
     # state that never existed.
     from src.utils.config import config_overlay, production_model
-    with config_overlay(version_scoring_config(selected_version)):
-        preferred = production_model(target_type)
+    if target_type == "receptions":
+        preferred = "xgb_count"
+    else:
+        with config_overlay(version_scoring_config(selected_version)):
+            preferred = production_model(target_type)
     default_model = preferred if preferred in model_options else model_options[0]
     selected_model = st.selectbox(
         "Model", model_options, index=model_options.index(default_model),
@@ -220,7 +399,12 @@ with st.sidebar:
         st.cache_resource.clear()
         st.rerun()
 
-st.title("First TD Scorer" if target_type == "first_td" else "Anytime TD Scorer")
+st.title({"first_td": "First TD Scorer", "anytime_td": "Anytime TD Scorer",
+          "receptions": "Receptions"}[target_type])
+
+if target_type == "receptions":
+    render_receptions_page()
+    st.stop()
 
 # Two tabs. The goal is the most accurate probability for every player, not a
 # hunt for mispriced ones — so there is one board showing everybody, and one

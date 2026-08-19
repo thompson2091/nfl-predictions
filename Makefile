@@ -105,6 +105,13 @@ clusters:
 combos:
 	$(PYTHON) scripts/29_combos.py --target $(TARGET)
 
+# The third target type: a count market, graded per (player, line). Trains the
+# count model, grades it against 21k archived closing lines, and records that
+# the market prices it better than we do — which the app's receptions page
+# quotes rather than hides.
+receptions:
+	$(PYTHON) scripts/30_receptions.py
+
 # Everything the app reads, rebuilt in dependency order, for both markets.
 # Run this after `make train` or the app will quote a model that no longer exists.
 # --walk-forward retrains on earlier seasons before scoring each one. Without

@@ -56,6 +56,11 @@ class UnknownMarket(KeyError):
 MARKET_BY_TARGET: dict[str, str] = {
     "first_td": "first_td",
     "anytime_td": "anytime_td",
+    # A count target, not a yes/no one: graded per (player, line) rather than
+    # per player, and its archive rows carry `point`. Registered 2026-08-18,
+    # once its prices were actually in the archive — 21,129 closing lines
+    # across 2023-2025.
+    "receptions": "receptions",
 }
 
 

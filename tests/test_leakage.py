@@ -3204,3 +3204,21 @@ def test_the_ngs_null_bit_no_longer_carries_the_outcome():
         f"the NGS null bit carries a {lift:.2f}x lift on {TARGET}; it was 5.05x "
         f"when the row's existence leaked and 2.35x after as_of_join. Something "
         f"has put NGS back on a same-week join.")
+
+
+def test_receptions_is_a_registered_target_that_cannot_misgrade():
+    """The third target type, wired without inheriting TD grading.
+
+    Registration makes `market_for_target("receptions")` resolve instead of
+    raising. What it must NOT do is inherit the scorer-grading path:
+    `load_graded_history` grades per player against tds_*.parquet, and a count
+    market graded that way would mark every 8-catch game a miss for not being
+    a touchdown. For receptions that loader finds no tds parquet and returns
+    None — graceful, and the per-line grading lives in scripts/30_receptions.py.
+    """
+    from src.ingest.odds_history import load_graded_history, market_for_target
+
+    assert market_for_target("receptions") == "receptions"
+    assert load_graded_history("receptions") is None, (
+        "receptions is being graded by the TD scorer path, which marks a "
+        "10-catch, 0-TD game as a miss")
