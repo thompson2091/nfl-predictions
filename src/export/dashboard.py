@@ -149,14 +149,55 @@ h3 { font-size: 14px; margin: 18px 0 6px; letter-spacing: -0.005em; }
   border: 1px solid var(--rule); background: var(--surface); color: var(--ink);
   min-width: 120px;
 }
-.field input[type=range] { width: 190px; accent-color: var(--accent); }
+/* A range input is a drag target, so it gets drag-target dimensions: full
+   width of its cell, a 44px-tall hit area on touch, and a thumb big enough to
+   land on. The default 190px track with a 16px thumb is a 4% margin for error
+   on a phone. */
+.field.wide { flex: 1 1 280px; min-width: 220px; max-width: 460px; }
+.field input[type=range] {
+  width: 100%; accent-color: var(--accent);
+  height: 28px; margin: 0; background: transparent; touch-action: pan-y;
+}
+.field input[type=range]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 99px; background: var(--grid);
+}
+.field input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 22px; height: 22px; border-radius: 50%; margin-top: -8px;
+  background: var(--accent); border: 2px solid var(--surface);
+  box-shadow: var(--shadow); cursor: grab;
+}
+.field input[type=range]:active::-webkit-slider-thumb { cursor: grabbing; }
+.field input[type=range]::-moz-range-track { height: 6px; border-radius: 99px; background: var(--grid); }
+.field input[type=range]::-moz-range-thumb {
+  width: 20px; height: 20px; border-radius: 50%; background: var(--accent);
+  border: 2px solid var(--surface); box-shadow: var(--shadow);
+}
+.field input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink-2);
          padding-bottom: 6px; cursor: pointer; }
 .check input { accent-color: var(--accent); }
 .check.off { opacity: .45; cursor: not-allowed; }
 
 /* ── Tables ────────────────────────────────────────────────────────── */
-.scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+/* These tables are wider than any screen — the master board carries eighteen
+   columns — so horizontal scrolling is the normal way to read them, not an
+   edge case. Two things make that workable and both were missing: macOS hides
+   overlay scrollbars until you already know to scroll, and scrolling right
+   used to carry the player's name off the screen, leaving a row of numbers
+   belonging to nobody. */
+.scroll {
+  overflow-x: auto; overflow-y: hidden;
+  border: 1px solid var(--border); border-radius: 10px;
+  scrollbar-width: thin; scrollbar-color: var(--rule) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.scroll::-webkit-scrollbar { height: 11px; }
+.scroll::-webkit-scrollbar-track { background: var(--sunken); border-radius: 99px; }
+.scroll::-webkit-scrollbar-thumb {
+  background: var(--rule); border-radius: 99px; border: 3px solid var(--sunken);
+}
+.scroll::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { padding: 6px 10px; text-align: right; white-space: nowrap;
          border-bottom: 1px solid var(--grid); }
@@ -169,6 +210,19 @@ th[aria-sort]::after { content: " \\2193"; }
 th[aria-sort="ascending"]::after { content: " \\2191"; }
 td.t, th.t { text-align: left; }
 tbody tr:hover { background: var(--sunken); }
+/* The first column stays put, so a row scrolled sideways still says whose it
+   is. Its background has to be opaque and has to follow the hover state, or
+   the columns underneath show through it. */
+tbody td:first-child, thead th:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--surface);
+}
+thead th:first-child { z-index: 3; }
+tbody tr:hover td:first-child { background: var(--sunken); }
+tbody td:first-child::after, thead th:first-child::after {
+  content: ""; position: absolute; top: 0; right: -6px; bottom: -1px; width: 6px;
+  background: linear-gradient(to right, var(--border), rgba(0,0,0,0));
+  pointer-events: none;
+}
 td.num { font-variant-numeric: tabular-nums; }
 .wrap td { white-space: normal; }
 .wrap td:first-child { white-space: nowrap; color: var(--ink-2); width: 1%; }
@@ -208,6 +262,12 @@ td.num { font-variant-numeric: tabular-nums; }
 
 @media (max-width: 700px) {
   main { padding: 12px; }
+  .bar { gap: 10px; }
+  .field, .field.wide { flex: 1 1 100%; max-width: none; }
+  .field select, .field input[type=text] { width: 100%; }
+  /* 44px of vertical hit area for the thumb, per the touch-target minimum. */
+  .field input[type=range] { height: 44px; }
+  .field input[type=range]::-webkit-slider-thumb { margin-top: -16px; }
   /* The header wraps to two or three rows on a phone, so a sticky tab strip
      pinned to a fixed offset lands on top of it. It scrolls away instead. */
   .tabs { position: static; }
@@ -254,7 +314,15 @@ const S = {
   cut: {},          // per market — see paneHits; one number cannot serve both
   curve: 'top',
   p: { game: '', q: '', depth: 0, priced: 'all', longshot: false, differ: false },
-  c: { legs: 2, per: 4, metric: 'ev', show: 25, game: '', unpriced: false },
+  // `priced` mirrors the master table's control and defaults the same way:
+  // the whole slate. A priced-only default answered "what can I bet on"
+  // while being read as "which players go together".
+  // `likely` rather than `ev`, because expected value can only rank a slip
+  // that carries a price and most of a slate does not: at 25 rows an
+  // EV-ranked table is entirely priced, which is a priced-only table wearing a
+  // different label. Likelihood is the one ranking every player has a number
+  // for, so it is the one that opens.
+  c: { legs: 2, per: 4, metric: 'likely', show: 25, game: '', priced: 'all' },
   t: { game: '' },
   sort: {},
 };
@@ -649,11 +717,18 @@ function paneHits() {
   const at = (s, t) => (sel[s] ? sel[s].curve[Math.round(t * 100)] : null);
   const r = at('ours_top', cutV), ra = at('ours_any', cutV);
 
-  const slider = el('input', { type: 'range', min: 0, max: maxCut, step: 0.01, value: cutV });
-  slider.oninput = () => { S.cut[m.key] = parseFloat(slider.value); render(true); };
+  // Re-rendering the page on every `input` event destroyed the range input
+  // under the pointer that was dragging it, so a drag moved one step and then
+  // died — worse on touch, where the element is also the scroll target. The
+  // slider and everything that does not depend on it are therefore built once,
+  // and moving it repaints only the two things that actually change.
+  const slider = el('input', { type: 'range', min: 0, max: maxCut, step: 0.01,
+                               value: cutV, 'aria-label': 'Confidence threshold' });
+  const cutLabel = el('label', { text: 'If I only acted on picks above ' + cutV.toFixed(2) });
+  const tilesBox = el('div'), qualBox = el('div');
+  let cut = cutV;
   const ctrl = el('div', { class: 'bar' }, [
-    el('div', { class: 'field' }, [
-      el('label', { text: 'If I only acted on picks above ' + cutV.toFixed(2) }), slider]),
+    el('div', { class: 'field wide' }, [cutLabel, slider]),
     select('Population', S.curve, [['top', 'Each game’s top pick'], ['any', 'Every rated player']],
       v => S.curve = v,
       'The top-pick rate answers "should I act on this week’s best name". The any-player rate answers "should I act on everyone above the bar" — a different population and therefore a different number.'),
@@ -674,21 +749,7 @@ function paneHits() {
   out.appendChild(card('How often is this pick right?',
     'Measured on seasons the model never trained on, with a 90% interval from resampling <b>whole games</b> — two picks in one game are not independent evidence. ' +
     'The control reports rather than filters: raising the bar makes picks better and rarer at once, and only both numbers together describe the trade.',
-    [ctrl,
-     tiles([
-       { k: 'Hit rate', v: cur && cur.rate != null ? pct(cur.rate) : '—',
-         d: cur && cur.rate != null ? '90% ' + pct(cur.lo) + '–' + pct(cur.hi) : 'too few to measure' },
-       curBook ? { k: 'The book, same bar', v: curBook.rate != null ? pct(curBook.rate) : '—',
-         d: curBook.rate != null ? '90% ' + pct(curBook.lo) + '–' + pct(curBook.hi) : 'too few to measure',
-         help: 'The identical question asked of the bookmaker’s own de-vigged price. Without it our curve has no scale.' } : null,
-       { k: which === 'top' ? 'Games it applies to' : 'Picks it applies to',
-         v: cur ? cur.n.toLocaleString() : '—',
-         d: cur ? pct(cur.share, 0) + ' of ' + (which === 'top' ? 'games' : 'rated players') : '' },
-       { k: 'Every pick', v: pct(ours.overall), d: 'no bar at all' },
-       { k: 'Base rate', v: pct(sel.base_rate),
-         d: 'a candidate at random',
-         help: 'What a candidate picked at random does. The lift over this is what the ranking is worth.' },
-     ]),
+    [ctrl, tilesBox,
      lineChart({
        x: grid.slice(0, upto).map(t => t.toFixed(2)),
        series: [
@@ -737,31 +798,58 @@ function paneHits() {
 
   // This week's players that clear the same bar, measured by the rate for the
   // population they belong to rather than borrowing the top-pick number.
-  const qual = m.players.filter(p => has(p.ours) && p.ours >= cutV)
-    .sort((a, b) => b.ours - a.ours);
-  const unpricedQual = qual.filter(p => !p.priced).length;
-  const rate = ra && ra.rate != null
-    ? ' Players rated this highly have scored <b>' + pct(ra.rate) + '</b> [' +
-      pct(ra.lo) + ', ' + pct(ra.hi) + '] across ' + ra.n.toLocaleString() +
-      ' backtested picks — measured on priced players, which is the only population a rate exists for.' : '';
-  out.appendChild(card('Every player above ' + cutV.toFixed(2) + ' this week',
-    (qual.length ? qual.length + ' players across ' +
-      new Set(qual.map(p => p.game)).size + ' games.' + rate
-      : 'Nobody on this week’s board is rated above ' + cutV.toFixed(2) +
-        '. An empty list is the bar working, not a missing number.'),
-    qual.length ? [
-      unpricedQual ? el('p', { class: 'fine', html:
-        '<b>' + unpricedQual + ' of these have no price posted.</b> They clear the bar on an ' +
-        'unblended number, and the rate quoted above was measured on blended, priced rows — ' +
-        'so they belong on the list and not inside that measurement.' }) : null,
-      table('qual', [
-      { k: 'player', label: 'Player', t: 1 },
-      { k: 'team', label: 'Team', t: 1 },
-      { k: 'game', label: 'Game', t: 1 },
-      { k: 'odds', label: 'Odds', t: 1, fmt: v => v || '<span class="dim">unpriced</span>' },
-      { k: 'best', label: 'Best price', t: 1, fmt: (v, r) => v ? v + ' <span class="dim">' + esc(r.best_book || '') + '</span>' : '' },
-      { k: 'ours', label: 'Our estimate', fmt: v => pct(v, 0) },
-    ], qual, {})] : []));
+  out.appendChild(qualBox);
+
+  // Everything above this line is built once. This is the part the slider owns.
+  function paintCut() {
+    const rr = at('ours_top', cut), rra = at('ours_any', cut);
+    const c2 = which === 'top' ? rr : rra;
+    const b2 = book ? book.curve[Math.round(cut * 100)] : null;
+    cutLabel.textContent = 'If I only acted on picks above ' + cut.toFixed(2);
+    tilesBox.innerHTML = '';
+    tilesBox.appendChild(tiles([
+      { k: 'Hit rate', v: c2 && c2.rate != null ? pct(c2.rate) : '—',
+        d: c2 && c2.rate != null ? '90% ' + pct(c2.lo) + '–' + pct(c2.hi) : 'too few to measure' },
+      b2 ? { k: 'The book, same bar', v: b2.rate != null ? pct(b2.rate) : '—',
+        d: b2.rate != null ? '90% ' + pct(b2.lo) + '–' + pct(b2.hi) : 'too few to measure',
+        help: 'The identical question asked of the bookmaker’s own de-vigged price. Without it our curve has no scale.' } : null,
+      { k: which === 'top' ? 'Games it applies to' : 'Picks it applies to',
+        v: c2 ? c2.n.toLocaleString() : '—',
+        d: c2 ? pct(c2.share, 0) + ' of ' + (which === 'top' ? 'games' : 'rated players') : '' },
+      { k: 'Every pick', v: pct(ours.overall), d: 'no bar at all' },
+      { k: 'Base rate', v: pct(sel.base_rate), d: 'a candidate at random',
+        help: 'What a candidate picked at random does. The lift over this is what the ranking is worth.' },
+    ]));
+
+    const qual = m.players.filter(p => has(p.ours) && p.ours >= cut)
+      .sort((a, b) => b.ours - a.ours);
+    const unpricedQual = qual.filter(p => !p.priced).length;
+    const rate = rra && rra.rate != null
+      ? ' Players rated this highly have scored <b>' + pct(rra.rate) + '</b> [' +
+        pct(rra.lo) + ', ' + pct(rra.hi) + '] across ' + rra.n.toLocaleString() +
+        ' backtested picks — measured on priced players, which is the only population a rate exists for.' : '';
+    qualBox.innerHTML = '';
+    qualBox.appendChild(card('Every player above ' + cut.toFixed(2) + ' this week',
+      (qual.length ? qual.length + ' players across ' +
+        new Set(qual.map(p => p.game)).size + ' games.' + rate
+        : 'Nobody on this week’s board is rated above ' + cut.toFixed(2) +
+          '. An empty list is the bar working, not a missing number.'),
+      qual.length ? [
+        unpricedQual ? el('p', { class: 'fine', html:
+          '<b>' + unpricedQual + ' of these have no price posted.</b> They clear the bar on an ' +
+          'unblended number, and the rate quoted above was measured on blended, priced rows — ' +
+          'so they belong on the list and not inside that measurement.' }) : null,
+        table('qual', [
+          { k: 'player', label: 'Player', t: 1 },
+          { k: 'team', label: 'Team', t: 1 },
+          { k: 'game', label: 'Game', t: 1 },
+          { k: 'odds', label: 'Odds', t: 1, fmt: v => v || '<span class="dim">unpriced</span>' },
+          { k: 'best', label: 'Best price', t: 1, fmt: (v, r) => v ? v + ' <span class="dim">' + esc(r.best_book || '') + '</span>' : '' },
+          { k: 'ours', label: 'Our estimate', fmt: v => pct(v, 0) },
+        ], qual, {})] : []));
+  }
+  slider.oninput = () => { cut = parseFloat(slider.value); S.cut[m.key] = cut; paintCut(); };
+  paintCut();
   return out;
 }
 """
@@ -801,11 +889,21 @@ function panePlayers() {
       v => f.priced = v),
     check('Only where we differ', f.differ, v => f.differ = v, false,
       'Hide players we price within ' + m.min_edge + ' points of the bookmaker, measured on Bet edge — our own number, before the blend.'),
+    // The gap is measured and moves, so the copy branches on it rather than
+    // asserting an edge. On the 24-family model it fell to +0.019 with a 95%
+    // interval of (-0.011, +0.049) — it no longer clears zero, and a filter
+    // that still promised an edge would be the app's own retired claim
+    // reappearing on a second surface.
     check('Longshot standouts', f.longshot, v => f.longshot = v, !m.longshot,
-      m.longshot ? ('Players priced at +' + m.longshot.min_odds + ' or longer. Inside that band our ordering beats the price’s (AUC ' +
-        m.longshot.auc_ours.toFixed(2) + ' against ' + m.longshot.auc_book.toFixed(2) +
-        ') — it says which longshots are live, not which are cheap.')
-        : 'Needs the longshot measurement — run scripts/12_longshot.py.'),
+      !m.longshot ? 'Needs the longshot measurement — run scripts/12_longshot.py.'
+      : ('Players priced at +' + m.longshot.min_odds + ' or longer, ours-highest first. ' +
+         (has(m.longshot.auc_gap_lo) && m.longshot.auc_gap_lo <= 0
+           ? 'Our ordering of that band (AUC ' + m.longshot.auc_ours.toFixed(2) +
+             ') is not distinguishable from the price’s (' + m.longshot.auc_book.toFixed(2) +
+             ') — the interval on the gap includes zero. Read this as a way to see the band, not as an edge in it.'
+           : 'Inside that band our ordering sorts scorers better than the price does (AUC ' +
+             m.longshot.auc_ours.toFixed(2) + ' against ' + m.longshot.auc_book.toFixed(2) +
+             '). It says which longshots are live, not which are cheap.'))),
   ]));
 
   const rows = filteredPlayers();
@@ -867,10 +965,18 @@ JS_COMBOS = r"""
 // two or three of them go on one slip. Nothing is refitted — every number is
 // the players' own columns multiplied out.
 //
-// Built here rather than in the export because the answer depends on four
+// Built here rather than in the export because the answer depends on five
 // controls at once: 128 eligible players is 10.7 million four-leg slips, which
 // is not a file anyone can download and is a loop the browser finishes in well
 // under a second.
+//
+// **Every rated player is eligible, priced or not.** Three weeks before a
+// season opens four games of sixteen carry a price, so a priced-only search
+// answers "what can I bet on" while being read as "which players go together".
+// A slip touching an unpriced leg has no odds, no bookmaker number and no
+// expected value — those cells are blank, because there is no price to compute
+// them from, and blank is the honest answer rather than a reason to hide the
+// row.
 const READ_ORDER = ['Matches book', 'Leans', 'Strong call'];
 
 //: How many candidate legs the search keeps, by slip length. Combinations grow
@@ -882,18 +988,13 @@ const READ_ORDER = ['Matches book', 'Leans', 'Strong call'];
 //: as an exhaustive one.
 const LEG_CAP = { 2: 400, 3: 140, 4: 64 };
 
-function buildCombos() {
-  const m = M(), c = S.c;
-  const legs = +c.legs, per = +c.per, showN = +c.show, ev = c.metric === 'ev';
-  const singleWinner = m.key === 'first_td';
-  let pool = m.players.filter(p => has(p.ours) && !p.blocked);
-  if (c.game) pool = pool.filter(p => p.game === c.game);
-  // Expected value needs a price to be paid at and a book number to sit
-  // beside, so it is priced players only whatever the toggle says.
-  const includeUnpriced = c.unpriced && !ev;
-  if (!includeUnpriced) pool = pool.filter(p => p.priced);
-
-  // Each game's top `per`, by the same # the master table shows.
+//: Each game's top `per` by the board's own #, over whichever population is
+//: asked for. Ranked within the game before the cut, so widening `per` reaches
+//: further down every game rather than deeper into one.
+function comboPool(players, per, game, pricedOnly) {
+  let pool = players.filter(p => has(p.ours) && !p.blocked);
+  if (game) pool = pool.filter(p => p.game === game);
+  if (pricedOnly) pool = pool.filter(p => p.priced);
   const byGame = {};
   pool.forEach(p => { (byGame[p.game] = byGame[p.game] || []).push(p); });
   let picked = [];
@@ -901,15 +1002,26 @@ function buildCombos() {
     byGame[g].sort((a, b) => b.ours - a.ours);
     picked = picked.concat(byGame[g].slice(0, per));
   });
-  const nPool = picked.length;
-  const factor = p => ev ? (p.model_only * p.dec) : p.ours;
-  picked.sort((a, b) => (factor(b) - factor(a)) || a.player.localeCompare(b.player));
-  const keep = Math.min(nPool, LEG_CAP[legs] || 64);
-  const cand = picked.slice(0, keep);
-  const n = cand.length;
-  if (n < legs) return { rows: [], nPool: nPool, nCand: n, bounded: false, legs: legs };
+  return picked;
+}
 
-  const out = [];
+//: The pool cut to its strongest legs under `factor`, which is the ordering the
+//: truncation argument above is stated in. Tie-broken by name: two legs can
+//: price to exactly the same factor, and an unstable sort would then reorder
+//: them on every rebuild.
+function comboCandidates(picked, legs, factor) {
+  const sorted = picked.slice().sort(
+    (a, b) => (factor(b) - factor(a)) || a.player.localeCompare(b.player));
+  return sorted.slice(0, Math.min(sorted.length, LEG_CAP[legs] || 64));
+}
+
+//: Every slip of `legs` from `cand`, with its five quantities multiplied out.
+//: `priced` is false the moment one leg has no quote, and everything that needs
+//: a price is null from there — the product of a number and a blank is a blank,
+//: not a smaller number.
+function comboSearch(cand, legs, singleWinner) {
+  const n = cand.length, out = [];
+  if (n < legs) return out;
   const idx = new Array(legs);
   const gameOf = cand.map(p => p.game);
   (function walk(start, depth) {
@@ -927,40 +1039,92 @@ function buildCombos() {
         if (p.priced && has(p.book) && has(p.dec)) { book *= p.book; dec *= p.dec; }
         else priced = false;
       }
-      const evPct = priced ? (mo * dec - 1) * 100 : null;
-      out.push({ i: idx.slice(), ours: ours, mo: mo,
+      out.push({ ps: idx.map(i => cand[i]), ours: ours, mo: mo,
                  book: priced ? book : null, dec: priced ? dec : null,
-                 ev: evPct, same: same, priced: priced,
-                 score: ev ? evPct : ours });
+                 ev: priced ? (mo * dec - 1) * 100 : null,
+                 same: same, priced: priced });
       return;
     }
     for (let i = start; i <= n - (legs - depth); i++) { idx[depth] = i; walk(i + 1, depth + 1); }
   })(0, 0);
+  return out;
+}
 
-  out.sort((a, b) => (b.score - a.score));
-  const rows = out.slice(0, showN).map(r => {
-    const ps = r.i.map(i => cand[i]);
-    const gs = Array.from(new Set(ps.map(p => p.game)));
-    const reads = ps.map(p => p.read).filter(x => READ_ORDER.indexOf(x) >= 0);
-    const tiers = ps.map(p => p.backing || '');
+function buildCombos() {
+  const m = M(), c = S.c;
+  const legs = +c.legs, per = +c.per, showN = +c.show, ev = c.metric === 'ev';
+  const singleWinner = m.key === 'first_td';
+  const pricedOnly = c.priced === 'yes';
+
+  // Expected value and likelihood are ranked over different candidate
+  // orderings, and the truncation above is only safe within one of them: the
+  // best-value slip can be built from long-priced legs that rank nowhere on
+  // likelihood. So an EV table with unpriced players in it is two searches, not
+  // one weakened search — the priced pool ordered by value, then the whole
+  // slate ordered by likelihood for the slips value cannot score. Each half is
+  // exact under its own metric, which a single blended ordering would not be.
+  let scored = [], unscored = [], nPool = 0, nCand = 0, searched = 0, bounded = false;
+
+  const rank = (pool, factor) => {
+    const cand = comboCandidates(pool, legs, factor);
+    nPool = Math.max(nPool, pool.length);
+    nCand = Math.max(nCand, cand.length);
+    if (cand.length < pool.length && cand.length < showN + legs) bounded = true;
+    return cand;
+  };
+
+  if (ev) {
+    const priced = comboPool(m.players, per, c.game, true);
+    const found = comboSearch(rank(priced, p => p.model_only * p.dec), legs, singleWinner);
+    searched += found.length;
+    scored = found.filter(r => r.priced).sort((a, b) => b.ev - a.ev);
+  }
+  if (!ev || !pricedOnly) {
+    const all = comboPool(m.players, per, c.game, pricedOnly);
+    const found = comboSearch(rank(all, p => p.ours), legs, singleWinner);
+    searched += found.length;
+    // Under EV this pass exists only to reach the slips the first pass could
+    // not price; its priced rows are already above, ranked properly.
+    unscored = (ev ? found.filter(r => !r.priced) : found)
+      .sort((a, b) => b.ours - a.ours);
+  }
+
+  const rows = scored.concat(unscored).slice(0, showN).map(r => {
+    // A slip inherits the weakest read its legs carry, and a leg nobody priced
+    // is weaker than "Matches book" — we have not disagreed with the market
+    // about that player, we have no market to disagree with. Filtering the
+    // blanks out and reducing what was left let one priced leg's "Strong call"
+    // become the verdict for a slip whose other leg we had said nothing about.
+    const reads = r.ps.map(p => p.read);
+    const readable = r.ps.every(p => READ_ORDER.indexOf(p.read) >= 0);
+    const tiers = r.ps.map(p => p.backing || '');
+    const gs = Array.from(new Set(r.ps.map(p => p.game)));
     return {
-      players: ps.map(p => p.player).join(' + '),
+      players: r.ps.map(p => p.player).join(' + '),
       game: gs.length === 1 ? gs[0] : gs.length + ' games',
       odds: r.dec ? american(decToAm(r.dec)) : null,
       ours: r.ours, mo: r.mo, book: r.book,
       diff: r.book != null ? (r.ours - r.book) * 100 : null,
-      read: reads.length ? READ_ORDER[Math.min.apply(null, reads.map(x => READ_ORDER.indexOf(x)))] : '',
+      read: readable ? READ_ORDER[Math.min.apply(null, reads.map(x => READ_ORDER.indexOf(x)))] : '',
       backing: tiers.some(t => t) ? tiers.map(t => t || '—').join(' + ') : '',
       ev: r.ev, same: r.same, priced: r.priced,
     };
   });
-  return { rows: rows, nPool: nPool, nCand: n, total: out.length,
-           bounded: keep < nPool && keep < showN + legs, legs: legs };
+  return { rows: rows, nPool: nPool, nCand: nCand, total: searched,
+           bounded: bounded, legs: legs,
+           nScored: Math.min(scored.length, showN),
+           nUnpriced: rows.filter(r => !r.priced).length };
 }
 
+// The graded replay is a priced-only measurement — `scripts/29_combos.py`
+// replays slips that had closing prices to settle against. It is only quoted
+// where the table on screen is that same population, because a strip describing
+// 1,593 priced slips sitting above a table that is mostly unpriced ones is a
+// number attached to the wrong rows.
 function comboRecord() {
   const m = M(), c = S.c;
   if (!m.combo_record || !m.combo_record.rows) return null;
+  if (c.priced !== 'yes') return null;
   return m.combo_record.rows.find(r =>
     r.legs === +c.legs && r.per_game === +c.per &&
     r.metric === (c.metric === 'ev' ? 'ev' : 'likely') && r.show === +c.show) || null;
@@ -976,13 +1140,13 @@ function paneCombos() {
       'How many players on the slip. Each one lengthens the price and shortens the chance, and both move faster than they look: three 40% legs is a 6% shot.'),
     select('From each game’s top', c.per, [2, 3, 4, 5, 6, 7, 8], v => c.per = +v,
       'Which players are eligible: each game’s top N by #. Widening this reaches further down every game rather than deeper into one.'),
-    select('Rank by', c.metric, [['ev', 'Expected value'], ['likely', 'Most likely']], v => c.metric = v,
-      'Expected value ranks on what $100 expects to return, measured on our pre-blend number. Most likely ranks on the chance the slip lands. Different questions, usually different tables.'),
+    select('Rank by', c.metric, [['likely', 'Most likely'], ['ev', 'Expected value']], v => c.metric = v,
+      'Most likely ranks on the chance the slip lands, which every player has a number for. Expected value ranks on what $100 expects to return — it needs a price, so it can only order the slips that carry one, and the rest follow it by likelihood. Different questions and usually different tables: the likeliest slips are short-priced and the best value ones are not.'),
     select('Show', c.show, [25, 50, 100, 250, 500], v => c.show = +v),
     select('Game', c.game, [['', 'All games']].concat(games.map(g => [g, g])), v => c.game = v),
-    check('Include unpriced players', c.unpriced, v => c.unpriced = v, ev,
-      ev ? 'Expected value needs a price to be paid at, so this ranking is priced players only. Switch to "Most likely" to reach the rest of the slate.'
-         : 'Reaches the whole slate rather than the games a book has posted. Slips with an unpriced leg carry no odds, no bookmaker number and no expected value — there is nothing to compute them from.'),
+    select('Players', c.priced, [['all', 'Priced and unpriced'], ['yes', 'Priced only']],
+      v => c.priced = v,
+      'The whole slate by default. A slip touching a player no book has quoted carries no odds, no bookmaker number and no expected value — there is nothing to compute them from — so those cells are blank. Priced only narrows it to the games a book has posted, which is also the population the graded replay covers.'),
   ]));
 
   const rec = comboRecord();
@@ -999,6 +1163,10 @@ function paneCombos() {
           d: has(rec.return_ex_top10) ? money(rec.return_ex_top10) + ' without the 10 biggest wins' : '' },
         { k: 'As singles', v: money(rec.as_singles_per_100), d: 'same money, staked separately' },
       ])]));
+  } else if (m.combo_record && c.priced !== 'yes') {
+    out.appendChild(el('div', { class: 'warn-box', html:
+      '<b>The graded replay covers priced slips only</b> — it settles against closing prices, and most of this table has none. Set <b>Players</b> to <i>Priced only</i> to see what these settings actually returned over ' +
+      esc(m.combo_record.span) + '.' }));
   } else if (m.combo_record) {
     // Not a stale file: the replay is a fixed grid and these controls reach
     // outside it on purpose, because "show me more than fifty" is a reasonable
@@ -1022,13 +1190,13 @@ function paneCombos() {
     { k: 'players', label: 'Players', t: 1,
       title: 'Every one of these has to score for the slip to pay. That is the whole difference between this table and the board.' },
     { k: 'game', label: 'Game', t: 1, fmt: (v, x) => esc(v) + (x.same ? ' <span class="chip warn">same game</span>' : '') },
-    { k: 'odds', label: 'Odds', t: 1, fmt: v => v || '<span class="dim">unpriced</span>' },
+    { k: 'odds', label: 'Odds', t: 1, fmt: v => v || '<span class="dim">—</span>' },
     { k: 'ours', label: 'Our estimate', fmt: v => pct(v, v < 0.05 ? 2 : 1) },
     blended ? { k: 'mo', label: 'Model only', fmt: v => pct(v, v < 0.05 ? 2 : 1) } : null,
-    { k: 'book', label: 'Bookmaker says', fmt: (v, x) => has(v) ? pct(v, v < 0.05 ? 2 : 1) : '<span class="dim">—</span>' },
+    { k: 'book', label: 'Bookmaker says', fmt: v => has(v) ? pct(v, v < 0.05 ? 2 : 1) : '<span class="dim">—</span>' },
     { k: 'diff', label: 'Difference', fmt: v => has(v) ? pp(v) + ' pts' : '', cls: v => cls(v) },
     { k: 'read', label: 'Our read', t: 1, fmt: v => v ? '<span class="chip">' + esc(v) + '</span>' : '',
-      title: 'The weakest read its legs carry. Not the average and not the strongest: a slip needs all of them, so the leg we have least to say about is the one that decides what it is.' },
+      title: 'The weakest read its legs carry. Not the average and not the strongest: a slip needs all of them, so the leg we have least to say about is the one that decides what it is. Blank where no leg carries a read, which is any slip with an unpriced player on it.' },
     { k: 'ev', label: 'Expected on $100', fmt: v => has(v) ? money(v) : '<span class="dim">—</span>', cls: v => cls(v) },
     anyBacking ? { k: 'backing', label: 'Worth backing', t: 1,
       title: 'Each leg’s own tier, in the order the slip names its players. Never one tier for the slip: the tiers were fitted on single bets.' } : null,
@@ -1044,9 +1212,13 @@ function paneCombos() {
     el('p', { class: 'rowcount', html:
       r.rows.length
         ? 'The ' + r.rows.length + ' best ' + legWord + '-leg combinations of the top ' + c.per +
-          ' in ' + esc(where) + ', ranked by ' + (ev ? 'expected value' : 'how likely the slip is to land') +
-          ' — out of ' + (r.total || 0).toLocaleString() + ' searched, from ' + r.nCand +
-          ' of the ' + r.nPool + ' eligible players.' +
+          ' in ' + esc(where) + ', out of ' + (r.total || 0).toLocaleString() +
+          ' searched from ' + r.nCand + ' of the ' + r.nPool + ' eligible players. ' +
+          (ev && r.nUnpriced
+            ? '<b>' + r.nScored + '</b> carry a price and are ranked by expected value; the ' +
+              'remaining <b>' + r.nUnpriced + '</b> have an unpriced leg, so there is no expected ' +
+              'value to rank them on and they follow, ordered by how likely they are to land.'
+            : 'Ranked by ' + (ev ? 'expected value' : 'how likely the slip is to land') + '.') +
           (r.bounded ? ' <b>The search was bounded here</b>: at ' + r.legs +
             ' legs the pool is cut to its ' + r.nCand + ' strongest, which is fewer than the ' +
             (+c.show + r.legs) + ' that would guarantee this is the exact top ' + c.show +
@@ -1060,8 +1232,8 @@ function paneCombos() {
   } else {
     notes.push('Legs are multiplied as if independent. Teammates share a scoring game and compete for the same touchdowns, and in the backtest those very nearly cancel; same-game rows are flagged above because a book prices its own correlation into them and will come back shorter than this arithmetic.');
   }
-  if (r.rows.some(x => !x.priced)) notes.push(
-    'Slips with an unpriced leg show no odds, no bookmaker number and no expected value. There is no price to compute them from — a blank here is the absence of a quote, not of an opinion.');
+  if (r.nUnpriced) notes.push(
+    '<b>' + r.nUnpriced + ' of these rows touch a player no book has quoted.</b> Their odds, bookmaker number, difference and expected value are blank because there is no price to compute them from — the absence of a quote, not of an opinion. Their <b>Our estimate</b> is also a product of unblended legs, so it is not on the same footing as a fully priced row’s.');
   notes.push(rec
     ? 'The strip above is this exact setting replayed over ' + esc(m.combo_record.span) +
       '. The <b>Expected on $100</b> column is still a forecast rather than that measurement.'
@@ -1075,6 +1247,8 @@ JS_TEAMS = r"""
 // ── Pane: by team ───────────────────────────────────────────────────────
 function paneTeams() {
   const m = M(), out = el('div');
+  // The named scorers follow the market — see `teams()` in the exporter.
+  const first = m.key === 'first_td';
   let rows = m.teams.slice();
   const games = Array.from(new Set(m.teams.map(t => t.game).filter(Boolean))).sort();
   if (S.t.game) rows = rows.filter(t => t.game === S.t.game);
@@ -1103,18 +1277,21 @@ function paneTeams() {
       title: 'How many different players are expected to score. Lower than expected touchdowns because one player can score twice.' },
     { k: 'shutout', label: 'Shut-out risk', fmt: v => has(v) ? pct(v, 0) : '',
       title: 'Chance of no offensive touchdown. Rare — teams score in about 92% of games — so this column is only interesting when it is high.' },
-    { k: 'top1_player', label: 'Likeliest scorer', t: 1,
-      fmt: (v, r) => v ? esc(v) + ' <span class="dim">' + pct(r.top1_pct, 0) + '</span>' : '',
-      title: 'Anytime TD, so the team number has a name attached.' },
+    { k: 'top1_player', label: first ? 'Likeliest to score first' : 'Likeliest scorer', t: 1,
+      fmt: (v, r) => v ? esc(v) + ' <span class="dim">' + pct(r.top1_pct, first ? 1 : 0) + '</span>' : '',
+      title: first
+        ? 'This market’s own number: the player most likely to score the game’s FIRST touchdown, and his chance of doing it. Only one player in the game can, so these percentages are several times smaller than an anytime one and the two are not comparable.'
+        : 'This market’s own number: the player most likely to score at some point, and his chance of doing it.' },
     { k: 'top2_player', label: 'Second likeliest', t: 1,
-      fmt: (v, r) => v ? esc(v) + ' <span class="dim">' + pct(r.top2_pct, 0) + '</span>' : '',
+      fmt: (v, r) => v ? esc(v) + ' <span class="dim">' + pct(r.top2_pct, first ? 1 : 0) + '</span>' : '',
       title: 'The second name, because one on its own reads as "the bet". Two say where a team’s touchdowns are concentrated and how far ahead the first name actually is.' },
   ].filter(Boolean);
 
   out.appendChild(card('By team',
     'The board answers "which player". This is the question underneath it. ' +
     'Which side scores first is a coin-flip question and the model beats the coin — <b>AUC 0.674</b> over 2,278 walk-forward team-games, calibrated from 6% to 94%. ' +
-    'Every game on the slate is here, not only the ones a book has priced.',
+    'Every game on the slate is here, not only the ones a book has priced. ' +
+    'The two named players are <b>' + esc(m.label) + '</b> — this market’s own numbers, so they change with the switch above.',
     [table('teams', cols, rows, {}),
      el('p', { class: 'fine', html:
        'Not shown: the chance a team scores <i>any</i> touchdown. It is around 92% for nearly every team in nearly every game, and a column that always reads the same teaches you to skip it.' })]));

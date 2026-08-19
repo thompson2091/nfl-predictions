@@ -434,12 +434,20 @@ def players(season: int, week: int, target_type: str, model: str,
     return {"rows": rows, "problems": problems}
 
 
-def teams(season: int, week: int, version: str | None) -> dict:
+def teams(season: int, week: int, target_type: str) -> dict:
     """The by-team table for the whole slate, with the two likeliest scorers.
 
     Every game, not only the priced ones: the board's game list is whatever a
     book has posted, which early in a week is a handful of them, and the team
     numbers exist for all of them.
+
+    Both markets are scored regardless of which one is being built, because the
+    columns need them: `first_td_pct` is a first-TD quantity and
+    `expected_scorers` is an anytime one, and a team row shows both. **The
+    named scorers, though, come from `target_type` alone.** They used to come
+    from anytime TD on both pages, so the First TD table named the player most
+    likely to score at *some* point in the game beside a column about who
+    scores *first* — two different questions, one of them answered wrongly.
     """
     from src.models.joint import _game_lines, load_team_rate, team_rate
     from src.prediction.predict import predict
@@ -482,7 +490,13 @@ def teams(season: int, week: int, version: str | None) -> dict:
     # The two likeliest scorers rather than one. A single name reads as "the
     # bet"; two read as what they are — where the team's touchdowns are
     # concentrated, and how far ahead the first name actually is.
-    ap = preds.get("anytime_td")
+    #
+    # From the market being built, not from anytime TD: on first TD these are
+    # the two likeliest to open the scoring, and the percentages are that
+    # market's own, which are several times smaller. Sharing one set across
+    # both pages put an anytime name and an anytime percentage on a first-TD
+    # table, where both were answers to a question the page was not asking.
+    ap = preds.get(target_type)
     if ap is not None and ap.height:
         top2 = (ap.sort("probability", descending=True)
                 .group_by(["game_id", "team"])
@@ -567,7 +581,7 @@ def market(target_type: str, label: str, season: int | None,
     print("    slate ...", file=sys.stderr)
     pl_out = players(season, week, target_type, model, rates, rule, cuts)
     print("    teams ...", file=sys.stderr)
-    tm = teams(season, week, who["version"])
+    tm = teams(season, week, target_type)
     print("    accuracy ...", file=sys.stderr)
 
     legend = bp.tier_legend(rule) if rule else None

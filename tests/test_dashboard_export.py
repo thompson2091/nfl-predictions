@@ -139,11 +139,109 @@ def test_bounded_search_says_so():
     assert "The search was bounded here" in js
 
 
-def test_expected_value_never_ranks_an_unpriced_slip():
-    """There is no price to pay an unpriced leg at, so EV cannot exist for it."""
+def test_combinations_default_to_the_whole_slate():
+    """Priced-only was answering "what can I bet on" under the other question.
+
+    Four games of sixteen carry a price three weeks before a season opens, so a
+    priced-only default hides three quarters of the slate from a section whose
+    whole job is which players go together.
+    """
+    from src.export import dashboard
+    state = dashboard.JS.split("const S = {", 1)[1].split("\n};", 1)[0]
+    assert "priced: 'all'" in state, "combinations must open on every player"
+    assert "metric: 'likely'" in state, (
+        "expected value can only order slips that carry a price, so it cannot be "
+        "the ranking a whole-slate table opens on"
+    )
+
+
+def test_expected_value_is_never_invented_for_an_unpriced_slip():
+    """A blank is the absence of a quote. A number would be a claim."""
     js = _js()
-    assert "const includeUnpriced = c.unpriced && !ev;" in js, (
-        "the unpriced toggle must be ignored under expected-value ranking"
+    assert "ev: priced ? (mo * dec - 1) * 100 : null," in js
+    assert "book: priced ? book : null," in js
+    assert "dec: priced ? dec : null," in js
+
+
+def test_expected_value_ranking_searches_the_two_populations_separately():
+    """One blended ordering would make both halves approximate.
+
+    The truncation that keeps the search tractable is only sound within a single
+    metric: the best-value slip can be built from long-priced legs that rank
+    nowhere on likelihood, so ordering one pool by a mixture would silently drop
+    it. Priced slips are searched under value, the rest under likelihood.
+    """
+    js = _js()
+    assert "rank(priced, p => p.model_only * p.dec)" in js
+    assert "rank(all, p => p.ours)" in js
+    assert "found.filter(r => !r.priced)" in js, (
+        "the likelihood pass must not re-emit slips the value pass already ranked"
+    )
+
+
+def test_a_slip_is_only_as_strong_as_the_leg_nobody_priced():
+    """One priced leg's "Strong call" must not become a whole slip's verdict."""
+    js = _js()
+    assert "const readable = r.ps.every(p => READ_ORDER.indexOf(p.read) >= 0);" in js
+    assert "read: readable ?" in js
+
+
+def test_the_graded_replay_is_only_quoted_over_the_rows_it_measured():
+    """It settles against closing prices, so it describes priced slips only."""
+    js = _js()
+    rec = js.split("function comboRecord()", 1)[1].split("\n}", 1)[0]
+    assert "if (c.priced !== 'yes') return null;" in rec
+
+
+def test_the_named_scorers_come_from_the_market_being_built():
+    """A first-TD table must not name the anytime-TD leader.
+
+    "Most likely to score at some point" and "most likely to open the scoring"
+    are different players with percentages several times apart, and the column
+    sat beside `Scores first` where the confusion is hardest to catch.
+    """
+    src = SCRIPT.read_text()
+    fn = src[src.index("def teams("):]
+    fn = fn[:fn.index("\n# \u2500\u2500 One market")] if "\n# \u2500\u2500 One market" in fn else fn
+    assert "ap = preds.get(target_type)" in fn, (
+        "the two named scorers must come from the market being built, not from "
+        "whichever one happens to supply another column"
+    )
+    assert "def teams(season: int, week: int, target_type: str)" in src
+    assert "tm = teams(season, week, target_type)" in src
+
+
+def test_the_longshot_filter_does_not_promise_an_edge_the_interval_denies():
+    """The same claim `app.py` retired must not reappear on this surface.
+
+    The band's sorting gap is measured and moves; on the 24-family model its
+    95% interval covers zero. A second page still calling it an edge is exactly
+    the drift that makes two surfaces disagree about one measurement.
+    """
+    from src.export import dashboard
+    js = dashboard.JS_PLAYERS
+    assert "largest gap anywhere on this board" not in js, (
+        "an unconditional superlative about a measurement that changes"
+    )
+    assert "m.longshot.auc_gap_lo <= 0" in js, (
+        "the copy must branch on whether the measured gap clears zero"
+    )
+    assert "not distinguishable from the price" in js
+
+
+def test_the_threshold_slider_is_not_destroyed_by_its_own_drag():
+    """Re-rendering on `input` removed the element the pointer was dragging.
+
+    The drag then moved one step and died — a control that looks broken rather
+    than one that is slow. The slider is built once and moving it repaints only
+    what depends on it.
+    """
+    from src.export import dashboard
+    js = dashboard.JS_PANES
+    hits = js.split("function paneHits()", 1)[1]
+    assert "slider.oninput = () => { cut = parseFloat(slider.value); S.cut[m.key] = cut; paintCut(); };" in hits
+    assert "render(true)" not in hits, (
+        "a full re-render on slider input is exactly the bug this guards"
     )
 
 
