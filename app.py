@@ -3597,6 +3597,22 @@ if tab2.open:
             f"numbers aren't flattering themselves."
         )
 
+        from src.models.registry import MISSING_OPTIONAL
+        if MISSING_OPTIONAL:
+            # Degraded, not dead. Before 2026-08-19 this state was a crash at
+            # import: a model module one commit newer than the running image
+            # took the whole UI down for a model nothing was using. Now it
+            # costs only the models it names, and says which.
+            st.warning(
+                "Some model modules did not load, so those models are "
+                "unavailable: "
+                + "; ".join(f"`{m.split('.')[-1]}` ({why})"
+                            for m, why in sorted(MISSING_OPTIONAL.items()))
+                + ". The board is unaffected unless one of them is the served "
+                  "model. If this is a container, its source is behind the "
+                  "repository — rebuild it with `make docker-build`.",
+                icon=":material/warning:")
+
         render_feature_set(target_type, selected_version)
         render_feature_lab(target_type)
         st.divider()

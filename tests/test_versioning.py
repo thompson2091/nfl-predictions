@@ -412,3 +412,71 @@ def test_every_locked_version_reports_metrics_from_its_own_feature_set():
                 f"{m['id']} / {market}: manifest reports accuracy measured on "
                 f"{prov['n_features']} features for a model locked with "
                 f"{locked}. The numbers describe a different model.")
+
+
+def test_a_missing_optional_model_module_does_not_take_the_app_down():
+    """`src/models/pairwise.py` was added and the container died at import.
+
+    A bare `import` inside `ensure_registered` means any image whose source is
+    one commit behind fails at startup with ModuleNotFoundError — for a model
+    that is registered, inactive and rejected. The app cannot serve a board
+    because a module nothing uses is absent.
+
+    The registry itself is not cleared here. `importlib.import_module` returns a
+    cached module without re-running its `@register` decorator, so clearing it
+    would leave an empty registry that no re-import repopulates — which is a
+    property of the import system, not of the code under test.
+    """
+    import importlib
+
+    import src.models.registry as R
+
+    real = importlib.import_module
+
+    def missing(name, *a, **k):
+        if name == "src.models.pairwise":
+            raise ModuleNotFoundError("No module named 'src.models.pairwise'")
+        return real(name, *a, **k)
+
+    try:
+        importlib.import_module = missing
+        R.MISSING_OPTIONAL.clear()
+        R.ensure_registered()          # must not raise
+        assert "src.models.pairwise" in R.MISSING_OPTIONAL, (
+            "a degraded registry must say so; silence is how a stale image "
+            "goes unnoticed")
+        assert "ModuleNotFoundError" in R.MISSING_OPTIONAL["src.models.pairwise"]
+
+        def missing_required(name, *a, **k):
+            if name == "src.models.xgboost_model":
+                raise ModuleNotFoundError("no xgboost_model")
+            return real(name, *a, **k)
+
+        importlib.import_module = missing_required
+        with pytest.raises(ModuleNotFoundError):
+            R.ensure_registered()
+    finally:
+        importlib.import_module = real
+        R.MISSING_OPTIONAL.clear()
+        R.ensure_registered()
+
+    assert {"lr", "lgbm", "xgb"} <= set(R.list_models())
+    assert not R.MISSING_OPTIONAL, "everything imports in a complete checkout"
+
+
+def test_every_registered_model_module_is_listed_in_one_of_the_two_tuples():
+    """A module added to neither tuple would never register at all."""
+    import pathlib as _p
+
+    import src.models.registry as R
+
+    listed = set(R.REQUIRED_MODEL_MODULES) | set(R.OPTIONAL_MODEL_MODULES)
+    root = _p.Path(__file__).resolve().parents[1] / "src" / "models"
+    on_disk = {f"src.models.{f.stem}" for f in root.glob("*.py")
+               if f.stem not in {"__init__", "registry"}}
+    # Only modules that actually call @register need listing.
+    registering = {m for m in on_disk
+                   if "@register(" in (root / f"{m.split('.')[-1]}.py").read_text()}
+    assert registering <= listed, (
+        f"these declare @register but are imported by nobody: "
+        f"{sorted(registering - listed)}")
