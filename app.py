@@ -152,6 +152,22 @@ def receptions_backtests():
     return pl.concat([pl.read_csv(f) for f in files], how="diagonal_relaxed").to_pandas()
 
 
+@st.cache_data(show_spinner=False)
+@guarded
+def receptions_calibration():
+    """When this model says 80%, how often is it right? Measured, by band."""
+    from src.evaluation.receptions_hit_rates import calibration
+    return calibration()
+
+
+@st.cache_data(show_spinner=False)
+@guarded
+def receptions_sweep():
+    """Accuracy bought by selectivity, and the coverage it costs."""
+    from src.evaluation.receptions_hit_rates import sweep
+    return sweep()
+
+
 @st.cache_data(show_spinner=False, max_entries=8)
 @guarded
 def receptions_projections(season: int, week: int):
@@ -225,6 +241,99 @@ def receptions_week_lines(season: int):
     return j.with_columns(pl.Series("p_model", p)).to_pandas()
 
 
+def render_receptions_selectivity():
+    """The answer to "when we say 80%, how often is that right".
+
+    It is not 80%. On held-out seasons the model claims 85% and lands 69%, and
+    the gap widens with the claim, so the top of this board is exactly where
+    its stated number is least trustworthy. The panel leads with that rather
+    than burying it under a table, because a confidence column that is read at
+    face value is worse than no confidence column.
+
+    Confidence is `max(p, 1-p)` on the side taken. A row at P(over)=0.18 is a
+    strong under call, not a weak over call, and grading it on the over would
+    report a confident correct pick as a miss.
+    """
+    cal, err = receptions_calibration()
+    if err:
+        st.caption(f":material/error: calibration unavailable — `{err}`")
+        return
+    if not cal:
+        st.caption("No graded receptions backtests yet — run "
+                   "`python scripts/30_receptions.py`.")
+        return
+
+    top = max(cal["bands"], key=lambda b: b["lo"])
+    st.markdown("**When we say a number, how often is it right?**")
+    st.warning(
+        f"**The stated confidence runs hot, and worst at the top.** In the "
+        f"most confident band this model claims **{top['claimed']:.0%}** and "
+        f"lands **{top['measured']:.0%}** "
+        f"(90% CI {top['ci_lo']:.0%}–{top['ci_hi']:.0%}, {top['n']:,} graded "
+        f"lines). Read the *measured* column, not the model's own number.",
+        icon=":material/warning:",
+    )
+
+    rows = []
+    for b in cal["bands"]:
+        mk = b.get("market")
+        rows.append({
+            "Confidence band": f"{b['lo']:.0%}–{b['hi']:.0%}",
+            "Lines graded": b["n"],
+            "We said": b["claimed"] * 100,
+            "Actually right": b["measured"] * 100,
+            "90% CI": f"{b['ci_lo']:.0%}–{b['ci_hi']:.0%}",
+            "Gap": b["gap"] * 100,
+            "Book said": mk["claimed"] * 100 if mk else None,
+            "Book right": mk["measured"] * 100 if mk else None,
+        })
+    pct = st.column_config.NumberColumn(format="%.1f%%")
+    st.dataframe(
+        pd.DataFrame(rows), hide_index=True,
+        column_config={"We said": pct, "Actually right": pct,
+                       "Gap": st.column_config.NumberColumn(format="%+.1f%%"),
+                       "Book said": pct, "Book right": pct},
+    )
+    sw, sw_err = receptions_sweep()
+    if not sw_err and sw:
+        best = max(sw, key=lambda r: r["measured"])
+        st.markdown("**Does being choosier help?**")
+        st.dataframe(
+            pd.DataFrame([{
+                "Act only above": f"{r['threshold']:.0%}",
+                "Lines kept": r["n"],
+                "Share of board": r["share"] * 100,
+                "Actually right": r["measured"] * 100,
+                "90% CI": f"{r['ci_lo']:.0%}–{r['ci_hi']:.0%}",
+            } for r in sw]),
+            hide_index=True,
+            column_config={
+                "Share of board": st.column_config.NumberColumn(format="%.1f%%"),
+                "Actually right": st.column_config.NumberColumn(format="%.1f%%"),
+            },
+        )
+        st.caption(
+            f"Selectivity buys accuracy up to a point and then stops. The best "
+            f"measured cut is **{best['threshold']:.0%}**, right "
+            f"**{best['measured']:.1%}** on {best['share']:.1%} of priced "
+            f"lines. Tightening further to the top band does not help — it is "
+            f"the band whose stated confidence is furthest from the truth, so "
+            f"there is nothing left to select on."
+        )
+
+    st.caption(
+        f"Measured over {cal['rows']:,} graded lines across "
+        f"{len(cal['seasons'])} held-out seasons "
+        f"({', '.join(str(x) for x in cal['seasons'])}), intervals bootstrapped "
+        f"over {cal['games']:,} games rather than lines — a player carries "
+        f"several lines and a blowout moves all of them together, so treating "
+        f"lines as independent would understate the interval. The book's own "
+        f"stated price lands inside its measured rate in every band where it "
+        f"quotes one; ours does not. That is the same conclusion as the log "
+        f"loss above, seen from the side you would actually act on."
+    )
+
+
 def render_receptions_page():
     """The receptions market: a viewer with a measured second opinion.
 
@@ -291,6 +400,8 @@ def render_receptions_page():
                 "Book said": st.column_config.NumberColumn(format="%.1f%%"),
             },
         )
+
+    render_receptions_selectivity()
 
     season = cfg["seasons"]["predict_season"]
 
