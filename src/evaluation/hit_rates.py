@@ -218,3 +218,45 @@ def any_player_frame(target_type: str, model: str | None = None) -> pl.DataFrame
     return df.select([pl.col("game_id"),
                       pl.col(pc).alias("prob"),
                       pl.col(lc).cast(pl.Float64).alias("hit")])
+
+
+def topk_vs_market(target_type: str, model: str | None = None,
+                   ks: tuple[int, ...] = (1, 3, 5)) -> dict | None:
+    """Our Top-K beside the bookmaker's own, on identical rows.
+
+    The accuracy strip reports Top-K against an implied baseline of nothing,
+    and a reader converts "47.6% against a 16.2% base rate" into "3.2x better
+    than chance". Nobody picks by chance. The comparison that decides whether
+    the board is worth reading is the price, and on this market the answer is
+    not flattering: ranked on the book's own number the top pick scores 52.7%
+    of the time against 51.9% for ours, while our Top-3 and Top-5 are ahead.
+    The model brackets the scorer better than the book and isolates him worse.
+
+    Measured on the priced population only — a book has no number for a player
+    it never quoted, so there is no other population where the two can be
+    compared. That is a different population from the walk-forward strip
+    (1,131 games over every candidate), which is why this is reported as its
+    own block rather than as another tile beside it: the two sets of Top-K
+    figures are not comparable and putting them in one row invites exactly the
+    subtraction that is invalid.
+    """
+    df = _load_backtests(target_type, model)
+    if df is None or "market_prob" not in df.columns:
+        return None
+    pc, lc = _prob_col(df), _label_col(df)
+    df = df.filter(pl.col("market_prob").is_not_null())
+    if df.height == 0:
+        return None
+
+    def topk(col: str, k: int) -> float:
+        t = (df.sort(col, descending=True).group_by("game_id").head(k)
+             .group_by("game_id").agg(pl.col(lc).max().alias("any")))
+        return float(t["any"].mean())
+
+    return {
+        "target_type": target_type,
+        "games": df["game_id"].n_unique(),
+        "rows": df.height,
+        "ours": {k: topk(pc, k) for k in ks},
+        "market": {k: topk("market_prob", k) for k in ks},
+    }

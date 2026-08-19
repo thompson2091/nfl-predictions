@@ -1416,6 +1416,14 @@ def top_pick_outcomes(tt: str):
 
 @st.cache_data(show_spinner=False)
 @guarded
+def topk_against_market(tt: str):
+    """Our Top-K beside the book's own, on identical rows."""
+    from src.evaluation.hit_rates import topk_vs_market
+    return topk_vs_market(tt)
+
+
+@st.cache_data(show_spinner=False)
+@guarded
 def any_player_outcomes(tt: str):
     """Every priced candidate and what it did — the population of the list."""
     from src.evaluation.hit_rates import any_player_frame
@@ -1622,6 +1630,112 @@ def render_unpriced(season, week, tt: str, model: str, version: str | None,
                 ),
             },
         )
+
+
+def render_purpose(tt: str, model: str):
+    """What this board is for, stated before anything is read off it.
+
+    The page grew up as a bet card — edge, EV, Kelly, "worth backing" — and
+    kept that shape after the evidence stopped supporting it. On 2026-08-18 two
+    existence leaks were closed and the headline profitability figure inverted
+    from +5.9% to -9.6%, while the ranking accuracy survived almost intact.
+    Those two facts point at one conclusion: this is a good shortlist and not a
+    profitable bet card, in markets that are priced efficiently.
+
+    Saying so at the top is not modesty. A reader who takes the board for a bet
+    card will size positions on a number that has been measured as negative,
+    and every column further down is easier to read correctly once the purpose
+    is fixed.
+
+    Everything here is read from measurements rather than written, so it cannot
+    drift away from what the artifacts say the way the prose around the
+    longshot panel did.
+    """
+    acc = headline_accuracy(tt, model)
+    s, _ = hit_rate_bands(tt)
+    econ = rank_economics(tt, model)
+    if not s:
+        return
+
+    base = s.get("base_rate")
+    overall = s.get("overall_hit_rate")
+    best = None
+    for c in s.get("cuts", []):
+        if c["hit_rate"] >= 0.60 and (best is None or c["threshold"] < best["threshold"]):
+            best = c
+
+    with st.container(border=True):
+        st.markdown(
+            f"#### Who scores, not what to bet\n\n"
+            f"This board ranks players by how likely they are to score. "
+            f"Its top pick is right **{overall:.1%}** of the time against "
+            f"**{base:.1%}** for a candidate drawn at random — about "
+            f"**{overall / max(base, 1e-9):.1f}x** the field."
+            + (f" Restricted to picks it rates above **{best['threshold']:.2f}** "
+               f"it reaches **{best['hit_rate']:.1%}** "
+               f"[{best['lo_ci']:.1%}, {best['hi_ci']:.1%}], on "
+               f"**{best['share_of_games']:.0%}** of games."
+               if best else "")
+        )
+        # The comparison that decides whether any of this is worth reading.
+        # The strip above reports Top-K against an implied baseline of nothing,
+        # which reads as "3.2x better than chance" — and nobody picks by
+        # chance. Reported as its own block, on its own population, because the
+        # strip's figures cover every candidate over 1,131 games and these
+        # cover priced players over 849: the two are not subtractable and a
+        # shared row would invite exactly that.
+        cmp_, cmp_err = topk_against_market(tt)
+        if cmp_err:
+            st.caption(f":material/error: market comparison unavailable — `{cmp_err}`")
+        elif cmp_:
+            rows = []
+            for k in (1, 3, 5):
+                o, m = cmp_["ours"].get(k), cmp_["market"].get(k)
+                if o is None or m is None:
+                    continue
+                rows.append({"": f"Top-{k}", "Us": o * 100, "The book": m * 100,
+                             "Difference": (o - m) * 100})
+            if rows:
+                st.markdown(
+                    f"**Against the bookmaker, same {cmp_['games']:,} games.** "
+                    f"The honest yardstick — a price, not a coin flip."
+                )
+                st.dataframe(
+                    pd.DataFrame(rows), hide_index=True,
+                    column_config={
+                        "Us": st.column_config.NumberColumn(format="%.1f%%"),
+                        "The book": st.column_config.NumberColumn(format="%.1f%%"),
+                        "Difference": st.column_config.NumberColumn(
+                            format="%+.1f pp",
+                            help="Positive means our ranking put a scorer in the "
+                                 "top K more often than the book's price did."),
+                    },
+                )
+                d1 = rows[0]["Difference"] if rows[0][""] == "Top-1" else None
+                if d1 is not None and d1 < 0:
+                    st.caption(
+                        f"We are **behind the book on Top-1** by {abs(d1):.1f} "
+                        f"points and ahead on Top-3 and Top-5. Read that as it "
+                        f"is: this model brackets the scorer better than the "
+                        f"price does and isolates him worse. If you want one "
+                        f"name, the book's favourite is still the better single "
+                        f"guess; the board earns its keep on the shortlist."
+                    )
+
+        if econ and econ.get("headline"):
+            h = econ["headline"]
+            neg = h.get("roi") is not None and h["roi"] < 0
+            st.markdown(
+                f"**It is not a bet card.** Backing its top {h.get('top_n', 3)} "
+                f"at the prices actually posted returned **{h['roi']:+.1f}%** "
+                f"[{h['lo']:+.1f}, {h['hi']:+.1f}] across {econ.get('games', 0):,} "
+                f"backtested games"
+                + (" — the market is priced ahead of it. Use the ranking to decide "
+                   "who is likely to score; do not size a position on the edge "
+                   "columns."
+                   if neg else
+                   ". The betting columns carry their own measurement below.")
+            )
 
 
 def render_selectivity(tt: str, board=None):
@@ -1966,6 +2080,7 @@ def week_board(season, week, tt: str, model: str,
 
 if tab_board.open:
     with tab_board:
+        render_purpose(target_type, selected_model)
         render_accuracy_strip(target_type, selected_model,
                               selected_version)
 
