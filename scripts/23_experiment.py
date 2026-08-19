@@ -344,9 +344,23 @@ def _overall_verdict(comparisons: list[dict], markets,
     definition something else — reading `model` there finds no production pair
     at all and reports NO_PRODUCTION_PAIR for a run that decided something.
     """
-    decisive = [c for c in comparisons
-                if c[decisive_on] == production_model(c["market"])
-                and c["market"] in markets]
+    def _decides(c) -> bool:
+        if c["market"] not in markets:
+            return False
+        prod = production_model(c["market"])
+        if c[decisive_on] == prod:
+            return True
+        # An overlay that introduces a NEW model produces a row whose candidate
+        # side is that model and whose champion side is the one being served.
+        # That row is the decision — "should this replace what we serve" — and
+        # reading only `model == prod` drops it. With the served model itself
+        # reported UNCHANGED (the overlay does not alter it), the whole gate
+        # then collapsed to NO_CHANGE and a tested-and-rejected model read as
+        # though nothing had been tried.
+        return (decisive_on == "model"
+                and c.get("against") == prod and c["model"] != prod)
+
+    decisive = [c for c in comparisons if _decides(c)]
     if not decisive:
         return "NO_PRODUCTION_PAIR"
 

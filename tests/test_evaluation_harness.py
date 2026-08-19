@@ -933,3 +933,37 @@ def test_the_line_movement_rejection_is_backed_by_its_own_measurement():
 
     if not found:
         pytest.skip("line movement not measured — python scripts/32_line_movement.py")
+
+
+def test_a_new_model_that_loses_reports_rejected_not_no_change():
+    """A tested-and-rejected model must not read as "nothing was tried".
+
+    An overlay that adds a model leaves the served one untouched, so its row is
+    UNCHANGED and excluded from the verdict — correctly. But the row that
+    matters is the new model paired against what the market serves, and reading
+    only `model == production` drops it. `pairwise-rank` was screened, lost on
+    Top-1 and tripped three guards, and the gate printed NO_CHANGE.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "experiment_cli", "scripts/23_experiment.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    from src.utils.config import production_model
+
+    prod = production_model("anytime_td")
+    rows = [
+        {"market": "anytime_td", "model": prod, "against": prod,
+         "verdict": "UNCHANGED"},
+        {"market": "anytime_td", "model": "xgbrank", "against": prod,
+         "verdict": "REJECTED"},
+    ]
+    assert mod._overall_verdict(rows, ("anytime_td",)) == "REJECTED"
+
+    rows[1]["verdict"] = "PROMOTED"
+    assert mod._overall_verdict(rows, ("anytime_td",)) == "PROMOTED"
+
+    # With no new model at all, an untouched market is still NO_CHANGE.
+    assert mod._overall_verdict([rows[0]], ("anytime_td",)) == "NO_CHANGE"

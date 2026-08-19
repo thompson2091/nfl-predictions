@@ -1,0 +1,40 @@
+# Rank the board instead of pricing each player and sorting the result.
+#
+# Every active model is fitted pointwise — each player-game an independent coin
+# — while Top-1 asks a different question: is the player we put FIRST one of the
+# players who scored? A pointwise loss takes no credit for that.
+#
+# `condlogit` was the first attempt and failed twice: on the leaked matrix
+# (2026-08-13) and again on the clean one (2026-08-19, anytime -0.27pp p=0.860,
+# first TD -0.97pp p=0.099). The reason is what it assumes rather than that
+# objectives do not matter. A conditional logit is a softmax over a group — the
+# likelihood that ONE named candidate won. That is right for first TD, where
+# exactly one player scores first, and wrong for anytime TD, where 4.3 players
+# score in an average game: it must push mass away from real scorers to
+# concentrate it on a single winner that does not exist.
+#
+# A pairwise loss assumes only that scorers should outrank non-scorers inside a
+# game. Any number of winners is fine.
+#
+# Grouped by GAME, not team-game. `make diagnose` on 2026-08-19: 91.9% of
+# team-games contain a scorer and 84% of games contain one on both teams, so
+# the team is almost never what separates a right pick from a wrong one. An
+# earlier reading of that diagnosis — "92% of misses are right team, so the
+# team model is solved" — was wrong for the same reason: 92% is the base rate.
+#
+#   make screen EXP=experiments/pairwise-rank.yaml
+#   make gate   EXP=experiments/pairwise-rank.yaml
+#
+# Gated against 2026.08.19-champion-lean25, which is recorded on the 242-feature
+# set now being served. Gating against the earlier champion would credit this
+# overlay with the lean feature set's +1.33pp — which is exactly what the
+# condlogit re-test did before the champion was re-recorded.
+id: 2026.08.19-pairwise-rank
+note: "Add xgbrank: pairwise ranking loss grouped by game, for both markets"
+overlay:
+  models:
+    active:
+    - lr
+    - lgbm
+    - xgb
+    - xgbrank

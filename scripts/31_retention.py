@@ -46,10 +46,11 @@ from src.utils.config import production_model  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 FAMILIES = ROOT / "diagnostics" / "feature_families.json"
 
-#: How many families to keep at each point on the curve. Dense at the small end
-#: because that is where a lean set would show itself, and the full 33 is the
+#: How many families to keep at each point on the curve. Dense between 18 and
+#: 30, because that is where the curve actually peaked and a single-seed run
+#: could not separate K=20 (+1.68pp) from K=25 (+1.33pp); the full 33 is the
 #: baseline every point is paired against rather than a point on the curve.
-LADDER = (3, 5, 8, 12, 16, 20, 25)
+LADDER = (3, 5, 8, 12, 16, 18, 20, 22, 24, 25, 26, 28, 30)
 SEED = 20260819
 
 
@@ -78,6 +79,17 @@ def ranked_families(market: str) -> list[str]:
     return sorted(rows, key=lambda f: rows[f]["top1_delta"])
 
 
+def _full_set(market: str) -> dict:
+    """Overlay that restores every family — the curve's baseline is the FULL set.
+
+    Once a lean set is adopted in config, `H.run({})` trains that lean set, so
+    every point would be paired against the answer instead of against the
+    question.
+    """
+    return {"models": {"include_feature_families_by_target": {market: []},
+                       "include_feature_families": []}}
+
+
 def baseline_run(market: str, model: str):
     """The full-feature run every point on both curves is paired against."""
     run_id = f"retention-baseline-{market}"
@@ -87,7 +99,7 @@ def baseline_run(market: str, model: str):
         return result
     except FileNotFoundError:
         print(f"Baseline: running full feature set for {market}/{model}")
-        result = H.run({}, markets=(market,), models=[model])
+        result = H.run(_full_set(market), markets=(market,), models=[model])
         H.save(result, run_id)
         return result
 
@@ -97,7 +109,13 @@ def keep_run(market: str, model: str, curve: str, k: int, families: list[str]):
     try:
         return H.load(run_id, markets=(market,))
     except FileNotFoundError:
-        overlay = {"models": {"include_feature_families": families}}
+        # The PER-MARKET key, not the flat one. `included_families` reads
+        # `include_feature_families_by_target` first, so once that is set in
+        # config an overlay on the flat key is ignored outright and every point
+        # on this curve would silently measure the adopted set.
+        overlay = {"models": {
+            "include_feature_families_by_target": {market: families},
+            "include_feature_families": families}}
         result = H.run(overlay, markets=(market,), models=[model])
         H.save(result, run_id)
         return result

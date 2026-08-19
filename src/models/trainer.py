@@ -579,9 +579,10 @@ def train_all(target_type: str = None, splits: dict | None = None,
         # an argument it ignores.
         if getattr(model_cls, "needs_groups", False):
             from src.models.ranker import group_ids
+            unit = getattr(model_cls, "group_unit", "market")
             model.fit(X_train, y_train, X_val, y_val, mcfg,
-                      groups=(group_ids(train_df, target_type),
-                              group_ids(val_df, target_type)))
+                      groups=(group_ids(train_df, target_type, unit),
+                              group_ids(val_df, target_type, unit)))
         else:
             model.fit(X_train, y_train, X_val, y_val, mcfg)
 

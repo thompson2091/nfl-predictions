@@ -53,6 +53,22 @@ def load_families() -> dict[str, list[str]]:
     return json.loads(FAMILIES.read_text())["families"]
 
 
+def _full_set(market: str) -> dict:
+    """Overlay that restores every family, whatever config currently serves.
+
+    An ablation asks "what does dropping this family from the FULL set cost".
+    Once a lean set is adopted in `config/settings.yaml` the baseline would
+    otherwise be that lean set, and each ablated run would drop a family from
+    it — a different question, silently substituted, and one whose answer
+    cannot order a retention curve built from the full set.
+
+    An empty LIST, not an empty dict: `config_overlay` deep-merges, so `{}`
+    merges to nothing and leaves the allow-list in place.
+    """
+    return {"models": {"include_feature_families_by_target": {market: []},
+                       "include_feature_families": []}}
+
+
 def baseline_run(market: str, model: str):
     """The full-feature run every ablation is paired against.
 
@@ -67,7 +83,7 @@ def baseline_run(market: str, model: str):
         return result
     except FileNotFoundError:
         print(f"Baseline: running full feature set for {market}/{model}")
-        result = H.run({}, markets=(market,), models=[model])
+        result = H.run(_full_set(market), markets=(market,), models=[model])
         H.save(result, run_id)
         return result
 
@@ -77,7 +93,8 @@ def ablate(market: str, family: str, model: str):
     try:
         return H.load(run_id, markets=(market,)), True
     except FileNotFoundError:
-        overlay = {"models": {"exclude_feature_families": [family]}}
+        overlay = _full_set(market)
+        overlay["models"]["exclude_feature_families"] = [family]
         result = H.run(overlay, markets=(market,), models=[model])
         H.save(result, run_id)
         return result, False

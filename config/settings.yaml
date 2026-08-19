@@ -335,6 +335,42 @@ model:
     reg_alpha: 0.1
     reg_lambda: 1.0
     early_stopping_rounds: 50
+  # `xgbrank` is registered (src/models/pairwise.py) and NOT active. Values
+  # mirror `condlogit` above so a comparison between the two is a comparison
+  # between their objectives rather than between two tuning jobs.
+  #
+  # TRIED AND REJECTED 2026-08-19, on the clean matrix, against
+  # 2026.08.19-champion-lean25:
+  #
+  #     anytime_td  Top-1 48.9pct -> 48.5pct  -0.44pp (p=0.745)
+  #     first_td    Top-1 16.1pct -> 14.3pct  -1.77pp (p=0.075)
+  #
+  # The reasoning was that `condlogit` failed because of what it ASSUMES rather
+  # than because objectives do not matter. A conditional logit is a softmax over
+  # a group — the likelihood that ONE named candidate won — which is right for
+  # first TD and wrong for anytime TD, where 4.3 players score in an average
+  # game, so it must push mass away from real scorers to concentrate it on a
+  # single winner that does not exist. A pairwise loss assumes only that
+  # scorers outrank non-scorers, and was grouped by GAME rather than team-game
+  # because 91.9pct of team-games contain a scorer and the team is almost never
+  # the discriminator.
+  #
+  # The reasoning was sound and the result is still negative. Two different
+  # ranking objectives, both fitted on the same features and folds, both fail.
+  # That is now a reasonably strong statement: for this data the training
+  # objective is NOT the bottleneck, and further work on losses should expect
+  # to fail. Where the error actually lives is choosing among players, and
+  # neither loss found a way to do it better.
+  xgbrank:
+    n_estimators: 500
+    learning_rate: 0.05
+    max_depth: 6
+    min_child_weight: 20
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_alpha: 0.1
+    reg_lambda: 1.0
+    early_stopping_rounds: 50
 # Unsupervised grouping behind the Player types tab. Nothing here is a cluster
 # count: k is fitted per position on the training seasons and persisted with the
 # curve that chose it (src/clustering/core.py:choose_k). These are the bounds and

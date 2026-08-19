@@ -75,9 +75,25 @@ MIN_GROUP = 2
 HESS_FLOOR = 1e-6
 
 
-def group_ids(df: pl.DataFrame, target_type: str) -> np.ndarray:
-    """The competition unit for this market, as contiguous integer codes."""
-    if target_type == "first_td":
+def group_ids(df: pl.DataFrame, target_type: str,
+              unit: str = "market") -> np.ndarray:
+    """The competition unit for this market, as contiguous integer codes.
+
+    `unit="market"` is the competition the *market* defines: the game for first
+    TD, where exactly one player scores first, and the team-game for anytime,
+    which is what the joint model consumes as shares.
+
+    `unit="game"` groups by game for both, which is the competition **Top-1**
+    defines — the board's top pick is an argmax across every candidate in the
+    game, both teams included. For anytime TD these differ, and the difference
+    is not cosmetic: `make diagnose` on 2026-08-19 found that 91.9% of
+    team-games contain a scorer and 84% of games contain one on BOTH teams, so
+    grouping by team-game splits the ranking problem along a line that is
+    almost never the discriminator.
+    """
+    if unit not in ("market", "game"):
+        raise ValueError(f"unknown grouping unit {unit!r}")
+    if unit == "game" or target_type == "first_td":
         keys = df["game_id"].cast(pl.Utf8)
     else:
         keys = (df["game_id"].cast(pl.Utf8) + "|" + df["team"].cast(pl.Utf8))

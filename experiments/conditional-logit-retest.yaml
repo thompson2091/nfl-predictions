@@ -1,0 +1,42 @@
+# Train the objective we are actually scored on.
+#
+# Every model here is fitted pointwise on binary log loss — each player-game an
+# independent coin. Top-1 is a within-game argmax, and for first TD exactly one
+# candidate wins. A pointwise loss cannot see that constraint: it spends
+# capacity separating a 3% player from a 1% player in a game already decided,
+# and takes no credit for putting the right player on top.
+#
+# The conditional logit is the likelihood of what actually happened — given
+# this game's candidates, which one scored first. Same features, same tree, same
+# folds; only the loss differs. Groups are the market's own unit of competition:
+# the game for first TD, the team-game for anytime, since the joint model
+# consumes team-level shares.
+#
+# Phase 3a in docs/MODEL_ITERATION.md, and the standing counter-test to the
+# "data-limited, not fitting-limited" conclusion from Phase 2 — that conclusion
+# was reached by measuring the feature set, and this changes the objective.
+#
+# RE-TESTED 2026-08-19. The original run (2026.08.13) was measured on a feature
+# matrix carrying two existence leaks, closed on 2026-08-18. That matrix made
+# the 33-family ablation table wrong in both magnitude and SIGN — one family
+# read -2.74pp (p=0.006) before and +1.50pp after — so every verdict from that
+# window is evidence about a matrix that no longer exists, this one included.
+#
+# `make diagnose` on the clean matrix is what makes this worth re-running
+# rather than merely re-checkable: of 586 anytime-TD Top-1 misses, 92.0% are
+# RIGHT TEAM, WRONG PLAYER, and only 8.0% wrong team. The team-level rate is
+# solved; everything is lost allocating share within the team. A conditional
+# logit is a softmax over exactly that competition, so if the objective was
+# ever going to matter, it matters here.
+#
+#   make screen EXP=experiments/conditional-logit-retest.yaml
+#   make gate   EXP=experiments/conditional-logit-retest.yaml
+id: 2026.08.19-conditional-logit-retest
+note: "Re-test condlogit on the clean matrix: 92% of anytime Top-1 misses are right-team-wrong-player"
+overlay:
+  models:
+    active:
+    - lr
+    - lgbm
+    - xgb
+    - condlogit

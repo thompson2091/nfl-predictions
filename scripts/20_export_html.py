@@ -40,7 +40,16 @@ APP = "app.py"
 #: Weekly results and Betting reality are deliberately out: one is a graded
 #: replay that is empty until games are played, and the other is betting advice
 #: that should not be the thing a stranger lands on.
-PANES = [("board", "Full board"), ("model", "Model performance")]
+#:
+#: "Player types" is in because it answers a question the other two cannot —
+#: not how good the number is, but what kind of player and what kind of bet it
+#: is about. Its grouping is fitted on the training seasons and scored on the
+#: held-out ones (`scripts/21_clusters.py`), so it publishes a real measurement
+#: rather than a description of the rows it was drawn from. Its "View" control
+#: offers Player types and Bet types; an export captures one value, and this
+#: publishes the first.
+PANES = [("board", "Full board"), ("model", "Model performance"),
+         ("clusters", "Player types")]
 
 MARKETS = [
     ("anytime_td", "Anytime TD"),

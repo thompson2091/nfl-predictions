@@ -1,0 +1,41 @@
+# Is K=24 a better cut than the K=25 now being served?
+#
+# The finer retention ladder (2026-08-19) reads every K from 16 to 30 as
+# positive against the full 318-column set, with adjacent points differing by
+# more than the 0.64pp seed band — so a single seed cannot order them. K=24
+# read +2.03pp (p=0.043), the ladder peak and its only p<0.05 point, though 13 points were tested.
+#
+# K=25 is settled at +1.64pp over 5 seeds (ahead in 5 of 5). This exists to be
+# settled the same way, against the same baseline, before anything moves.
+#
+#   make settle-overlay EXP=experiments/lean-24-families.yaml SEEDS=5 MARKET=anytime_td
+id: 2026.08.19-lean-24-families
+note: "anytime TD on the 24 ablation-dearest families (236 of 318 columns)"
+overlay:
+  models:
+    include_feature_families_by_target:
+      anytime_td:
+      - _build_game_context_features
+      - build_box_features
+      - build_depth_chart_features
+      - build_game_features
+      - build_goalline_features
+      - build_injury_features
+      - build_matchup_interaction_features
+      - build_momentum_features
+      - build_opening_drive_features
+      - build_opponent_features
+      - build_pace_features
+      - build_personnel_features
+      - build_player_redzone_features
+      - build_player_rolling_features
+      - build_player_share_features
+      - build_player_target_history
+      - build_qb_features
+      - build_receiver_features
+      - build_score_first_features
+      - build_snap_features
+      - build_td_proxy_features
+      - build_td_streak_features
+      - build_team_features
+      - build_team_target_tendency
