@@ -25,15 +25,22 @@ services:
       STREAMLIT_SERVER_FILE_WATCHER_TYPE: poll
       STREAMLIT_SERVER_RUN_ON_SAVE: "true"
     volumes:
-      - ./app.py:/app/app.py:ro
-      - ./src:/app/src:ro
-      - ./scripts:/app/scripts:ro
-      # run_all.py rewrites settings.yaml in place, so config stays writable.
-      - ./config:/app/config
-      # Host artifacts shadow the baked ones — retrain locally, refresh the app.
-      - ./data:/app/data
-      - ./models:/app/models
-      - ./output:/app/output
+      # The whole project, not `./app.py:/app/app.py`. Docker binds a single
+      # FILE by inode, and anything that writes by rename — an editor saving
+      # atomically, `os.replace`, `git checkout` — gives the file a new inode
+      # while the container stays bound to the old one. It then reads a file
+      # nothing can reach any more, frozen at whatever it last held.
+      #
+      # That is not hypothetical: on 2026-08-19 the container served a
+      # half-written app.py for an hour with `SyntaxError: '(' was never
+      # closed`, surviving every rebuild, because rebuilding an image does
+      # nothing to a running container and the mount was pinned to a dead
+      # inode. A directory mount resolves names on every open, so a replaced
+      # file is simply the new file.
+      - .:/app
+      # Named volume over the venv path so a host .venv can never shadow the
+      # image's interpreter, which is the one hazard a whole-project mount adds.
+      - /app/.venv
 
   # Pipeline stages: ingest | targets | candidates | features | train |
   # predict | all | pipeline. Writes land on the host through the mounts above.

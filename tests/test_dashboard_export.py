@@ -286,3 +286,54 @@ def test_payload_cannot_close_its_own_script_tag():
     html = render(payload)
     assert "</script><b>x" not in html
     assert "<\\/script>" in html
+
+
+def test_the_dashboard_cover_is_pinned_to_the_same_closed_forms_as_the_python():
+    """Two implementations of one payout formula, checked against a third thing.
+
+    The page lets the reader choose the legs, so no precomputed portfolio could
+    cover the space and the arithmetic has to run in JavaScript. That is the one
+    place this project duplicates a calculation on purpose. The protection is
+    that both sides are pinned to closed forms rather than to each other:
+
+        k scorers win 2^k - 1 slips
+        at a flat price d they return (1+d)^k - 1 per unit staked
+
+    `tests/test_cover.py` holds the Python to those. This holds the JavaScript
+    to the same ones by reading them out of the shipped page, so the two cannot
+    drift without one of the two tests failing.
+    """
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] /
+           "src" / "export" / "dashboard.py").read_text()
+    fn = src[src.index("function coverPortfolio("):src.index("function paneCover(")]
+
+    # Every non-empty subset is a slip, and a slip pays when its legs are all in.
+    assert "for (let mask = 1; mask < N; mask++)" in fn, (
+        "slips must enumerate masks from 1, not 0 — the empty subset is not a "
+        "bet, and counting it is exactly the error that made a hand-worked "
+        "table read $97.66 where the answer is $96.66")
+    assert "(m & mask) === mask" in fn, (
+        "a slip wins only when every one of its legs scored")
+
+    # Correlation is a teammate effect and must be gated on the team.
+    assert "legs[i].team === legs[j].team" in fn, (
+        "the measured correlation is residual covariance inside a team-game; "
+        "applying it across fixtures inflates the all-score tail")
+
+    # The singles comparison has to exist, or the page cannot say what the
+    # cover is being judged against.
+    assert "singles_roi" in fn and "dec[i] * p[i] - 1" in fn
+
+
+def test_the_shipped_dashboard_carries_the_cover_tab():
+    from pathlib import Path
+
+    page = Path(__file__).resolve().parents[1] / "site" / "dashboard.html"
+    if not page.exists():
+        pytest.skip("dashboard not exported in this checkout")
+    html = page.read_text()
+    assert "Cover the field" in html
+    assert "coverPortfolio" in html, "the page must carry the calculation"

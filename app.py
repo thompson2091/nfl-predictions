@@ -292,100 +292,76 @@ def receptions_week_lines(season: int):
     return j.with_columns(pl.Series("p_model", p)).to_pandas()
 
 
-@st.cache_data(show_spinner=False)
-def _cover_ladder(decimal: float, probs: tuple | list) -> list[dict]:
-    """The scaling table, cached on the price and the legs it describes."""
-    from src.prediction.cover import ladder
-    return ladder(float(decimal), max_n=10, stake=1.0, probs=list(probs))
-
-
-@st.cache_data(show_spinner=False)
-def _cover_easiest(rows: list[dict]) -> list[int]:
-    from src.prediction.cover import easiest
-    return easiest(rows)
-
-
 def render_cover(cov: dict, tt: str) -> None:
-    """The full-cover tables: the legs, the bet count, and the breakeven.
+    """What every combination of the selected players returns, by how many score.
 
-    Three things this is careful about, because each is a way the page could
-    read as a recommendation it has not earned:
+    One table, because there is only one question: back all 2^n - 1 slips, and
+    what happens at each number of scorers. The legs are not re-listed — they
+    are the names just chosen, and the board above already describes them.
 
-    The breakeven row is meaningless without the chance of reaching it, so
-    P(k of N) sits beside every row rather than under a separate heading.
+    Three things it is careful about, each a way this could read as a
+    recommendation it has not earned:
 
-    Returns are a RANGE when the legs are priced differently — two of five can
-    be the two short legs or the two long ones. The row shows the
-    probability-weighted figure and says when the spread is wide.
+    A breakeven row means nothing without the chance of reaching it, so
+    P(k of n) sits in the table rather than under it.
 
-    And the comparison at the bottom is the same money on the singles alone.
-    A cover compounds whatever edge a leg has: with a real edge it beats the
-    singles and the gap widens with legs, with a negative one it loses harder.
-    Which of those is happening is a fact about today's prices, so the page
-    reports it rather than deciding in advance.
+    Returns are a RANGE when the legs are priced differently: two of five can
+    be the two short legs or the two long ones. The figure shown is weighted by
+    how likely each combination is, and the spread is called out when it is wide.
+
+    And an expected value computed against an ASSUMED price is the model marking
+    its own homework, so it says so whenever a leg was unpriced.
     """
     def _m(x: float) -> str:
         """Dollars, escaped: Streamlit reads a matched pair as LaTeX."""
         return f"\\${x:,.2f}"
 
-    legs = cov["legs"]
+    n, staked = cov["n"], cov["staked"]
+    priced = sum(1 for l in cov["legs"] if l["priced"])
     st.caption(
-        f"**{cov['bets']} slips** on {cov['n']} players — "
+        f"**{cov['bets']} slips** on {n} players — "
         + " · ".join(f"{c['combinations']}×{c['legs']}-leg" for c in cov["counts"])
-        + f" — at {_m(cov['stake'])} each, {_m(cov['staked'])} staked.")
-
-    st.dataframe(
-        pd.DataFrame([{
-            "Player": l["name"], "Team": l["team"],
-            "Chance": l["prob"] * 100,
-            "Price": ("—" if not l["priced"]
-                      else f"{int(l['odds']):+d}" if l["odds"] else "—"),
-            "Returns": l["decimal"],
-        } for l in legs]),
-        hide_index=True,
-        column_config={
-            "Chance": st.column_config.NumberColumn(format="%.1f%%"),
-            "Returns": st.column_config.NumberColumn(
-                format="%.2f", help="Decimal payout per unit staked."),
-        })
-    if not cov["all_priced"]:
-        st.caption(
-            f":material/info: Legs without a market price are shown at an "
-            f"assumed **{cov['assumed_decimal']:.2f}**. Those returns are an "
-            f"assumption, not a quote — the chance column is the model's, the "
-            f"payout column is yours.")
+        + f" — at {_m(cov['stake'])} each, **{_m(staked)}** staked. "
+        + (f"All {n} legs priced by the book."
+           if priced == n else
+           f"{priced} of {n} legs priced; the rest at an assumed "
+           f"{cov['assumed_decimal']:.2f}."))
 
     rows, wide = [], False
     for r in cov["rows"]:
-        spread = r["returned_max"] - r["returned_min"]
-        wide = wide or spread > max(0.15 * max(r["returned"], 1e-9), 1e-9)
+        wide = wide or (r["returned_max"] - r["returned_min"]) > max(
+            0.15 * max(r["returned"], 1e-9), 1e-9)
         rows.append({
-            "Players who score": f"{r['scored']} of {cov['n']}",
+            "Players who score": f"{r['scored']} of {n}",
             "Chance of this": r["probability"] * 100,
             "Winning bets": r["winning_bets"],
             "Total returned": r["returned"],
-            f"Net on {_m(cov['staked'])}": r["net"],
+            f"Net on {_m(staked)}": r["net"],
         })
     st.dataframe(
         pd.DataFrame(rows), hide_index=True,
         column_config={
-            "Chance of this": st.column_config.NumberColumn(format="%.1f%%"),
+            "Chance of this": st.column_config.NumberColumn(
+                format="%.1f%%",
+                help="How often exactly this many of the players you picked "
+                     "score, on the model's own probabilities."),
             "Total returned": st.column_config.NumberColumn(format="$%.2f"),
-            f"Net on {_m(cov['staked'])}":
-                st.column_config.NumberColumn(format="$%+.2f"),
+            f"Net on {_m(staked)}": st.column_config.NumberColumn(
+                format="$%+.2f"),
         })
 
     be, p_be = cov["breakeven_scored"], cov["p_breakeven"]
     if be is None:
-        st.error("No number of scorers turns a profit at these prices — the "
-                 "five-fold does not pay for the 30 slips under it.",
-                 icon=":material/block:")
+        st.error(
+            f"**No number of scorers turns a profit.** Even all {n} landing "
+            f"returns {_m(cov['rows'][-1]['returned'])} against "
+            f"{_m(staked)} staked.", icon=":material/block:")
     else:
-        st.info(
-            f"**Breakeven is {be} of {cov['n']}**, and that happens "
-            f"**{p_be:.1%}** of the time on the model's own numbers"
-            + (f" (teammate correlation {cov['rho']:+.3f} applied)"
-               if cov["rho"] else " (legs treated as independent)")
+        st.success(
+            f"**Breakeven is {be} of {n}** — and that happens **{p_be:.1%}** "
+            f"of the time"
+            + (f", with the measured teammate correlation of {cov['rho']:+.3f} "
+               f"applied" if cov["rho"] else ", treating the legs as independent")
             + ".", icon=":material/target:")
 
     if wide:
@@ -395,84 +371,29 @@ def render_cover(cov: dict, tt: str) -> None:
             "two long ones. The figure shown is weighted by how likely each "
             "combination is.")
 
-    # How the whole thing scales, and where it is structurally forgiving.
-    _avg_dec = float(np.mean([l["decimal"] for l in legs]))
-    _lad = _cover_ladder(_avg_dec, [l["prob"] for l in legs])
-    with st.expander(
-            f"How this scales with pool size, at an average price of "
-            f"{_avg_dec:.2f}"):
-        st.dataframe(
-            pd.DataFrame([{
-                "Players": r["players"], "Bets": r["bets"], "Risk": r["risk"],
-                "Need": f"{r['need']} of {r['players']}" if r["need"] else "—",
-                "Hit rate needed": (r["need_rate"] or 0) * 100,
-                "Chance of that": (r.get("p_need") or 0) * 100,
-                "If all score": r["all_return"],
-                "Profit if all": r["all_profit"],
-            } for r in _lad]),
-            hide_index=True,
-            column_config={
-                "Risk": st.column_config.NumberColumn(format="$%.0f"),
-                "Hit rate needed": st.column_config.NumberColumn(format="%.1f%%"),
-                "Chance of that": st.column_config.NumberColumn(
-                    format="%.2f%%",
-                    help="How often that many of YOUR selected players score, "
-                         "using the first N of them. Blank past the pool you "
-                         "have."),
-                "If all score": st.column_config.NumberColumn(format="$%.2f"),
-                "Profit if all": st.column_config.NumberColumn(format="$%+.2f"),
-            })
-        _easy = _cover_easiest(_lad)
-        st.caption(
-            f":material/lightbulb: **The hit rate you need is not monotone in "
-            f"pool size.** It runs "
-            + ", ".join(f"{(r['need_rate'] or 0):.0%}" for r in _lad[:8])
-            + f" for 1 to 8 players, so **{', '.join(str(n) for n in _easy)}** "
-            f"ask{'s' if len(_easy) == 1 else ''} the least of you at this "
-            f"price. The outlay doubles with each player while the return "
-            f"multiplies by {_avg_dec:.2f}, so a pool sometimes lands just "
-            f"below the point where one fewer scorer starts paying — and where "
-            f"it does, a whole scorer comes off the requirement. Which sizes "
-            f"those are moves with the price, so this is computed rather than "
-            f"looked up.\n\n"
-            f"Read it beside **Chance of that**: a size that needs less of you "
-            f"is only better if the model says you reach it more often.")
-
     ev, single = cov["expected_roi"], cov["singles_only"]["expected_roi"]
-    better = ev > single
     if not cov["all_priced"]:
-        # The circularity has to be named. With no market price the payout is
-        # whatever was typed into the box, so an expected value computed
-        # against it is the model marking its own homework: it says "if these
-        # probabilities are right AND a book offers this price, the edge is X".
-        # Both halves are assumptions, and the second one is usually false —
-        # a book that agreed with a 62% estimate would not price it at evens.
         st.warning(
-            f"**The expected result below is not a measured edge.** These legs "
-            f"have no market price, so it compares the model's own "
-            f"probabilities against the {cov['assumed_decimal']:.2f} you "
-            f"assumed. A book that agreed with these numbers would not offer "
-            f"that price — the whole reason a positive figure appears is that "
-            f"the assumed payout is generous relative to what the model "
-            f"believes. Read it once real prices are posted, and read "
-            f"`Betting reality` for what has actually been returned.",
-            icon=":material/warning:")
+            f"**The expected result below is not a measured edge.** Some legs "
+            f"have no market price, so it weighs the model's own probabilities "
+            f"against the {cov['assumed_decimal']:.2f} you assumed. A book that "
+            f"agreed with these numbers would not offer that price — a positive "
+            f"figure here mostly means the assumed payout is generous relative "
+            f"to what the model believes.", icon=":material/warning:")
     st.caption(
         f":material/functions: Expected result **{bp.signed_money(cov['expected_net'])}** "
         f"({ev:+.1%}) against **{bp.signed_money(cov['singles_only']['expected_net'])}** "
-        f"({single:+.1%}) for the same {_m(cov['staked'])} on the "
-        f"{cov['n']} singles alone.\n\n"
+        f"({single:+.1%}) for the same {_m(staked)} on the {n} singles alone.\n\n"
         + ("A cover is leverage on the edge in each leg: per dollar a single "
            "returns *e* and a k-fold returns *(1+e)^k − 1*. "
-           + ("These prices leave a positive edge on the legs, so multiplying "
-              "them compounds it and the cover comes out ahead — at far higher "
-              "variance, and on the model's probabilities rather than a "
-              "measured result."
-              if better else
-              "These prices leave a negative edge on the legs, so multiplying "
-              "them pays the margin once per leg and the cover loses harder "
-              "than the singles do. Nothing about the structure fixes that; "
-              "only a better price or a better probability would.")))
+           + ("These prices leave a positive edge, so multiplying them "
+              "compounds it — at far higher variance, and on the model's "
+              "probabilities rather than a measured result."
+              if ev > single else
+              "These prices leave a negative edge, so multiplying them pays "
+              "the margin once per leg and the cover loses harder than the "
+              "singles do. Only a better price or a better probability fixes "
+              "that; the structure cannot.")))
 
 
 def render_feature_set(tt: str, version: str | None = None):
@@ -3371,49 +3292,68 @@ if tab_board.open:
 
             # ── Cover the field ───────────────────────────────────────────
             # `Combinations` above picks the slips worth backing. This asks the
-            # opposite: back them ALL — every non-empty subset of the top N —
-            # and show what would have to happen to come out ahead. The
-            # arithmetic is exact rather than sampled: 2^N outcome patterns, 32
-            # for five players, each priced on its own legs.
+            # opposite: pick the players yourself, back EVERY combination of
+            # them, and see what has to happen to come out ahead.
+            #
+            # The selection is the section. There is no table of candidates
+            # here because the board above already is one — this takes the
+            # names you chose and answers the only question that follows.
             from src.prediction import cover as _cover
 
             st.markdown("#### Cover the field")
-            _kbar = st.container(horizontal=True)
-            _cov_n = _kbar.slider(
-                "Players", min_value=2, max_value=8, value=5, key="cover_n",
-                help="The top N by **#** in the board above. N players means "
-                     "2^N - 1 slips: five gives 31.")
-            _cov_pool = _kbar.segmented_control(
-                "Taken from", ["One per game", "This game"],
-                default="One per game", key="cover_pool",
-                help="One per game spreads the legs across fixtures; this game "
-                     "takes the top N from a single fixture, where the legs "
-                     "share a defence and a game script.")
-            _cov_stake = _kbar.number_input(
+            st.caption(
+                "Pick players and back every combination of them — "
+                "**n** players is **2ⁿ − 1** slips, so five is 31. The table "
+                "below is what each number of scorers returns.")
+
+            _cov_src = (shown if pick != "All games" else board)
+            _cov_src = _cov_src.sort_values("probability", ascending=False)
+            _label_of, _row_of = {}, {}
+            for _, r in _cov_src.iterrows():
+                _lbl = (f"{r['player_name']} · {r.get('team', '')} · "
+                        f"{r['probability']:.0%}"
+                        + ("" if pd.isna(r.get("odds")) else
+                           f" · {bp.american(r['odds'])}"))
+                _label_of[_lbl] = r["player_name"]
+                _row_of[_lbl] = r
+            _options = list(_label_of)
+            _default = _options[:5]
+
+            _picked = st.multiselect(
+                "Players", _options, default=_default, key="cover_picked",
+                help="Every player on the board above, likeliest first. The "
+                     "number you choose sets the number of slips.")
+
+            _cbar2 = st.container(horizontal=True)
+            _cov_stake = _cbar2.number_input(
                 "Stake per slip", min_value=0.5, max_value=100.0, value=1.0,
                 step=0.5, key="cover_stake")
-            _cov_price = _kbar.number_input(
+            _cov_price = _cbar2.number_input(
                 "Assumed price if unpriced", min_value=1.05, max_value=21.0,
                 value=2.0, step=0.05, key="cover_price",
                 help="Decimal odds to stand in for a leg with no market price. "
-                     "2.00 is even money; the board is mostly unpriced until "
-                     "close to kickoff.")
+                     "Real prices are used wherever the board has one.")
 
-            _cov_src = shown if pick != "All games" else board
-            if _cov_pool == "One per game":
-                _cov_src = (_cov_src.sort_values("probability", ascending=False)
-                                    .drop_duplicates(subset=["game_id"], keep="first"))
-            _cov_src = _cov_src.sort_values("probability", ascending=False).head(_cov_n)
-
-            if len(_cov_src) < 2:
-                st.caption("Not enough players on the board for a cover.")
+            if len(_picked) < 2:
+                st.info("Pick at least two players.", icon=":material/info:")
+            elif len(_picked) > _cover.MAX_PLAYERS:
+                st.warning(
+                    f"{len(_picked)} players is {2 ** len(_picked) - 1:,} "
+                    f"slips. {_cover.MAX_PLAYERS} is the most this will "
+                    f"enumerate — past there the table stops being readable "
+                    f"long before it stops being computable.",
+                    icon=":material/warning:")
             else:
                 _rho = (leg_correlation(target_type) or {}).get("teammate_rho", 0.0)
-                _legs_in = [{
-                    "name": r["player_name"], "team": r.get("team"),
-                    "prob": float(r["probability"]),
-                    "odds": r.get("odds") if pd.notna(r.get("odds")) else None,
-                } for _, r in _cov_src.iterrows()]
+                _legs_in = []
+                for _lbl in _picked:
+                    r = _row_of[_lbl]
+                    _legs_in.append({
+                        "name": r["player_name"], "team": r.get("team"),
+                        "prob": float(r["probability"]),
+                        "odds": (None if pd.isna(r.get("odds"))
+                                 else float(r["odds"])),
+                    })
                 _cov = _cover.portfolio(_legs_in, stake=float(_cov_stake),
                                         rho=float(_rho),
                                         assumed_decimal=float(_cov_price))
