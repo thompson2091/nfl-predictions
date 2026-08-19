@@ -38,3 +38,4 @@ def ensure_registered():
     import src.models.lightgbm_model  # noqa: F401
     import src.models.xgboost_model  # noqa: F401
     import src.models.ranker  # noqa: F401
+    import src.models.count  # noqa: F401
