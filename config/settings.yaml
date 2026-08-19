@@ -251,6 +251,18 @@ models:
   # opponent_position, rushing_efficiency, team_redzone. `opponent_position` is
   # worth noting - it read -2.74pp (p=0.006) on the leaked matrix and +1.50pp
   # on the clean one.
+  # first TD has NO entry here, and that is a measured decision rather than an
+  # omission. `make ablate TARGET=first_td` and `make retention TARGET=first_td`
+  # were run on the clean matrix on 2026-08-19 and found nothing: every K from
+  # 12 to 30 sits within +/-0.6pp of the full set except one isolated point
+  # (K=25, +1.33pp, p=0.044) whose immediate neighbours read -0.09 and +0.09.
+  # With 13 points measured, one at p<0.05 is what chance produces, and a spike
+  # with no plateau under it is not a result.
+  #
+  # The contrast is what makes anytime TD's gain believable rather than the
+  # same artifact: there every K from 16 to 30 is positive, the ordering control
+  # beats random at 12 of 13 values against first TD's 9 of 13, and the chosen
+  # point survived seed-averaging at p=0.007. First TD trains on all 318.
   include_feature_families_by_target:
     anytime_td:
     - _build_game_context_features
