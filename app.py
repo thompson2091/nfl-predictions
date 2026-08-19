@@ -1402,6 +1402,29 @@ def rank_hit_rates(tt: str, model: str) -> dict[int, float]:
 
 @st.cache_data(show_spinner=False)
 @guarded
+def top_pick_outcomes(tt: str):
+    """One row per backtested game: the top pick's confidence and what it did.
+
+    Cached whole so the threshold control can be answered without touching disk
+    on every drag — the frame is ~850 rows, and the measurement at any cut is a
+    filter and a bootstrap over it.
+    """
+    from src.evaluation.hit_rates import top_pick_frame
+    d = top_pick_frame(tt)
+    return d.to_pandas() if d is not None and d.height else None
+
+
+@st.cache_data(show_spinner=False)
+@guarded
+def any_player_outcomes(tt: str):
+    """Every priced candidate and what it did — the population of the list."""
+    from src.evaluation.hit_rates import any_player_frame
+    d = any_player_frame(tt)
+    return d.to_pandas() if d is not None and d.height else None
+
+
+@st.cache_data(show_spinner=False)
+@guarded
 def hit_rate_bands(tt: str) -> dict | None:
     """Measured hit rate by the confidence a pick carries.
 
@@ -1601,7 +1624,7 @@ def render_unpriced(season, week, tt: str, model: str, version: str | None,
         )
 
 
-def render_selectivity(tt: str):
+def render_selectivity(tt: str, board=None):
     """How often the top pick is right, and how selective you must be.
 
     The board's own probabilities are a claim. This is the outcome: measured on
@@ -1620,7 +1643,8 @@ def render_selectivity(tt: str):
     if not s or not s.get("cuts"):
         return
 
-    with st.expander("How often is the top pick right?", icon=":material/target:"):
+    with st.expander("How often is the top pick right?", icon=":material/target:",
+                     expanded=True):
         best = None
         for cut in s["cuts"]:
             if cut["hit_rate"] >= 0.60 and (best is None
@@ -1637,6 +1661,113 @@ def render_selectivity(tt: str):
                "No confidence level reaches 60% as a point estimate — the most "
                "selective cut below is as far as this market goes.")
         )
+        # Live threshold. It reports rather than filters: the board keeps every
+        # row, and this answers "if I only acted on picks above X, how often
+        # would I have been right, and how often would I have acted at all".
+        # Those two move in opposite directions, which is the whole trade and
+        # the reason a single headline number cannot express it.
+        frame, frame_err = top_pick_outcomes(tt)
+        if frame_err:
+            st.caption(f":material/error: threshold detail unavailable — `{frame_err}`")
+        elif frame is not None and len(frame):
+            import polars as _pl
+
+            from src.evaluation.hit_rates import rate_at
+            cut = st.slider(
+                "If I only acted on picks above", min_value=0.0, max_value=0.70,
+                value=0.50, step=0.01, format="%.2f", key=f"hitrate_cut_{tt}",
+            )
+            r = rate_at(_pl.from_pandas(frame), cut)
+            c1, c2, c3 = st.columns(3)
+            if r and r.get("too_few"):
+                c1.metric("Hit rate", "—")
+                c2.metric("Games it applies to", f"{r['games']}")
+                c3.metric("Share of games", f"{r['share_of_games']:.0%}")
+                st.caption(
+                    f"Only {r['games']} backtested games sit above {cut:.2f} — too "
+                    f"few to measure. The rate would be a description of those "
+                    f"games rather than an estimate of anything."
+                )
+            elif r:
+                base = s["overall_hit_rate"]
+                c1.metric("Hit rate", f"{r['hit_rate']:.1%}",
+                          delta=f"{(r['hit_rate'] - base) * 100:+.1f} pts vs every pick")
+                c2.metric("Games it applies to", f"{r['games']:,}")
+                c3.metric("Share of games", f"{r['share_of_games']:.0%}",
+                          delta=f"{(r['share_of_games'] - 1) * 100:+.0f}% coverage",
+                          delta_color="inverse")
+                st.caption(
+                    f"90% interval {r['lo_ci']:.1%} to {r['hi_ci']:.1%}, resampling "
+                    f"whole games. Accuracy and coverage trade against each other — "
+                    f"raising the bar makes the picks better and rarer at the same "
+                    f"time, and neither number means much without the other."
+                )
+
+            # This week's players that clear the same bar.
+            #
+            # Every qualifying player, not just each game's best — and the rate
+            # beside it is measured on that same population rather than
+            # borrowed from the top-pick table above. The two are close and
+            # their ordering is not fixed: at 0.50 the top pick hits 62.7%
+            # against 60.5% for any player, and at 0.55 it reverses, 64.7%
+            # against 66.0%. Quoting one number over the other list would be
+            # wrong by a couple of points in an unpredictable direction.
+            anyfr, any_err = any_player_outcomes(tt)
+            ar = (rate_at(_pl.from_pandas(anyfr), cut)
+                  if anyfr is not None and len(anyfr) else None)
+
+            if board is not None and len(board):
+                qual = board[board["probability"] >= cut].sort_values(
+                    "probability", ascending=False)
+                head = f"**Every player above {cut:.2f} this week**"
+                if ar and not ar.get("too_few"):
+                    head += (f" — players rated this highly have scored "
+                             f"**{ar['hit_rate']:.1%}** of the time "
+                             f"[{ar['lo_ci']:.1%}, {ar['hi_ci']:.1%}], "
+                             f"on {ar['games']:,} backtested picks")
+                st.markdown(head)
+                if qual.empty:
+                    st.caption(
+                        f"Nobody on this week's board is rated above {cut:.2f}. "
+                        f"An empty list is the bar working, not a missing number."
+                    )
+                else:
+                    q = qual.assign(
+                        Player=qual["player_name"], Game=qual["game_label"],
+                        Ours=qual["probability"] * 100,
+                        Odds=(qual["odds"].map(bp.american)
+                              if "odds" in qual.columns else ""),
+                        Best=(qual["best_odds"].map(
+                                  lambda o: bp.american(o) if pd.notna(o) else "")
+                              if "best_odds" in qual.columns else ""),
+                    )
+                    cols = ["Player", "team", "Game", "Odds"]
+                    if "best_odds" in qual.columns and qual["best_odds"].notna().any():
+                        cols += ["Best"]
+                    cols += ["Ours"]
+                    st.dataframe(
+                        q[cols], hide_index=True,
+                        column_config={
+                            "team": st.column_config.TextColumn("Team", width="small"),
+                            "Odds": st.column_config.TextColumn("Odds", width="small"),
+                            "Best": st.column_config.TextColumn(
+                                "Best price", width="small",
+                                help="Longest price across the books we archive. "
+                                     "The consensus is the one number here nobody "
+                                     "can actually bet."),
+                            "Ours": st.column_config.NumberColumn(
+                                "Our estimate", format="%.0f%%"),
+                        },
+                    )
+                    ngames = qual["game_label"].nunique()
+                    st.caption(
+                        f"{len(qual)} players across {ngames} "
+                        f"{'game' if ngames == 1 else 'games'}. This is every "
+                        f"qualifying player, so the rate quoted above it is the "
+                        f"any-player one — not the top-pick figure in the table "
+                        f"below, which describes a narrower population."
+                    )
+
         table = pd.DataFrame([
             {"Take picks above": f"{c['threshold']:.2f}",
              "Games": c["games"],
@@ -2051,25 +2182,29 @@ if tab_board.open:
             if longshots_only and ls is not None:
                 st.info(
                     f"**Longshots we rate highest.** Across "
-                    f"{ls['seasons'][0]}-{ls['seasons'][-1]} we sorted this group far "
-                    f"better than the price did — **{ls['auc_ours']:.2f}** against the "
-                    f"book's **{ls['auc_book']:.2f}**, the biggest gap on the board. "
-                    f"But read it as *which longshots are live*, not *which are good "
+                    f"{ls['seasons'][0]}-{ls['seasons'][-1]} we order this group "
+                    f"slightly better than the price does — **{ls['auc_ours']:.2f}** "
+                    f"against the book's **{ls['auc_book']:.2f}**, both close to a "
+                    f"coin flip. That gap used to read 0.76 against 0.54 and was "
+                    f"described here as the biggest edge on the board; almost all of "
+                    f"it was two data leaks telling the model who had actually "
+                    f"played, which in a band of deep reserves is most of the answer. "
+                    f"Read it as *which longshots are live*, not *which are good "
                     f"value*: this band is priced around "
                     f"**{ls['band_price_implied']:.1%}** and only hits "
                     f"**{ls['band_actual_rate']:.1%}**, so the bookmaker's margin here "
                     f"is enormous. Our best-rated tenth still only came in at "
                     f"**{ls['top_decile_actual']:.1%}** against a price implying "
-                    f"**{ls['top_decile_price_implied']:.1%}** — roughly "
-                    f"{ls['top_decile_per_week']:.0f} players a week, of whom well "
-                    f"under one scores.",
+                    f"**{ls['top_decile_price_implied']:.1%}** — below the price, "
+                    f"not above it, at roughly {ls['top_decile_per_week']:.0f} "
+                    f"players a week, of whom well under one scores.",
                     icon=":material/insights:",
                 )
 
             if shown.empty:
                 st.info("No players match that filter.")
             else:
-                render_selectivity(target_type)
+                render_selectivity(target_type, board)
                 render_board(shown, target_type, selected_model)
                 render_unpriced(season, week, target_type, selected_model,
                                 selected_version, query=query)

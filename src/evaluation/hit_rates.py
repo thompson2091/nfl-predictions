@@ -156,3 +156,65 @@ def best_threshold(summary: dict, target: float = 0.60) -> dict | None:
         return None
     ok = [c for c in summary["cuts"] if c["hit_rate"] >= target]
     return min(ok, key=lambda c: c["threshold"]) if ok else None
+
+
+def top_pick_frame(target_type: str, model: str | None = None) -> pl.DataFrame | None:
+    """One row per backtested game: the top pick's confidence and what it did.
+
+    Exposed so a caller can ask about *any* threshold rather than the fixed grid
+    in `top_pick_bands`. A dynamic control needs to answer "what if I only took
+    picks above 0.62", and a table of six preset cuts cannot.
+    """
+    df = _load_backtests(target_type, model)
+    if df is None:
+        return None
+    pc, lc = _prob_col(df), _label_col(df)
+    return (df.sort(pc, descending=True).group_by("game_id").first()
+            .select([pl.col("game_id"),
+                     pl.col(pc).alias("prob"),
+                     pl.col(lc).cast(pl.Float64).alias("hit")]))
+
+
+def rate_at(frame: pl.DataFrame, threshold: float) -> dict | None:
+    """Measured hit rate for top picks at or above `threshold`.
+
+    Returns None below MIN_GAMES rather than a rate computed on a handful of
+    games — at the sharp end of the board a threshold can select twenty games,
+    where the interval is wider than the effect anyone is looking for.
+    """
+    if frame is None or frame.height == 0:
+        return None
+    sel = frame.filter(pl.col("prob") >= threshold)
+    if sel.height < MIN_GAMES:
+        return {"threshold": threshold, "games": sel.height,
+                "share_of_games": sel.height / frame.height,
+                "hit_rate": None, "lo_ci": None, "hi_ci": None,
+                "too_few": True}
+    rate, lo, hi = _clustered_rate(sel["hit"].to_numpy(), sel["game_id"].to_numpy())
+    return {"threshold": threshold, "games": sel.height,
+            "share_of_games": sel.height / frame.height,
+            "hit_rate": rate, "lo_ci": lo, "hi_ci": hi, "too_few": False}
+
+
+def any_player_frame(target_type: str, model: str | None = None) -> pl.DataFrame | None:
+    """Every priced candidate, not just each game's best.
+
+    `top_pick_frame` answers "should I act on this week's top pick". This
+    answers "should I act on every player rated above X", which is a different
+    population and therefore a different rate — measured, not borrowed from the
+    top-pick table.
+
+    The two are close and the ordering between them is not fixed. Measured on
+    849 games: at 0.50 the top pick hits 62.7% against 60.5% for any player, and
+    at 0.55 it reverses, 64.7% against 66.0%. Attaching either number to the
+    other's list would be wrong by a couple of points in an unpredictable
+    direction, which is precisely the sort of small silent error this project
+    keeps finding.
+    """
+    df = _load_backtests(target_type, model)
+    if df is None:
+        return None
+    pc, lc = _prob_col(df), _label_col(df)
+    return df.select([pl.col("game_id"),
+                      pl.col(pc).alias("prob"),
+                      pl.col(lc).cast(pl.Float64).alias("hit")])
