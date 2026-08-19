@@ -244,3 +244,40 @@ def format_bet_card(card: pl.DataFrame, target_type: str, season: int,
     lines.append("Edge is vs the DE-VIGGED price; EV is at the price you're actually paid.")
     lines.append("Stakes are fractional Kelly — see config/settings.yaml -> betting.")
     return "\n".join(lines)
+
+
+def unpriced_for_week(season: int, week: int, target_type: str, model_name: str,
+                      model_dir=None, persist: bool = True) -> pl.DataFrame:
+    """Players the model rates that no bookmaker has quoted.
+
+    `board_for_week` inner-joins predictions to the market, so a player nobody
+    priced does not appear anywhere — and three weeks before a season opens the
+    books have posted four games out of sixteen. The board was not wrong; it was
+    answering "what can I bet on" while being read as "who is likely to score".
+
+    These are kept strictly apart from the board rather than merged into it, and
+    the reason is not presentational. Their probability is **unblended**: with no
+    price to blend toward, `blend` leaves the raw model number, which is a
+    different basis from every priced row. And the board's `#`, its Top-1/3/5
+    accuracy, "Typical at #" and the measured hit-rate bands are all computed on
+    the priced population. Mixing these rows in would quietly change what every
+    one of those numbers describes, which is the more expensive kind of wrong.
+    """
+    from src.prediction.predict import predict
+
+    result = predict(season, week, model_name=model_name,
+                     target_type=target_type, model_dir=model_dir,
+                     persist=persist)
+    if result is None or result.height == 0:
+        return pl.DataFrame()
+    if "has_market_price" not in result.columns:
+        return pl.DataFrame()
+
+    out = result.filter(~pl.col("has_market_price"))
+    if out.height == 0:
+        return out
+    # Ranked within its own population, never sharing a ladder with the board.
+    return (out.with_columns(
+                pl.col("probability").rank(descending=True, method="ordinal")
+                .over("game_id").alias("unpriced_rank"))
+            .sort(["game_id", "unpriced_rank"]))

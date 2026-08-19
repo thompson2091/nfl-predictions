@@ -1004,6 +1004,17 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
         help="Our estimated chance this player scores a touchdown. This is the "
              "number the whole model exists to get right.",
     ),
+    "ModelOnly": st.column_config.NumberColumn(
+        "Model only", format="%.0f%%", width="small",
+        help="Our number before it is blended with the bookmaker's. Shown "
+             "because it is what the model alone believes — but it is not the "
+             "better number for picking. Ranked on 849 backtested games, "
+             "blending picks the game's scorer 52.7% of the time against "
+             "51.0% for the model alone, because the price carries real "
+             "information. It is the right column for judging a *bet*, where "
+             "the disagreement with the price is the whole point, and the "
+             "wrong one for judging who is likely to score.",
+    ),
     "AtRank": st.column_config.NumberColumn(
         "Typical at #", format="%.0f%%",
         # The season is read from config rather than written here: it said
@@ -1389,6 +1400,28 @@ def rank_hit_rates(tt: str, model: str) -> dict[int, float]:
     return {int(r): float(h) for r, h in zip(agg["rank"], agg["hit"])}
 
 
+@st.cache_data(show_spinner=False)
+@guarded
+def hit_rate_bands(tt: str) -> dict | None:
+    """Measured hit rate by the confidence a pick carries.
+
+    Answers "how often is this right", which is a different question from
+    `rank_economics`' "does this pay". On anytime TD the two currently disagree:
+    the top pick is right 49.8% of the time against a 16.2% base rate, while
+    backing the top three loses 5.7%. A board read as a shortlist wants the
+    first number; a bet card wants the second.
+
+    `@guarded` rather than a bare try/except, and the import sits inside it. The
+    first version of this function put the import above the try, so a container
+    built before `src/evaluation/hit_rates.py` existed did not lose the panel —
+    it took the whole page down with a ModuleNotFoundError. That is the exact
+    failure `guarded` was written for: report it beside the section it belongs
+    to, rather than swallowing it or crashing the app.
+    """
+    from src.evaluation.hit_rates import top_pick_bands
+    return top_pick_bands(tt)
+
+
 @st.cache_data
 def confidence_cuts(tt: str) -> tuple[float, float]:
     """Where High/Medium/Low sit, taken from how far we typically differ.
@@ -1481,6 +1514,156 @@ def injury_status(tt: str, season: int, week: int) -> pd.DataFrame | None:
     return d.to_pandas() if d is not None and d.height else None
 
 
+@st.cache_data(show_spinner=False, max_entries=16)
+@guarded
+def unpriced_board(season: int, week: int, tt: str, model: str,
+                   version: str | None = None):
+    """Players the model rates that no bookmaker has quoted."""
+    from src.prediction.bets import unpriced_for_week
+    from src.utils.config import config_overlay
+    model_dir, persist = selected_model_dir(tt, version)
+    with config_overlay(version_scoring_config(version)):
+        d = unpriced_for_week(season, week, tt, model,
+                              model_dir=model_dir, persist=persist)
+    return d.to_pandas() if d is not None and d.height else None
+
+
+def render_unpriced(season, week, tt: str, model: str, version: str | None,
+                    query: str = ""):
+    """The rest of the slate — rated, unpriced, and kept apart from the board.
+
+    Separate table rather than extra rows, because these numbers are not on the
+    same footing as the board's. Two differences, both stated on screen:
+
+      * **Unblended.** With no price to blend toward, `blend` leaves the raw
+        model probability. Every priced row on the board has been pulled toward
+        the bookmaker, which is what makes it better calibrated — so the two
+        columns are not comparable at the same value.
+      * **Outside every measured claim.** `#`, Top-1/3/5, "Typical at #" and the
+        hit-rate bands are all measured on priced players. Extending them to a
+        population no book has quoted would be an extrapolation, so this table
+        deliberately shows none of them.
+
+    Three weeks before a season opens this is most of the card — four games of
+    sixteen were priced when it was written — so the alternative is a board that
+    silently answers a narrower question than the one being asked of it.
+    """
+    d, err = unpriced_board(season, week, tt, model, version)
+    if err:
+        st.caption(f":material/error: Unpriced players unavailable — `{err}`")
+        return
+    if d is None or d.empty:
+        return
+
+    d = d.copy()
+    if query:
+        d = d[d["player_name"].str.contains(query, case=False, na=False)]
+    if d.empty:
+        return
+
+    games = d["game_label"].nunique()
+    with st.expander(
+        f"{len(d)} rated players across {games} unpriced "
+        f"{'game' if games == 1 else 'games'}",
+        icon=":material/help_center:",
+    ):
+        st.warning(
+            "**No bookmaker has posted a price for these players yet**, so these "
+            "estimates are *unblended* — the model's own view, with nothing pulled "
+            "toward a market number. Every figure on the board above is blended, "
+            "which makes it better calibrated, so do not compare the two columns "
+            "at face value. The accuracy figures above are measured on priced "
+            "players and do not describe this table.",
+            icon=":material/info:",
+        )
+        show = d.assign(
+            Player=d["player_name"],
+            Game=d["game_label"],
+            Ours=d["probability"] * 100,
+            InGame=d["unpriced_rank"],
+        ).sort_values("probability", ascending=False)
+        st.dataframe(
+            show[["Player", "team", "Game", "InGame", "Ours"]], hide_index=True,
+            column_config={
+                "team": st.column_config.TextColumn("Team", width="small"),
+                "InGame": st.column_config.NumberColumn(
+                    "In game", width="small",
+                    help="Rank within this game's unpriced players only. It is "
+                         "deliberately not the board's #, which is measured on "
+                         "priced players.",
+                ),
+                "Ours": st.column_config.NumberColumn(
+                    "Our estimate (unblended)", format="%.0f%%",
+                    help="The model's raw probability. Not blended with a market "
+                         "price, because there is not one.",
+                ),
+            },
+        )
+
+
+def render_selectivity(tt: str):
+    """How often the top pick is right, and how selective you must be.
+
+    The board's own probabilities are a claim. This is the outcome: measured on
+    backtested seasons, at each level of confidence, with a game-clustered
+    interval because two picks in one game share a defence and a final score.
+
+    It is deliberately framed as coverage against accuracy rather than as a
+    single headline. Being right 60% of the time on a quarter of games and 50%
+    on all of them are both true statements about the same model, and which one
+    matters depends on whether you intend to act every week.
+    """
+    s, err = hit_rate_bands(tt)
+    if err:
+        st.caption(f":material/error: Hit-rate summary unavailable — `{err}`")
+        return
+    if not s or not s.get("cuts"):
+        return
+
+    with st.expander("How often is the top pick right?", icon=":material/target:"):
+        best = None
+        for cut in s["cuts"]:
+            if cut["hit_rate"] >= 0.60 and (best is None
+                                            or cut["threshold"] < best["threshold"]):
+                best = cut
+        st.markdown(
+            f"Across **{s['games']:,}** backtested games the top pick scores "
+            f"**{s['overall_hit_rate']:.1%}** of the time, against a base rate of "
+            f"**{s['base_rate']:.1%}** for a candidate picked at random — a "
+            f"**{s['overall_hit_rate'] / max(s['base_rate'], 1e-9):.1f}x** lift. "
+            + (f"Restricting to picks above **{best['threshold']:.2f}** reaches "
+               f"**{best['hit_rate']:.1%}**, on **{best['share_of_games']:.0%}** of games."
+               if best else
+               "No confidence level reaches 60% as a point estimate — the most "
+               "selective cut below is as far as this market goes.")
+        )
+        table = pd.DataFrame([
+            {"Take picks above": f"{c['threshold']:.2f}",
+             "Games": c["games"],
+             "Share of games": c["share_of_games"] * 100,
+             "Hit rate": c["hit_rate"] * 100,
+             "Range": f"{c['lo_ci']:.1%} - {c['hi_ci']:.1%}"}
+            for c in s["cuts"]
+        ])
+        st.dataframe(
+            table, hide_index=True,
+            column_config={
+                "Share of games": st.column_config.NumberColumn(format="%.0f%%"),
+                "Hit rate": st.column_config.NumberColumn(format="%.1f%%"),
+                "Range": st.column_config.TextColumn(
+                    "Range", help="90% interval, resampling whole games rather "
+                                  "than individual picks — two picks in one game "
+                                  "are not independent evidence."),
+            },
+        )
+        st.caption(
+            "Measured on seasons the model never trained on. Being more "
+            "selective means acting on fewer weeks, not on better players: the "
+            "picks below the cut are still shown, they just carry a rate that "
+            "has been measured rather than assumed."
+        )
+
+
 def render_board(frame, tt: str, model: str):
     """Single renderer, so every view describes a player the same way."""
     lo, hi = confidence_cuts(tt)
@@ -1505,6 +1688,14 @@ def render_board(frame, tt: str, model: str):
     # departing from.
     cols = ["Player", "team", "Game", "Odds", "Rank", "AtRank", "Ours",
             "Book", "edge_pp", "Confidence"]
+
+    # Pre-blend estimate beside the published one. Only where blending actually
+    # moves the number: first TD is not blended, so there the two are identical
+    # and a second column would imply a distinction this market does not have —
+    # the same rule the Bet #/Bet edge pair follows.
+    if bp.blend_moves_the_number(frame):
+        show = show.assign(ModelOnly=frame["prob_model"] * 100)
+        cols = cols[:7] + ["ModelOnly"] + cols[7:]
 
     # The team's own chance of striking first, beside the player's. First TD
     # only — see week_board. Placed immediately after Team, so it reads as a
@@ -1878,7 +2069,10 @@ if tab_board.open:
             if shown.empty:
                 st.info("No players match that filter.")
             else:
+                render_selectivity(target_type)
                 render_board(shown, target_type, selected_model)
+                render_unpriced(season, week, target_type, selected_model,
+                                selected_version, query=query)
                 if depth != "Everyone":
                     # The same walk-forward-or-fall-back source the strip at the top
                     # of the page uses, and that the "Show per game" help quotes.

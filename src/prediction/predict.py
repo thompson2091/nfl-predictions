@@ -621,6 +621,14 @@ def predict(season: int, week: int, model_name: str = None,
     if "prob_calibrated" in result.columns:
         result = result.with_columns(pl.col("prob_calibrated").alias("prob_model"))
         keep.append("prob_model")
+    # Whether a bookmaker priced this player at all. `blend` already computes
+    # it and this select used to drop it, which is why every consumer could
+    # only ever see the priced half of a slate: `build_board` inner-joins to
+    # the market, so a player nobody quoted simply vanished, with nothing
+    # distinguishing "we have no view" from "no book has posted yet". Three
+    # weeks before a season opens that is most of the card.
+    if "has_market_price" in result.columns:
+        keep.append("has_market_price")
     result = result.select(keep)
 
     if not persist:
