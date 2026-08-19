@@ -480,3 +480,66 @@ def test_every_registered_model_module_is_listed_in_one_of_the_two_tuples():
     assert registering <= listed, (
         f"these declare @register but are imported by nobody: "
         f"{sorted(registering - listed)}")
+
+
+def test_promotion_does_not_silently_leave_artifacts_describing_another_model():
+    """The sixth instance of the day's pattern, and the one that reached the app.
+
+    `promote` swaps weights and nothing else. Backtest frames, rank economics,
+    the walk-forward, CLV and the served prediction files all describe whichever
+    model was live when they were written, and the app reads every one of them.
+    On 2026-08-19 a promotion left three of those stale and only
+    `test_served_path_matches_the_evaluated_path` noticed — by finding that the
+    served probability matched NO stage of the evaluated path.
+
+    Compared on modification time against `promoted_at`, so nothing needs a new
+    format and anything regenerated afterwards is current whatever wrote it.
+    """
+    from src.models import versioning as V
+
+    if not V.current_path().exists():
+        pytest.skip("nothing promoted in this checkout")
+
+    stale = V.stale_derived()
+    assert isinstance(stale, list)
+    for row in stale:
+        assert {"market", "artifact", "version", "fix"} <= set(row), (
+            "a staleness report without the command that fixes it gets ignored")
+        assert row["fix"], f"{row['artifact']} has no regeneration command"
+
+    # Every pattern must name a real command, or the report sends people nowhere.
+    for pattern, fix in V.DERIVED_ARTIFACTS.items():
+        assert fix.strip(), f"{pattern} has no fix"
+        assert "make " in fix or "python scripts/" in fix, (
+            f"{pattern} -> {fix!r} is not runnable")
+
+
+def test_the_staleness_check_clears_once_an_artifact_is_regenerated(tmp_path,
+                                                                    monkeypatch):
+    """A check that never clears is a check people learn to ignore."""
+    import json as _json
+    from datetime import datetime, timedelta, timezone
+
+    from src.models import versioning as V
+
+    out = tmp_path / "output" / "anytime_td"
+    out.mkdir(parents=True)
+    cur = tmp_path / "CURRENT.json"
+    promoted = datetime.now(timezone.utc).replace(microsecond=0)
+    cur.write_text(_json.dumps({"anytime_td": {
+        "version": "v1", "promoted_at": promoted.isoformat()}}))
+
+    monkeypatch.setattr(V, "current_path", lambda: cur)
+    monkeypatch.setattr(V, "get_path", lambda *a: out)
+
+    old = out / "walkforward.json"
+    old.write_text("{}")
+    stamp = (promoted - timedelta(hours=1)).timestamp()
+    import os
+    os.utime(old, (stamp, stamp))
+    assert any(r["artifact"] == "walkforward.json"
+               for r in V.stale_derived(("anytime_td",))), "written before the promote"
+
+    fresh = (promoted + timedelta(minutes=1)).timestamp()
+    os.utime(old, (fresh, fresh))
+    assert not V.stale_derived(("anytime_td",)), "regenerated after — must clear"

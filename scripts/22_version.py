@@ -83,6 +83,35 @@ def cmd_lock(a) -> int:
     return cmd_promote(argparse.Namespace(id=a.id, market=None, force=False))
 
 
+def _report_stale(markets=None) -> None:
+    """What a promotion just invalidated, and the command that fixes each.
+
+    Promotion swaps weights and nothing else. Everything derived from the model
+    — backtest frames, rank economics, the walk-forward, CLV, the served
+    prediction files — still describes whichever model was live when it was
+    written, and the app reads all of them. On 2026-08-19 a promote left all
+    three of the first, and the only thing that noticed was a test.
+    """
+    from src.models.versioning import MARKETS, stale_derived
+
+    stale = stale_derived(markets or MARKETS)
+    if not stale:
+        print("\nDerived artifacts are current.")
+        return
+    print(f"\n{len(stale)} derived artifact(s) now describe a DIFFERENT model "
+          f"than the one being served:")
+    by_market: dict[str, list[dict]] = {}
+    for row in stale:
+        by_market.setdefault(row["market"], []).append(row)
+    for market, rows in sorted(by_market.items()):
+        print(f"  {market}")
+        for r in rows:
+            print(f"    {r['artifact']}")
+    print("\n  Regenerate them before reading anything off the app:")
+    for fix in sorted({r["fix"] for r in stale}):
+        print(f"    {fix}")
+
+
 def cmd_list(a) -> int:
     versions = list_versions()
     if not versions:
@@ -154,6 +183,7 @@ def cmd_promote(a) -> int:
               + (f"  (was {prev})" if prev else ""))
     print(f"\nUpdated {current_path()}  <- commit this")
     print("The app and pipeline read models/<market>/ directly, so this is live.")
+    _report_stale(markets)
     return 0
 
 
@@ -163,6 +193,7 @@ def cmd_rollback(a) -> int:
     for market in markets:
         print(f"{market:11s} rolled back to {current[market]['version']}")
     print(f"\nUpdated {current_path()}  <- commit this")
+    _report_stale(markets)
     return 0
 
 

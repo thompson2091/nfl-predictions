@@ -778,6 +778,64 @@ def runtime_drift(markets=MARKETS) -> list[str]:
     return notes
 
 
+#: Artifacts derived from a trained model, written elsewhere in the pipeline,
+#: and describing whichever model was live when they were produced. Promoting
+#: swaps the weights and leaves every one of these behind.
+#:
+#: The value is the command that regenerates it. Keeping the two together is
+#: the point: a warning that a file is stale without saying how to fix it gets
+#: ignored, and this list is long enough that nobody remembers it.
+DERIVED_ARTIFACTS = {
+    "backtest_*.csv": "make evaluate",
+    "rank_economics*.json": "python scripts/14_rank_economics.py --target {market}",
+    "predictions_*.csv": "python scripts/06_predict.py --season <s> --week <w>",
+    "walkforward.json": "make walkforward TARGET={market}",
+    "clv.json": "python scripts/13_clv.py --target {market}",
+}
+
+
+def stale_derived(markets=MARKETS) -> list[dict]:
+    """Derived artifacts written before the model they claim to describe.
+
+    Promotion swaps weights and nothing else. On 2026-08-19 the backtest
+    frames, rank economics and served predictions all still described the
+    previous model after a promote, and the only thing that noticed was
+    `test_served_path_matches_the_evaluated_path` — which found the served
+    probability matched NO stage of the evaluated path. The app was one test
+    run away from publishing a board whose accuracy figures belonged to a
+    different model.
+
+    Compared on modification time against `promoted_at`, so no artifact needs a
+    new format and a file regenerated after the promotion is current whatever
+    wrote it.
+    """
+    from datetime import datetime as _dt
+
+    if not current_path().exists():
+        return []
+    current = json.loads(current_path().read_text())
+
+    out = []
+    for market in markets:
+        entry = current.get(market) or {}
+        stamp = entry.get("promoted_at")
+        if not stamp:
+            continue
+        when = _dt.fromisoformat(stamp).timestamp()
+        root = get_path("output", market)
+        if not root.exists():
+            continue
+        for pattern, fix in DERIVED_ARTIFACTS.items():
+            for path in sorted(root.glob(pattern)):
+                if path.stat().st_mtime < when:
+                    out.append({
+                        "market": market, "artifact": path.name,
+                        "version": entry["version"], "promoted_at": stamp,
+                        "fix": fix.format(market=market),
+                    })
+    return out
+
+
 def promote(version_id: str, markets=MARKETS, *, force: bool = False) -> dict:
     """Serve `version_id`: copy its artifacts over `models/` and repoint CURRENT.
 

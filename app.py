@@ -152,6 +152,19 @@ def receptions_backtests():
     return pl.concat([pl.read_csv(f) for f in files], how="diagonal_relaxed").to_pandas()
 
 
+@st.cache_data(show_spinner=False, ttl=60)
+@guarded
+def derived_staleness():
+    """Artifacts on the page that predate the model being served.
+
+    Short TTL rather than none: these clear as soon as the pipeline is re-run,
+    and a cached warning that outlives its cause is how a real one stops being
+    read.
+    """
+    from src.models.versioning import stale_derived
+    return stale_derived()
+
+
 @st.cache_data(show_spinner=False)
 @guarded
 def feature_set_state(tt: str):
@@ -3596,6 +3609,19 @@ if tab2.open:
             f"tuning, and {cfg['splits']['test_season']} is held back entirely so these "
             f"numbers aren't flattering themselves."
         )
+
+        _stale, _stale_err = derived_staleness()
+        if not _stale_err and _stale:
+            _names = sorted({r["artifact"] for r in _stale})
+            st.warning(
+                f"**{len(_stale)} artifact(s) on this page were written before "
+                f"the model now being served** — "
+                + ", ".join(f"`{n}`" for n in _names[:6])
+                + (f" and {len(_names) - 6} more" if len(_names) > 6 else "")
+                + ". Promotion swaps the weights and nothing else, so these "
+                  "still describe the previous model. Regenerate with: "
+                + ", ".join(f"`{f}`" for f in sorted({r["fix"] for r in _stale})),
+                icon=":material/update:")
 
         from src.models.registry import MISSING_OPTIONAL
         if MISSING_OPTIONAL:
