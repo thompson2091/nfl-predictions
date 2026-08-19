@@ -106,6 +106,33 @@ def _meta(cap, target_type: str) -> list[str]:
     return bits
 
 
+def _gate(force: bool) -> bool:
+    """Refuse to publish numbers that describe a different model.
+
+    An export is the one place a mislabelled figure leaves this machine.
+    Everything else is read in context by someone who knows what was just run;
+    a published page is read by whoever opens it with no way to tell what it
+    was built from. On 2026-08-19 six separate artifacts were found describing
+    a model other than the one they claimed, so this is a gate rather than a
+    warning.
+    """
+    from src.evaluation.freshness import export_blockers
+
+    blockers = export_blockers()
+    if not blockers:
+        return True
+    print("Refusing to export — these would publish a different model's "
+          "numbers:", file=sys.stderr)
+    for b in blockers:
+        print(f"  {b}", file=sys.stderr)
+    if force:
+        print("\n--force given; publishing anyway.", file=sys.stderr)
+        return True
+    print("\nFix them, or pass --force if you know why this snapshot is "
+          "wanted anyway.", file=sys.stderr)
+    return False
+
+
 def main(out_dir: str, open_after: bool, quiet: bool, simple: bool) -> int:
     markets = []
     for key, label in MARKETS:
@@ -154,5 +181,8 @@ if __name__ == "__main__":
                         "and every paragraph of its explanations")
     p.add_argument("--verbose", action="store_true",
                    help="let the pipeline's own stdout through")
+    p.add_argument("--force", action="store_true",
+                   help="publish even when artifacts predate the served model")
     a = p.parse_args()
-    raise SystemExit(main(a.out, a.open, not a.verbose, not a.full))
+    raise SystemExit(0 if not _gate(a.force)
+                     else main(a.out, a.open, not a.verbose, not a.full))

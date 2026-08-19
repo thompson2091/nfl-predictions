@@ -424,8 +424,48 @@ def render_feature_lab(tt: str):
             f"make train && make lock ID=YYYY.MM.DD-{slug} NOTE=\"...\"\n",
             language="bash")
 
-        tried = len(list((_Path(__file__).resolve().parent / "experiments")
-                         .glob("*.yaml")))
+        # Writing the file and launching the screen, rather than asking the
+        # reader to copy four commands into a terminal. The screen is one seed
+        # and never promotes; `settle-overlay` stays a deliberate second step
+        # because that is the test that separates a real gain from the seed,
+        # and collapsing them into one button is how the separation stops
+        # being noticed.
+        exp_dir = _Path(__file__).resolve().parent / "experiments"
+        target = exp_dir / f"{slug}.yaml"
+        c1, c2 = st.columns([1, 2])
+        if c1.button("Write and screen it", key=f"lab-run-{tt}",
+                     disabled=sorted(chosen) == state["on"]):
+            import subprocess
+            target.write_text(yaml_text)
+            log = _Path(__file__).resolve().parent / "logs" / f"screen_{slug}.log"
+            log.parent.mkdir(exist_ok=True)
+            with open(log, "w") as fh:
+                subprocess.Popen(
+                    [sys.executable, "scripts/23_experiment.py", "screen",
+                     str(target), "--market", tt],
+                    stdout=fh, stderr=fh,
+                    cwd=str(_Path(__file__).resolve().parent),
+                    start_new_session=True)
+            st.success(
+                f"Wrote `experiments/{slug}.yaml` and started a screen in the "
+                f"background — one seed, minutes, never promotes. Output goes "
+                f"to `logs/screen_{slug}.log`. When it finishes, settle it "
+                f"before believing it:\n\n"
+                f"`make settle-overlay EXP=experiments/{slug}.yaml SEEDS=5 "
+                f"MARKET={tt}`", icon=":material/play_arrow:")
+        c2.caption(
+            "The screen runs one seed. It cannot resolve what it shows — the "
+            "seed band on anytime TD Top-1 is 0.64pp and adjacent points on "
+            "the retention ladder differ by more than that. Treat it as a "
+            "filter, not an answer.")
+
+        _log = _Path(__file__).resolve().parent / "logs" / f"screen_{slug}.log"
+        if _log.exists():
+            _tail = _log.read_text().strip().splitlines()[-14:]
+            with st.expander(f"Last screen for this set — `{_log.name}`"):
+                st.code("\n".join(_tail) or "(empty)", language="text")
+
+        tried = len(list(exp_dir.glob("*.yaml")))
         st.caption(
             f"{tried} experiment files exist in this repo. Every feature set "
             f"tried is a comparison against the same held-out seasons, so at "
@@ -931,17 +971,12 @@ def _team_rate_model(tt: str, model_dir=None):
 def _expected_scorers(tt: str) -> float:
     """How many players we expect to score in a game, used to strip the vig.
 
-    Exactly one player scores the first touchdown; for anytime-TD the count is
-    read from the prior fitted during training, so it tracks the league's scoring
-    environment rather than being pinned to a number someone typed once.
+    One implementation, in `market_parity`, because the de-vig target and the
+    comparison that consumes it have to agree — they were separate copies of
+    the same fitted prior for as long as this lived in the app.
     """
-    if tt == "first_td":
-        return 1.0
-    import json
-    path = get_path("models", tt) / "scorer_rate_prior.json"
-    if path.exists():
-        return float(json.loads(path.read_text())["mean_scorers_per_game"])
-    return 4.3
+    from src.evaluation.market_parity import expected_scorers
+    return expected_scorers(tt)
 
 
 # `edge_color` lived here: it painted a row green or red at a hand-picked
@@ -1790,142 +1825,21 @@ def market_headtohead(tt: str, model: str,
                       version: str | None = None) -> dict | None:
     """Us vs the sportsbook on identical players, pooled over every priced season.
 
-    The headline claim of the app, so it gets the same treatment as the
-    accuracy strip: every season we hold prices for, not just the held-out one.
-    A single season is ~7,000 priced players and the Brier differences involved
-    are in the third decimal, so a one-season read swings on noise — this
-    reported +2.1% on 2025 and +0.6% on 2024 for the same model.
-
-    It also scores the joint path rather than raw model output. Comparing a
-    ranking the board never shows to the bookmaker answered a question nobody
-    asked.
+    The measurement itself is `src.evaluation.market_parity.compare` — it left
+    this file when the exported dashboard needed the same three tiles, because
+    the alternative was a second copy of the de-vigging and the joint path and
+    every previous copy of either here has drifted. What stays is what is
+    genuinely app-shaped: caching, and following the selected version so these
+    tiles do not sit still while the Top-K figures beside them move.
     """
-    try:
-        from sklearn.metrics import brier_score_loss, roc_auc_score
-
-        from src.ingest.odds_history import load_graded_history
-    except Exception:
-        return None
-
-    graded = load_graded_history(tt)
-    df = load_features(tt)
-    # Follow the selected version, exactly as the board does. Reading
-    # production's directory here is what made these tiles sit still while the
-    # Top-K figures beside them moved.
+    from src.evaluation.market_parity import compare
     version_dir, _ = selected_model_dir(tt, version)
-    model_dir = version_dir or get_path("models", tt)
-    fc_path = model_dir / "feature_cols.pkl"
-    if graded is None or df is None or not fc_path.exists():
+    try:
+        return compare(tt, model, load_features(tt),
+                       model_dir=version_dir or get_path("models", tt),
+                       active_models=active_models)
+    except Exception:                                        # noqa: BLE001
         return None
-
-    seasons = sorted(graded["season"].unique().to_list())
-    feature_cols = pickle.loads(fc_path.read_bytes())
-    team_model = _team_rate_model(tt, model_dir)
-
-    parts = []
-    for season in seasons:
-        d = _filter_low_activity(
-            df.filter((pl.col("season") == season) & pl.col("target").is_not_null())
-        )
-        if d.height == 0:
-            continue
-        X, _ = prepare_data(d, feature_cols)
-        d = d.with_columns(
-            pl.Series("mp", _load_and_predict(model, feature_cols, X, model_dir))
-        )
-        if tt != "first_td" and team_model is not None:
-            from src.models.joint import apply_joint
-            d = apply_joint(d, d, team_model, score_col="mp", out_col="mp",
-                            conversion=_conversion(tt, model_dir))
-
-        j = d.select(["game_id", "player_id", "mp", "target"]).join(
-            graded.filter(pl.col("season") == season)
-                  .select(["game_id", "player_id", "implied_prob"]),
-            on=["game_id", "player_id"], how="inner",
-        )
-        if j.height == 0:
-            continue
-        # De-vig across the joined population only — including prices for
-        # players we never score rescales everyone. See blend.devig_market.
-        exp = _expected_scorers(tt)
-        j = j.with_columns(
-            (pl.col("implied_prob") / pl.col("implied_prob").sum().over("game_id") * exp)
-            .alias("fair")
-        )
-        parts.append(j.with_columns(pl.lit(season).alias("season")))
-
-    if not parts:
-        return None
-    j = pl.concat(parts)
-    if j.height < 500:
-        return None
-
-    j = j.with_columns((pl.col("mp") - pl.col("fair")).abs().alias("gap"))
-    y = j["target"].to_numpy().astype(float)
-    ours, mkt = j["mp"].to_numpy(), j["fair"].to_numpy()
-
-    top = j.filter(pl.col("gap") >= float(np.quantile(j["gap"].to_numpy(), 0.9)))
-    yt = top["target"].to_numpy().astype(float)
-    bo = brier_score_loss(yt, top["mp"].to_numpy())
-    bm = brier_score_loss(yt, top["fair"].to_numpy())
-    b_all, m_all = brier_score_loss(y, ours), brier_score_loss(y, mkt)
-
-    # Bootstrap the overall improvement by resampling *games*, because two
-    # players in the same game share a defence, a game script and a final
-    # score. Treating them as independent understates the uncertainty.
-    games = j["game_id"].to_numpy()
-    uniq = np.unique(games)
-    idx = {g: np.flatnonzero(games == g) for g in uniq}
-    rng = np.random.default_rng(0)
-    boot = []
-    for _ in range(400):
-        pick = rng.choice(len(uniq), len(uniq), replace=True)
-        rows = np.concatenate([idx[uniq[i]] for i in pick])
-        yb = y[rows]
-        if yb.sum() == 0 or yb.sum() == len(yb):
-            continue
-        bb = brier_score_loss(yb, ours[rows])
-        mb = brier_score_loss(yb, mkt[rows])
-        boot.append((mb - bb) / mb * 100)
-    boot = np.array(boot) if boot else np.array([0.0])
-
-    return {
-        "seasons": seasons,
-        "span": f"{seasons[0]}-{seasons[-1]}" if len(seasons) > 1 else str(seasons[0]),
-        "players": j.height,
-        "games": int(len(uniq)),
-        "overall_better_pct": (m_all - b_all) / m_all * 100,
-        "overall_lo": float(np.percentile(boot, 2.5)),
-        "overall_hi": float(np.percentile(boot, 97.5)),
-        "disagree_better_pct": (bm - bo) / bm * 100,
-        # Split by direction, because the combined figure is not a betting
-        # signal and reads like one. Most of the accuracy on big disagreements
-        # comes from correctly rating players *down* — 55% better than the book
-        # on that half against 16% on the half you can actually back. Quoting
-        # the blend sells fade skill as though it were a bet.
-        **_directional_h2h(top),
-        "auc_ours": roc_auc_score(y, ours),
-        "auc_market": roc_auc_score(y, mkt),
-    }
-
-
-def _directional_h2h(top: pl.DataFrame) -> dict:
-    """Accuracy on big disagreements, split into backable and fade."""
-    from sklearn.metrics import brier_score_loss
-
-    out = {}
-    for name, sub in (("higher", top.filter(pl.col("mp") > pl.col("fair"))),
-                      ("lower", top.filter(pl.col("mp") < pl.col("fair")))):
-        if sub.height < 100:
-            continue
-        yy = sub["target"].to_numpy().astype(float)
-        if yy.sum() == 0 or yy.sum() == len(yy):
-            continue
-        b = brier_score_loss(yy, sub["mp"].to_numpy())
-        m = brier_score_loss(yy, sub["fair"].to_numpy())
-        out[f"disagree_{name}_pct"] = (m - b) / m * 100
-        out[f"disagree_{name}_n"] = int(sub.height)
-    return out
 
 
 @st.cache_data(show_spinner=False)
@@ -2899,12 +2813,21 @@ if tab_board.open:
                 "Longshot standouts",
                 disabled=ls is None,
                 help=(
-                    f"Players priced at +{ls['min_odds']} or longer that we rate "
-                    f"highest. Inside that group the bookmaker's own price barely "
-                    f"sorts scorers from non-scorers (AUC {ls['auc_book']:.2f}) "
-                    f"while ours does much better ({ls['auc_ours']:.2f}) — the "
-                    f"largest gap anywhere on this board. It says which longshots "
-                    f"are live, not which are cheap."
+                    (f"Players priced at +{ls['min_odds']} or longer that we "
+                     f"rate highest. Inside that group neither the book's price "
+                     f"(AUC {ls['auc_book']:.2f}) nor ours ({ls['auc_ours']:.2f}) "
+                     f"sorts scorers from non-scorers by much, and the gap "
+                     f"between them is not distinguishable from zero "
+                     f"(95% CI {ls['auc_gap_lo']:+.3f} to {ls['auc_gap_hi']:+.3f}). "
+                     f"It says which longshots we rate highest, nothing more."
+                     if ls["auc_gap_lo"] <= 0 else
+                     f"Players priced at +{ls['min_odds']} or longer that we "
+                     f"rate highest. Inside that group the book's own price "
+                     f"barely sorts scorers from non-scorers (AUC "
+                     f"{ls['auc_book']:.2f}) while ours does better "
+                     f"({ls['auc_ours']:.2f}), and the gap clears zero "
+                     f"(95% CI {ls['auc_gap_lo']:+.3f} to {ls['auc_gap_hi']:+.3f}). "
+                     f"It says which longshots are live, not which are cheap.")
                     if ls else
                     "Needs the longshot measurement — run scripts/12_longshot.py."
                 ),
@@ -2934,12 +2857,21 @@ if tab_board.open:
                 shown = shown.sort_values("probability", ascending=False)
 
             if longshots_only and ls is not None:
+                _edge = ls["auc_gap_lo"] > 0
                 st.info(
                     f"**Longshots we rate highest.** Across "
                     f"{ls['seasons'][0]}-{ls['seasons'][-1]} we order this group "
-                    f"slightly better than the price does — **{ls['auc_ours']:.2f}** "
+                    + ("slightly better than the price does"
+                       if _edge else
+                       "no better than the price does, within measurement error")
+                    + f" — **{ls['auc_ours']:.2f}** "
                     f"against the book's **{ls['auc_book']:.2f}**, both close to a "
-                    f"coin flip. That gap used to read 0.76 against 0.54 and was "
+                    f"coin flip"
+                    + ("" if _edge else
+                       f" and the gap's 95% interval "
+                       f"({ls['auc_gap_lo']:+.3f} to {ls['auc_gap_hi']:+.3f}) "
+                       f"contains zero")
+                    + f". That gap used to read 0.76 against 0.54 and was "
                     f"described here as the biggest edge on the board; almost all of "
                     f"it was two data leaks telling the model who had actually "
                     f"played, which in a band of deep reserves is most of the answer. "

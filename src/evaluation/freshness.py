@@ -44,6 +44,17 @@ EVALUATION_ARTIFACTS = [
      "the Player types tab"),
     ("combo_backtest.json", "make combos TARGET={market}",
      "how combinations have actually done"),
+    # Added 2026-08-19. These three were missing, and they are the ones that
+    # actually broke: promoting the 24-family model left the backtest frames
+    # and the served predictions describing the previous one, and the only
+    # thing that noticed was `test_served_path_matches_the_evaluated_path`
+    # finding that the served probability matched NO stage of the evaluated
+    # path. The list above covers what the app *quotes*; these are what it
+    # *ranks from*, which is a worse thing to have stale.
+    ("backtest_2025.csv", "make evaluate",
+     "every hit-rate band and the market head-to-head"),
+    ("clv.json", "python scripts/13_clv.py --target {market}",
+     "closing-line value"),
 ]
 
 
@@ -119,3 +130,35 @@ def stale_artifacts(market: str, model_dir: Path | None = None) -> list[dict]:
             "behind_seconds": trained - min(p.stat().st_mtime for p in behind),
         })
     return stale
+
+
+def export_blockers(markets=("anytime_td", "first_td")) -> list[str]:
+    """Reasons a page must not be published right now, in plain sentences.
+
+    An export is the one place a mislabelled number leaves this machine.
+    Everything else is read in context, by someone who knows what was just run;
+    a published page is read by whoever opens it, with no way to tell what it
+    was built from. 2026-08-19 produced six separate instances of an artifact
+    describing a model other than the one it claimed, so the export is gated
+    rather than trusted.
+
+    Two independent checks, because they catch different things: artifacts
+    older than the model that produced them (`stale_artifacts`), and artifacts
+    older than the promotion that changed what is served (`stale_derived`).
+    A promote updates the model directory too, so they overlap — but only the
+    second knows about the served *version*, and only the first is per-market.
+    """
+    from src.models.versioning import stale_derived
+
+    out = []
+    for market in markets:
+        for row in stale_artifacts(market):
+            out.append(
+                f"{market}: {row['artifact']} predates the model it describes "
+                f"({row.get('describes', 'the page')}) — run "
+                f"`{row['command'].format(market=market)}`")
+    for row in stale_derived(tuple(markets)):
+        out.append(
+            f"{row['market']}: {row['artifact']} predates the promotion of "
+            f"{row['version']} — run `{row['fix']}`")
+    return out

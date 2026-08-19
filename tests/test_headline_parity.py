@@ -156,6 +156,26 @@ def test_the_market_tiles_follow_the_selected_version(source):
     fn = fn[:fn.index("\n@st.cache_data")] if "\n@st.cache_data" in fn else fn
     assert "selected_model_dir(tt, version)" in fn, (
         "market_headtohead must resolve the selected version's model directory")
-    assert "_team_rate_model(tt, model_dir)" in fn, (
-        "the joint model must come from the same directory as the weights; "
-        "mixing them is a third model neither version is")
+    assert "model_dir=" in fn, (
+        "and must pass it down; without it the tiles score production's weights "
+        "under the selected version's name")
+
+
+def test_the_joint_model_comes_from_the_same_directory_as_the_weights():
+    """Mixing them is a third model neither version is.
+
+    This used to be checked as a line of `app.py`. The measurement moved to
+    `src/evaluation/market_parity.py` so the exported dashboard could not carry
+    a second copy of it — the invariant did not move, so the check follows it
+    rather than being dropped along with the line it used to read.
+    """
+    src = (Path(__file__).resolve().parents[1]
+           / "src" / "evaluation" / "market_parity.py").read_text()
+    fn = src[src.index("def scored_against_market("):]
+    fn = fn[:fn.index("\ndef ")] if "\ndef " in fn[1:] else fn
+    assert 'md = model_dir or get_path("models", target_type)' in fn, (
+        "one directory decides everything the comparison loads")
+    for artifact in ("feature_cols.pkl", "team_td_rate.json", "td_conversion.json"):
+        assert f'md / "{artifact}"' in fn, (
+            f"{artifact} must be read from the same directory as the weights, "
+            f"not from production's")

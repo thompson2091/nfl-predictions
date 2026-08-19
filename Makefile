@@ -4,7 +4,7 @@
 	backtest walkforward longshot economics clusters evaluate wager wager-report \
 	odds-open odds-close odds-schedule odds-schedule-on odds-schedule-off \
 	odds-schedule-status \
-	decay shop site combos \
+	decay shop site combos publish dashboard \
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune \
 	families ablate retention settle-overlay line-movement filter-sweep
@@ -296,6 +296,38 @@ shop:
 # after `make predict` or `make odds`, or the board goes stale silently.
 site:
 	$(PYTHON) scripts/20_export_html.py
+
+# One self-contained site/dashboard.html: both markets, on whatever version
+# CURRENT.json says each one is serving. Unlike `site` it does not run app.py —
+# it reads the same src/ functions the app calls, so it can show what the app
+# has no widget for: Top-1 through Top-10, unpriced players beside priced ones
+# in one table, and a combination search that runs in the browser.
+# Usage: make dashboard  ·  make dashboard WEEK=2  ·  make dashboard OPEN=--open
+dashboard:
+	$(PYTHON) scripts/34_export_dashboard.py $(if $(WEEK),--week $(WEEK)) $(if $(SEASON),--season $(SEASON)) $(OPEN)
+
+# Both pages, in one go. WHEN to run this, in order of how wrong the page is
+# if you do not:
+#
+#   1. After `make evaluate`. That is the natural trigger — every artifact the
+#      pages read is fresh by construction, so the gate below passes.
+#   2. After a promote. Promotion swaps the weights and nothing else, so the
+#      published page describes the PREVIOUS model until it is rebuilt.
+#      `make promote` now prints exactly what it invalidated.
+#   3. Weekly, after the close-odds capture: the board's prices move even in a
+#      week the model does not.
+#
+# Not on a timer independent of the pipeline. That is how a page ends up
+# confidently showing last month's model to whoever opens it.
+#
+# Both exporters refuse when any artifact they read predates the model being
+# served (src/evaluation/freshness.export_blockers). `--force` overrides, and
+# exists so the gate gets respected rather than deleted.
+publish:
+	$(PYTHON) scripts/20_export_html.py $(if $(FORCE),--force)
+	$(PYTHON) scripts/34_export_dashboard.py $(if $(FORCE),--force)
+	@echo
+	@echo "Published site/index.html and site/dashboard.html"
 
 # ── Weekly odds capture ───────────────────────────────────────────────────
 # The week number is derived from the schedule, so these take no arguments.

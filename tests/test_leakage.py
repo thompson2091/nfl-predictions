@@ -700,12 +700,24 @@ def test_longshot_claim_is_backed_by_its_own_measurement():
                 "top_decile_price_implied"):
         assert key in stats, f"artifact is missing {key}, which the app quotes"
 
-    assert stats["auc_gap_lo"] > 0, (
-        f"the sorting edge is no longer distinguishable from zero "
-        f"(95% CI lower bound {stats['auc_gap_lo']:+.4f}). The highlight should "
-        f"come out of the app."
-    )
-    assert stats["auc_ours"] > stats["auc_book"]
+    # The edge is allowed to be real or not. What is not allowed is the app
+    # claiming one when the interval says otherwise, so the assertion is on the
+    # LINK rather than on the result. It fired for real: after anytime TD moved
+    # to the 24-family set the gap fell to +0.019 with a 95% interval of
+    # (-0.011, +0.049), and the checkbox still described it as "the largest gap
+    # anywhere on this board".
+    app = (Path(__file__).resolve().parents[1] / "app.py").read_text()
+    claim = "largest gap anywhere on this board"
+    assert claim not in app, (
+        f"{claim!r} is an unconditional superlative; the longshot gap is "
+        f"measured and changes. Phrase it off `auc_gap_lo`.")
+    assert 'ls["auc_gap_lo"] <= 0' in app or "ls['auc_gap_lo'] <= 0" in app, (
+        "the longshot copy must branch on whether the gap clears zero")
+
+    if stats["auc_gap_lo"] <= 0:
+        assert "not distinguishable from zero" in app, (
+            f"the measured gap's interval contains zero (lower bound "
+            f"{stats['auc_gap_lo']:+.4f}) and the app must say so")
     # The counterweight must stay true, or the caption misleads: this band is
     # priced above what it actually does.
     assert stats["band_price_implied"] > stats["band_actual_rate"], (

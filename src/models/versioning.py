@@ -794,6 +794,42 @@ DERIVED_ARTIFACTS = {
 }
 
 
+def _is_orphan(path, market: str) -> bool:
+    """Is this artifact one that nothing in the pipeline regenerates?
+
+    Two kinds exist, and reporting them as stale is worse than useless: the
+    warning never clears, so it stops being read and takes the real ones with
+    it. `rank_economics_<model>.json` for a model this market does not serve
+    needs backtest frames for that model, which no longer exist;
+    `predictions_<season>_week<w>.csv` for a season outside the configured
+    range is a one-off nobody will produce again.
+
+    An orphan is not "fine" — it is a file that should probably be deleted.
+    It is simply not a *staleness* problem, and conflating the two is how a
+    permanent two-line warning trains an operator to ignore the banner.
+    """
+    from src.utils.config import get_config, production_model
+
+    name = path.name
+    if name.startswith("rank_economics_") and name.endswith(".json"):
+        model = name[len("rank_economics_"):-len(".json")]
+        return model != production_model(market)
+    if name.startswith("predictions_"):
+        try:
+            season = int(name.split("_")[1])
+        except (IndexError, ValueError):
+            return False
+        # Predictions are produced for the test season (parity checks) and the
+        # predict season (the live board). `seasons.start` is the training
+        # floor, not a prediction floor — reading it as one left a 2018 file
+        # from an ad-hoc run blocking every export forever.
+        cfg = get_config()
+        lo = int((cfg.get("splits") or {}).get("test_season", 0))
+        hi = int((cfg.get("seasons") or {}).get("predict_season", 9999))
+        return not (lo <= season <= hi)
+    return False
+
+
 def stale_derived(markets=MARKETS) -> list[dict]:
     """Derived artifacts written before the model they claim to describe.
 
@@ -827,6 +863,8 @@ def stale_derived(markets=MARKETS) -> list[dict]:
             continue
         for pattern, fix in DERIVED_ARTIFACTS.items():
             for path in sorted(root.glob(pattern)):
+                if _is_orphan(path, market):
+                    continue
                 if path.stat().st_mtime < when:
                     out.append({
                         "market": market, "artifact": path.name,
