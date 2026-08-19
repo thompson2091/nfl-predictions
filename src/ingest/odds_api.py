@@ -8,6 +8,7 @@ from typing import Iterable, Sequence
 
 import requests
 
+from src.utils.devig import two_way
 from src.utils.paths import get_path
 
 API_BASE = "https://api.the-odds-api.com/v4"
@@ -79,10 +80,17 @@ DEFAULT_REGIONS: str = "us,us2"
 #: under the narrower set is silently reused under the wider one.
 _LEGACY_REGIONS: str = "us"
 
-#: Markets fetched when a caller does not say. Deliberately the two we model:
-#: every extra market multiplies the credit cost of a fetch, so widening this
-#: is a spending decision and belongs at the call site.
-DEFAULT_MARKETS: tuple[str, ...] = ("first_td", "anytime_td")
+#: Markets fetched when a caller does not say. Every extra market multiplies
+#: the credit cost of a fetch, so this list is a standing weekly bill and not
+#: just a default.
+#:
+#: `receptions` is here before any model reads it, and that is deliberate. The
+#: Odds API serves only *current* markets, so a week that is not captured is
+#: gone for good — the archive cannot be rebuilt later at any price. Waiting
+#: until the model was finished would have cost however many weeks the model
+#: took, permanently. The three markets we can already price are cheap
+#: insurance against that.
+DEFAULT_MARKETS: tuple[str, ...] = ("first_td", "anytime_td", "receptions")
 
 #: Over/under outcomes are normalised onto the yes/no vocabulary the archive
 #: already speaks. "Over" is the side that wins when the player does more,
@@ -185,7 +193,13 @@ def parse_event_markets(
                 # Vig removed where the book posts both sides. Over/under
                 # markets always do, which is why they need none of the
                 # one-sided normalisation in blend.devig_market.
-                "fair_prob": round(p_yes / (p_yes + p_no), 4) if p_no else None,
+                #
+                # Derived, not raw: `implied_prob` and `overround` below keep
+                # both sides, so this column can be recomputed under any method
+                # without re-fetching. See src/utils/devig.py for why the
+                # default is additive rather than the proportional split this
+                # used to hardcode.
+                "fair_prob": round(float(two_way(p_yes, p_no)), 4) if p_no else None,
                 "n_books": len(q["yes"]),
                 "overround": round(p_yes + p_no, 4) if p_no else None,
             })

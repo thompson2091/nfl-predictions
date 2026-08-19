@@ -92,6 +92,22 @@ def line_movement(target_type: str = "anytime_td") -> pl.DataFrame | None:
     both = opens.join(closes, on=keys, how="inner", nulls_equal=True)
     if both.height == 0:
         return None
+
+    # One row per player-game per line, not per region set. A `us` pair and a
+    # `us,us2` pair for the same player-game are the same event seen through
+    # different books, not two observations: keeping both fans the CLV join out,
+    # counts every player-game twice in the headline, and shrinks the standard
+    # error on evidence that was never independent.
+    #
+    # The widest set wins, because it is the one with the most books behind both
+    # ends. Ranking on the region count keeps that deterministic rather than
+    # alphabetical, which would prefer "us" over "us,us2".
+    both = (both
+            .with_columns(pl.col("regions").str.count_matches(",").alias("_n_reg"))
+            .sort(["_n_reg", "regions"], descending=[True, False])
+            .unique(subset=[k for k in keys if k != "regions"], keep="first")
+            .drop("_n_reg"))
+
     return both.with_columns(
         (pl.col("close_prob") - pl.col("open_prob")).alias("move")
     )
