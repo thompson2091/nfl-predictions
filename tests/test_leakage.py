@@ -915,7 +915,12 @@ def test_clv_is_reproducible_when_a_player_game_has_two_probabilities():
     if moves is None or moves.height < 200:
         pytest.skip("no opening/closing pairs captured yet")
 
-    base = moves.select(["game_id", "player_name_norm"]).head(200)
+    # `.unique()` because line_movement is now keyed on the region set as well:
+    # the same player-game legitimately appears once for `us` and once for
+    # `us,us2`, which are different books and so different prices. Without this
+    # the fixture builds four rows per key and the sort below stops being a
+    # unique ordering — a fixture problem, not a reproducibility one.
+    base = moves.select(["game_id", "player_name_norm"]).unique().head(200)
     # Two rows per key with different probabilities, interleaved so row order
     # alone would decide the winner.
     duped = pl.concat([
@@ -2989,3 +2994,213 @@ def test_a_widened_region_set_is_not_reported_as_already_archived():
     finally:
         backfill.HISTORY_PATH = original
         tmp.unlink(missing_ok=True)
+
+
+def test_devig_default_is_the_measured_choice_not_the_obvious_one():
+    """How the margin comes off decides what counts as an edge.
+
+    The proportional split — `p_over / (p_over + p_under)` — was hardcoded
+    everywhere. It under-corrects favourite-longshot bias, which leaves
+    favourites beating their "fair" price and longshots missing it. Measured on
+    archived closing prices, additive beat it by 0.008 log loss on anytime TD
+    and tied it inside noise on receptions, so additive is the default.
+
+    This asserts the properties that make the choice meaningful, not the choice
+    itself: a method that failed these would be wrong whichever name it had.
+    """
+    import numpy as np
+    from src.utils.devig import DEFAULT_METHOD, METHODS, two_way
+
+    assert DEFAULT_METHOD in METHODS
+
+    for method in METHODS:
+        # A vig-free book is already fair; every method must leave it alone.
+        assert two_way(0.40, 0.60, method) == pytest.approx(0.40, abs=1e-6)
+        # The result is a probability, and margin only ever comes off.
+        for over, under in ((0.55, 0.52), (0.80, 0.28), (0.10, 0.95)):
+            p = two_way(over, under, method)
+            assert 0.0 < p < 1.0
+            assert p <= over + 1e-9, f"{method} added margin rather than removing it"
+
+    # The methods must actually differ in the tails, or the choice is cosmetic.
+    tail = [two_way(0.10, 0.95, m) for m in METHODS]
+    assert max(tail) - min(tail) > 0.01, "methods are indistinguishable in the tail"
+
+    # Vectorised and scalar paths must agree.
+    arr = two_way(np.array([0.55, 0.80]), np.array([0.52, 0.28]))
+    assert arr[0] == pytest.approx(two_way(0.55, 0.52))
+
+    with pytest.raises(ValueError):
+        two_way(0.55, 0.52, "shin")
+
+
+def test_fair_prob_is_derived_and_the_archive_can_rebuild_it():
+    """`fair_prob` is a convenience column, not evidence.
+
+    Re-deciding the de-vig method must never require re-buying a snapshot, so
+    the raw two-sided price has to survive in the archive: `implied_prob` is
+    the over and `overround` is both sides summed, so the under is always
+    recoverable.
+    """
+    import numpy as np
+    import polars as pl
+    from src.ingest.odds_history import HISTORY_PATH, SCHEMA
+    from src.utils.devig import DEFAULT_METHOD, two_way
+
+    assert {"implied_prob", "overround", "fair_prob"} <= set(SCHEMA)
+    if not Path(HISTORY_PATH).exists():
+        pytest.skip("no odds archive")
+
+    h = pl.read_parquet(HISTORY_PATH)
+    po = h["implied_prob"].to_numpy()
+    pu = (h["overround"] - h["implied_prob"]).to_numpy()
+    two_sided = np.isfinite(pu) & (pu > 1e-6)
+    if two_sided.sum() == 0:
+        pytest.skip("no two-sided prices archived")
+
+    rebuilt = two_way(po[two_sided], pu[two_sided], DEFAULT_METHOD)
+    stored = h["fair_prob"].to_numpy()[two_sided]
+    assert np.nanmax(np.abs(rebuilt - stored)) < 1e-3, \
+        "stored fair_prob no longer matches what the raw columns rebuild"
+
+
+def test_fair_prob_is_null_never_nan():
+    """NaN is not null, and every filter in this project is written for null.
+
+    `pl.col("fair_prob").is_not_null()` returns True for a NaN, so a one-sided
+    price whose de-vig produced NaN would pass every "do we have a fair price"
+    check and be served as though the vig had been removed. A migration wrote
+    157,691 of them in one line by round-tripping the column through numpy,
+    where null and NaN are the same value.
+    """
+    import polars as pl
+    from src.ingest.odds_history import HISTORY_PATH
+
+    if not Path(HISTORY_PATH).exists():
+        pytest.skip("no odds archive")
+    h = pl.read_parquet(HISTORY_PATH)
+    for col in ("fair_prob", "implied_prob", "overround", "point"):
+        n_nan = int(h[col].is_nan().sum() or 0)
+        assert n_nan == 0, (
+            f"{col} holds {n_nan:,} NaN values, which survive is_not_null() "
+            f"and will be read as real numbers downstream")
+
+
+def test_model_only_column_appears_exactly_where_blending_moves_the_number():
+    """Two probabilities on one row must mean two different numbers.
+
+    Anytime TD blends the model with the de-vigged price; first TD does not, so
+    there the published probability *is* the model's and a second column would
+    imply a distinction the market does not have.
+
+    The first version of this gate borrowed `preblend_columns_differ`, which
+    answers a neighbouring question — whether the betting columns add anything —
+    and needs `bet_rank`/`model_edge_pp` to be present. Handed a board frame
+    before those exist it returns False, which would have hidden the column on
+    the one market that needs it.
+    """
+    import pandas as pd
+    from src.presentation import board as bp
+
+    blended = pd.DataFrame({"probability": [0.46, 0.20], "prob_model": [0.50, 0.23]})
+    assert bp.blend_moves_the_number(blended)
+
+    unblended = pd.DataFrame({"probability": [0.09, 0.04], "prob_model": [0.09, 0.04]})
+    assert not bp.blend_moves_the_number(unblended)
+
+    # Absent the pre-blend column there is nothing to compare, and that is not
+    # a reason to raise on a board that simply has not carried it.
+    assert not bp.blend_moves_the_number(pd.DataFrame({"probability": [0.4]}))
+
+    # It must not depend on the betting columns, which arrive later than it does.
+    assert "bet_rank" not in blended.columns and bp.blend_moves_the_number(blended)
+
+
+def test_ngs_features_cannot_reveal_that_this_week_happened():
+    """The row's existence leaked, not its values.
+
+    Next Gen Stats publishes a player-week row only when that player had
+    qualifying receiving activity THAT WEEK. The matrix left-joined it on the
+    week itself, so `ngs_avg_separation_szn_avg IS NOT NULL` meant "caught a
+    pass in the game we are predicting":
+
+        P(1+ reception | an NGS row exists that week) = 0.9972
+        P(1+ reception | no NGS row)                  = 0.1562
+
+    Every value was correctly lagged — sorted, shifted, partitioned by player —
+    which is why this survived every shift(1) audit for the life of the project.
+    On anytime TD the null bit alone was worth a 5.05x lift, walk-forward Top-1
+    fell from 53.8% to 49.2% once it was closed, and rank economics inverted
+    from +5.9% to -6.6%.
+
+    `spine.as_of_join` fixes it structurally: every candidate row gets the most
+    recent observation strictly *earlier* than its own week.
+    """
+    import polars as pl
+    from src.features.spine import as_of_join
+
+    cand = pl.DataFrame({
+        "player_id": ["a"] * 4 + ["b"] * 3,
+        "season": [2024] * 7,
+        "week": [1, 2, 3, 4, 1, 2, 3],
+    })
+    # `a` is measured in weeks 1 and 3; `b` never is.
+    ngs = pl.DataFrame({
+        "player_id": ["a", "a"], "season": [2024, 2024], "week": [1, 3],
+        "sep": [1.0, 3.0],
+    })
+    out = as_of_join(cand, ngs, ["sep"]).sort(["player_id", "week"])
+
+    def val(pid, wk):
+        return out.filter((pl.col("player_id") == pid) & (pl.col("week") == wk))["sep"][0]
+
+    # THE test: week 3 has an NGS row, and must not be able to tell.
+    assert val("a", 3) == 1.0, (
+        "week 3 used its own week's observation — the row's existence is "
+        "leaking again")
+    assert val("a", 1) is None, "nothing precedes week 1, so there is nothing to use"
+    assert val("a", 2) == 1.0
+    assert val("a", 4) == 3.0, "week 4 may use week 3, which is genuinely past"
+
+    # A player never measured stays null. That is a fact about his career,
+    # known before kickoff — not about the game being predicted.
+    assert all(val("b", w) is None for w in (1, 2, 3))
+
+    # And the assembler must actually use it, or the fix is decorative.
+    import inspect
+    from src.features import assembler
+    src = inspect.getsource(assembler)
+    assert "as_of_join(df, receiver_feats)" in src, \
+        "NGS receiver features are back on a plain week join"
+    assert "as_of_join(df, rushing_eff_feats)" in src, \
+        "NGS rushing features are back on a plain week join"
+
+
+def test_the_ngs_null_bit_no_longer_carries_the_outcome():
+    """The measured version of the test above, on the served matrix.
+
+    A residual lift is expected and legitimate — "has been a measured receiver
+    before this week" genuinely identifies real receivers and is knowable before
+    kickoff. What must not come back is the 5x that meant "played and was
+    targeted today".
+    """
+    import polars as pl
+
+    path = get_path("processed", TARGET) / "features.parquet"
+    if not path.exists():
+        pytest.skip("no feature matrix built")
+    f = pl.read_parquet(path)
+    col = "ngs_avg_separation_szn_avg"
+    if col not in f.columns:
+        pytest.skip(f"{col} not in the matrix")
+
+    nn = f.filter(pl.col(col).is_not_null())
+    nu = f.filter(pl.col(col).is_null())
+    if nn.height < 100 or nu.height < 100:
+        pytest.skip("not enough of either group to measure")
+
+    lift = nn["target"].mean() / max(nu["target"].mean(), 1e-9)
+    assert lift < 3.5, (
+        f"the NGS null bit carries a {lift:.2f}x lift on {TARGET}; it was 5.05x "
+        f"when the row's existence leaked and 2.35x after as_of_join. Something "
+        f"has put NGS back on a same-week join.")

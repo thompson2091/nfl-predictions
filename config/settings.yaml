@@ -26,31 +26,55 @@ models:
   - lgbm
   - xgb
   # Chosen from walk-forward, not from a single season. Pooled over 1,131
-  # anytime-TD games (4 retrained folds, none scoring its own training years),
-  # re-measured 2026-08-12 over the corrected denominator — every played game
-  # with a scorer in the pool, so a scorer the candidate filter removed counts
-  # as a miss rather than vanishing from the count (src/evaluation/ranking.py) —
-  # and again after holding DEF/ST out of the offensive share denominator
-  # (joint.exclude_defst_from_shares, below). Re-derived 2026-08-14 after
-  # removing is_cold, is_windy and season_right — three features that took a
-  # single value for every predict-season row (316 features, was 319):
-  #   xgb   Top-1 53.8%  Top-3 84.0%  AUC 0.8314  Brier 0.09047   <- production
-  #   ens   Top-1 51.6%  Top-3 83.6%  AUC 0.8330  Brier 0.09161
-  #   lgbm  Top-1 50.8%  Top-3 83.3%  AUC 0.8291  Brier 0.09153   <- was production
-  #   lr    Top-1 49.1%  Top-3 82.9%  AUC 0.8238  Brier 0.09357
+  # anytime-TD games (4 retrained folds, none scoring its own training years).
   #
-  # xgb leads Top-1 by 2.2 points over the ensemble and 3.0 over lgbm, against
-  # a 1.5-point unpaired standard error, and leads on Top-3 and Brier too.
-  # It was previously kept on a tie, for the reason that the headline
-  # strategy backs the top three; the DEF/ST fix turned that tie into a lead,
-  # because xgb was the model ranking defences highest and therefore had the
-  # most to gain from no longer inflating them.
+  # RE-MEASURED 2026-08-18 after closing an NGS leak. Next Gen Stats publishes a
+  # player-week row only when that player had qualifying receiving activity THAT
+  # WEEK, and the feature matrix left-joined it on the week itself. The values
+  # were lagged correctly throughout — sorted, shifted, partitioned by player —
+  # so every shift(1) audit passed. It was the row's EXISTENCE that leaked:
+  # `ngs_avg_separation_szn_avg IS NOT NULL` meant "caught a pass in the game we
+  # are predicting", worth a 5.05x lift on this target before any value was
+  # read. Fixed by spine.as_of_join, which serves each row the most recent
+  # observation strictly earlier than its own week.
   #
-  # These numbers previously read "xgb Top-1 52.1%, ens 50.7%" and argued xgb
-  # led the ensemble by 1.4 points. That was inverted — the artifact said the
-  # opposite even then. The choice survived re-derivation; the reason given for
-  # it did not. tests/test_leakage.py asserts the choice against the file, so it
-  # fails rather than drifts, but no test can check a comment.
+  #   xgb   Top-1 49.2%  Top-3 82.8%  Top-5 92.5%  AUC 0.8200  <- production
+  #   ens   Top-1 49.3%  Top-3 82.5%  Top-5 92.2%  AUC 0.8221
+  #   lgbm  Top-1 48.6%  Top-3 81.7%  Top-5 91.8%  AUC 0.8199
+  #   lr    Top-1 44.7%  Top-3 78.9%  Top-5 91.6%  AUC 0.8079
+  #
+  # xgb and the ensemble are now a TIE on Top-1 (49.2 vs 49.3, against a
+  # 1.5-point unpaired standard error); xgb leads on Top-3 and Top-5, the
+  # ensemble on AUC. The pre-fix table claimed xgb led the ensemble by 2.2
+  # points, and that margin was an artifact of the leak. The choice is retained
+  # on the tie-breaks that have always applied — xgb is one model rather than
+  # three, and the headline strategy backs the top three, where xgb leads — not
+  # because it won. If this is revisited, settle it with `make settle`, which
+  # pairs by game, and read the served seed too.
+  #
+  # What the leak was worth here: Top-1 53.8% -> 49.2%, Top-3 84.0% -> 82.8%,
+  # AUC 0.8314 -> 0.8200. Every number in this file before 2026-08-18 was
+  # measured on the leaked matrix.
+  #
+  # A second fix landed in the same pass: `ix_windy_x_rb`, the interaction built
+  # on `is_windy`, outlived the removal of its own parent and was 0.0 for every
+  # 2026 row while varying in training. It is excluded in trainer.py.
+  #
+  # Worth knowing before optimising this market for profit: rank economics now
+  # reports NEGATIVE on the headline strategy, top 3 at -6.6% [-11.1, -2.4],
+  # hitting 43.4% against a 45.9% breakeven. That figure read +5.9% [+1.0, +10.9]
+  # on the leaked matrix, and the verdict inverted with the fix. Accuracy
+  # survived the fix; the profitability claim did not.
+  #
+  # For a HIT-RATE goal rather than a value goal, measured on 849 held-out games:
+  # the top pick is right 51.0% of the time (3.1x the 16.2% base rate), rising to
+  # 58.1% above 0.50 and 61.3% [56.2, 66.7] above 0.55 — the latter on 28% of
+  # games, roughly four or five picks a week. That is the number the board's
+  # selectivity panel publishes (src/evaluation/hit_rates.py), and it is measured
+  # on backtested seasons rather than asserted by the calibrator.
+  #
+  # tests/test_leakage.py asserts the choice against the file, so it fails rather
+  # than drifts, but no test can check a comment.
   #
   # These are UNPAIRED standard errors and cannot resolve a one-point change.
   # To compare two recipes, use `make gate EXP=...`, which pairs by game.
@@ -60,10 +84,32 @@ models:
   # Anytime TD do not want the same model — see production_model() in
   # src/utils/config.py for the walk-forward numbers behind each choice.
   #
-  # first_td, pooled over 1,131 games, same four folds, re-derived 2026-08-14
-  # after the three predict-constant features were removed:
-  #   xgb   Top-1 16.5%  Top-3 37.5%  AUC 0.8207  Brier 0.02741   <- production
-  #   ens   Top-1 16.8%  Top-3 36.9%  AUC 0.8221  Brier 0.02736   <- was production
+  # first_td, pooled over 1,131 games, same four folds. RE-MEASURED 2026-08-18
+  # on the de-leaked matrix (see the NGS note above):
+  #   xgb   Top-1 16.4%  Top-3 37.7%  Top-5 53.5%  AUC 0.8217  <- production
+  #   ens   Top-1 15.7%  Top-3 37.1%  Top-5 53.1%  AUC 0.8234
+  #   lr    Top-1 15.5%  Top-3 37.0%  Top-5 52.3%  AUC 0.8103
+  #   lgbm  Top-1 15.4%  Top-3 35.2%  Top-5 50.0%  AUC 0.8060
+  #
+  # This market barely moved: Top-1 16.5% -> 16.4%, AUC 0.8207 -> 0.8217. xgb now
+  # leads the ensemble on Top-1 by 0.7, which is the reverse of the pre-fix
+  # table and still inside the error bar. The
+  # asymmetry against anytime TD is explicable rather than lucky — "caught a pass
+  # in this game" strongly separates *did he score at all*, and barely helps rank
+  # *who scored first* among a field where nearly everyone with a catch qualifies.
+  #
+  # Not a market to optimise for hit rate, and the reason is structural, not a
+  # deficiency of the model. Measured on 849 held-out games: the top pick is right
+  # 17.8% of the time — which is 4.7x the 3.8% base rate, a HIGHER lift than
+  # anytime TD manages (3.1x). Selectivity helps but cannot rescue it: restricting
+  # to picks above 0.20 gives 20.2% [15.3, 25.1] on 22% of games — a real move,
+  # not separable from noise at that sample size — and almost nothing is priced
+  # higher, because no player's true first-TD probability approaches even 0.35.
+  # The ceiling is set by how the market is defined, not by the ranker.
+  #
+  # The pre-fix table below reads xgb 16.5 / ens 16.8 on Top-3 37.5 / 36.9 and the
+  # discussion that follows was written against those numbers. The conclusion
+  # still holds; the figures it cites are superseded by the block above.
   #
   # That table shows the ensemble ahead of xgb, and xgb is still served. The
   # reason is worth reading, because the table is not wrong — it is one draw.
@@ -108,7 +154,9 @@ models:
   # the 0.42-point paired error, because both models rank the same games.
   #
   # Worth knowing before optimising this market at all: rank economics reports
-  # NO EDGE DEMONSTRATED here, top 3 at -2.4% [-11.2, +6.7].
+  # NO EDGE DEMONSTRATED here, top 3 at -0.1% [-9.2, +9.0] on the de-leaked
+  # matrix (was -2.4% [-11.2, +6.7] before), hitting 13.2% against a 13.4%
+  # breakeven. An interval that wide around zero on 849 games is not a strategy.
   # An {xgb, condlogit} ensemble was trialled on first TD, 2026-08-13, and
   # REVERTED. Recording it because the seed-averaged evidence said take it and
   # the evidence was, on its own terms, not wrong:
@@ -178,6 +226,22 @@ model:
   # won" rather than "was each candidate's probability calibrated". Held
   # identical to the xgb block on purpose — a difference in Top-1 between them
   # should be attributable to the objective and nothing else.
+  # Receptions and any other count target. Held identical to `xgb` above for
+  # the same reason `condlogit` is: the count model differs from the classifier
+  # in its objective (Poisson deviance rather than log loss) and in nothing
+  # else, so a difference in what they learn is attributable to the objective.
+  # Every key here is read by src/models/count.py and every key it reads is
+  # here — tests/test_leakage.py asserts both directions.
+  xgb_count:
+    n_estimators: 2000
+    learning_rate: 0.02
+    max_depth: 6
+    min_child_weight: 20
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_alpha: 0.1
+    reg_lambda: 1.0
+    early_stopping_rounds: 50
   condlogit:
     n_estimators: 2000
     learning_rate: 0.02

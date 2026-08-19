@@ -5,9 +5,9 @@
     "abs_spread"
   ],
   "coef": [
-    -0.5978114259618141,
-    0.10822931256572621,
-    0.00018148935630536776
+    -0.5978114259618085,
+    0.10822931256572614,
+    0.0001814893563051965
   ],
   "seasons_used": [
     2015,
@@ -26,6 +26,6 @@
   "min_expected": 1.0,
   "max_expected": 9.0,
   "priced_share": 0.9428493300519551,
-  "fit_date": "2026-08-17",
+  "fit_date": "2026-08-18",
   "source": "labels derived from nflverse play-by-play (see docs/DATA_SOURCES.md)"
 }

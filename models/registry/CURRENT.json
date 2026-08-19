@@ -1,26 +1,28 @@
 {
   "first_td": {
-    "version": "2026.08.17-depth-chart-wiring",
-    "promoted_at": "2026-08-18T00:05:21+00:00",
+    "version": "2026.08.18-ngs-leak-fix",
+    "promoted_at": "2026-08-18T23:25:23+00:00",
     "history": [
       "2026.08.12-baseline",
       "2026.08.12-baseline-remeasured",
       "2026.08.12-defst-share-fix",
       "2026.08.12-first-td-xgb",
       "2026.08.14-drop-predict-constant-features",
-      "2026.08.17-depth-chart-wiring"
+      "2026.08.17-depth-chart-wiring",
+      "2026.08.18-ngs-leak-fix"
     ]
   },
   "anytime_td": {
-    "version": "2026.08.17-depth-chart-wiring",
-    "promoted_at": "2026-08-18T00:05:21+00:00",
+    "version": "2026.08.18-ngs-leak-fix",
+    "promoted_at": "2026-08-18T23:25:23+00:00",
     "history": [
       "2026.08.12-baseline",
       "2026.08.12-baseline-remeasured",
       "2026.08.12-defst-share-fix",
       "2026.08.12-first-td-xgb",
       "2026.08.14-drop-predict-constant-features",
-      "2026.08.17-depth-chart-wiring"
+      "2026.08.17-depth-chart-wiring",
+      "2026.08.18-ngs-leak-fix"
     ]
   }
 }

@@ -128,6 +128,11 @@ def get_feature_cols(df: pl.DataFrame) -> list[str]:
         # Pre-kickoff forecasts are the honest replacement — see
         # scripts/28_weather.py and src/features/weather_features.py.
         "is_cold", "is_windy",
+        # And the interaction built on top of `is_windy`, which outlived its
+        # parent. It is 0.0 for every 2026 row and varies in training, so the
+        # model learned a distinction it can never see on the board — the same
+        # defect, one derivation further down.
+        "ix_windy_x_rb",
     }
     return [c for c in df.columns
             if c not in exclude

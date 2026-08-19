@@ -2,7 +2,7 @@ import polars as pl
 from src.utils.config import get_config
 from src.utils.paths import get_path
 from src.features.player_features import build_player_rolling_features
-from src.features.spine import player_week_spine
+from src.features.spine import as_of_join, player_week_spine
 from src.features.team_features import build_team_features, build_opponent_features
 from src.features.game_features import build_game_features
 from src.features.context_features import build_snap_features, build_depth_chart_features
@@ -525,13 +525,19 @@ def assemble_features() -> pl.DataFrame:
     # First-half features
     df = df.join(h1_feats, on=["player_id", "season", "week"], how="left")
 
-    # Round 2: Receiver features (NGS)
+    # Round 2: NGS features, joined as-of rather than on the week itself.
+    #
+    # NGS publishes a player-week row only when that player had qualifying
+    # activity that week, so a plain left join let the row's *existence* say
+    # whether he played and was targeted in the game being predicted. That bit
+    # alone carried a 5.05x lift on anytime TD. The values were lagged
+    # correctly throughout, which is why it survived every shift(1) audit.
+    # See spine.as_of_join.
     if not receiver_feats.is_empty():
-        df = df.join(receiver_feats, on=["player_id", "season", "week"], how="left")
+        df = as_of_join(df, receiver_feats)
 
-    # Round 2: Rushing efficiency features (NGS)
     if not rushing_eff_feats.is_empty():
-        df = df.join(rushing_eff_feats, on=["player_id", "season", "week"], how="left")
+        df = as_of_join(df, rushing_eff_feats)
 
     # Round 2: Injury player features
     if not injury_player_feats.is_empty():

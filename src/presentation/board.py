@@ -541,3 +541,46 @@ def bet_guidance(econ: dict, n: int) -> tuple[list[str], list[str]]:
         "belong here."
     )
     return do, dont
+
+
+def band_hit_rate(prob, bands: list[dict] | None):
+    """The measured hit rate for the confidence band a probability falls in.
+
+    Not the probability itself. The model's own number is a claim; this is what
+    happened to picks that carried a claim of that size, on seasons the model
+    did not train on. On anytime TD the two part company exactly where it
+    matters most — the top band claims 63.4% and delivers 59.7% — so a board
+    showing only the claim would rank its least reliable picks highest.
+
+    Returns NaN where no band has enough games to say anything, which the column
+    renders as blank rather than as a number nobody measured.
+    """
+    if not bands or prob is None:
+        return float("nan")
+    try:
+        p = float(prob)
+    except (TypeError, ValueError):
+        return float("nan")
+    for b in bands:
+        if b["lo"] <= p < b["hi"]:
+            return b["hit_rate"] * 100.0
+    return float("nan")
+
+
+def blend_moves_the_number(frame, tol: float = 0.005) -> bool:
+    """Does blending change the published probability enough to show both?
+
+    Deliberately not `preblend_columns_differ`, which answers a neighbouring
+    question — whether the *betting* columns say anything the ranking columns do
+    not — and depends on `bet_rank`/`model_edge_pp` being present. Reusing it
+    here hid the model-only column on anytime TD, a market where the two
+    probabilities plainly differ (46.2% published against 50.1% pre-blend on one
+    row), because the frame it was handed had no betting columns yet.
+
+    The question this column exists to answer is simply whether the two numbers
+    are the same, so it asks that directly.
+    """
+    if not {"prob_model", "probability"} <= set(frame.columns):
+        return False
+    diff = (frame["prob_model"] - frame["probability"]).abs()
+    return bool(diff.max() > tol)
