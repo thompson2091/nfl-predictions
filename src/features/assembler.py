@@ -547,15 +547,23 @@ def assemble_features() -> pl.DataFrame:
     if not injury_team_feats.is_empty():
         df = df.join(injury_team_feats, on=["player_id", "season", "week"], how="left")
 
-    # Round 2: TD streak features
+    # Round 2: TD streak features, joined as-of like the NGS families.
+    #
+    # Built from weekly_stats, which holds a row for a player-week only when
+    # that player recorded stats — that is, played. Joined on the week itself,
+    # `weeks_since_last_td IS NOT NULL` was the inactives list for a game that
+    # had not kicked off: 95.6% of its non-null rows played that week, against
+    # 40.7% of candidates overall, and playing is worth 18.91% scoring against
+    # 0.78%. The values were shifted correctly; the row's existence was not.
     if not td_streak_feats.is_empty():
-        df = df.join(td_streak_feats, on=["player_id", "season", "week"], how="left")
+        df = as_of_join(df, td_streak_feats)
 
     # Situational player features
     df = df.join(sit_player_feats, on=["player_id", "season", "week"], how="left")
 
-    # Momentum features (touch share trend)
-    df = df.join(momentum_feats, on=["player_id", "season", "week"], how="left")
+    # Momentum features (touch share trend). Same weekly_stats source, same
+    # defect — 95.9% of non-null rows played that week.
+    df = as_of_join(df, momentum_feats)
 
     # Team offensive stats
     df = df.join(

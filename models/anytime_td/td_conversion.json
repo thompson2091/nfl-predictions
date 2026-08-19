@@ -1,9 +1,9 @@
 {
   "kind": "td_conversion",
-  "level": 0.9,
-  "dispersion": 1.05,
-  "log_loss": 0.3465424712590069,
-  "poisson_log_loss": 0.34977272764203227,
+  "level": 1.04,
+  "dispersion": 4.0,
+  "log_loss": 0.36213109064234394,
+  "poisson_log_loss": 0.3628086748314691,
   "n": 13958,
   "fit_date": "2026-08-18"
 }

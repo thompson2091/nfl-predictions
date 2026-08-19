@@ -1,26 +1,32 @@
 """How well we sort the players a sportsbook has written off.
 
-The board's largest measured edge over the market is not on stars. It is inside
-the group of players priced at +1500 or longer, where the book's own price
-ordering carries almost no information (AUC 0.54, barely better than a coin
-flip) and ours carries a lot (0.76). That gap is stable across 2023, 2024 and
-2025 and its bootstrap confidence interval is nowhere near zero.
+This module used to open by calling the longshot band "the board's largest
+measured edge over the market" — the book's ordering at AUC 0.54 against ours
+at 0.76, described as stable across three seasons with a bootstrap interval
+nowhere near zero. Re-measured on 2026-08-18 after two existence leaks were
+closed:
 
-The reason is mundane rather than magical. Deep longshots are a low-liquidity
-corner of the market: the book needs *a* number for the third tight end, not a
-good one, so it prices the tail roughly and moves on. We have that player's
-snap share, red-zone touches and matchup, so we can tell a backup who will see
-goal-line work from one who will not.
+    ours 0.55   book 0.52   (n = 6,624, +1500 or longer, 2023-2025)
 
-What this is **not** is a profitable-bet detector, and the same measurement says
-so. The tail is priced at about 4.7% against a true rate of 2.5% — the book
-charges close to a 45% premium there — so blind betting the band returns -45%.
-Sorting it well mostly buys back that premium rather than beating it. Our
-highest-rated longshots hit around 6-7% against a price implying 5%: a real
-edge, but thin, on a handful of players a week.
+The gap was 0.22 and is now 0.025. Almost all of it was the leak. Both NGS
+availability and the weekly-stats families told the model which players had
+actually played and been used that week, and in a band that is mostly deep
+reserves — the third tight end, the backup back — that bit separates the
+handful who were active and involved from the majority who were not. That is
+exactly the distinction the band's AUC was rewarding, and it is not available
+before kickoff.
 
-So this module measures the *sorting*, which is solid, and publishes the price
-premium alongside it so nothing in the app can quote one without the other.
+What survives is a genuine but small ordering advantage over a book that
+barely orders this band at all, and the price premium, which is unchanged and
+large: the tail is priced at about 4.8% against a true rate of 2.4%, so the
+book charges roughly a 95% margin there and blind betting the band loses about
+half its stake. Our best-rated tenth comes in at 3.3% against a price implying
+5.5% — below the price, not above it.
+
+So the honest reading is now the opposite of the original: this band is where
+the book's margin is largest and our remaining advantage is smallest. The
+module still measures the sorting and still publishes the premium beside it,
+so nothing in the app can quote one without the other.
 """
 from __future__ import annotations
 
