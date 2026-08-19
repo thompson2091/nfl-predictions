@@ -1,0 +1,34 @@
+# Can we go leaner still than the 24 families now served?
+#
+# The ladder reads every K from 16 to 30 as positive against the full 318, and
+# K=16 is the leanest of those: 175 columns against 236, a further 61 dropped.
+# Single seed it read +1.24pp (p=0.235), which cannot be told apart from K=24's
+# +2.03pp at a 0.64pp seed band — that is the whole reason this gets settled
+# rather than chosen off the curve.
+#
+# Below K=16 the curve turns: K=12 +0.44, K=8 +0.71, K=5 -0.44, K=3 -1.59. So
+# the useful range has a floor and this is near it.
+#
+#   make settle-overlay EXP=experiments/lean-16-families.yaml SEEDS=5 MARKET=anytime_td
+id: 2026.08.19-lean-16-families
+note: "anytime TD on the 16 ablation-dearest families (175 of 318 columns)"
+overlay:
+  models:
+    include_feature_families_by_target:
+      anytime_td:
+      - _build_game_context_features
+      - build_box_features
+      - build_depth_chart_features
+      - build_injury_features
+      - build_matchup_interaction_features
+      - build_momentum_features
+      - build_player_redzone_features
+      - build_player_rolling_features
+      - build_player_share_features
+      - build_player_target_history
+      - build_qb_features
+      - build_receiver_features
+      - build_score_first_features
+      - build_td_proxy_features
+      - build_team_features
+      - build_team_target_tendency
