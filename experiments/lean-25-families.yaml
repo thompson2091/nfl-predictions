@@ -1,0 +1,60 @@
+# Would the anytime-TD model rank better on FEWER features?
+#
+# Leave-one-out ablation said no family is prunable — 33 times, on both the
+# leaked and the clean matrix. That is the wrong direction for this question:
+# families are redundant with each other, so dropping one alone lets a
+# correlated survivor cover for it and the measurement reads zero however
+# replaceable the family was. `scripts/31_retention.py` builds UP instead, and
+# this is the point on that curve worth gating: the 25 families whose removal
+# cost the most, keeping 229 of 318 columns.
+#
+# The eight dropped, and why each is plausible rather than surprising:
+#   build_coach_features            play-caller tendencies, largely re-expressed
+#   build_coverage_features         2 columns, near-zero on every ablation
+#   build_first_half_features       a slice of the rolling windows already kept
+#   build_interaction_features      19 hand-built products of retained columns
+#   build_opp_target_features       overlaps team_target_tendency
+#   build_opponent_position_features  the one that INVERTED when the leak closed
+#   build_rushing_efficiency_features  overlaps player_rolling
+#   build_team_redzone_features     overlaps goalline + player_redzone
+#
+# READ THE SCREEN BEFORE TRUSTING THIS. The ordering came from ablations
+# measured on these same walk-forward folds, so the ranked curve is
+# optimistically biased and one of eight ladder points was selected after the
+# fact. `make settle` at several seeds is the test that decides it, not this
+# gate on its own.
+id: 2026.08.19-lean-25-families
+note: "anytime TD on the 25 ablation-dearest families (229 of 318 columns)"
+#
+# Scoped to anytime TD alone. The ranking was measured on anytime TD's folds and
+# there is no reason it transfers, so a global key would impose it on first TD
+# too — which is deliberately being left as it is.
+overlay:
+  models:
+    include_feature_families_by_target:
+      anytime_td:
+      - _build_game_context_features
+      - build_box_features
+      - build_depth_chart_features
+      - build_game_features
+      - build_goalline_features
+      - build_injury_features
+      - build_matchup_interaction_features
+      - build_momentum_features
+      - build_opening_drive_features
+      - build_opponent_features
+      - build_pace_features
+      - build_personnel_features
+      - build_player_redzone_features
+      - build_player_rolling_features
+      - build_player_share_features
+      - build_player_target_history
+      - build_qb_features
+      - build_receiver_features
+      - build_score_first_features
+      - build_snap_features
+      - build_td_proxy_features
+      - build_td_streak_features
+      - build_team_features
+      - build_team_target_tendency
+      - build_vegas_features
