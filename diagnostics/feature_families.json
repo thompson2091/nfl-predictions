@@ -1,5 +1,5 @@
 {
-  "n_features": 319,
+  "n_features": 318,
   "n_families": 33,
   "unattributed": [
     "has_scored_td",
@@ -10,9 +10,8 @@
     "position_DEFST",
     "position_FB",
     "position_QB",
+    "position_RB",
     "position_TE",
-    "position_WR",
-    "season_right",
     "total_touches_avg",
     "week_num",
     "win_prob_x_td_share"
@@ -90,13 +89,15 @@
     ],
     "build_interaction_features": [
       "ix_coach_pass_x_te",
-      "ix_coach_pass_x_wr",
+      "ix_coach_rush_x_rb",
       "ix_fav_x_rush_share",
       "ix_itt_x_gl_share",
       "ix_itt_x_tgt_share",
       "ix_itt_x_total_share",
       "ix_od_td_x_od_share",
       "ix_opp_def_x_rz_share",
+      "ix_rb_rush_x_opp_rb_td",
+      "ix_rb_rz_x_opp_target_rb",
       "ix_rush_eff_x_gl_carries",
       "ix_separation_x_tgt_share",
       "ix_td_momentum",
@@ -382,9 +383,7 @@
     "build_vegas_features": [
       "implied_team_total",
       "is_big_favorite",
-      "is_cold",
       "is_favorite",
-      "is_windy",
       "rest_days",
       "spread_line",
       "total_line"

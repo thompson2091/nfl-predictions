@@ -37,7 +37,9 @@ SNAPSHOT_DIR = PROJECT_ROOT / "diagnostics"
 def _load_or_run(target_type: str, run_id: str, reuse: bool,
                  first_test: int, last_test: int) -> dict:
     if reuse:
-        result = H.load(run_id)
+        # A diagnosis read off a stale matrix sends the model work after
+        # problems the current one may not have.
+        result = H.load(run_id, markets=(target_type,))
         if result.get("players") is None:
             raise SystemExit(
                 f"Saved run '{run_id}' has no per-player rows — it predates "

@@ -43,10 +43,20 @@ def _markets(arg: str | None) -> tuple[str, ...]:
 def _metric_line(market: str, metrics: dict | None) -> str:
     if not metrics:
         return f"    {market:11s} no walk-forward metrics recorded"
-    parts = []
-    for model, m in metrics.items():
-        parts.append(f"{model} {m['top1']:.1%}")
-    return f"    {market:11s} Top-1  " + "  ".join(parts)
+    # `_provenance` rides along in the same dict and is not a model. Keys
+    # starting with an underscore are metadata, never a row.
+    parts = [f"{model} {m['top1']:.1%}"
+             for model, m in metrics.items() if not model.startswith("_")]
+    if not parts:
+        return f"    {market:11s} no walk-forward metrics recorded"
+    prov = metrics.get("_provenance") or {}
+    suffix = ""
+    if prov.get("n_features"):
+        suffix += f"   ({prov['n_features']} features"
+        suffix += f", measured {prov['measured'][:10]})" if prov.get("measured") else ")"
+    if prov.get("stale"):
+        suffix += "  <- STALE, describes a different feature matrix"
+    return f"    {market:11s} Top-1  " + "  ".join(parts) + suffix
 
 
 def cmd_lock(a) -> int:
@@ -124,6 +134,8 @@ def cmd_show(a) -> int:
         print(f"    {'model':10s} {'Top-1':>16s} {'Top-3':>8s} {'Top-5':>8s} "
               f"{'AUC':>8s} {'Brier':>9s} {'games':>7s}")
         for name, r in metrics.items():
+            if name.startswith("_"):
+                continue
             print(f"    {name:10s} {r['top1']:>8.1%} +/-{r['top1_se']:<5.1%} "
                   f"{r['top3']:>7.1%} {r['top5']:>7.1%} {r['auc']:>8.4f} "
                   f"{r['brier']:>9.5f} {r['games']:>7d}")
@@ -176,6 +188,8 @@ def cmd_diff(a) -> int:
         print(f"\n{market} — walk-forward deltas (unpaired):")
         print(f"  {'model':10s} {'Top-1':>18s} {'Top-3':>10s} {'AUC':>11s} {'Brier':>11s}")
         for model, r in rows.items():
+            if model.startswith("_"):
+                continue
             if r["a"] is None or r["b"] is None:
                 print(f"  {model:10s} {'(missing in one version)':>18s}")
                 continue

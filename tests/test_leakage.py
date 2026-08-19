@@ -657,8 +657,8 @@ def test_each_market_serves_its_best_walkforward_model():
         path = get_path("output", market) / "walkforward.json"
         if not path.exists():
             pytest.skip("walk-forward not run — python scripts/11_walkforward.py")
-        import json
-        folds = json.loads(path.read_text())
+        from src.evaluation.harness import walkforward_rows
+        folds, _ = walkforward_rows(market)
         if not folds or "model" not in folds[0]:
             pytest.skip("walk-forward artifact predates per-model scoring")
 
@@ -3222,3 +3222,85 @@ def test_receptions_is_a_registered_target_that_cannot_misgrade():
     assert load_graded_history("receptions") is None, (
         "receptions is being graded by the TD scorer path, which marks a "
         "10-catch, 0-TD game as a miss")
+
+
+def test_every_market_on_disk_is_built_by_the_as_of_join_not_just_the_configured_one():
+    """The unit test above passed for five days while first TD leaked.
+
+    `scripts/04_features.py` rebuilds only the market named by
+    `config.target.type`. When the NGS and weekly-stats existence leaks were
+    closed on 2026-08-18 that key read `anytime_td`, so anytime TD's matrix was
+    rebuilt through `spine.as_of_join` and first TD's simply was not — it kept
+    its 2026-08-17 same-week join, and every first-TD number measured after the
+    fix was read off it, including the "unmoved, 16.5% -> 16.4%" result and the
+    re-settle that rested on it.
+
+    Nothing caught it. The unit test covers `as_of_join` itself, which was
+    correct. `feature_matrix_hash` covered row count and column names, which do
+    not move when a join changes. So this asserts the property on the FILES the
+    harness actually reads, for EVERY market, which is the only place the defect
+    was visible.
+
+    The property: an as-of join is monotonic within a player-season. Once a
+    strictly-earlier observation exists it exists for every later week, so
+    presence can turn on but never off. A same-week join flickers with weekly
+    activity. A handful of violations survive legitimately — a player changing
+    team mid-season restarts the partition — so this allows a small floor rather
+    than demanding zero.
+    """
+    import polars as pl
+
+    from src.evaluation.harness import MARKETS
+    from src.utils.paths import get_path
+
+    probe = "ngs_avg_cushion_avg_3g"
+    for market in MARKETS:
+        path = get_path("processed", market) / "features.parquet"
+        if not path.exists():
+            continue
+        df = pl.read_parquet(path, columns=["player_id", "season", "week", probe])
+        df = df.with_columns(pl.col(probe).is_not_null().alias("present"))
+        gaps = (df.sort(["player_id", "season", "week"])
+                  .group_by(["player_id", "season"])
+                  .agg([pl.col("present").cum_max().alias("seen"),
+                        pl.col("present")])
+                  .explode(["seen", "present"])
+                  .filter(pl.col("seen") & ~pl.col("present"))
+                  .height)
+        assert gaps < 100, (
+            f"{market}: {gaps:,} player-seasons where NGS data is present in "
+            f"one week and absent in a later one. That is a same-week join, "
+            f"which means the row's existence encodes activity in the game "
+            f"being predicted. Rebuild it:\n"
+            f"    python -c \"import sys; sys.path.insert(0,'.'); "
+            f"from src.utils.config import config_overlay; "
+            f"from src.features.assembler import assemble_features; "
+            f"config_overlay({{'target':{{'type':'{market}'}}}}).__enter__(); "
+            f"assemble_features()\"")
+
+
+def test_the_matrix_hash_moves_when_values_move():
+    """Shape is not identity.
+
+    `feature_matrix_hash` hashed the row count and the column names, and a leak
+    fix changes neither — it changes which row is joined. Anytime TD's hash
+    moved only because unrelated weather work dropped two columns in the same
+    window; first TD's was byte-identical across the fix, so every staleness
+    check built on it passed a matrix that still leaked.
+    """
+    import hashlib
+
+    import polars as pl
+
+    a = pl.DataFrame({"x": [1.0, 2.0, 3.0], "y": [4.0, 5.0, 6.0]})
+    b = pl.DataFrame({"x": [1.0, 2.0, 3.0], "y": [4.0, 5.0, 99.0]})
+
+    def digest(df):
+        ordered = df.select(sorted(df.columns))
+        payload = (f"{df.height}|{'|'.join(sorted(df.columns))}|".encode()
+                   + ordered.hash_rows().to_numpy().tobytes())
+        return hashlib.sha256(payload).hexdigest()[:16]
+
+    assert digest(a) != digest(b), (
+        "same shape, same column names, one different value — these must not "
+        "hash alike or a re-joined matrix reads as the one it replaced")

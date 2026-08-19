@@ -75,6 +75,13 @@ RUNTIME_ARTIFACTS = frozenset({
     "blend_weight.json", "clusters_player.json", "clusters_bet.json",
 })
 
+#: Written to `output/<market>/` by training rather than to `models/<market>/`,
+#: and describing exactly the weights that training produced. They are locked
+#: with those weights and restored with them, because otherwise a promote moves
+#: the model and leaves the numbers behind — which is how the app came to show
+#: a 318-feature model's accuracy for the 242-feature one it was serving.
+TRAINING_REPORTS = ("metrics.json",)
+
 #: The three outcomes an experiment can have. `KEPT_WITH_JUSTIFICATION` is the
 #: one that matters: a candidate may be promoted despite tripping a guard
 #: metric, but only with a written reason, and the reason ships inside the
@@ -148,10 +155,24 @@ def _is_runtime(relpath: str) -> bool:
     return Path(relpath).name in RUNTIME_ARTIFACTS
 
 
+def _is_report(relpath: str) -> bool:
+    return Path(relpath).name in TRAINING_REPORTS
+
+
 def split_runtime(hashes: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
-    """(fitted, runtime). Only the fitted half is enforced by `verify_current`."""
-    return ({k: v for k, v in hashes.items() if not _is_runtime(k)},
-            {k: v for k, v in hashes.items() if _is_runtime(k)})
+    """(fitted, runtime). Only the fitted half is enforced by `verify_current`.
+
+    Training reports are dropped from both halves. They ride inside the version
+    so a promote carries the numbers with the weights, but they are restored to
+    `output/<market>/` rather than `models/<market>/` — so comparing a live
+    model directory against a snapshot that contains them would report one
+    missing file forever.
+    """
+    fitted = {k: v for k, v in hashes.items()
+              if not _is_runtime(k) and not _is_report(k)}
+    runtime = {k: v for k, v in hashes.items()
+               if _is_runtime(k) and not _is_report(k)}
+    return fitted, runtime
 
 
 def _runtime_record(market_dir: Path, hashes: dict[str, str]) -> dict:
@@ -232,9 +253,26 @@ def pooled_walkforward(market: str) -> dict | None:
     path = get_path("output", market) / "walkforward.json"
     if not path.exists():
         return None
-    rows = json.loads(path.read_text())
+    from src.evaluation.harness import walkforward_rows
+    rows, stamp = walkforward_rows(market)
     if not rows:
         return None
+    stamped = stamp.get("feature_hash")
+
+    provenance = {"measured": stamp.get("measured"),
+                  "n_features": stamp.get("n_features"),
+                  "feature_hash": stamped, "stale": None}
+    try:
+        from src.evaluation.harness import feature_matrix_hash
+        current = feature_matrix_hash(market)
+        provenance["stale"] = (stamped != current)
+        if provenance["stale"]:
+            print(f"  WARNING {market}: walkforward.json was measured on "
+                  f"feature matrix {stamped or 'unrecorded'}, current is "
+                  f"{current}. The metrics recorded in this manifest describe "
+                  f"a different model. Re-run `make walkforward TARGET={market}`.")
+    except Exception:                      # noqa: BLE001 - provenance is advisory
+        pass
 
     out: dict[str, dict] = {}
     for name in sorted({r["model"] for r in rows}):
@@ -249,6 +287,8 @@ def pooled_walkforward(market: str) -> dict | None:
         agg["top1_se"] = (agg["top1"] * (1 - agg["top1"]) / total) ** 0.5
         out[name] = {k: (round(v, 5) if isinstance(v, float) else v)
                      for k, v in agg.items()}
+    if out:
+        out["_provenance"] = provenance
     return out or None
 
 
@@ -293,6 +333,17 @@ def lock(version_id: str, note: str, *, verdict: str = "PROMOTED",
         for p in files:
             shutil.copy2(p, dest / market / p.name)
         copied[market] = [p.name for p in files]
+
+        # `output/<market>/metrics.json` is the accuracy the app displays, and
+        # it was the one artifact describing a model that lived outside the
+        # version holding that model. Promoting swapped the weights and left
+        # the numbers, so the app reported a 318-feature model's accuracy for a
+        # 242-feature one. Snapshotted here and restored by `promote`.
+        for extra in TRAINING_REPORTS:
+            report = get_path("output", market) / extra
+            if report.exists():
+                shutil.copy2(report, dest / market / extra)
+                copied[market].append(extra)
 
     manifest = {
         "id": version_id,
@@ -775,8 +826,15 @@ def promote(version_id: str, markets=MARKETS, *, force: bool = False) -> dict:
             if p.is_file():
                 p.unlink()
         for p in sorted(src.iterdir()):
-            if p.is_file():
-                shutil.copy2(p, dest / p.name)
+            if not p.is_file():
+                continue
+            if p.name in TRAINING_REPORTS:
+                # These belong beside the model's output, not among its weights.
+                out = get_path("output", market)
+                out.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(p, out / p.name)
+                continue
+            shutil.copy2(p, dest / p.name)
 
         entry = current.get(market, {})
         history = [v for v in entry.get("history", []) if v != version_id]
@@ -849,7 +907,9 @@ def diff(version_a: str, version_b: str) -> dict:
         ma = (a.get("metrics") or {}).get(market) or {}
         mb = (b.get("metrics") or {}).get(market) or {}
         rows = {}
-        for model in sorted(set(ma) | set(mb)):
+        # `_provenance` shares this dict and is metadata, not a model row.
+        for model in sorted(k for k in set(ma) | set(mb)
+                            if not k.startswith("_")):
             ra, rb = ma.get(model), mb.get(model)
             rows[model] = {
                 k: (None if not ra or not rb else round(rb[k] - ra[k], 5))

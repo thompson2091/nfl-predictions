@@ -6,7 +6,8 @@
 	odds-schedule-status \
 	decay shop site combos \
 	lock versions version-show promote rollback version-diff version-verify \
-	champion screen gate settle noise-floor experiments diagnose version-prune
+	champion screen gate settle noise-floor experiments diagnose version-prune \
+	families ablate retention settle-overlay
 
 # The interpreter, resolved once. Every recipe used to call a bare `python`,
 # which does not exist on a machine where the venv is not activated — this is
@@ -160,6 +161,16 @@ settle:
 	$(PYTHON) scripts/23_experiment.py settle $(EXP) --model $(MODEL) \
 		--against $(AGAINST) --seeds $(SEEDS) $(if $(MARKET),--market $(MARKET))
 
+# Settle a CONFIG change rather than a model choice. `settle` compares two
+# models inside one run, which cannot judge an overlay — both sides of a
+# feature-set experiment carry the same model name. This pairs the overlay
+# against the champion recipe at matched seeds, baseline side reused from the
+# noise-floor runs.
+#   make settle-overlay EXP=experiments/lean-25-families.yaml SEEDS=5
+settle-overlay:
+	$(PYTHON) scripts/23_experiment.py settle-overlay $(EXP) \
+		--seeds $(SEEDS) $(if $(MARKET),--market $(MARKET))
+
 # What is the random seed alone worth? Every guard band in the gate is this
 # number. Without it, a 0.4-point difference has no scale to be read on.
 noise-floor:
@@ -176,6 +187,30 @@ experiments:
 # Writes a dated snapshot to diagnostics/, which is committed.
 diagnose:
 	$(PYTHON) scripts/24_diagnose.py --target $(TARGET) $(if $(REUSE),--reuse)
+
+# ── Feature-set size ──────────────────────────────────────────────────────
+# Two directions on the same question, and they do not answer each other.
+#
+#   ablate     drop one family, retrain, see what is missed
+#   retention  keep only the top K families, retrain, see what is gained
+#
+# Ablation cannot tell you whether the feature set is too big: families are
+# redundant, so dropping one lets a correlated survivor cover for it. Only
+# retention builds up. Both are paired per game against the full set, and both
+# discard their saved rows when the feature matrix hash moves — a half-current
+# table reads as one measurement and is worse than none.
+#
+# `families` records which builder produced each column and must be re-run
+# after any change to a build_* function; the other two are ordered by it.
+families:
+	$(PYTHON) scripts/26_feature_families.py $(if $(SHOW),--show)
+
+ablate:
+	$(PYTHON) scripts/27_ablate.py --market $(TARGET) \
+		$(if $(FAMILY),--family $(FAMILY)) $(if $(SHOW),--show)
+
+retention:
+	$(PYTHON) scripts/31_retention.py --market $(TARGET) $(if $(SHOW),--show)
 
 # ── Model versions ────────────────────────────────────────────────────────
 # `models/` holds one state and every `make train` overwrites it. Lock a state

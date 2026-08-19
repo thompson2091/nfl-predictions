@@ -33,6 +33,7 @@ experiments comparable at all. See `src/evaluation/ranking`.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import sys
 from pathlib import Path
@@ -130,7 +131,22 @@ def main(target_type: str, first_test: int, last_test: int, model_name: str) -> 
           "game — far more power.")
 
     out = get_path("output", target_type) / "walkforward.json"
-    out.write_text(json.dumps(rows, indent=2))
+    # Wrapped with provenance rather than written as a bare list. A version
+    # manifest reads its accuracy out of this file, and on 2026-08-19 it read
+    # anytime TD's full-feature numbers into a lean-feature lock and first TD's
+    # leaked-matrix numbers into a clean one — the manifest described a model
+    # that was not the one it was recording. `pooled_walkforward` still accepts
+    # the bare list for files written before this.
+    from src.evaluation.harness import _features, feature_matrix_hash
+    from src.models.trainer import get_feature_cols
+    n_features = len(get_feature_cols(_features(target_type), target_type))
+    out.write_text(json.dumps({
+        "measured": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "target": target_type,
+        "feature_hash": feature_matrix_hash(target_type),
+        "n_features": n_features,
+        "rows": rows,
+    }, indent=2))
     print(f"\nSaved per-fold detail: {out}")
     print(f"Saved per-game rows:   "
           f"{get_path('output') / 'experiments' / f'walkforward-{target_type}'}")

@@ -609,3 +609,285 @@ def test_noise_injection_is_off_by_default_and_deterministic():
         f"_noise_{i}" for i in range(4)]
     assert a["_noise_0"].to_list() == b["_noise_0"].to_list(), (
         "two loads must agree, or training and scoring see different features")
+
+
+# --------------------------------------------------------------------------
+# Feature-set size: the allow-list, and the cache that must not outlive its
+# feature matrix
+# --------------------------------------------------------------------------
+
+def test_the_allow_list_is_off_by_default_and_keeps_only_what_it_names():
+    """`include_feature_families` exists to build a feature set UP.
+
+    Leave-one-out ablation answered "no family is prunable" 33 times, which it
+    would also answer if half the set were redundant — dropping one family lets
+    a correlated survivor cover for it. The allow-list is the other direction,
+    so it has to select exactly the named families and nothing else.
+    """
+    from src.models.trainer import _family_map, included_families
+
+    assert included_families({"models": {}}) is None, (
+        "no allow-list must mean keep everything, not keep nothing")
+
+    mapping = _family_map()["families"]
+    picked = sorted(mapping)[:2]
+    keep = included_families(
+        {"models": {"include_feature_families": picked}})
+    named = {c for f in picked for c in mapping[f]}
+    assert named <= keep, "every column of a named family must survive"
+
+    other = sorted(set(mapping) - set(picked))[0]
+    stray = set(mapping[other]) - named
+    assert not (stray & keep), (
+        f"{other} is not on the allow-list but some of its columns survived")
+
+
+def test_the_allow_list_always_keeps_the_unattributed_columns():
+    """Position dummies belong to no builder and must not be selectable away.
+
+    `position_QB`, `week_num` and the usage flags are assembled inline, so no
+    family names them. A retention curve that dropped them would be measuring a
+    model with no idea who is a receiver, and would report that as "fewer
+    features scores worse".
+    """
+    from src.models.trainer import _family_map, included_families
+
+    doc = _family_map()
+    unattributed = set(doc.get("unattributed") or [])
+    assert unattributed, "the map records unattributed columns; this test needs them"
+
+    keep = included_families(
+        {"models": {"include_feature_families": [sorted(doc["families"])[0]]}})
+    assert unattributed <= keep, (
+        f"unattributed columns dropped by the allow-list: "
+        f"{sorted(unattributed - keep)}")
+
+
+def test_an_allow_list_and_a_deny_list_together_are_refused():
+    """Order of application would decide the result, so there is no right answer."""
+    from src.models.trainer import included_families
+
+    with pytest.raises(ValueError, match="both"):
+        included_families({"models": {
+            "include_feature_families": ["build_qb_features"],
+            "exclude_feature_families": ["build_box_features"]}})
+
+
+def test_a_typo_in_a_family_name_raises_instead_of_selecting_nothing():
+    """A silently-ignored name would train on the wrong set under the right label."""
+    from src.models.trainer import excluded_families, included_families
+
+    with pytest.raises(ValueError, match="unknown feature families"):
+        included_families({"models": {"include_feature_families": ["buld_qb"]}})
+    with pytest.raises(ValueError, match="unknown feature families"):
+        excluded_families({"models": {"exclude_feature_families": ["buld_qb"]}})
+
+
+def test_a_saved_run_from_another_feature_matrix_is_not_returned_as_current(
+        tmp_path, monkeypatch):
+    """The bug this guard was written for, in miniature.
+
+    The 33-family ablation table was cached by run id alone. Two existence
+    leaks were closed on 2026-08-18, the feature matrix changed, and every row
+    still loaded from the old matrix and reported itself as a current
+    measurement. `StaleRun` subclasses FileNotFoundError so every existing
+    `try: load() except FileNotFoundError: re-run` site recomputes instead of
+    needing to be found and updated one by one.
+    """
+    from src.evaluation import harness as H
+
+    assert issubclass(H.StaleRun, FileNotFoundError), (
+        "callers catch FileNotFoundError to mean 'recompute'; a stale run must "
+        "land there or every call site has to be changed by hand")
+
+    directory = tmp_path / "experiments" / "run-from-yesterday"
+    directory.mkdir(parents=True)
+    pl.DataFrame({"game_id": ["g1"], "target_type": ["anytime_td"],
+                  "model": ["xgb"], "hit_rank": [1]}).write_parquet(
+        directory / "outcomes.parquet")
+    (directory / "meta.json").write_text(json.dumps(
+        {"feature_hash": {"anytime_td": "0000oldmatrix00"}}))
+
+    monkeypatch.setattr(H, "get_path", lambda _name: tmp_path)
+    monkeypatch.setattr(H, "feature_matrix_hash", lambda _m: "ffffnewmatrix11")
+
+    # Without `markets` the run is returned as-is: comparing two archived runs
+    # to each other is legitimate and neither is being called current.
+    assert H.load("run-from-yesterday")["outcomes"].height == 1
+
+    with pytest.raises(H.StaleRun, match="different feature matrix"):
+        H.load("run-from-yesterday", markets=("anytime_td",))
+
+    monkeypatch.setattr(H, "feature_matrix_hash", lambda _m: "0000oldmatrix00")
+    assert H.load("run-from-yesterday", markets=("anytime_td",))["outcomes"].height == 1
+
+
+def test_a_run_that_never_recorded_a_hash_is_treated_as_stale():
+    """Absence is not agreement.
+
+    An older saved run predates `feature_hash` entirely. Reading a missing hash
+    as "matches" would let exactly the runs most likely to be stale through.
+    """
+    from src.evaluation import harness as H
+
+    assert H.StaleRun is not None
+    meta = {}
+    saved = (meta.get("feature_hash") or {}).get("anytime_td")
+    assert saved != "any-current-hash", (
+        "a missing hash must compare unequal to the current one")
+
+
+def test_the_allow_list_is_per_market_so_one_market_cannot_lean_the_other():
+    """A family ranking is measured on one market's folds and does not transfer.
+
+    The walk-forward trains both markets under one config, so resolving the
+    allow-list from `target.type` would hand whichever market is not the
+    configured default the wrong list — silently, and reported under the right
+    name. This is the same defect class as the NGS and weekly-stats leaks: not
+    a wrong value, a wrong row selected without saying so.
+    """
+    from src.models.trainer import included_families
+
+    cfg = {"target": {"type": "anytime_td"},
+           "models": {"include_feature_families_by_target": {
+               "anytime_td": ["build_qb_features"]}}}
+
+    assert included_families(cfg, "anytime_td"), "the named market gets its list"
+    assert included_families(cfg, "first_td") is None, (
+        "a market with no entry keeps every feature; it must not inherit the "
+        "other market's list")
+
+    # The global key stays as the fallback, so a config written before this
+    # existed still resolves the same way for every market.
+    flat = {"target": {"type": "first_td"},
+            "models": {"include_feature_families": ["build_qb_features"]}}
+    assert included_families(flat, "first_td"), "global key is the fallback"
+
+
+def test_get_feature_cols_selects_on_the_market_it_is_given():
+    """`train_all` knows the market; the selection has to use it, not the config."""
+    import inspect
+
+    from src.models.trainer import get_feature_cols, train_all
+
+    assert "target_type" in inspect.signature(get_feature_cols).parameters, (
+        "without this the market being trained cannot say which list it wants")
+    src = inspect.getsource(train_all)
+    assert "get_feature_cols(df, target_type)" in src, (
+        "train_all resolves target_type from its own argument and must pass it "
+        "on; falling back to the config default is wrong for one market of "
+        "every walk-forward fold")
+
+
+def test_the_gate_reads_the_noise_bands_out_of_the_file_it_saves():
+    """A shape mismatch that silently disabled two guards and over-tightened two.
+
+    `noise-floor` writes {"measured", "seeds", "git", "spread": {...}} and the
+    gate handed the whole dict to `compare_all`, whose lookups start at
+    `noise[market]`. Those all missed. Top-3/Top-5 then fell back to the paired
+    standard error — several times wider than the seed band, so too permissive —
+    while AUC and Brier fell back to a band of zero, so any regression at any
+    decimal place tripped them. `lean-25-families` tripped on AUC by 0.00022
+    against a real measured band of 0.00028.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "experiment_cli", "scripts/23_experiment.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    bands = mod._noise_bands()
+    if bands is None:
+        pytest.skip("no noise floor measured in this checkout")
+
+    assert "spread" not in bands, (
+        "the bands must be unwrapped; leaving the envelope on is the bug")
+    for market, models in bands.items():
+        for model, entry in models.items():
+            assert {"top1", "auc", "brier"} <= set(entry), (
+                f"{market}/{model} is missing bands the guards read")
+            return  # one is enough to prove the shape
+
+
+def test_a_guard_band_of_zero_is_not_silently_accepted_as_measured():
+    """Zero means "no band recorded", and reads identically to "no tolerance".
+
+    Without this distinction a missing measurement makes the gate maximally
+    strict on exactly the metrics whose seed noise is smallest in absolute
+    terms, and the verdict looks like a considered judgement.
+    """
+    from src.evaluation import compare as C
+
+    champion = _result([_outcomes([1, 0] * 50, model="xgb")])
+    candidate = _result([_outcomes([1, 0] * 50, model="xgb")])
+    row = C.compare(champion, candidate,
+                    market="anytime_td", model="xgb", noise=None)
+    for key, entry in row["row"].items():
+        assert entry["noise_band"] is None, (
+            f"{key}: with no noise argument the band must be None, not 0.0 — "
+            "None is recoverable, 0.0 is indistinguishable from a measurement")
+
+
+def test_a_market_the_overlay_never_reaches_is_not_scored_as_a_failure():
+    """Worst-of across markets is wrong for a per-market experiment.
+
+    `lean-25-families` scoped its feature set to anytime TD, improved the model
+    that market serves, and the gate printed VERDICT: REJECTED — because first
+    TD, which the overlay deliberately does not touch, moved 0 of 1,131 games
+    and "identical" was being read as "no better". A market that was never
+    under test cannot veto the result in one that was.
+    """
+    from src.evaluation import compare as C
+
+    same = _outcomes([1, 0, 1, 1] * 25, model="xgb")
+    champion = _result([same])
+    candidate = _result([same])
+    row = C.gate(C.compare(champion, candidate,
+                           market="anytime_td", model="xgb", noise=None))
+    assert row["verdict"] == "UNCHANGED", (
+        "two identical runs of the same model mean the overlay does not reach "
+        "here, which is not a measured tie")
+    assert "identical on all" in C.format_gate([row]), (
+        "the table must say nothing was measured, not print a row of zeroes "
+        "that reads like a result")
+
+
+def test_two_models_that_score_identically_still_read_reject_not_unchanged():
+    """The distinction UNCHANGED turns on.
+
+    Same model both sides = the overlay is under test, and identical means it
+    did not reach this market. Different models = the models are under test,
+    and identical means they are interchangeable — the answer is still "do not
+    switch", which is REJECTED.
+    """
+    from src.evaluation import compare as C
+
+    rows = [_outcomes([1, 0, 1, 1] * 25, model=m) for m in ("xgb", "ensemble")]
+    result = _result(rows)
+    row = C.gate(C.compare(result, result, market="anytime_td",
+                           model="ensemble", against="xgb", noise=None))
+    assert row["verdict"] == "REJECTED", (
+        "a model comparison that ties must not report UNCHANGED — the decision "
+        "'keep what we serve' is a real one")
+
+
+def test_an_overlay_that_reaches_nothing_reports_no_change_overall():
+    """All markets untouched is its own outcome, not a rejection."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "experiment_cli", "scripts/23_experiment.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    from src.utils.config import production_model
+
+    rows = [{"market": m, "model": production_model(m),
+             "against": production_model(m), "verdict": "UNCHANGED"}
+            for m in ("anytime_td", "first_td")]
+    assert mod._overall_verdict(rows, ("anytime_td", "first_td")) == "NO_CHANGE"
+
+    # One market scored, one untouched: the scored one decides.
+    rows[0]["verdict"] = "PROMOTED"
+    assert mod._overall_verdict(rows, ("anytime_td", "first_td")) == "PROMOTED"

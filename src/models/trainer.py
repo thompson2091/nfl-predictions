@@ -49,6 +49,74 @@ def inject_noise_features(df: "pl.DataFrame") -> "pl.DataFrame":
     ])
 
 
+def _family_map() -> dict:
+    """diagnostics/feature_families.json, or a clear error saying how to get it."""
+    path = Path(__file__).resolve().parents[2] / "diagnostics" / "feature_families.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} does not exist. Run `python "
+            "scripts/26_feature_families.py` to record which builder produced "
+            "each column. Guessing from column names would select the wrong "
+            "ones silently.")
+    return json.loads(path.read_text())
+
+
+def included_families(cfg: dict | None = None,
+                      target_type: str | None = None) -> set[str] | None:
+    """Columns kept because their builder family is on an allow-list.
+
+    Returns None when no allow-list is set, which is the normal case and means
+    "keep everything". Otherwise returns the columns to keep.
+
+    The mirror of `excluded_families`, and it exists because leave-one-out
+    ablation cannot answer "would fewer features score better". Families are
+    redundant with each other by construction, so dropping one alone lets a
+    correlated survivor cover for it and the measurement reads zero. Only
+    building UP from a small set measures the thing.
+
+    **Per market, like `production_model`.** A family ranking is measured on one
+    market's folds and there is no reason it transfers: the set that helps
+    anytime TD is not the set that helps first TD, and a single global key would
+    quietly impose one market's answer on the other. `include_feature_families`
+    stays as the fallback for a market with no entry.
+
+        models:
+          include_feature_families_by_target:
+            anytime_td: [build_qb_features, ...]
+
+    The 13 unattributed columns are always kept: position dummies, `week_num`
+    and the usage flags reach the model without passing through a wrapped
+    builder, so no family can name them, and a run without position dummies
+    would be measuring a broken model rather than a lean one.
+    """
+    cfg = cfg if cfg is not None else get_config()
+    models = cfg.get("models") or {}
+    if target_type is None:
+        target_type = (cfg.get("target") or {}).get("type")
+    families = list(
+        (models.get("include_feature_families_by_target") or {}).get(
+            target_type, models.get("include_feature_families")) or [])
+    if not families:
+        return None
+    if models.get("exclude_feature_families"):
+        raise ValueError(
+            "include_feature_families and exclude_feature_families are both "
+            "set. An allow-list and a deny-list together make the resulting "
+            "feature set depend on which is applied first, which is exactly "
+            "the ambiguity that makes an ablation unreadable. Use one.")
+
+    doc = _family_map()
+    mapping = doc["families"]
+    unknown = [f for f in families if f not in mapping]
+    if unknown:
+        raise ValueError(
+            f"unknown feature families {unknown}; known families are "
+            f"{sorted(mapping)}. A typo here would silently train on a "
+            "smaller set than intended and report it under the wrong name.")
+    keep = {c for f in families for c in mapping[f]}
+    return keep | set(doc.get("unattributed") or [])
+
+
 def excluded_families(cfg: dict | None = None) -> set[str]:
     """Columns dropped because their builder family is switched off.
 
@@ -67,14 +135,7 @@ def excluded_families(cfg: dict | None = None) -> set[str]:
     if not families:
         return set()
 
-    path = Path(__file__).resolve().parents[2] / "diagnostics" / "feature_families.json"
-    if not path.exists():
-        raise FileNotFoundError(
-            f"exclude_feature_families is set to {families} but {path} does not "
-            "exist. Run `python scripts/26_feature_families.py` to record which "
-            "builder produced each column. Guessing from column names would "
-            "drop the wrong ones silently.")
-    mapping = json.loads(path.read_text())["families"]
+    mapping = _family_map()["families"]
     unknown = [f for f in families if f not in mapping]
     if unknown:
         raise ValueError(
@@ -84,8 +145,16 @@ def excluded_families(cfg: dict | None = None) -> set[str]:
     return {c for f in families for c in mapping[f]}
 
 
-def get_feature_cols(df: pl.DataFrame) -> list[str]:
-    """Get feature columns (exclude identifiers and target)."""
+def get_feature_cols(df: pl.DataFrame,
+                     target_type: str | None = None) -> list[str]:
+    """Get feature columns (exclude identifiers and target).
+
+    `target_type` selects the market's allow-list. It must be passed by anything
+    that trains a market other than the config's default, or the market being
+    trained silently gets whichever list `target.type` happens to name — the
+    walk-forward trains both markets under one config, so the default is wrong
+    for one of them every time.
+    """
     exclude = set(excluded_families()) | {
         "game_id", "season", "week", "player_id", "player_name",
         "team", "opponent", "home_team", "away_team",
@@ -134,8 +203,10 @@ def get_feature_cols(df: pl.DataFrame) -> list[str]:
         # defect, one derivation further down.
         "ix_windy_x_rb",
     }
+    keep = included_families(target_type=target_type)
     return [c for c in df.columns
             if c not in exclude
+            and (keep is None or c in keep)
             and df[c].dtype in (pl.Float64, pl.Float32, pl.Int8, pl.Int16,
                                 pl.Int32, pl.Int64, pl.UInt8, pl.UInt16,
                                 pl.UInt32, pl.UInt64)]
@@ -455,7 +526,7 @@ def train_all(target_type: str = None, splits: dict | None = None,
     df = pl.read_parquet(get_path("processed", target_type) / "features.parquet")
     df = inject_noise_features(df)
     df = df.filter(pl.col("target").is_not_null())
-    feature_cols = get_feature_cols(df)
+    feature_cols = get_feature_cols(df, target_type)
     print(f"Features: {len(feature_cols)} columns")
 
     # Time-series split

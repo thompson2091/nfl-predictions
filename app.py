@@ -916,11 +916,10 @@ def walkforward_accuracy(tt: str, model: str) -> dict | None:
     so the app falls back to the single held-out season rather than showing a
     figure for the wrong model.
     """
-    path = get_path("output", tt) / "walkforward.json"
-    if not path.exists():
-        return None
-    folds = [f for f in json.loads(path.read_text())
-             if f.get("model", model) == model]
+    from src.evaluation.harness import walkforward_rows
+
+    rows, _ = walkforward_rows(tt)
+    folds = [f for f in rows if f.get("model", model) == model]
     if not folds:
         return None
 
@@ -1668,8 +1667,29 @@ def rank_hit_rates(tt: str, model: str) -> dict[int, float]:
 
 
 @st.cache_data(show_spinner=False)
+def measured_on(tt: str, model: str | None) -> str | None:
+    """Which model the hit-rate panels actually describe.
+
+    The loaders fall back to production's backtest frames when the selected
+    model has none of its own, which is the normal case — only the served
+    model is routinely backtested. Falling back is right; doing it silently is
+    not, because the panel would then report one model's accuracy under
+    another's name. Returns the production model when a fallback happened, and
+    None when the numbers really are the selected model's.
+    """
+    from src.evaluation.hit_rates import _load_backtests
+    from src.utils.config import production_model
+    if model is None:
+        return None
+    if _load_backtests(tt, model) is not None:
+        return None
+    prod = production_model(tt)
+    return prod if prod != model else None
+
+
+@st.cache_data(show_spinner=False)
 @guarded
-def top_pick_outcomes(tt: str):
+def top_pick_outcomes(tt: str, model: str | None = None):
     """One row per backtested game: the top pick's confidence and what it did.
 
     Cached whole so the threshold control can be answered without touching disk
@@ -1677,30 +1697,30 @@ def top_pick_outcomes(tt: str):
     filter and a bootstrap over it.
     """
     from src.evaluation.hit_rates import top_pick_frame
-    d = top_pick_frame(tt)
+    d = top_pick_frame(tt, model) or top_pick_frame(tt)
     return d.to_pandas() if d is not None and d.height else None
 
 
 @st.cache_data(show_spinner=False)
 @guarded
-def topk_against_market(tt: str):
+def topk_against_market(tt: str, model: str | None = None):
     """Our Top-K beside the book's own, on identical rows."""
     from src.evaluation.hit_rates import topk_vs_market
-    return topk_vs_market(tt)
+    return topk_vs_market(tt, model) or topk_vs_market(tt)
 
 
 @st.cache_data(show_spinner=False)
 @guarded
-def any_player_outcomes(tt: str):
+def any_player_outcomes(tt: str, model: str | None = None):
     """Every priced candidate and what it did — the population of the list."""
     from src.evaluation.hit_rates import any_player_frame
-    d = any_player_frame(tt)
+    d = any_player_frame(tt, model) or any_player_frame(tt)
     return d.to_pandas() if d is not None and d.height else None
 
 
 @st.cache_data(show_spinner=False)
 @guarded
-def hit_rate_bands(tt: str) -> dict | None:
+def hit_rate_bands(tt: str, model: str | None = None) -> dict | None:
     """Measured hit rate by the confidence a pick carries.
 
     Answers "how often is this right", which is a different question from
@@ -1717,7 +1737,10 @@ def hit_rate_bands(tt: str) -> dict | None:
     to, rather than swallowing it or crashing the app.
     """
     from src.evaluation.hit_rates import top_pick_bands
-    return top_pick_bands(tt)
+    # Model-specific frames where they exist, production's otherwise. Falling
+    # back rather than blanking, because a model with no frames of its own is
+    # the normal case — only the served one is routinely backtested.
+    return top_pick_bands(tt, model) or top_pick_bands(tt)
 
 
 @st.cache_data
@@ -1899,7 +1922,7 @@ def render_unpriced(season, week, tt: str, model: str, version: str | None,
         )
 
 
-def render_purpose(tt: str, model: str):
+def render_purpose(tt: str, model: str, version: str | None = None):
     """What this board is for, stated before anything is read off it.
 
     The page grew up as a bet card — edge, EV, Kelly, "worth backing" — and
@@ -1918,9 +1941,10 @@ def render_purpose(tt: str, model: str):
     drift away from what the artifacts say the way the prose around the
     longshot panel did.
     """
-    acc = headline_accuracy(tt, model)
-    s, _ = hit_rate_bands(tt)
+    acc = headline_accuracy(tt, model, version)
+    s, _ = hit_rate_bands(tt, model)
     econ = rank_economics(tt, model)
+    fell_back = measured_on(tt, model)
     if not s:
         return
 
@@ -1951,7 +1975,7 @@ def render_purpose(tt: str, model: str):
         # strip's figures cover every candidate over 1,131 games and these
         # cover priced players over 849: the two are not subtractable and a
         # shared row would invite exactly that.
-        cmp_, cmp_err = topk_against_market(tt)
+        cmp_, cmp_err = topk_against_market(tt, model)
         if cmp_err:
             st.caption(f":material/error: market comparison unavailable — `{cmp_err}`")
         elif cmp_:
@@ -1989,6 +2013,12 @@ def render_purpose(tt: str, model: str):
                         f"guess; the board earns its keep on the shortlist."
                     )
 
+        if fell_back:
+            st.caption(
+                f":material/info: These rates are measured on **{fell_back}**, the "
+                f"production model — **{model}** has no backtest frames of its own. "
+                f"Run `make evaluate` after selecting it to measure it directly."
+            )
         if econ and econ.get("headline"):
             h = econ["headline"]
             neg = h.get("roi") is not None and h["roi"] < 0
@@ -2005,7 +2035,7 @@ def render_purpose(tt: str, model: str):
             )
 
 
-def render_selectivity(tt: str, board=None):
+def render_selectivity(tt: str, board=None, model: str | None = None):
     """How often the top pick is right, and how selective you must be.
 
     The board's own probabilities are a claim. This is the outcome: measured on
@@ -2017,7 +2047,7 @@ def render_selectivity(tt: str, board=None):
     on all of them are both true statements about the same model, and which one
     matters depends on whether you intend to act every week.
     """
-    s, err = hit_rate_bands(tt)
+    s, err = hit_rate_bands(tt, model)
     if err:
         st.caption(f":material/error: Hit-rate summary unavailable — `{err}`")
         return
@@ -2030,7 +2060,7 @@ def render_selectivity(tt: str, board=None):
     # cut (0.55 -> 64-66% hit rate); when nothing clears it the strip says so
     # against the 0.50 bar instead of showing an empty box.
     if board is not None and len(board):
-        frame0, _ = top_pick_outcomes(tt)
+        frame0, _ = top_pick_outcomes(tt, model)
         for bar in (0.55, 0.50):
             strongest = (board[board["probability"] >= bar]
                          .sort_values("probability", ascending=False))
@@ -2075,7 +2105,7 @@ def render_selectivity(tt: str, board=None):
         # would I have been right, and how often would I have acted at all".
         # Those two move in opposite directions, which is the whole trade and
         # the reason a single headline number cannot express it.
-        frame, frame_err = top_pick_outcomes(tt)
+        frame, frame_err = top_pick_outcomes(tt, model)
         if frame_err:
             st.caption(f":material/error: threshold detail unavailable — `{frame_err}`")
         elif frame is not None and len(frame):
@@ -2120,7 +2150,7 @@ def render_selectivity(tt: str, board=None):
             # against 60.5% for any player, and at 0.55 it reverses, 64.7%
             # against 66.0%. Quoting one number over the other list would be
             # wrong by a couple of points in an unpredictable direction.
-            anyfr, any_err = any_player_outcomes(tt)
+            anyfr, any_err = any_player_outcomes(tt, model)
             ar = (rate_at(_pl.from_pandas(anyfr), cut)
                   if anyfr is not None and len(anyfr) else None)
 
@@ -2372,7 +2402,7 @@ def week_board(season, week, tt: str, model: str,
 
 if tab_board.open:
     with tab_board:
-        render_purpose(target_type, selected_model)
+        render_purpose(target_type, selected_model, selected_version)
         render_accuracy_strip(target_type, selected_model,
                               selected_version)
 
@@ -2622,7 +2652,7 @@ if tab_board.open:
             if shown.empty:
                 st.info("No players match that filter.")
             else:
-                render_selectivity(target_type, board)
+                render_selectivity(target_type, board, selected_model)
                 render_board(shown, target_type, selected_model)
                 render_unpriced(season, week, target_type, selected_model,
                                 selected_version, query=query)

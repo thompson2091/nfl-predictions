@@ -50,6 +50,24 @@ CHAMPION = "CHAMPION.json"
 NOISE = "noise_floor.json"
 
 
+def _noise_bands():
+    """The per-(market, model) seed spread, in the shape `compare` reads.
+
+    The file wraps the bands in a "spread" key alongside its provenance, and
+    the gate used to hand `compare_all` the whole file. Every lookup then
+    missed: `noise["anytime_td"]` is None when the bands live at
+    `noise["spread"]["anytime_td"]`. Nothing failed loudly — the guards just
+    silently fell back, Top-3/Top-5 to the paired standard error (far wider, so
+    too permissive) and AUC/Brier to zero (so ANY regression tripped them,
+    however many decimal places down). Every gate verdict that turned on an
+    AUC or Brier guard was decided by that zero.
+    """
+    raw = _read(NOISE)
+    if raw is None:
+        return None
+    return raw.get("spread", raw)
+
+
 # --------------------------------------------------------------------------
 # Registry side-files
 # --------------------------------------------------------------------------
@@ -257,13 +275,25 @@ def _experiment(a, tier: str) -> int:
     comparisons, verdict, clv_rows = [], "NO_CHAMPION", []
     if champion_ref:
         try:
-            champion = H.load(champion_ref["run"])
+            # `markets=` is the point: a champion recorded on an older feature
+            # matrix compares as though the difference were the experiment. It
+            # happened — 2026.08.17-champion-clv was gated against on
+            # 2026-08-19 and reported -4.69pp on anytime Top-1, all of which
+            # was the existence leak the champion still had and the candidate
+            # did not.
+            champion = H.load(champion_ref["run"], markets=tuple(markets))
+        except H.StaleRun as stale:
+            champion = None
+            print(f"\nChampion is not comparable: {stale}\n"
+                  "Re-record it with `make champion ID=<new-id>`; gating "
+                  "against it would attribute the matrix change to this "
+                  "experiment.")
         except FileNotFoundError:
             champion = None
             print(f"\nChampion run '{champion_ref['run']}' has no saved rows — "
                   "re-run `23_experiment.py baseline`.")
         if champion is not None:
-            noise = _read(NOISE)
+            noise = _noise_bands()
             if noise is None:
                 print("\nNo noise floor measured — guards fall back to the paired "
                       "standard error, and any AUC/Brier regression trips. Run "
@@ -319,8 +349,17 @@ def _overall_verdict(comparisons: list[dict], markets,
                 and c["market"] in markets]
     if not decisive:
         return "NO_PRODUCTION_PAIR"
+
+    # A market the overlay never reached is excluded rather than counted as a
+    # failure. Worst-of across markets is right when every market is under
+    # test; applied to a per-market experiment it lets an untouched market veto
+    # a real improvement, which is how lean-25-families read REJECTED while
+    # promoting the model it targeted.
+    scored = [c for c in decisive if c["verdict"] != "UNCHANGED"]
+    if not scored:
+        return "NO_CHANGE"
     order = ["REJECTED", "GUARD_TRIPPED", "PROMOTED"]
-    return min((c["verdict"] for c in decisive), key=order.index)
+    return min((c["verdict"] for c in scored), key=order.index)
 
 
 def cmd_screen(a) -> int:
@@ -351,7 +390,7 @@ def cmd_settle(a) -> int:
     for seed in seeds:
         run_id = f"{spec['id']}-seed{seed}"
         try:
-            runs.append(H.load(run_id))
+            runs.append(H.load(run_id, markets=tuple(markets)))
             print(f"seed {seed}: reusing saved run '{run_id}'")
         except FileNotFoundError:
             print(f"\n=== seed {seed} ({len(runs) + 1} of {len(seeds)}) ===")
@@ -379,6 +418,68 @@ def cmd_settle(a) -> int:
     return 0
 
 
+def cmd_settle_overlay(a) -> int:
+    """Settle an overlay against the champion recipe, seed by matched seed.
+
+    `settle` compares two MODELS inside one run, which cannot judge a config
+    change — both sides of a feature-set experiment carry the same model name.
+    This runs the overlay at N seeds and pairs each against the champion recipe
+    at the SAME seed, then averages per game before pairing.
+
+    The baseline side is the noise-floor runs, which are the champion config at
+    seeds 42..46 and already on disk. That is the point: a change worth
+    promoting has to beat the recipe it replaces at every seed, not at the one
+    seed a single gate happened to use. lean-25-families read +1.33pp on Top-1
+    against a seed band of 0.64pp, which is suggestive and not settled.
+    """
+    spec = load_experiment(a.experiment)
+    markets = (a.market,) if a.market else H.MARKETS
+    base_seed = get_config()["model"]["seed"]
+    seeds = [base_seed + i for i in range(a.seeds)]
+
+    baseline, candidate = [], []
+    for seed in seeds:
+        base_id = f"{a.baseline}-seed{seed}"
+        try:
+            baseline.append(H.load(base_id, markets=tuple(markets)))
+        except FileNotFoundError as missing:
+            raise SystemExit(
+                f"{missing}\nThe baseline side must exist at every seed. Run "
+                f"`make noise-floor SEEDS={a.seeds}` first.") from None
+
+        run_id = f"{spec['id']}-settle-seed{seed}"
+        try:
+            candidate.append(H.load(run_id, markets=tuple(markets)))
+            print(f"seed {seed}: reusing saved run '{run_id}'")
+        except FileNotFoundError:
+            print(f"\n=== seed {seed} ({len(candidate) + 1} of {len(seeds)}) ===")
+            result = _run(spec["overlay"], "settle-overlay", markets, seed=seed)
+            H.save(result, run_id)
+            candidate.append(result)
+
+    rows = []
+    for market in markets:
+        model = production_model(market)
+        rows.append(C.seed_gate(candidate, market=market, model=model,
+                                against=model, against_runs=baseline))
+    print("\nSeed-averaged, overlay vs champion recipe at matched seeds:\n")
+    print(C.format_seed_gate(rows))
+
+    append_ledger({
+        "id": spec["id"], "kind": "experiment", "tier": "settle-overlay",
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "git": git_state(), "overlay": spec["overlay"],
+        "note": f"overlay vs '{a.baseline}' recipe, {a.seeds} seeds, "
+                f"seed-averaged: " + spec.get("note", ""),
+        "seed": seeds, "summary": {},
+        "verdict": _overall_verdict(rows, markets, decisive_on="model"),
+        "comparisons": [{k: v for k, v in r.items() if k != "top_k"}
+                        | {"top1": {kk: vv for kk, vv in r["top_k"][1].items()
+                                    if kk != "per_seed"}} for r in rows],
+    })
+    return 0
+
+
 def cmd_noise_floor(a) -> int:
     """Measure what the random seed alone is worth.
 
@@ -393,9 +494,17 @@ def cmd_noise_floor(a) -> int:
         run_id = f"{a.id}-seed{seed}"
         try:
             # Re-running a seed that is already on disk buys nothing and costs
-            # minutes. Deleting output/experiments/<id> forces a fresh one.
-            result = H.load(run_id)
+            # minutes — but only while the matrix it was measured on is still
+            # the current one. `markets=` makes that a check rather than an
+            # assumption: this reused its 2026-08-12 runs on 2026-08-19 and
+            # reprinted the leaked matrix's bands as a fresh measurement.
+            result = H.load(run_id, markets=tuple(markets))
             print(f"\n=== seed {seed}: reusing saved run '{run_id}' ===")
+        except H.StaleRun as stale:
+            print(f"\n=== seed {seed}: re-measuring, saved run is stale ===\n"
+                  f"    {stale}")
+            result = _run({}, "noise floor", markets, seed=seed)
+            H.save(result, run_id)
         except FileNotFoundError:
             print(f"\n=== seed {seed} ({len(results)+1} of {len(seeds)}) ===")
             result = _run({}, "noise floor", markets, seed=seed)
@@ -441,8 +550,20 @@ def cmd_noise_floor(a) -> int:
 
 
 def cmd_compare(a) -> int:
+    # Neither side has to be current — comparing two archived runs to each
+    # other is legitimate. They do have to match EACH OTHER: a pairing across
+    # two feature matrices attributes the matrix change to whatever else
+    # differs, which is how a leaked champion read as -4.69pp on 2026-08-19.
     champion, candidate = H.load(a.a), H.load(a.b)
-    rows = C.compare_all(champion, candidate, noise=_read(NOISE))
+    ha = champion["meta"].get("feature_hash") or {}
+    hb = candidate["meta"].get("feature_hash") or {}
+    clash = sorted(m for m in set(ha) & set(hb) if ha[m] != hb[m])
+    if clash or not (ha and hb):
+        detail = ", ".join(f"{m}: {ha[m]} vs {hb[m]}" for m in clash) or \
+            "one or both runs recorded no feature hash"
+        print(f"WARNING: these runs were not measured on the same feature "
+              f"matrix ({detail}). Every difference below includes that one.\n")
+    rows = C.compare_all(champion, candidate, noise=_noise_bands())
     print(f"{a.a} (champion)  ->  {a.b} (candidate)\n")
     print(C.format_gate(rows))
     # Silently absent for runs saved before `keep_rows` was on by default,
@@ -496,6 +617,16 @@ def main() -> int:
     p.add_argument("--seeds", type=int, default=5)
     p.add_argument("--market", choices=H.MARKETS, default=None)
     p.set_defaults(fn=cmd_settle)
+
+    p = sub.add_parser("settle-overlay",
+                       help="seed-averaged overlay vs champion recipe")
+    p.add_argument("experiment")
+    p.add_argument("--market", choices=H.MARKETS)
+    p.add_argument("--seeds", type=int, default=5)
+    p.add_argument("--baseline", default="noise-floor",
+                   help="run-id prefix of the baseline side (default: the "
+                        "noise-floor runs, which are the champion recipe)")
+    p.set_defaults(fn=cmd_settle_overlay)
 
     p = sub.add_parser("noise-floor", help="measure the seed-to-seed spread")
     p.add_argument("--seeds", type=int, default=5)

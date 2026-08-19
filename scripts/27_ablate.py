@@ -62,7 +62,7 @@ def baseline_run(market: str, model: str):
     """
     run_id = f"ablation-baseline-{market}"
     try:
-        result = H.load(run_id)
+        result = H.load(run_id, markets=(market,))
         print(f"Baseline: reusing '{run_id}'")
         return result
     except FileNotFoundError:
@@ -75,7 +75,7 @@ def baseline_run(market: str, model: str):
 def ablate(market: str, family: str, model: str):
     run_id = f"ablation-{market}-{family}"
     try:
-        return H.load(run_id), True
+        return H.load(run_id, markets=(market,)), True
     except FileNotFoundError:
         overlay = {"models": {"exclude_feature_families": [family]}}
         result = H.run(overlay, markets=(market,), models=[model])
@@ -98,6 +98,17 @@ def main() -> int:
     if a.show:
         report(saved, a.market)
         return 0
+
+    # Rows measured on an older feature matrix are not comparable to rows
+    # measured now, and a half-old table is worse than no table because it
+    # reads as one measurement. Start over when the matrix moves.
+    current = H.feature_matrix_hash(a.market)
+    if saved.get("families") and saved.get("feature_hash") != current:
+        print(f"Feature matrix changed ({saved.get('feature_hash') or 'unrecorded'}"
+              f" -> {current}); discarding {len(saved['families'])} rows "
+              "measured on the old one.")
+        saved = {"families": {}}
+    saved["feature_hash"] = current
 
     families = load_families()
     todo = [a.family] if a.family else sorted(families)

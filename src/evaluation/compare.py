@@ -143,6 +143,28 @@ def compare(champion: dict, candidate: dict, *, market: str, model: str,
     return out
 
 
+def untouched(comparison: dict) -> bool:
+    """Did this overlay reach this (market, model) at all?
+
+    True when every paired Top-K is exactly zero with no discordant games —
+    the signature of two runs that scored the same players in the same order,
+    which is what an overlay scoped to another market produces. Distinguished
+    from "changed nothing measurable" by the discordant count: a change that
+    swapped two games and broke even has discordant > 0 and is a real result.
+
+    **Only for same-model comparisons.** When the two sides are different
+    models, identical scores mean the models are interchangeable and the right
+    answer is still REJECTED — do not switch. "Nothing was measured here" is a
+    claim about an overlay's reach, not about two models agreeing.
+    """
+    if comparison.get("against", comparison.get("model")) != comparison.get("model"):
+        return False
+    for entry in comparison["top_k"].values():
+        if entry.get("discordant", 0) != 0 or entry.get("delta", 0.0) != 0.0:
+            return False
+    return True
+
+
 def gate(comparison: dict) -> dict:
     """Apply the promotion rule to one (market, model) comparison.
 
@@ -152,6 +174,22 @@ def gate(comparison: dict) -> dict:
     """
     top1 = comparison["top_k"][1]
     wins_top1 = top1["se"] > 0 and top1["delta"] >= PROMOTION_SE * top1["se"]
+
+    # An overlay that does not reach this market produces two identical runs,
+    # and "identical" is not "no better". Scoring it REJECTED made a per-market
+    # experiment read as a failure on the strength of the market it
+    # deliberately left alone: lean-25-families improved anytime TD's served
+    # model and reported VERDICT: REJECTED because first TD, which it never
+    # touched, moved 0 of 1131 games.
+    if untouched(comparison):
+        return {
+            "market": comparison["market"], "model": comparison["model"],
+            "against": comparison.get("against", comparison["model"]),
+            "verdict": "UNCHANGED",
+            "top1": top1, "top_k": comparison["top_k"],
+            "guards_tripped": [], "row": comparison["row"],
+            "rule": "not scored: the two runs are identical here",
+        }
 
     tripped = []
     for key, sign in GUARDS.items():
@@ -194,7 +232,8 @@ def gate(comparison: dict) -> dict:
 
 
 def seed_averaged_paired(runs: list[dict], *, market: str, model: str,
-                         against: str, k: int = 1) -> dict:
+                         against: str, k: int = 1,
+                         against_runs: list[dict] | None = None) -> dict:
     """Pair two models after averaging each game's outcome across seeds.
 
     A single paired run answers "did this win on these folds with this seed".
@@ -238,9 +277,21 @@ def seed_averaged_paired(runs: list[dict], *, market: str, model: str,
     if not runs:
         raise ValueError("seed averaging needs at least one run")
 
+    # `against_runs` compares one recipe to ANOTHER recipe at matched seeds,
+    # rather than two models inside one run. An overlay experiment needs that
+    # shape: the thing under test is the config, and both sides carry the same
+    # model name. Seeds must line up positionally — runs[i] and against_runs[i]
+    # are the same seed — or the averaging pairs a seed against a different one
+    # and reintroduces exactly the noise it exists to remove.
+    baseline = against_runs if against_runs is not None else runs
+    if len(baseline) != len(runs):
+        raise ValueError(
+            f"seed averaging needs the same number of runs on each side; got "
+            f"{len(runs)} candidate and {len(baseline)} baseline")
+
     joined = None
     for i, run in enumerate(runs):
-        a = (_outcomes_for(run, market, against)
+        a = (_outcomes_for(baseline[i], market, against)
              .select(["game_id", col]).rename({col: f"a{i}"}))
         b = (_outcomes_for(run, market, model)
              .select(["game_id", col]).rename({col: f"b{i}"}))
@@ -312,10 +363,15 @@ def format_seed_gate(rows: list[dict]) -> str:
 
 
 def seed_gate(runs: list[dict], *, market: str, model: str,
-              against: str) -> dict:
+              against: str, against_runs: list[dict] | None = None) -> dict:
     """Apply the promotion rule to a seed-averaged comparison."""
     top_k = {k: seed_averaged_paired(runs, market=market, model=model,
-                                     against=against, k=k) for k in TOP_K}
+                                     against=against, k=k,
+                                     against_runs=against_runs)
+             for k in TOP_K}
+    if untouched({"top_k": top_k, "model": model, "against": against}):
+        return {"market": market, "model": model, "against": against,
+                "top_k": top_k, "verdict": "UNCHANGED", "guards_tripped": []}
     t1 = top_k[1]
     wins_top1 = t1["se"] > 0 and t1["delta"] >= PROMOTION_SE * t1["se"]
     tripped = [k for k in (3, 5) if top_k[k]["delta"] < -top_k[k]["se"]]
@@ -435,6 +491,13 @@ def format_gate(rows: list[dict]) -> str:
         lines.append(f"{r['market']} / {label}: {r['verdict']}")
         if r.get("incomparable"):
             lines.append(f"    NOT COMPARABLE: {r['incomparable']}")
+        if r["verdict"] == "UNCHANGED":
+            # Printing the all-zero table under this would read as a measured
+            # tie. Nothing was measured; the overlay does not reach here.
+            lines.append(f"    identical on all {r['top_k'][1]['n_compared']} "
+                         f"games — this overlay does not reach this market")
+            lines.append("")
+            continue
         lines.append(
             f"    Top-1  {t1['champion']:.1%} -> {t1['candidate']:.1%}  "
             f"{t1['delta']*100:+.2f}pp  ({t1['se_multiple']:+.2f} se, "

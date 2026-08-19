@@ -109,7 +109,7 @@ def evaluate(params: dict, folds: dict, stop: int) -> dict:
 def main(target_type: str, n: int, seed: int) -> int:
     df = pl.read_parquet(get_path("processed", target_type) / "features.parquet")
     df = df.filter(pl.col("target").is_not_null())
-    feature_cols = get_feature_cols(df)
+    feature_cols = get_feature_cols(df, target_type)
     print(f"{target_type}: {df.height:,} rows, {len(feature_cols)} features")
     print("Preparing folds (train <= T-2, early-stop T-1, score T)...")
     folds = _folds(df, feature_cols)

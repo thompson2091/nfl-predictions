@@ -91,15 +91,51 @@ def _features(target_type: str) -> pl.DataFrame:
     return _FEATURE_CACHE[target_type]
 
 
+def walkforward_rows(market: str) -> tuple[list[dict], dict]:
+    """The saved walk-forward folds, plus what they were measured on.
+
+    Written as a bare list until 2026-08-19 and as {"rows": [...], ...} after,
+    because a version manifest reads its accuracy out of this file and had no
+    way to know whether the numbers described the model being locked. They did
+    not: a 242-feature lock recorded 318-feature accuracy. Every reader goes
+    through here so the next one cannot pick a third interpretation.
+
+    Returns (rows, provenance). Provenance is empty for the old format.
+    """
+    path = get_path("output", market) / "walkforward.json"
+    if not path.exists():
+        return [], {}
+    doc = json.loads(path.read_text())
+    if isinstance(doc, list):
+        return doc, {}
+    return doc.get("rows") or [], {k: v for k, v in doc.items() if k != "rows"}
+
+
 def feature_matrix_hash(target_type: str) -> str:
     """Identifies the matrix a result was measured on.
 
     Two experiments run against different feature matrices are not comparable,
     however similar their configs look. Recording this makes that visible
     rather than leaving it to be remembered.
+
+    **This covers values, not just shape.** It used to hash only the row count
+    and the column names, and that missed the failure it exists to catch: the
+    NGS and weekly-stats existence leaks were closed on 2026-08-18 by changing
+    how rows were joined, which moves every value and no column name. Anytime
+    TD's hash moved only because unrelated weather work happened to drop two
+    columns in the same window. First TD's did not move at all, so its matrix
+    was never rebuilt and every first-TD number measured after the fix — the
+    "unmoved, 16.5% -> 16.4%" result among them — was read off a matrix that
+    still leaked. Shape is not identity.
+
+    Hashing 160k x 355 costs about 10ms, so there is no reason to sample. The
+    hash is not stable across polars versions; an upgrade invalidates saved runs
+    and forces a re-measure, which is the safe direction to be wrong in.
     """
     df = _features(target_type)
-    payload = f"{df.height}|{'|'.join(sorted(df.columns))}".encode()
+    ordered = df.select(sorted(df.columns))
+    payload = (f"{df.height}|{'|'.join(sorted(df.columns))}|".encode()
+               + ordered.hash_rows().to_numpy().tobytes())
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
@@ -376,14 +412,47 @@ def save(result: dict, experiment_id: str) -> Path:
     return directory
 
 
-def load(experiment_id: str) -> dict:
-    """A saved run, in the shape `run` returned it."""
+class StaleRun(FileNotFoundError):
+    """A saved run measured on a feature matrix that no longer exists.
+
+    Subclasses FileNotFoundError so the `try: load() except FileNotFoundError:
+    re-run` pattern every caller already uses treats a stale cache the same way
+    it treats a missing one — recomputes it — rather than silently returning
+    numbers from a matrix that has since changed.
+    """
+
+
+def load(experiment_id: str, *, markets: tuple[str, ...] | None = None) -> dict:
+    """A saved run, in the shape `run` returned it.
+
+    Pass `markets` to require the run was measured on the CURRENT feature
+    matrix for those markets; a mismatch raises StaleRun. Without it the run is
+    returned whatever it was measured on, which is right for comparing two
+    archived runs to each other and wrong for anything being compared to a
+    fresh one.
+
+    This exists because it went wrong. The 33-family ablation table in
+    diagnostics/ was cached by run id alone, so after two existence leaks were
+    closed on 2026-08-18 every row still read back from matrix
+    53a170f50fd1930c and reported itself as current.
+    """
     directory = get_path("output") / "experiments" / experiment_id
     path = directory / "outcomes.parquet"
     if not path.exists():
         raise FileNotFoundError(
             f"No saved outcomes for '{experiment_id}' at {path}")
     meta = json.loads((directory / "meta.json").read_text())
+    if markets:
+        saved = meta.get("feature_hash") or {}
+        stale = {m: (saved.get(m), feature_matrix_hash(m)) for m in markets
+                 if saved.get(m) != feature_matrix_hash(m)}
+        if stale:
+            detail = ", ".join(f"{m}: saved {was or 'none'} != current {now}"
+                               for m, (was, now) in stale.items())
+            raise StaleRun(
+                f"'{experiment_id}' was measured on a different feature "
+                f"matrix ({detail}). Re-run it; its numbers are not "
+                f"comparable to anything measured today.")
     players = directory / "players.parquet"
     return {"outcomes": pl.read_parquet(path),
             "players": pl.read_parquet(players) if players.exists() else None,

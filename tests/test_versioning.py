@@ -366,3 +366,49 @@ def test_a_manifest_locked_before_a_file_became_runtime_still_matches(sandbox):
     assert V.unlocked_markets() == [], (
         "a manifest predating the runtime classification must still match")
     assert V.verify_current() == [], "and the two guards must agree"
+
+
+def test_a_promote_carries_the_numbers_with_the_weights():
+    """`metrics.json` is the accuracy the app shows, and it used to be orphaned.
+
+    Training writes it to `output/<market>/`, versions snapshot
+    `models/<market>/`, and `promote` moved only the latter. Promoting the
+    242-feature model therefore left the 318-feature model's accuracy on
+    display. It is now locked with the weights it describes and restored
+    beside them — but restored to `output/`, not `models/`, so it must not
+    count as a missing artifact when the live directory is verified.
+    """
+    from src.models import versioning as V
+
+    assert "metrics.json" in V.TRAINING_REPORTS
+
+    fitted, runtime = V.split_runtime({
+        "xgb.pkl": "a", "blend_weight.json": "b", "metrics.json": "c"})
+    assert "metrics.json" not in fitted, (
+        "a report restored to output/ would read as missing from models/")
+    assert "metrics.json" not in runtime
+    assert "xgb.pkl" in fitted and "blend_weight.json" in runtime
+
+
+def test_every_locked_version_reports_metrics_from_its_own_feature_set():
+    """The check that would have caught the mislabelled lock.
+
+    A manifest reads its accuracy out of `walkforward.json`, which is one
+    global file that whatever ran last overwrites. On 2026-08-19 a 242-feature
+    version recorded 318-feature accuracy that way.
+    """
+    import json
+
+    from src.models import versioning as V
+
+    for path in sorted(V.registry_root().glob("2026.08.19-*.json")):
+        m = json.loads(path.read_text())
+        for market, metrics in (m.get("metrics") or {}).items():
+            prov = (metrics or {}).get("_provenance") or {}
+            locked = (m.get("features") or {}).get(market, {}).get("n")
+            if not prov.get("n_features") or not locked:
+                continue
+            assert prov["n_features"] == locked, (
+                f"{m['id']} / {market}: manifest reports accuracy measured on "
+                f"{prov['n_features']} features for a model locked with "
+                f"{locked}. The numbers describe a different model.")
