@@ -8,10 +8,10 @@
 
 Distinct from `20_export_html.py`, which freezes the Streamlit app by running
 it. This one assembles its numbers directly from the same `src/` functions the
-app calls, so it can show things the app has no widget for: every rank from
-Top-1 to Top-10 rather than 1/3/5, a master table that carries unpriced players
-alongside priced ones, combinations built over that same wider pool, and a
-by-team table covering the whole slate.
+app calls, so it can show things the app has no widget for: a master table
+that carries unpriced players alongside priced ones, combinations built over
+that same wider pool, a reader-chosen full cover, and a by-team table covering
+the whole slate.
 
 **Which model.** `models/registry/CURRENT.json` names the promoted version per
 market and the version's own config resolves the model, so the page can never
@@ -53,17 +53,6 @@ MARKETS = [("anytime_td", "Anytime TD"), ("first_td", "First TD")]
 #: figures the walk-forward artifact records; this recomputes from backtest
 #: frames, so the whole ladder is available for the same cost.
 KS = tuple(range(1, 11))
-
-#: Threshold grid for "how often is this pick right". One point per percentage
-#: point up to 0.70 — past that the backtest holds too few games to measure at
-#: any market, and `rate_at` says so rather than guessing.
-CUT_GRID = [round(x / 100, 2) for x in range(0, 71)]
-
-#: Bootstrap draws for the threshold grid's intervals. The library default is
-#: 2000; at 71 cuts x 4 series x 2 markets that is a minute of resampling for
-#: intervals that move in the third decimal. 600 keeps the width honest.
-DRAWS = 600
-
 
 # ── Which model, which week ───────────────────────────────────────────────
 
@@ -179,63 +168,6 @@ def topk_ladder(df, ks=KS) -> dict | None:
             "span": (f"{seasons[0]}-{seasons[-1]}" if seasons else None)}
 
 
-def _rate_frame(df, prob_col: str, label_col: str, top_only: bool):
-    """One row per game (best pick) or per candidate, ranked by `prob_col`."""
-    d = df.filter(pl.col(prob_col).is_not_null())
-    if top_only:
-        d = d.sort(prob_col, descending=True).group_by("game_id").first()
-    return d.select([pl.col("game_id"),
-                     pl.col(prob_col).alias("prob"),
-                     pl.col(label_col).cast(pl.Float64).alias("hit")])
-
-
-def hit_curve(frame, grid=CUT_GRID) -> list[dict]:
-    """Measured rate at every threshold, with a game-clustered interval.
-
-    Reports rather than filters, the same way the app's slider does: raising
-    the bar makes picks better and rarer at once, and only both numbers
-    together describe the trade.
-    """
-    from src.evaluation.hit_rates import MIN_GAMES, _clustered_rate
-    out = []
-    total = frame.height
-    for t in grid:
-        sel = frame.filter(pl.col("prob") >= t)
-        if sel.height < MIN_GAMES:
-            out.append({"t": t, "n": sel.height, "share": sel.height / total,
-                        "rate": None, "lo": None, "hi": None, "few": True})
-            continue
-        rate, lo, hi = _clustered_rate(sel["hit"].to_numpy(),
-                                       sel["game_id"].to_numpy(), draws=DRAWS)
-        out.append({"t": t, "n": sel.height, "share": sel.height / total,
-                    "rate": rate, "lo": lo, "hi": hi, "few": False})
-    return out
-
-
-def selectivity(df) -> dict | None:
-    """The four curves: our top pick and any player, and the book's own two.
-
-    The book's are here because "if I only act above X%" is a question anyone
-    can ask of a price as easily as of a model, and without the answer the
-    model's curve has no scale.
-    """
-    if df is None:
-        return None
-    from src.evaluation.hit_rates import _label_col, _prob_col
-    pub, lab = _prob_col(df), _label_col(df)
-    out = {"base_rate": float(df[lab].mean()),
-           "games": df["game_id"].n_unique()}
-    series = {"ours_top": (pub, True), "ours_any": (pub, False)}
-    if "market_prob" in df.columns and df["market_prob"].null_count() < df.height:
-        series["book_top"] = ("market_prob", True)
-        series["book_any"] = ("market_prob", False)
-    for name, (col, top) in series.items():
-        fr = _rate_frame(df, col, lab, top)
-        out[name] = {"n": fr.height, "overall": float(fr["hit"].mean()),
-                     "curve": hit_curve(fr)}
-    return out
-
-
 def rank_rates(target_type: str, model: str, df) -> dict:
     """What happened to the Nth-ranked player in a game, across the backtests.
 
@@ -255,24 +187,6 @@ def rank_rates(target_type: str, model: str, df) -> dict:
            .agg([pl.col(lab).mean().alias("hit"), pl.len().alias("n")])
            .filter(pl.col("n") >= 30).sort("rk"))
     return {int(r): float(h) for r, h in zip(agg["rk"], agg["hit"])}
-
-
-def head_to_head(target_type: str, model: str, version: str | None) -> dict | None:
-    """`vs bookmaker`, `Closer — backable` and `Closer — fade`.
-
-    The same call the app's tiles make — see `src/evaluation/market_parity.py`
-    for why it is not computed here.
-    """
-    from src.evaluation import harness
-    from src.evaluation.market_parity import compare
-    from src.models.versioning import market_dir
-    try:
-        md = market_dir(target_type, version) if version else None
-        return compare(target_type, model, harness._features(target_type),
-                       model_dir=md or get_path("models", target_type))
-    except Exception as e:                                   # noqa: BLE001
-        print(f"    head-to-head unavailable: {e}", file=sys.stderr)
-        return None
 
 
 # ── This week ─────────────────────────────────────────────────────────────
@@ -554,11 +468,8 @@ def teams(season: int, week: int, target_type: str) -> dict:
 def market(target_type: str, label: str, season: int | None,
            week: int | None) -> dict:
     from src.evaluation.combo_backtest import load as load_combos
-    from src.evaluation.hit_rates import published_topk
     from src.evaluation.longshot import load as load_longshot
     from src.evaluation.rank_economics import load as load_econ
-    from src.presentation import board as bp
-
     cfg = get_config()
     who = served(target_type)
     model = who["model"]
@@ -568,7 +479,7 @@ def market(target_type: str, label: str, season: int | None,
     print(f"  {target_type}: {model} on {who['version']} — "
           f"{season} week {week}", file=sys.stderr)
 
-    df, fell_back = _backtests(target_type, model)
+    df, _ = _backtests(target_type, model)
 
     econ = load_econ(get_path("output", target_type) / "rank_economics.json")
     rule = None
@@ -595,51 +506,19 @@ def market(target_type: str, label: str, season: int | None,
     tm = teams(season, week, target_type)
     print("    accuracy ...", file=sys.stderr)
 
-    legend = bp.tier_legend(rule) if rule else None
     combo_rec = load_combos(get_path("output", target_type) / "combo_backtest.json")
-
-    from src.evaluation.harness import walkforward_rows
-    wf_rows, _ = walkforward_rows(target_type)
-    folds = [f for f in wf_rows if f.get("model", model) == model]
-    wf = None
-    if folds:
-        total = sum(f["games"] for f in folds)
-        wf = {"games": total, "seasons": len(folds),
-              "span": f"{min(f['test_season'] for f in folds)}-"
-                      f"{max(f['test_season'] for f in folds)}"}
-        for k in ("top1", "top3", "top5"):
-            p = sum(f[k] * f["games"] for f in folds) / total
-            wf[k] = p
-            wf[f"{k}_se"] = float(np.sqrt(p * (1 - p) / total))
-        if all("median_rank" in f for f in folds):
-            wf["median_rank"] = float(np.median([f["median_rank"] for f in folds]))
 
     return {
         "key": target_type, "label": label, "season": season, "week": week,
-        "served": who, "model": model, "measured_on": fell_back,
-        # The strip reads the PUBLISHED column, not walkforward.json. That
-        # artifact scores the model's own ranking, which anytime TD does not
-        # publish — it publishes `final`, blended with the price — so the strip
-        # described an object the board never shows. The page carried 49.6%
-        # here and 51.6% in the ladder below, both labelled Top-1, and the
-        # bigger sample was the one measuring the wrong column. `walkforward`
-        # is still carried, as the longer unblended history.
-        "walkforward": published_topk(target_type, model) or wf,
-        "walkforward_model_only": wf,
+        "served": who, "model": model,
+        # Still read by the master table and by Combinations, which both show
+        # the blended Top-K ladder beside a pick's rank.
         "topk": topk_ladder(df),
-        "h2h": head_to_head(target_type, model, who["version"]),
-        "selectivity": selectivity(df),
-        "rank_rates": {str(k): v for k, v in rates.items()},
         "rule": rule,
-        "tier_legend": (legend.to_dict("records") if legend is not None else None),
-        "econ": ({"headline": econ.get("headline"), "games": econ.get("games"),
-                  "seasons": econ.get("seasons")} if econ else None),
         "longshot": load_longshot(get_path("output", target_type) / "longshot_skill.json"),
         "combo_record": ({"span": combo_rec.get("span"),
                           "rows": combo_rec.get("rows")} if combo_rec else None),
-        "conf_cuts": [cuts[0] * 100, cuts[1] * 100],
         "min_edge": float(cfg.get("betting", {}).get("min_edge_pp", 2.0)),
-        "test_season": cfg["splits"]["test_season"],
         "players": pl_out["rows"],
         "problems": pl_out["problems"] + tm["problems"],
         "teams": tm["rows"],

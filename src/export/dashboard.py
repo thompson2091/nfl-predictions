@@ -16,12 +16,14 @@ precomputed is the combination search: 128 eligible players is 10.7 million
 four-leg slips, which is a JSON file nobody can download and a loop the browser
 finishes in under a second.
 
-**Colour.** Three entities carry a hue each, fixed across every chart and every
-filter state: our published number is blue, our pre-blend number is orange, the
-bookmaker is aqua. Slots 1-3 of the project's categorical palette, which is the
-set that clears the colour-blindness gates on every pair rather than only on
-adjacent ones. Nothing is coloured by rank, so filtering a series out never
-repaints the ones that remain.
+**What it opens on.** Every player, then Combinations, Cover the field, By
+team — a slate first, and the things you can do with it after. The two panes
+that used to come first, `Model vs book` and `How often it is right`, scored
+the model instead of the week; they were the first thing a reader saw and the
+last thing they wanted. The measurements themselves are not gone, they are in
+`walkforward.json`, `market_parity` and `hit_rates` where the evaluation
+harness can gate on them, which is where a number that describes the model
+rather than the slate belongs.
 """
 from __future__ import annotations
 
@@ -49,6 +51,7 @@ CSS = """
   --s1: #2a78d6;   /* us — blended, the published number */
   --s2: #eb6834;   /* model only — our number before the blend */
   --s3: #1baf7a;   /* the bookmaker */
+  --accent-soft: rgba(42,120,214,0.10);
   --s1-soft: rgba(42,120,214,0.16);
   --s3-soft: rgba(27,175,122,0.16);
   --shadow: 0 1px 2px rgba(11,11,11,.05), 0 8px 24px rgba(11,11,11,.06);
@@ -61,6 +64,7 @@ CSS = """
     --border: rgba(255,255,255,0.10); --accent: #3987e5;
     --good: #0ca30c; --warn: #c98500; --bad: #e66767;
     --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+    --accent-soft: rgba(57,135,229,0.18);
     --s1-soft: rgba(57,135,229,0.20); --s3-soft: rgba(25,158,112,0.20);
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
   }
@@ -72,7 +76,8 @@ CSS = """
   --border: rgba(255,255,255,0.10); --accent: #3987e5;
   --good: #0ca30c; --warn: #c98500; --bad: #e66767;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70;
-  --s1-soft: rgba(57,135,229,0.20); --s3-soft: rgba(25,158,112,0.20);
+  --accent-soft: rgba(57,135,229,0.18);
+    --s1-soft: rgba(57,135,229,0.20); --s3-soft: rgba(25,158,112,0.20);
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
 }
 
@@ -132,10 +137,47 @@ h3 { font-size: 14px; margin: 18px 0 6px; letter-spacing: -0.005em; }
 }
 .bad-box { border-left-color: var(--bad); }
 .good-box { border-left-color: var(--good); }
-/* The player picker: many short checkboxes, wrapped, rather than one tall
-   column. A cover is chosen by scanning names, so they have to be scannable. */
-.pickers { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 14px; }
-.pickers label { font-size: 13px; white-space: nowrap; }
+/* The player picker. Two surfaces, not one: chips for what is already in the
+   cover, so the answer to "who is in?" is one line rather than a re-scan of
+   forty checkboxes, and a grid for everyone who could be. The grid is a wall
+   of names read by eye, so each cell puts the name and the probability on the
+   same baseline and the team and price beneath in a quieter colour. */
+.picker { margin-bottom: 16px; }
+.picked { margin: 10px 0 12px; }
+.picked-h { font-size: 12px; color: var(--muted); text-transform: uppercase;
+            letter-spacing: .06em; margin-bottom: 6px; }
+.picked-h b { color: var(--ink); font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pchip {
+  display: inline-flex; align-items: center; gap: 6px; font: inherit;
+  font-size: 13px; cursor: pointer; padding: 4px 8px 4px 10px;
+  border-radius: 99px; border: 1px solid var(--accent);
+  background: var(--accent-soft); color: var(--ink);
+}
+.pchip i { font-style: normal; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.pchip span { color: var(--ink-2); font-size: 15px; line-height: 1; }
+.pchip:hover span { color: var(--bad); }
+.pchip.ghost { border-color: var(--rule); background: var(--surface); color: var(--ink-2); }
+.pchip.ghost:hover { color: var(--ink); border-color: var(--border); }
+
+.ppick {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px; margin: 4px 0 6px;
+  max-height: 340px; overflow-y: auto; padding-right: 4px;
+}
+.ppick-i {
+  display: grid; grid-template-columns: 1fr auto; gap: 0 8px; text-align: left;
+  font: inherit; cursor: pointer; padding: 7px 10px; border-radius: 9px;
+  border: 1px solid var(--rule); background: var(--surface); color: var(--ink);
+}
+.ppick-i:hover { border-color: var(--border); background: var(--sunken); }
+.ppick-i.on { border-color: var(--accent); background: var(--accent-soft); }
+.ppick-i .n { font-size: 13px; font-weight: 560; overflow: hidden;
+              text-overflow: ellipsis; white-space: nowrap; }
+.ppick-i .v { font-size: 13px; font-weight: 620; font-variant-numeric: tabular-nums; }
+.ppick-i .m, .ppick-i .o { font-size: 11px; color: var(--muted); }
+.ppick-i .o { text-align: right; font-variant-numeric: tabular-nums; }
+.ppick-i.on .v { color: var(--accent); }
 
 /* ── Tiles ─────────────────────────────────────────────────────────── */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 10px; }
@@ -249,21 +291,6 @@ td.num { font-variant-numeric: tabular-nums; }
   background: var(--s1-soft);
 }
 
-/* ── Charts ────────────────────────────────────────────────────────── */
-.chart { position: relative; }
-.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
-.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); margin: 2px 0 8px; }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-.swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
-.tip {
-  position: absolute; pointer-events: none; opacity: 0; transition: opacity .1s;
-  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
-  padding: 7px 10px; font-size: 12px; box-shadow: var(--shadow); z-index: 12;
-  white-space: nowrap;
-}
-.tip b { font-weight: 600; }
-.tip .r { display: flex; justify-content: space-between; gap: 12px; }
-
 @media (max-width: 700px) {
   main { padding: 12px; }
   .bar { gap: 10px; }
@@ -314,9 +341,7 @@ const cls = v => !has(v) ? '' : (v > 0 ? 'pos' : (v < 0 ? 'neg' : ''));
 // ── State ───────────────────────────────────────────────────────────────
 const S = {
   market: 0,
-  tab: 'model',
-  cut: {},          // per market — see paneHits; one number cannot serve both
-  curve: 'top',
+  tab: 'players',
   p: { game: '', q: '', depth: 0, priced: 'all', longshot: false, differ: false },
   // Five players, one per game. Five because 31 slips is the size the question
   // is usually asked at, and one-per-game because taking the top five from a
@@ -324,7 +349,7 @@ const S = {
   // guts the all-score tail.
   // `picked` fills from the top five on first render; after that it is
   // whatever the reader chose.
-  cover: { picked: null, stake: 1, dec: 2.0 },
+  cover: { picked: null, stake: 1, dec: 2.0, q: '', game: '', pricedOnly: false },
   // `priced` mirrors the master table's control and defaults the same way:
   // the whole slate. A priced-only default answered "what can I bet on"
   // while being read as "which players go together".
@@ -338,152 +363,6 @@ const S = {
   sort: {},
 };
 const M = () => DATA.markets[S.market];
-
-// ── Charts ──────────────────────────────────────────────────────────────
-// One generic line/area plot. Every chart on this page is "a few series over an
-// ordered x", so there is one implementation with a crosshair and a tooltip
-// rather than three that drift. `band` draws a confidence interval in the
-// series' own hue; it sits under every line so a wide interval never hides a
-// neighbour.
-function lineChart(opts) {
-  const W = 1120, H = opts.height || 300;
-  const m = { l: 48, r: 16, t: 10, b: 34 };
-  const iw = W - m.l - m.r, ih = H - m.t - m.b;
-  const xs = opts.x, series = opts.series.filter(s => s.y.some(has));
-  const all = series.flatMap(s => s.y.concat(s.lo || [], s.hi || [])).filter(has);
-  if (!series.length || !all.length) return el('p', { class: 'fine', text: 'Not measured.' });
-  let y0 = opts.y0 != null ? opts.y0 : Math.min.apply(null, all);
-  let y1 = opts.y1 != null ? opts.y1 : Math.max.apply(null, all);
-  const padY = (y1 - y0) * 0.12 || 0.05;
-  y0 = Math.max(0, y0 - padY); y1 = Math.min(opts.yMax == null ? 1 : opts.yMax, y1 + padY);
-  const X = i => m.l + (xs.length < 2 ? iw / 2 : i * iw / (xs.length - 1));
-  const Y = v => m.t + ih - (v - y0) / (y1 - y0) * ih;
-
-  const parts = [];
-  const ticks = 4;
-  for (let i = 0; i <= ticks; i++) {
-    const v = y0 + (y1 - y0) * i / ticks;
-    parts.push(`<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/>`);
-    parts.push(`<text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${pct(v, 0)}</text>`);
-  }
-  const step = Math.max(1, Math.ceil(xs.length / 12));
-  xs.forEach((lab, i) => {
-    if (i % step && i !== xs.length - 1) return;
-    parts.push(`<text x="${X(i)}" y="${H - 12}" text-anchor="middle" font-size="11" fill="var(--muted)">${esc(lab)}</text>`);
-  });
-
-  series.forEach(s => {
-    if (s.lo && s.hi) {
-      const up = [], dn = [];
-      s.y.forEach((v, i) => {
-        if (!has(v) || !has(s.lo[i]) || !has(s.hi[i])) return;
-        up.push(`${X(i)},${Y(s.hi[i])}`); dn.unshift(`${X(i)},${Y(s.lo[i])}`);
-      });
-      if (up.length) parts.push(`<polygon points="${up.concat(dn).join(' ')}" fill="${s.soft}" stroke="none"/>`);
-    }
-  });
-  series.forEach(s => {
-    const pts = [];
-    s.y.forEach((v, i) => { if (has(v)) pts.push(`${X(i)},${Y(v)}`); });
-    if (pts.length > 1) parts.push(`<polyline points="${pts.join(' ')}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
-    // Markers only where a reader could count them. Seventy-one points per
-    // series turns a line into a dotted band and hides the shape it is there
-    // to show; the crosshair reads individual values either way.
-    if (xs.length <= 16) s.y.forEach((v, i) => {
-      if (!has(v)) return;
-      // A 2px surface ring rather than a stroke box: where two series meet the
-      // markers overlap and a ring is what keeps both readable.
-      parts.push(`<circle cx="${X(i)}" cy="${Y(v)}" r="3.5" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>`);
-    });
-  });
-  // Direct labels at the end of each line, so identity survives without a
-  // reader matching colours to a legend on every glance — but only where they
-  // fit. Three series that converge (Top-K at depth 10 differ by 0.4 points)
-  // stack three names on one pixel row and the result is unreadable, so the
-  // labels are nudged apart and dropped entirely if that would take them
-  // further than a line-height from the value they name. The legend above is
-  // always there, so dropping them loses nothing.
-  const ends = [];
-  series.forEach(s => {
-    for (let i = s.y.length - 1; i >= 0; i--) {
-      if (has(s.y[i])) { ends.push({ s: s, i: i, y: Y(s.y[i]) }); break; }
-    }
-  });
-  ends.sort((a, b) => a.y - b.y);
-  let prev = -1e9, ok = true;
-  ends.forEach(e => {
-    e.at = Math.max(e.y, prev + 13);
-    if (Math.abs(e.at - e.y) > 14) ok = false;
-    prev = e.at;
-  });
-  if (ok) ends.forEach(e => parts.push(
-    `<text x="${X(e.i) + 8}" y="${e.at + 4}" font-size="11" font-weight="600" fill="${e.s.color}">${esc(e.s.name)}</text>`));
-  parts.push(`<line class="cross" x1="0" x2="0" y1="${m.t}" y2="${m.t + ih}" stroke="var(--rule)" stroke-width="1" opacity="0"/>`);
-
-  const wrap = el('div', { class: 'chart' });
-  wrap.appendChild(el('div', { class: 'legend', html: series.map(s =>
-    `<span><i class="swatch" style="background:${s.color}"></i>${esc(s.name)}</span>`).join('') }));
-  const box = el('div', { class: 'chart', style: 'position:relative' });
-  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label || '')}">${parts.join('')}</svg>`;
-  const tip = el('div', { class: 'tip' });
-  box.appendChild(tip);
-  const svg = box.querySelector('svg'), cross = box.querySelector('.cross');
-  const move = ev => {
-    const r = svg.getBoundingClientRect();
-    const px = (ev.clientX - r.left) / r.width * W;
-    let i = Math.round((px - m.l) / (iw / Math.max(1, xs.length - 1)));
-    i = Math.max(0, Math.min(xs.length - 1, i));
-    cross.setAttribute('x1', X(i)); cross.setAttribute('x2', X(i)); cross.setAttribute('opacity', '1');
-    tip.innerHTML = `<b>${esc(opts.xLabel || '')}${esc(xs[i])}</b>` + series.map(s =>
-      `<div class="r"><span><i class="swatch" style="background:${s.color}"></i> ${esc(s.name)}</span><b>${
-        has(s.y[i]) ? pct(s.y[i]) : '—'}</b></div>`).join('') +
-      (opts.extra ? opts.extra(i) : '');
-    tip.style.opacity = 1;
-    const left = X(i) / W * r.width;
-    tip.style.left = Math.min(r.width - 170, Math.max(0, left + 12)) + 'px';
-    tip.style.top = '8px';
-  };
-  box.addEventListener('mousemove', move);
-  box.addEventListener('mouseleave', () => { tip.style.opacity = 0; cross.setAttribute('opacity', '0'); });
-  wrap.appendChild(box);
-  return wrap;
-}
-
-// A diverging bar chart: one quantity per row whose *sign* is the point.
-// The Top-K ladder's three lines converge to within half a point by depth 4 —
-// as lines they are one thick stripe, and the story they are told to carry
-// (who is ahead, and by how much) is exactly what a zero-anchored bar shows.
-// blue/red is the palette's documented diverging pair: two hues that read as
-// opposite, with a neutral rule rather than a hue at the midpoint.
-function divergingBars(rows, opts) {
-  const W = 1120, rh = 24, m = { l: 74, r: 108, t: 8, b: 26 };
-  const H = m.t + m.b + rows.length * rh;
-  const iw = W - m.l - m.r;
-  const max = Math.max.apply(null, rows.map(r => Math.abs(r.v || 0))) || 1;
-  const mid = m.l + iw / 2;
-  const X = v => mid + (v / max) * (iw / 2 - 4);
-  const parts = [`<line x1="${mid}" x2="${mid}" y1="${m.t}" y2="${m.t + rows.length * rh}" stroke="var(--rule)" stroke-width="1"/>`];
-  rows.forEach((r, i) => {
-    const y = m.t + i * rh + 5, h = rh - 12;
-    const v = r.v || 0, x = X(v);
-    const w = Math.max(1.5, Math.abs(x - mid));
-    parts.push(`<rect x="${Math.min(mid, x)}" y="${y}" width="${w}" height="${h}" rx="4" fill="${v >= 0 ? 'var(--s1)' : 'var(--bad)'}"/>`);
-    parts.push(`<text x="${m.l - 10}" y="${y + h - 1}" text-anchor="end" font-size="12" fill="var(--ink-2)">${esc(r.label)}</text>`);
-    // Outside the bar end by default; inside when outside would run past the
-    // plot into the category labels. The bar that overflows is always the
-    // longest one, so it is always the one with room to hold its own label.
-    const need = 8 + r.text.length * 7;
-    const inside = v >= 0 ? (x + need > W - m.r + 96) : (x - need < m.l + 4);
-    const lx = v >= 0 ? (inside ? x - 7 : x + 7) : (inside ? x + 7 : x - 7);
-    const anchor = (v >= 0) === !inside ? 'start' : 'end';
-    parts.push(`<text x="${lx}" y="${y + h - 1}" text-anchor="${anchor}" font-size="12" font-variant-numeric="tabular-nums" fill="${inside ? 'var(--surface)' : 'var(--ink-2)'}" font-weight="${inside ? 600 : 400}">${esc(r.text)}</text>`);
-  });
-  parts.push(`<text x="${mid + 6}" y="${H - 8}" font-size="11" fill="var(--muted)">${esc(opts.right)}</text>`);
-  parts.push(`<text x="${mid - 6}" y="${H - 8}" text-anchor="end" font-size="11" fill="var(--muted)">${esc(opts.left)}</text>`);
-  const wrap = el('div', { class: 'chart' });
-  wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label || '')}">${parts.join('')}</svg>`;
-  return wrap;
-}
 
 // ── Tables ──────────────────────────────────────────────────────────────
 // `cols` is [{k, label, t?: 'text', fmt, cls, title, bar}]. Sorting is by the
@@ -586,287 +465,6 @@ function check(label, value, onchange, disabled, title) {
   const l = el('label', { class: 'check' + (disabled ? ' off' : ''), title: title || null }, [i]);
   l.appendChild(document.createTextNode(' ' + label));
   return l;
-}
-"""
-
-JS_PANES = r"""
-// ── Pane: the model, and the model against the price ────────────────────
-function paneModel() {
-  const m = M(), out = el('div');
-  const wf = m.walkforward, h = m.h2h, tk = m.topk;
-
-  const t = [];
-  if (wf) {
-    t.push({ k: 'Games', v: wf.games.toLocaleString(),
-             d: wf.span + ', ' + wf.seasons + ' folds \u2014 a wider window than the ladder below',
-             help: 'Walk-forward: the model is retrained for each season and never sees the one it is scored on.' });
-    [['top1', 'Top-1', 'our highest-rated player in a game scored'],
-     ['top3', 'Top-3', 'at least one of our top 3 scored'],
-     ['top5', 'Top-5', 'at least one of our top 5 scored']].forEach(([k, lab, blurb]) => {
-      t.push({ k: lab, v: pct(wf[k]), d: wf[k + '_se'] ? '± ' + pct(wf[k + '_se']) : '',
-               help: 'How often ' + blurb + '. The ± is one standard error — treat anything inside it as noise.' });
-    });
-    if (has(wf.median_rank)) t.push({ k: 'Median rank', v: wf.median_rank.toFixed(0),
-      d: 'lower is better', help: 'In a typical game, the best-ranked player who actually scored sat this high on our list.' });
-  }
-  if (h) {
-    const spans = h.overall_lo <= 0 && 0 <= h.overall_hi;
-    t.push({ k: 'vs bookmaker', v: pp(h.overall_better_pct) + '%',
-             d: pp(h.overall_lo) + ' to ' + pp(h.overall_hi),
-             help: 'How much smaller our average squared miss is than the book’s, across ' +
-                   h.players.toLocaleString() + ' priced players in ' + h.span + '. ' +
-                   (spans ? 'The interval includes zero, so we are not measurably better here.'
-                          : 'The interval excludes zero, so the edge is real if small.') });
-    if (has(h.disagree_higher_pct)) t.push({ k: 'Closer — backable', v: pp(h.disagree_higher_pct, 0) + '%',
-      d: (h.disagree_higher_n || 0).toLocaleString() + ' players',
-      help: 'The tenth of players we differ from the book on most, taking only those we rate HIGHER — the direction these markets let you bet. 0% would mean we match the book.' });
-    if (has(h.disagree_lower_pct)) t.push({ k: 'Closer — fade', v: pp(h.disagree_lower_pct, 0) + '%',
-      d: (h.disagree_lower_n || 0).toLocaleString() + ' players',
-      help: 'The same comparison for players we rate LOWER than the book. The model’s sharpest skill, and there is no way to bet it — these markets only sell the Yes side.' });
-  }
-  out.appendChild(card('Track record', null, [tiles(t),
-    el('p', { class: 'fine', html:
-      'Top-K is measured over every candidate the model rates. <b>vs bookmaker</b> and the two <b>Closer</b> figures are measured only on players a book priced, which is a different and smaller population — the two blocks are not subtractable.' })]));
-
-  if (m.measured_on) out.appendChild(el('div', { class: 'warn-box', html:
-    'These rates are measured on <b>' + esc(m.measured_on) + '</b>, the production model — <b>' +
-    esc(m.model) + '</b> has no backtest frames of its own.' }));
-
-  // The ladder. The app reports 1/3/5 because that is what the walk-forward
-  // artifact records; recomputing from the backtest frames costs nothing extra
-  // and the whole ladder is the more useful shape — Top-1 and Top-10 answer
-  // different questions and a model can lose one while winning the other.
-  if (tk) {
-    const ks = tk.k;
-    const rows = ks.map(r => ({
-      k: r.k, ours: r.ours, model_only: r.model_only, book: r.book,
-      diff: has(r.ours) && has(r.book) ? (r.ours - r.book) * 100 : null,
-      group: r.k === 3 || r.k === 5,
-    }));
-    const cols = [
-      { k: 'k', label: 'Depth', t: 1, fmt: (v, r) => 'Top-' + v + (r.group ? ' <span class="chip">group</span>' : '') },
-      { k: 'ours', label: 'Us', fmt: v => pct(v) },
-      tk.blended ? { k: 'model_only', label: 'Model only', fmt: v => pct(v) } : null,
-      { k: 'book', label: 'The book', fmt: v => pct(v) },
-      { k: 'diff', label: 'Difference', fmt: v => pp(v) + ' pts', cls: v => cls(v),
-        title: 'Positive means our ranking put a scorer in the top K more often than the book’s price did.' },
-    ].filter(Boolean);
-    const d1 = rows[0].diff;
-    out.appendChild(card('Top-1 to Top-10, against the bookmaker',
-      'The honest yardstick is a price, not a coin flip. All three columns are the same ' +
-      tk.games.toLocaleString() + ' backtested games' +
-      (tk.span ? ' (' + tk.span + ')' : '') +
-      ' and the same priced players — only the ranking differs. ' +
-      '<b>This is a different window from the accuracy strip above</b>, which pools every ' +
-      'retrained fold; only the seasons with archived prices can be compared to a book, ' +
-      'so the two Top-1 figures on this page are not the same measurement. ' +
-      (tk.blended
-        ? '<b>Us</b> is the number the board publishes, blended with the price because that predicts scorers better; <b>Model only</b> is the same model before the blend.'
-        : 'This market is not blended, so our published number <i>is</i> the model’s own — there is no separate column for it.'),
-      [divergingBars(rows.map(r => ({
-         label: 'Top-' + r.k, v: r.diff, text: pp(r.diff) + ' pts',
-       })), { left: 'the book is ahead', right: 'we are ahead',
-              label: 'How far our Top-K sits above or below the bookmaker’s, by depth' }),
-       el('p', { class: 'fine', html:
-         'The bars are the last column of the table below. Plotted on their own because the three levels themselves converge — by Top-4 all three are within a point of each other, and as three lines they are one thick stripe. What separates them is the gap, and a gap wants a zero.' }),
-       table('topk', cols, rows, { nosort: true }),
-       (has(d1) && d1 < 0) ? el('p', { class: 'fine', html:
-         'We are <b>behind the book on Top-1</b> by ' + Math.abs(d1).toFixed(1) +
-         ' points. Read it as it is: this model brackets the scorer better than the price does and isolates him worse. If you want one name, the book’s favourite is still the better single guess; the board earns its keep on the shortlist.' })
-        : el('p', { class: 'fine', html: 'Where the difference is positive our ranking finds a scorer inside that depth more often than the price does.' })]));
-  }
-
-  if (m.econ && m.econ.headline) {
-    const hd = m.econ.headline;
-    out.appendChild(el('div', { class: 'warn-box' + (hd.roi < 0 ? ' bad-box' : ''), html:
-      '<b>It is not a bet card.</b> Backing its top ' + (hd.top_n || 3) + ' at the prices actually posted returned <b>' +
-      pp(hd.roi) + '%</b> [' + pp(hd.lo) + ', ' + pp(hd.hi) + '] across ' +
-      (m.econ.games || 0).toLocaleString() + ' backtested games' +
-      (hd.roi < 0 ? ' — the market is priced ahead of it. Use the ranking to decide who is likely to score; do not size a position on the edge columns.' : '.') }));
-  }
-  if (m.tier_legend) {
-    const keys = Object.keys(m.tier_legend[0]);
-    out.appendChild(card('What "Worth backing" means',
-      'Every threshold here is fitted from the backtest, not chosen' +
-      (m.rule && m.rule.span ? ' — across ' + (m.rule.games || 0).toLocaleString() + ' games in ' + esc(m.rule.span) : '') +
-      '. A tier that stops paying in any season stops being shown at all.',
-      [table('legend', keys.map(k => ({ k: k, label: k, t: 1 })), m.tier_legend, { nosort: true })]));
-  }
-
-  const v = m.served;
-  out.appendChild(card('The model on this page', null, [
-    table('who', [
-      { k: 'k', label: '', t: 1 }, { k: 'v', label: '', t: 1 },
-    ], [
-      { k: 'Market', v: m.label }, { k: 'Model', v: m.model },
-      { k: 'Version', v: v.version || 'unlocked' },
-      { k: 'Locked', v: v.created || '' },
-      { k: 'Verdict', v: v.verdict || '' },
-      { k: 'Commit', v: v.git || '' },
-      { k: 'Features', v: has(v.n_features) ? v.n_features + ' columns' +
-        (has(v.n_families) ? ' across ' + v.n_families + ' families' : '') : '' },
-      { k: 'Slate', v: m.season + ' week ' + m.week },
-      { k: 'Note', v: v.note || '' },
-    ].filter(r => r.v), { nosort: true, wrap: true }),
-  ]));
-  if ((v.problems || []).length) out.appendChild(el('div', { class: 'warn-box bad-box', html:
-    '<b>Served artifacts do not match the version record:</b><br>' + v.problems.map(esc).join('<br>') }));
-  return out;
-}
-
-// ── Pane: how often is this pick right ──────────────────────────────────
-function paneHits() {
-  const m = M(), sel = m.selectivity, out = el('div');
-  if (!sel) return card('How often is this pick right?', 'Not measured for this market.');
-
-  const grid = sel.ours_top.curve.map(c => c.t);
-  // Where the bar can usefully sit is a property of the market, not a constant.
-  // Anytime-TD top picks reach 0.66 before a cut runs out of games; a first-TD
-  // top pick tops out around 0.19, so a slider fixed at 0.50 put that market's
-  // whole panel past the end of its own data — an empty list every time, which
-  // reads as a broken page rather than as a bar set too high.
-  let top = 0;
-  sel.ours_top.curve.forEach(c => { if (!c.few) top = c.t; });
-  const maxCut = Math.max(0.05, top);
-  if (S.cut[m.key] == null) S.cut[m.key] = Math.min(0.5, Math.round(maxCut * 60) / 100);
-  const cutV = Math.min(S.cut[m.key], maxCut);
-  const at = (s, t) => (sel[s] ? sel[s].curve[Math.round(t * 100)] : null);
-  const r = at('ours_top', cutV), ra = at('ours_any', cutV);
-
-  // Re-rendering the page on every `input` event destroyed the range input
-  // under the pointer that was dragging it, so a drag moved one step and then
-  // died — worse on touch, where the element is also the scroll target. The
-  // slider and everything that does not depend on it are therefore built once,
-  // and moving it repaints only the two things that actually change.
-  const slider = el('input', { type: 'range', min: 0, max: maxCut, step: 0.01,
-                               value: cutV, 'aria-label': 'Confidence threshold' });
-  const cutLabel = el('label', { text: 'If I only acted on picks above ' + cutV.toFixed(2) });
-  const tilesBox = el('div'), qualBox = el('div');
-  let cut = cutV;
-  const ctrl = el('div', { class: 'bar' }, [
-    el('div', { class: 'field wide' }, [cutLabel, slider]),
-    select('Population', S.curve, [['top', 'Each game’s top pick'], ['any', 'Every rated player']],
-      v => S.curve = v,
-      'The top-pick rate answers "should I act on this week’s best name". The any-player rate answers "should I act on everyone above the bar" — a different population and therefore a different number.'),
-  ]);
-
-  const which = S.curve === 'top' ? 'top' : 'any';
-  const ours = sel['ours_' + which], book = sel['book_' + which];
-  // Trim the x domain to where either curve still has something to say, plus a
-  // little air. Drawing to 0.70 on a market whose data stops at 0.26 spends
-  // two thirds of the plot on empty space, which squeezes the part with the
-  // shape in it into the left-hand corner.
-  let last = 0;
-  [ours, book].forEach(s => s && s.curve.forEach((c, i) => { if (!c.few) last = Math.max(last, i); }));
-  const upto = Math.min(ours.curve.length, last + 5);
-  const cur = which === 'top' ? r : ra;
-  const curBook = book ? book.curve[Math.round(cutV * 100)] : null;
-
-  out.appendChild(card('How often is this pick right?',
-    'Measured on seasons the model never trained on, with a 90% interval from resampling <b>whole games</b> — two picks in one game are not independent evidence. ' +
-    'The control reports rather than filters: raising the bar makes picks better and rarer at once, and only both numbers together describe the trade.',
-    [ctrl, tilesBox,
-     lineChart({
-       x: grid.slice(0, upto).map(t => t.toFixed(2)),
-       series: [
-         { name: 'Us', color: 'var(--s1)', soft: 'var(--s1-soft)',
-           y: ours.curve.slice(0, upto).map(c => c.rate),
-           lo: ours.curve.slice(0, upto).map(c => c.lo),
-           hi: ours.curve.slice(0, upto).map(c => c.hi) },
-         book ? { name: 'The book', color: 'var(--s3)', soft: 'var(--s3-soft)',
-           y: book.curve.slice(0, upto).map(c => c.rate),
-           lo: book.curve.slice(0, upto).map(c => c.lo),
-           hi: book.curve.slice(0, upto).map(c => c.hi) } : null,
-       ].filter(Boolean),
-       xLabel: 'Above ', height: 260, yMax: 1,
-       label: 'Hit rate against how selective you are',
-       extra: i => '<div class="r"><span>applies to</span><b>' +
-         ours.curve[i].n.toLocaleString() + ' (' + pct(ours.curve[i].share, 0) + ')</b></div>',
-     }),
-     el('p', { class: 'fine', html:
-       'The slider stops at <b>' + maxCut.toFixed(2) + '</b> — past that fewer than 40 ' +
-       (which === 'top' ? 'games' : 'picks') + ' clear the bar on this market, so there is ' +
-       'nothing left to measure. ' +
-       'The shaded band is the 90% interval. Where a line stops, fewer than 40 ' +
-       (which === 'top' ? 'games' : 'picks') + ' clear the bar — a rate there would describe those ' +
-       'few rather than estimate anything, so none is drawn.' })]));
-
-  // The table view of the same curve, at the coarse cuts, so every value is
-  // reachable without a pointer.
-  const step = 5;
-  const rows = ours.curve.slice(0, upto).filter((c, i) => i % step === 0).map((c, i) => {
-    const b = book ? book.curve[i * step] : null;
-    return { t: c.t, n: c.n, share: c.share, rate: c.rate,
-             range: c.rate != null ? pct(c.lo) + ' – ' + pct(c.hi) : '',
-             book: b ? b.rate : null };
-  });
-  out.appendChild(card('Every cut, as a table',
-    'The same measurement at one-twentieth intervals. ' +
-    (book ? 'The book’s column is its own de-vigged price ranked the same way, on the same rows.' : ''),
-    [table('cuts', [
-      { k: 't', label: 'Take picks above', t: 1, fmt: v => v.toFixed(2) },
-      { k: 'n', label: which === 'top' ? 'Games' : 'Picks', fmt: v => v.toLocaleString() },
-      { k: 'share', label: 'Share', fmt: v => pct(v, 0) },
-      { k: 'rate', label: 'Us', fmt: v => v == null ? '<span class="dim">too few</span>' : pct(v) },
-      { k: 'book', label: 'The book', fmt: v => v == null ? '<span class="dim">—</span>' : pct(v) },
-      { k: 'range', label: 'Range (90%)', t: 1, title: 'Resampling whole games rather than individual picks.' },
-    ], rows, { nosort: true })]));
-
-  // This week's players that clear the same bar, measured by the rate for the
-  // population they belong to rather than borrowing the top-pick number.
-  out.appendChild(qualBox);
-
-  // Everything above this line is built once. This is the part the slider owns.
-  function paintCut() {
-    const rr = at('ours_top', cut), rra = at('ours_any', cut);
-    const c2 = which === 'top' ? rr : rra;
-    const b2 = book ? book.curve[Math.round(cut * 100)] : null;
-    cutLabel.textContent = 'If I only acted on picks above ' + cut.toFixed(2);
-    tilesBox.innerHTML = '';
-    tilesBox.appendChild(tiles([
-      { k: 'Hit rate', v: c2 && c2.rate != null ? pct(c2.rate) : '—',
-        d: c2 && c2.rate != null ? '90% ' + pct(c2.lo) + '–' + pct(c2.hi) : 'too few to measure' },
-      b2 ? { k: 'The book, same bar', v: b2.rate != null ? pct(b2.rate) : '—',
-        d: b2.rate != null ? '90% ' + pct(b2.lo) + '–' + pct(b2.hi) : 'too few to measure',
-        help: 'The identical question asked of the bookmaker’s own de-vigged price. Without it our curve has no scale.' } : null,
-      { k: which === 'top' ? 'Games it applies to' : 'Picks it applies to',
-        v: c2 ? c2.n.toLocaleString() : '—',
-        d: c2 ? pct(c2.share, 0) + ' of ' + (which === 'top' ? 'games' : 'rated players') : '' },
-      { k: 'Every pick', v: pct(ours.overall), d: 'no bar at all' },
-      { k: 'Base rate', v: pct(sel.base_rate), d: 'a candidate at random',
-        help: 'What a candidate picked at random does. The lift over this is what the ranking is worth.' },
-    ]));
-
-    const qual = m.players.filter(p => has(p.ours) && p.ours >= cut)
-      .sort((a, b) => b.ours - a.ours);
-    const unpricedQual = qual.filter(p => !p.priced).length;
-    const rate = rra && rra.rate != null
-      ? ' Players rated this highly have scored <b>' + pct(rra.rate) + '</b> [' +
-        pct(rra.lo) + ', ' + pct(rra.hi) + '] across ' + rra.n.toLocaleString() +
-        ' backtested picks — measured on priced players, which is the only population a rate exists for.' : '';
-    qualBox.innerHTML = '';
-    qualBox.appendChild(card('Every player above ' + cut.toFixed(2) + ' this week',
-      (qual.length ? qual.length + ' players across ' +
-        new Set(qual.map(p => p.game)).size + ' games.' + rate
-        : 'Nobody on this week’s board is rated above ' + cut.toFixed(2) +
-          '. An empty list is the bar working, not a missing number.'),
-      qual.length ? [
-        unpricedQual ? el('p', { class: 'fine', html:
-          '<b>' + unpricedQual + ' of these have no price posted.</b> They clear the bar on an ' +
-          'unblended number, and the rate quoted above was measured on blended, priced rows — ' +
-          'so they belong on the list and not inside that measurement.' }) : null,
-        table('qual', [
-          { k: 'player', label: 'Player', t: 1 },
-          { k: 'team', label: 'Team', t: 1 },
-          { k: 'game', label: 'Game', t: 1 },
-          { k: 'odds', label: 'Odds', t: 1, fmt: v => v || '<span class="dim">unpriced</span>' },
-          { k: 'best', label: 'Best price', t: 1, fmt: (v, r) => v ? v + ' <span class="dim">' + esc(r.best_book || '') + '</span>' : '' },
-          { k: 'ours', label: 'Our estimate', fmt: v => pct(v, 0) },
-        ], qual, {})] : []));
-  }
-  slider.oninput = () => { cut = parseFloat(slider.value); S.cut[m.key] = cut; paintCut(); };
-  paintCut();
-  return out;
 }
 """
 
@@ -1340,6 +938,114 @@ function coverPortfolio(legs, stake, rho, assumedDec) {
   };
 }
 
+// The opening five: the best player in each of five different games. The state
+// comment has said "one per game" since this pane shipped while the code took
+// the top five overall, which on a busy slate is often five men in one fixture
+// — legs that correlate, and a joint tail the independence in the table below
+// would badly overstate. This is the comment made true.
+function coverDefault(pool, n) {
+  const seen = {}, out = [];
+  for (const r of pool) {
+    const g = r.game || r.player;
+    if (seen[g]) continue;
+    seen[g] = 1;
+    out.push(r.player);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+function coverToggle(name) {
+  const at = S.cover.picked.indexOf(name);
+  if (at >= 0) S.cover.picked.splice(at, 1);
+  else S.cover.picked.push(name);
+  render(true);
+}
+
+// The picker: what is chosen, then how to change it, then everyone who could
+// be chosen. Forty checkboxes in a wrapped row made those three things one
+// thing — the reader had to re-scan the whole list to answer "who is in?",
+// and anyone outside the top forty could not be picked at all.
+function coverPicker(pool) {
+  const f = S.cover;
+  const inSet = {};
+  f.picked.forEach(n => { inSet[n] = 1; });
+
+  const chips = f.picked.map(name => {
+    const r = pool.find(p => p.player === name);
+    const b = el('button', { class: 'pchip', type: 'button',
+      title: 'Remove ' + name });
+    b.innerHTML = esc(name) +
+      (r ? ' <i>' + pct(r.ours, 0) + '</i>' : '') + ' <span>\u00d7</span>';
+    b.onclick = () => coverToggle(name);
+    return b;
+  });
+  const clear = el('button', { class: 'pchip ghost', type: 'button',
+    text: 'Clear all' });
+  clear.onclick = () => { f.picked = []; render(true); };
+  const five = el('button', { class: 'pchip ghost', type: 'button',
+    text: 'Top 5, one per game',
+    title: 'The best player in each of five different games.' });
+  five.onclick = () => { f.picked = coverDefault(pool, 5); render(true); };
+
+  const picked = el('div', { class: 'picked' }, [
+    el('div', { class: 'picked-h', html:
+      '<b>' + f.picked.length + '</b> selected' +
+      (f.picked.length >= 2
+        ? ' \u2014 <b>' + (Math.pow(2, f.picked.length) - 1).toLocaleString() +
+          '</b> slips'
+        : '') }),
+    el('div', { class: 'chips' },
+      chips.concat(f.picked.length ? [clear, five] : [five])),
+  ]);
+
+  const games = Array.from(new Set(pool.map(r => r.game).filter(Boolean))).sort();
+  const controls = bar([
+    text('Search', f.q, v => { f.q = v; }, 'name'),
+    select('Game', f.game, [['', 'All games']].concat(games.map(g => [g, g])),
+      v => { f.game = v; }),
+    check('Priced only', f.pricedOnly, v => { f.pricedOnly = v; }, false,
+      'Hide players no book has posted a price for.'),
+  ]);
+
+  let rows = pool;
+  if (f.q) {
+    const q = f.q.toLowerCase();
+    rows = rows.filter(r => (r.player || '').toLowerCase().includes(q));
+  }
+  if (f.game) rows = rows.filter(r => r.game === f.game);
+  if (f.pricedOnly) rows = rows.filter(r => r.priced);
+  const total = rows.length;
+  rows = rows.slice(0, 60);
+
+  const grid = el('div', { class: 'ppick' }, rows.map(r => {
+    const on = !!inSet[r.player];
+    const b = el('button', {
+      class: 'ppick-i' + (on ? ' on' : ''), type: 'button',
+      'aria-pressed': on ? 'true' : 'false',
+      title: (r.game || '') + (r.priced ? ' \u00b7 ' + r.odds : ' \u00b7 no price'),
+    });
+    b.innerHTML =
+      '<span class="n">' + esc(r.player) + '</span>' +
+      '<span class="v">' + pct(r.ours, 0) + '</span>' +
+      '<span class="m">' + esc(r.team || '') + '</span>' +
+      '<span class="o">' + (r.priced ? esc(r.odds) : 'no price') + '</span>';
+    b.onclick = () => coverToggle(r.player);
+    return b;
+  }));
+
+  const out = el('div', { class: 'picker' }, [picked, controls, grid]);
+  if (!total) {
+    out.appendChild(el('div', { class: 'warn-box',
+      text: 'No player matches that filter.' }));
+  } else if (total > rows.length) {
+    out.appendChild(el('p', { class: 'fine', text:
+      'Showing the ' + rows.length + ' likeliest of ' + total +
+      ' \u2014 search or pick a game to reach the rest.' }));
+  }
+  return out;
+}
+
 function paneCover() {
   const m = M();
   const cov = m.cover || {};
@@ -1348,22 +1054,10 @@ function paneCover() {
     .slice()
     .sort((a, b) => b.ours - a.ours);
 
-  if (!S.cover.picked) {
-    S.cover.picked = pool.slice(0, 5).map(r => r.player);
-  }
+  if (!S.cover.picked) S.cover.picked = coverDefault(pool, 5);
   const chosen = pool.filter(r => S.cover.picked.indexOf(r.player) >= 0);
 
-  const boxes = el('div', { class: 'pickers' },
-    pool.slice(0, 40).map(r => check(
-      r.player + ' \u00b7 ' + (r.team || '') + ' \u00b7 ' + pct(r.ours, 0) +
-      (r.priced ? ' \u00b7 ' + r.odds : ''),
-      S.cover.picked.indexOf(r.player) >= 0,
-      v => {
-        const at = S.cover.picked.indexOf(r.player);
-        if (v && at < 0) S.cover.picked.push(r.player);
-        if (!v && at >= 0) S.cover.picked.splice(at, 1);
-        render();
-      })));
+  const boxes = coverPicker(pool);
 
   const controls = bar([
     text('Stake per slip', String(S.cover.stake),
@@ -1560,8 +1254,6 @@ function paneTeams() {
 JS_SHELL = r"""
 // ── Shell ───────────────────────────────────────────────────────────────
 const TABS = [
-  ['model', 'Model vs book', paneModel],
-  ['hits', 'How often it is right', paneHits],
   ['players', 'Every player', paneMPlayers],
   ['combos', 'Combinations', paneCombos],
   ['cover', 'Cover the field', paneCover],
@@ -1674,7 +1366,7 @@ def render(payload: dict) -> str:
     # that produces one.
     data = (json.dumps(payload, separators=(",", ":"), allow_nan=False)
             .replace("</", "<\\/"))
-    js = "\n".join([JS, JS_PANES, JS_PLAYERS, JS_COMBOS, JS_TEAMS, JS_SHELL])
+    js = "\n".join([JS, JS_PLAYERS, JS_COMBOS, JS_TEAMS, JS_SHELL])
     labels = " and ".join(m["label"] for m in payload["markets"]) or "NFL"
     return (SHELL
             .replace("__TITLE__", html.escape(f"{labels} — model dashboard"))

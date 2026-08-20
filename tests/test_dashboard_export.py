@@ -21,6 +21,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import re
 from pathlib import Path
 
 import pytest
@@ -77,11 +78,15 @@ def test_american_formats_a_price_or_nothing(mod):
 # ── One implementation of the bookmaker comparison ────────────────────────
 
 def test_head_to_head_is_not_reimplemented():
-    """Both surfaces must call `market_parity`, not carry their own copy.
+    """Whoever shows the comparison must call `market_parity`, not copy it.
 
     The de-vigging and the joint path are the two places this project has most
     often ended up with a second, drifting version. `brier_score_loss` appearing
     outside the shared module is the tell.
+
+    The dashboard dropped the pane that drew this, so it is the app alone that
+    has to hold the line now. The guard stays on both files because the way
+    this regresses is someone re-adding the number in the easy place.
     """
     app = APP.read_text()
     script = SCRIPT.read_text()
@@ -91,7 +96,7 @@ def test_head_to_head_is_not_reimplemented():
             f"src.evaluation.market_parity.compare instead, or the two "
             f"surfaces will quietly report different numbers for one claim"
         )
-    assert "market_parity" in app and "market_parity" in script
+    assert "market_parity" in app
 
 
 def test_shared_module_exposes_every_tile_the_pages_draw():
@@ -228,23 +233,6 @@ def test_the_longshot_filter_does_not_promise_an_edge_the_interval_denies():
     )
     assert "not distinguishable from the price" in js
 
-
-def test_the_threshold_slider_is_not_destroyed_by_its_own_drag():
-    """Re-rendering on `input` removed the element the pointer was dragging.
-
-    The drag then moved one step and died — a control that looks broken rather
-    than one that is slow. The slider is built once and moving it repaints only
-    what depends on it.
-    """
-    from src.export import dashboard
-    js = dashboard.JS_PANES
-    hits = js.split("function paneHits()", 1)[1]
-    assert "slider.oninput = () => { cut = parseFloat(slider.value); S.cut[m.key] = cut; paintCut(); };" in hits
-    assert "render(true)" not in hits, (
-        "a full re-render on slider input is exactly the bug this guards"
-    )
-
-
 # ── The rendered file is self-contained ───────────────────────────────────
 
 def test_render_produces_one_file_with_no_external_requests():
@@ -253,10 +241,7 @@ def test_render_produces_one_file_with_no_external_requests():
         {"key": "anytime_td", "label": "Anytime TD", "season": 2026, "week": 1,
          "served": {"version": "v", "model": "xgb"}, "model": "xgb",
          "players": [], "teams": [], "problems": [], "topk": None,
-         "h2h": None, "selectivity": None, "walkforward": None,
-         "rank_rates": {}, "rule": None, "tier_legend": None, "econ": None,
-         "longshot": None, "combo_record": None, "conf_cuts": [2, 5],
-         "min_edge": 2.0, "test_season": 2025, "measured_on": None},
+         "rule": None, "longshot": None, "combo_record": None, "min_edge": 2.0},
     ]}
     html = render(payload)
     for scheme in ("http://", "https://"):
@@ -277,11 +262,8 @@ def test_payload_cannot_close_its_own_script_tag():
         {"key": "k", "label": "L", "season": 1, "week": 1,
          "served": {"version": None, "model": "m"}, "model": "m",
          "players": [{"player": "</script><b>x", "ours": 0.5}], "teams": [],
-         "problems": [], "topk": None, "h2h": None, "selectivity": None,
-         "walkforward": None, "rank_rates": {}, "rule": None,
-         "tier_legend": None, "econ": None, "longshot": None,
-         "combo_record": None, "conf_cuts": [2, 5], "min_edge": 2.0,
-         "test_season": 2025, "measured_on": None},
+         "problems": [], "topk": None, "rule": None, "longshot": None,
+         "combo_record": None, "min_edge": 2.0},
     ]}
     html = render(payload)
     assert "</script><b>x" not in html
@@ -326,6 +308,68 @@ def test_the_dashboard_cover_is_pinned_to_the_same_closed_forms_as_the_python():
     # The singles comparison has to exist, or the page cannot say what the
     # cover is being judged against.
     assert "singles_roi" in fn and "dec[i] * p[i] - 1" in fn
+
+
+def test_the_page_opens_on_the_slate_and_not_on_its_own_report_card():
+    """Tab order, and the two panes that no longer exist.
+
+    `Model vs book` and `How often it is right` opened the page on how good the
+    model is, which is a question the evaluation harness answers and gates on.
+    A reader arriving at a dashboard wants this week. Removing them means the
+    payload keys that fed them must go too, or the export keeps paying to
+    compute a bookmaker comparison and four threshold curves nobody renders.
+    """
+    from src.export import dashboard
+
+    tabs = dashboard.JS_SHELL[dashboard.JS_SHELL.index("const TABS = ["):]
+    tabs = tabs[:tabs.index("];")]
+    order = re.findall(r"\['(\w+)'", tabs)
+    assert order == ["players", "combos", "cover", "teams"], order
+    assert "tab: 'players'," in dashboard.JS, "the default tab must be a real tab"
+
+    js = "".join(v for k, v in vars(dashboard).items() if k.startswith("JS"))
+    for gone in ("paneModel", "paneHits", "lineChart", "divergingBars"):
+        assert gone not in js, f"{gone} survives with nothing calling it"
+
+    script = SCRIPT.read_text()
+    for gone in ("selectivity", "head_to_head", "hit_curve", "tier_legend"):
+        assert gone not in script, (
+            f"{gone} is still computed for a pane that no longer exists")
+
+
+def test_the_cover_opens_on_five_different_games():
+    """The state comment said one per game; the code took the top five overall.
+
+    On a slate where one fixture owns the top of the board that is five
+    teammates, whose legs correlate — and the all-score row of the table below
+    treats them as independent apart from a single measured rho, so the tail it
+    shows would be optimistic on exactly the pick the page chose for you.
+    """
+    from src.export import dashboard
+
+    js = dashboard.JS_TEAMS
+    body = js[js.index("function coverDefault("):js.index("function coverToggle(")]
+    assert "r.game || r.player" in body, (
+        "a player with no game must not collide with every other such player")
+    assert "if (seen[g]) continue;" in body
+
+
+def test_the_picker_can_reach_a_player_outside_the_top_forty():
+    """The old picker rendered `pool.slice(0, 40)` and nothing else.
+
+    Anyone ranked 41st could not be put in a cover at all — not filtered out
+    with a reason, simply absent. The grid is capped too, but the search and
+    the game filter run over the whole pool before the cap.
+    """
+    from src.export import dashboard
+
+    js = dashboard.JS_TEAMS
+    body = js[js.index("function coverPicker("):js.index("function paneCover(")]
+    assert "let rows = pool;" in body
+    assert body.index("rows = rows.filter") < body.index("rows.slice(0, 60)"), (
+        "the cap must come after the filters, or filtering only ever searches "
+        "the top of the board")
+    assert "'Showing the '" in body, "a truncated list has to say it is truncated"
 
 
 def test_the_shipped_dashboard_carries_the_cover_tab():

@@ -218,14 +218,28 @@ def test_every_top1_figure_says_which_games_it_was_measured_on():
     assert "backtested games" in app
 
 
-def test_the_dashboard_says_the_two_windows_differ():
+def test_the_dashboard_cannot_show_two_top1s_because_it_shows_none():
+    """The gap was fixed by labelling; it is now closed by construction.
+
+    The dashboard carried the same two figures the app did — a walk-forward
+    strip over 2022-2025 and a ladder over the priced seasons — and for a while
+    the fix was a sentence beside each saying which games it covered. Both
+    panes have since gone: `Model vs book` and `How often it is right` scored
+    the model rather than the week and opened a page nobody came to read.
+
+    So the copy is gone with them, and this guards the replacement invariant:
+    if any Top-1 headline returns to the page, the window it was measured on
+    has to return with it. A bare accuracy figure is exactly what produced
+    49.6% and 51.6% side by side, both labelled Top-1, neither wrong.
+    """
     from pathlib import Path
 
     src = (Path(__file__).resolve().parents[1] /
            "src" / "export" / "dashboard.py").read_text()
+    if "Top-1" not in src:
+        return
     assert "different window from the accuracy strip" in src, (
-        "the exported page shows both figures too and must explain the gap")
-    assert "a wider window than the ladder below" in src
+        "a Top-1 figure is back on the page and must say what it covers")
 
 
 def test_the_strip_and_the_purpose_panel_report_the_same_top1():
