@@ -334,3 +334,100 @@ def test_the_replay_takes_one_player_per_game():
     assert replay_week(board, 3, stake=1.0) is None
     out = replay_week(board, 2, stake=1.0)
     assert out["scorers"] == 1, "the second leg must come from the other game"
+
+
+# ── Would a different rule have done better ───────────────────────────────
+
+def test_the_chooser_cannot_see_the_week_it_is_choosing_for():
+    """The one bug that would make this measurement spectacular and false.
+
+    The walk-forward chooser picks each week's variant from cumulative returns
+    through the *previous* week. Update the record before the pick instead of
+    after and a week's own result chooses that week's variant — the same defect
+    as training on the test set, and it would read as an enormous edge rather
+    than as an error.
+    """
+    from src.evaluation import cover_selection as cs
+
+    # Two variants, one perfect and one useless, and a run of weeks where the
+    # good one only becomes identifiable partway through. A leaking chooser
+    # scores every week; an honest one cannot score the weeks before it knows.
+    weeks = []
+    for i in range(cs.BURN_IN + 20):
+        weeks.append({
+            "good": {"net": 1.0 if i % 2 else -0.5, "staked": 1.0,
+                     "returned": 2.0, "n": 3, "slips": 7},
+            "bad": {"net": -1.0, "staked": 1.0, "returned": 0.0,
+                    "n": 3, "slips": 7},
+        })
+    summary, detail = cs._chooser(weeks, "bad")
+    assert summary["weeks"] == len(weeks)
+    # Burn-in is spent on the baseline by construction, so a chooser that
+    # somehow returns a perfect record has looked forward.
+    assert summary["weeks_profitable"] < len(weeks), (
+        "no chooser can be profitable in every week including its burn-in")
+
+
+def test_every_ordering_is_computable_before_kickoff():
+    """A sort key built from the result is not a selection rule.
+
+    All six orderings come off the board: the published probability, the
+    model's own, and the two differences from the price. Nothing here may touch
+    the label column, which `replay_week` alone is allowed to read.
+    """
+    import inspect
+
+    from src.evaluation import cover_selection as cs
+
+    src = inspect.getsource(cs._keys) + inspect.getsource(cs.play)
+    for forbidden in ("_hit", "target", "scored"):
+        assert forbidden not in src, (
+            f"selection reads `{forbidden}` — that is the outcome, and a rule "
+            f"that reads it is not a rule")
+
+
+def test_the_random_control_is_redrawn_because_one_draw_decides_nothing():
+    """The control's own headline moves 250 points on the seed.
+
+    Best-of-44 on random orderings returned +6% on one redraw and +274% on
+    another, which is the sharpest available statement about what a
+    max-over-variants is worth — and it is only visible because the control
+    runs more than once. Comparisons use the luckiest redraw: the question is
+    what the best of 44 buys when nothing is there, so the honest opponent is
+    the luckiest control rather than the typical one.
+    """
+    from src.evaluation import cover_selection as cs
+
+    assert cs.CONTROL_REPEATS >= 3
+    assert cs.N_RANDOM == len(cs.variants()), (
+        "the control must run the same number of variants as the real arm, or "
+        "'best of N' is not being compared against 'best of N'")
+
+    spread = cs._spread([0.1, 0.9, 0.5])
+    assert spread["max"] == 0.9 and spread["min"] == 0.1
+    assert spread["runs"] == 3
+
+
+def test_a_measured_selection_run_reports_its_control_beside_its_result():
+    from src.evaluation.cover_selection import load
+    from src.utils.paths import get_path
+
+    seen = False
+    for market in ("anytime_td", "first_td"):
+        stats = load(get_path("output", market) / "cover_selection.json")
+        if stats is None:
+            continue
+        seen = True
+        c = stats["control"]
+        assert c["repeats"] >= 3 and c["n_variants"] == stats["n_variants"]
+        for key in ("best_roi", "ceiling_roi", "chooser_roi", "median_roi"):
+            assert c[key]["min"] <= c[key]["median"] <= c[key]["max"]
+        # The finding, such as it is: the ceiling and the best variant are
+        # beaten by noise, and the median and the chooser are not.
+        assert stats["median_variant_roi"] > c["median_roi"]["max"], (
+            f"{market}: the median real variant does not beat the median "
+            f"random one, which would leave nothing here to report")
+        assert stats["chooser"]["roi"] > c["chooser_roi"]["max"], (
+            f"{market}: the walk-forward chooser does not beat a random one")
+    if not seen:
+        pytest.skip("no cover selection measured in this checkout")

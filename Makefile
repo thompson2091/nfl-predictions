@@ -8,7 +8,7 @@
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune \
 	families ablate retention settle-overlay line-movement filter-sweep \
-	cover-backtest
+	cover-backtest cover-selection
 
 # The interpreter, resolved once. Every recipe used to call a bare `python`,
 # which does not exist on a machine where the venv is not activated — this is
@@ -131,6 +131,7 @@ evaluate:
 		$(PYTHON) scripts/13_clv.py --target $$t; \
 		$(PYTHON) scripts/29_combos.py --target $$t; \
 		$(PYTHON) scripts/37_cover_backtest.py --target $$t; \
+		$(PYTHON) scripts/38_cover_selection.py --target $$t; \
 	done
 	$(PYTHON) scripts/12_longshot.py --target anytime_td
 
@@ -235,6 +236,13 @@ filter-sweep:
 # is the sharpest reading of calibration on the board.
 cover-backtest:
 	$(PYTHON) scripts/37_cover_backtest.py --target $(TARGET) $(if $(SHOW),--show)
+
+# And whether a different rule would have done better: 44 selections, the
+# hindsight ceiling above them, a walk-forward chooser among them, and the same
+# machinery on random orderings — because a best-of-44 and a hindsight ceiling
+# are both beaten by noise here, and only the control shows it.
+cover-selection:
+	$(PYTHON) scripts/38_cover_selection.py --target $(TARGET) $(if $(SHOW),--show)
 
 # ── Model versions ────────────────────────────────────────────────────────
 # `models/` holds one state and every `make train` overwrites it. Lock a state

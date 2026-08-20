@@ -313,7 +313,7 @@ def test_the_dashboard_cover_is_pinned_to_the_same_closed_forms_as_the_python():
     assert "singles_roi" in fn and "dec[i] * p[i] - 1" in fn
 
 
-def test_the_page_opens_on_the_slate_and_not_on_its_own_report_card():
+def test_the_page_opens_on_the_thing_being_built_not_on_its_own_report_card():
     """Tab order, and the two panes that no longer exist.
 
     `Model vs book` and `How often it is right` opened the page on how good the
@@ -321,14 +321,18 @@ def test_the_page_opens_on_the_slate_and_not_on_its_own_report_card():
     A reader arriving at a dashboard wants this week. Removing them means the
     payload keys that fed them must go too, or the export keeps paying to
     compute a bookmaker comparison and four threshold curves nobody renders.
+
+    The keys are checked rather than the labels: `cover` is the pane, `Parlay`
+    is what the strip calls it, and the two are allowed to differ — the key is
+    what the state, the tests and any saved link refer to.
     """
     from src.export import dashboard
 
     tabs = dashboard.JS_SHELL[dashboard.JS_SHELL.index("const TABS = ["):]
     tabs = tabs[:tabs.index("];")]
     order = re.findall(r"\['(\w+)'", tabs)
-    assert order == ["players", "combos", "cover", "teams"], order
-    assert "tab: 'players'," in dashboard.JS, "the default tab must be a real tab"
+    assert order == ["cover", "players", "combos", "teams"], order
+    assert "tab: 'cover'," in dashboard.JS, "the default tab must be a real tab"
 
     js = "".join(v for k, v in vars(dashboard).items() if k.startswith("JS"))
     for gone in ("paneModel", "paneHits", "lineChart", "divergingBars"):

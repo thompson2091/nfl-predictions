@@ -55,6 +55,15 @@ EVALUATION_ARTIFACTS = [
      "every hit-rate band and the market head-to-head"),
     ("clv.json", "python scripts/13_clv.py --target {market}",
      "closing-line value"),
+    # Added 2026-08-20 with `cover_selection.json`. `cover_backtest.json` had
+    # been readable by both surfaces for a day without being tracked, which is
+    # the same shape of gap as the three above: the page quotes it, so a
+    # retrain that leaves it behind makes the page grade one model's rule with
+    # another model's results.
+    ("cover_backtest.json", "make cover-backtest TARGET={market}",
+     "what the full-cover rule actually returned"),
+    ("cover_selection.json", "make cover-selection TARGET={market}",
+     "whether a different cover rule would have done better"),
 ]
 
 

@@ -16,14 +16,18 @@ precomputed is the combination search: 128 eligible players is 10.7 million
 four-leg slips, which is a JSON file nobody can download and a loop the browser
 finishes in under a second.
 
-**What it opens on.** Every player, then Combinations, Cover the field, By
-team — a slate first, and the things you can do with it after. The two panes
-that used to come first, `Model vs book` and `How often it is right`, scored
-the model instead of the week; they were the first thing a reader saw and the
-last thing they wanted. The measurements themselves are not gone, they are in
+**What it opens on.** Parlay, then Players, Combinations, Teams — the thing
+being built first, and the board it is built from after. The two panes that
+used to come first, `Model vs book` and `How often it is right`, scored the
+model instead of the week; they were the first thing a reader saw and the last
+thing they wanted. The measurements themselves are not gone, they are in
 `walkforward.json`, `market_parity` and `hit_rates` where the evaluation
 harness can gate on them, which is where a number that describes the model
 rather than the slate belongs.
+
+The pane keys did not change with the labels — `cover`, `players`, `combos`,
+`teams` are what the state and every test refer to, and renaming them to match
+the tab strip would break saved links for a cosmetic gain.
 """
 from __future__ import annotations
 
@@ -387,7 +391,7 @@ const cls = v => !has(v) ? '' : (v > 0 ? 'pos' : (v < 0 ? 'neg' : ''));
 // ── State ───────────────────────────────────────────────────────────────
 const S = {
   market: 0,
-  tab: 'players',
+  tab: 'cover',
   p: { game: '', q: '', depth: 0, priced: 'all', longshot: false, differ: false },
   // Five players, one per game. Five because 31 slips is the size the question
   // is usually asked at, and one-per-game because taking the top five from a
@@ -1418,10 +1422,10 @@ function paneTeams() {
 JS_SHELL = r"""
 // ── Shell ───────────────────────────────────────────────────────────────
 const TABS = [
-  ['players', 'Every player', paneMPlayers],
+  ['cover', 'Parlay', paneCover],
+  ['players', 'Players', paneMPlayers],
   ['combos', 'Combinations', paneCombos],
-  ['cover', 'Cover the field', paneCover],
-  ['teams', 'By team', paneTeams],
+  ['teams', 'Teams', paneTeams],
 ];
 function paneMPlayers() { return panePlayers(); }
 
