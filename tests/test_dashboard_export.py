@@ -86,9 +86,10 @@ def test_head_to_head_is_not_reimplemented():
     often ended up with a second, drifting version. `brier_score_loss` appearing
     outside the shared module is the tell.
 
-    The dashboard dropped the pane that drew this, so it is the app alone that
-    has to hold the line now. The guard stays on both files because the way
-    this regresses is someone re-adding the number in the easy place.
+    The dashboard dropped the pane that drew this and then wanted two of the
+    three numbers back on the cover section, so both files are on the hook
+    again — which is the point: the second surface is exactly how a private
+    copy of the de-vigging gets written.
     """
     app = APP.read_text()
     script = SCRIPT.read_text()
@@ -98,7 +99,7 @@ def test_head_to_head_is_not_reimplemented():
             f"src.evaluation.market_parity.compare instead, or the two "
             f"surfaces will quietly report different numbers for one claim"
         )
-    assert "market_parity" in app
+    assert "market_parity" in app and "market_parity" in script
 
 
 def test_shared_module_exposes_every_tile_the_pages_draw():
@@ -473,6 +474,55 @@ def test_the_picker_collapses_without_taking_the_stake_with_it():
     collapsed = collapsed[:collapsed.index("const games =")]
     assert "bar(extra)" in collapsed, "the stake fields must survive the collapse"
     assert "grid" not in collapsed
+
+
+def test_the_graded_verdict_survives_the_table_being_dropped():
+    """The ten-column record table is gone; what it concluded is not.
+
+    That table was built because the section had shipped making claims nothing
+    had verified. Its job was done the moment the answer was in — and it was
+    ten columns of it, directly beneath the projection it qualifies. What has
+    to remain is the qualification: the span, the range, and whether any pool
+    size cleared zero, read off the artifact rather than typed in.
+    """
+    from src.export import dashboard
+
+    js = dashboard.JS_TEAMS
+    pane = js[js.index("function paneCover()"):]
+    assert "cover-record" not in pane, "the record table is meant to be gone"
+    assert "roi_beats_zero" in pane, (
+        "profitable must be the artifact's own verdict — the interval clearing "
+        "zero — and not this page re-deciding it from two numbers")
+    for needed in ("rec.weeks", "rec.span", "Math.min.apply", "Math.max.apply"):
+        assert needed in pane, f"{needed} is part of the surviving verdict"
+    assert "no pool size had an interval clearing zero" in pane
+    assert "Nothing in this section has been graded" in pane, (
+        "an ungraded section still has to say so")
+
+
+def test_the_cover_shows_both_halves_of_the_disagreement_and_never_the_blend():
+    """`Closer — backable` and `Closer — fade`, apart, with what each one means.
+
+    Most of the model's accuracy on big disagreements comes from rating players
+    DOWN, and these markets only sell the Yes side — so the combined figure
+    reads as a betting edge when most of it cannot be bet. On a page about
+    backing every combination of a handful of players, that mistake compounds
+    literally: a cover multiplies whatever edge each leg carries.
+    """
+    from src.export import dashboard
+
+    js = dashboard.JS_TEAMS
+    pane = js[js.index("function paneCover()"):]
+    assert "disagree_higher_pct" in pane and "disagree_lower_pct" in pane
+    assert "overall_better_pct" not in pane, (
+        "the blended figure is the one that misleads here — it is not shipped "
+        "to this pane and must not be reconstructed in it")
+    assert "Only the backable half is a bet" in pane
+    assert "veto" in pane, "the fade tile has to say it cannot be acted on"
+
+    script = SCRIPT.read_text()
+    assert '"disagree_higher_pct"' in script and '"players"' in script, (
+        "the exporter ships the directional halves, not the whole comparison")
 
 
 def test_the_shipped_dashboard_carries_the_cover_tab():

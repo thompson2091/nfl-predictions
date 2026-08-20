@@ -189,6 +189,37 @@ def rank_rates(target_type: str, model: str, df) -> dict:
     return {int(r): float(h) for r, h in zip(agg["rk"], agg["hit"])}
 
 
+def parity(target_type: str, model: str, version: str | None) -> dict | None:
+    """`Closer — backable` and `Closer — fade`, for the cover section.
+
+    The same call the app's tiles make — see `src/evaluation/market_parity.py`
+    for why it is not computed here. Only the directional halves ship: the
+    overall figure blends them, and the two disagree so sharply that the blend
+    reads as something you could act on when most of it is fade skill.
+
+    This came back after the head-to-head pane was removed. It is a different
+    claim in a different place — not "is the model good", which the evaluation
+    harness answers, but "is there any basis for backing these picks over the
+    price", which is the question a page about covering the field begs.
+    """
+    from src.evaluation import harness
+    from src.evaluation.market_parity import compare
+    from src.models.versioning import market_dir
+    try:
+        md = market_dir(target_type, version) if version else None
+        h = compare(target_type, model, harness._features(target_type),
+                    model_dir=md or get_path("models", target_type))
+    except Exception as e:                                   # noqa: BLE001
+        print(f"    parity unavailable: {e}", file=sys.stderr)
+        return None
+    if not h:
+        return None
+    keep = ("disagree_higher_pct", "disagree_higher_n",
+            "disagree_lower_pct", "disagree_lower_n", "span", "players")
+    out = {k: h[k] for k in keep if k in h}
+    return out or None
+
+
 # ── This week ─────────────────────────────────────────────────────────────
 
 def _american(o) -> str | None:
@@ -522,11 +553,13 @@ def market(target_type: str, label: str, season: int | None,
         "players": pl_out["rows"],
         "problems": pl_out["problems"] + tm["problems"],
         "teams": tm["rows"],
-        "cover": cover_variants(pl_out["rows"], target_type),
+        "cover": cover_variants(pl_out["rows"], target_type,
+                                parity(target_type, model, who["version"])),
     }
 
 
-def cover_variants(rows: list[dict], target_type: str) -> dict:
+def cover_variants(rows: list[dict], target_type: str,
+                   par: dict | None) -> dict:
     """What a full cover needs, for a page that lets the reader pick the legs.
 
     The selection is made in the browser, so no set of precomputed portfolios
@@ -553,7 +586,8 @@ def cover_variants(rows: list[dict], target_type: str) -> dict:
     from src.utils.paths import get_path as _gp
 
     record = load_cover(_gp("output", target_type) / "cover_backtest.json")
-    return {"rho": rho, "max_players": 12, "record": record}
+    return {"rho": rho, "max_players": 12, "record": record,
+            "parity": par}
 
 
 def clean(x):

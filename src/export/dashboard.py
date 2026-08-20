@@ -188,6 +188,7 @@ h3 { font-size: 14px; margin: 18px 0 6px; letter-spacing: -0.005em; }
 
 /* ── Tiles ─────────────────────────────────────────────────────────── */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 10px; }
+.tiles.narrow { grid-template-columns: repeat(auto-fit, minmax(160px, 250px)); justify-content: start; }
 .tile { background: var(--sunken); border-radius: 10px; padding: 10px 12px; }
 .tile .k { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .tile .v { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; margin-top: 2px; }
@@ -1152,8 +1153,45 @@ function paneCover() {
       'Pick players and back every combination of them \u2014 <b>n</b> players ' +
       'is <b>2\u207f \u2212 1</b> slips, so five is 31. The table is what each ' +
       'number of scorers returns.' }),
-    boxes,
   ];
+
+  // Whether there is any basis for preferring these numbers to the price, put
+  // where the question is being asked. Both halves, never their average: most
+  // of the model's accuracy on big disagreements comes from rating players
+  // DOWN, and these markets only sell the Yes side — so the blend sells fade
+  // skill as though it were a bet. Reported apart, the fade tile is a veto.
+  const par = cov.parity;
+  if (par && (has(par.disagree_higher_pct) || has(par.disagree_lower_pct))) {
+    const par_t = tiles([
+      has(par.disagree_higher_pct) ? {
+        k: 'Closer \u2014 backable', v: pp(par.disagree_higher_pct, 0) + '%',
+        d: (par.disagree_higher_n || 0).toLocaleString() + ' players',
+        help: 'On the tenth of players we differ from the book on most, taking ' +
+              'only those we rate HIGHER \u2014 the direction these markets let ' +
+              'you bet. The percentage by which our average squared miss is ' +
+              'smaller than the book\u2019s, over ' + (par.span || '') + '. 0% ' +
+              'would mean we match the book, so this is a win. It is not a win ' +
+              'rate and there is no 50% baseline.' } : null,
+      has(par.disagree_lower_pct) ? {
+        k: 'Closer \u2014 fade', v: pp(par.disagree_lower_pct, 0) + '%',
+        d: (par.disagree_lower_n || 0).toLocaleString() + ' players',
+        help: 'The same comparison for players we rate LOWER than the book. ' +
+              'This is the model\u2019s sharpest skill by a wide margin and ' +
+              'there is no way to bet it \u2014 these markets only sell the Yes ' +
+              'side. Read it as a veto: a big disagreement downward is a player ' +
+              'to leave out of a cover.' } : null,
+    ]);
+    // Two tiles in a full-width auto-fit grid are two very empty boxes. The
+    // strip stops at its content instead.
+    par_t.className = 'tiles narrow';
+    kids.push(par_t);
+    kids.push(el('p', { class: 'fine', html:
+      'Only the backable half is a bet. A cover multiplies whatever edge each ' +
+      'leg carries, so it multiplies that half \u2014 not the average of the ' +
+      'two, which is higher because the fade side is sharper.' }));
+  }
+
+  kids.push(boxes);
 
   // Half-typed prices are normal and silent; a finished one that means nothing
   // has to say so, or the table quietly answers a different question from the
@@ -1245,38 +1283,39 @@ function paneCover() {
       'projection. `make cover-backtest` replays the rule over the backtested ' +
       'weeks.' }));
   } else {
-    const recCols = [
-      { k: 'n', label: 'Players' },
-      { k: 'weeks', label: 'Weeks' },
-      { k: 'slips', label: 'Slips a week' },
-      { k: 'staked', label: 'Staked', fmt: x => '$' + x.toFixed(0) },
-      { k: 'returned', label: 'Returned', fmt: x => '$' + x.toFixed(0) },
-      { k: 'roi', label: 'Cover', fmt: x => pct(x, 1), cls: x => cls(x) },
-      { k: 'ci', label: '90% CI', t: 1 },
-      { k: 'singles', label: 'Singles', fmt: x => pct(x, 1), cls: x => cls(x),
-        title: 'The same money spread over the N singles instead.' },
-      { k: 'ahead', label: 'Weeks ahead', t: 1 },
-      { k: 'top', label: 'Best week\u2019s share', fmt: x => pct(x, 1),
-        title: 'How much of everything returned came from one week. High means ' +
-               'the headline is an anecdote rather than a rate.' },
-    ];
-    kids.push(el('h4', { text: 'What this rule actually returned' }));
-    kids.push(table('cover-record', recCols, rec.sizes.map(s => ({
-      n: s.n, weeks: s.weeks, slips: s.slips_per_week, staked: s.staked,
-      returned: s.returned, roi: s.roi,
-      ci: pct(s.roi_lo, 0) + ' to ' + pct(s.roi_hi, 0),
-      singles: s.singles_roi, ahead: s.weeks_profitable + '/' + s.weeks,
-      top: s.top_week_share,
-    })), {}));
-    const worse = rec.sizes.filter(s => s.roi < s.singles_roi).length;
-    kids.push(el('p', { class: 'muted', html:
-      'Replayed over ' + rec.weeks + ' graded weeks (' + rec.span + ') at $' +
-      rec.stake.toFixed(2) + ' a slip, on the prices actually posted. ' +
-      '<b>No pool size has an interval clearing zero.</b> ' +
-      (worse ? worse + ' of ' + rec.sizes.length + ' sizes returned less than ' +
-        'backing the same money on the singles \u2014 which is what a negative ' +
-        'edge per leg does when it is multiplied: a k-fold pays the margin k ' +
-        'times.' : '') }));
+    // One line, not the ten-column table this used to be. That table was the
+    // whole grading, and it earned its place while nothing in this section had
+    // been measured at all. Now that the answer is in, the answer is short —
+    // and it was ten columns of it sitting directly under the projection it
+    // qualifies. The per-size figures live on in the tooltip, in
+    // `cover_backtest.json`, and in `make cover-backtest`.
+    const rois = rec.sizes.map(z => z.roi);
+    const worse = rec.sizes.filter(z => z.roi < z.singles_roi).length;
+    // `roi_beats_zero` is the artifact's own verdict rather than this page
+    // re-deciding it from two numbers: profitable means the interval clears
+    // zero, not that the point estimate happened to land positive.
+    const clears = rec.sizes.filter(z => z.roi_beats_zero).length;
+    kids.push(el('p', { class: 'fine',
+      title: rec.sizes.map(z => z.n + ' players: ' + pct(z.roi, 1) + ' [' +
+        pct(z.roi_lo, 0) + ' to ' + pct(z.roi_hi, 0) + '] over ' + z.weeks +
+        ' weeks \u00b7 singles ' + pct(z.singles_roi, 1) +
+        ' \u00b7 best week ' + pct(z.top_week_share, 0) +
+        ' of everything returned').join('\n'),
+      html:
+        '<b>Graded.</b> Replayed over ' + rec.weeks + ' weeks (' + rec.span +
+        ') at $' + rec.stake.toFixed(2) + ' a slip on the prices actually ' +
+        'posted, this rule returned between ' +
+        pct(Math.min.apply(null, rois), 1) + ' and ' +
+        pct(Math.max.apply(null, rois), 1) + ' depending on pool size, and ' +
+        (clears
+          ? '<b>' + clears + ' of ' + rec.sizes.length + ' sizes had an ' +
+            'interval clearing zero.</b>'
+          : '<b>no pool size had an interval clearing zero.</b>') +
+        (worse ? ' ' + worse + ' of ' + rec.sizes.length + ' returned less ' +
+          'than the same money on the singles \u2014 which is what a negative ' +
+          'edge per leg does when it is multiplied: a k-fold pays the margin ' +
+          'k times.' : '') +
+        ' Hover for each size.' }));
   }
 
   return card('Cover the field', '', kids);
