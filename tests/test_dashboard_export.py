@@ -524,6 +524,34 @@ def test_the_picker_collapses_without_taking_the_stake_with_it():
     assert "grid" not in collapsed
 
 
+def test_one_player_is_a_selection_and_not_an_error():
+    """2^1 - 1 is one slip, and the table has a 0-of-1 row and a 1-of-1 row.
+
+    Refusing a single made the reader add a second player they did not want in
+    order to see the first one's numbers. The k-of-n framing says nothing at
+    n=1 though, so the box that reads it is replaced by the two figures that do
+    answer a single: what the price demands and what we make it.
+    """
+    from src.export import dashboard
+
+    pane = dashboard.JS_TEAMS
+    pane = pane[pane.index("function paneCover()"):]
+    assert "if (chosen.length < 1)" in pane, "one player must be allowed"
+    assert "Pick at least one player" in pane
+    assert "if (v.n === 1)" in pane and "the price needs" in pane, (
+        "a single needs the break-even probability, not a k-of-n breakeven")
+    assert "if (v.n > 1) kids.push" in pane, (
+        "and the k-of-n box must not also render at n=1")
+
+    # An assumed price against our own probability is not an edge, and at n=1
+    # that is the entire content of the box — so it has to say so.
+    assert "artefact of that" in pane
+
+    # Singular and plural, because "1 slips on 1 players" is the tell that
+    # nobody looked at the case they just enabled.
+    assert "const plural = (k, one, many)" in pane
+
+
 def test_the_graded_verdict_survives_the_table_being_dropped():
     """The ten-column record table is gone; what it concluded is not.
 

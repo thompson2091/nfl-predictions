@@ -1178,8 +1178,8 @@ function paneCover() {
   const kids = [
     el('p', { class: 'muted', html:
       'Pick players and back every combination of them \u2014 <b>n</b> players ' +
-      'is <b>2\u207f \u2212 1</b> slips, so five is 31. The table is what each ' +
-      'number of scorers returns.' }),
+      'is <b>2\u207f \u2212 1</b> slips, so one is a single bet and five is 31. ' +
+      'The table is what each number of scorers returns.' }),
   ];
 
   // Whether there is any basis for preferring these numbers to the price, put
@@ -1241,8 +1241,13 @@ function paneCover() {
       bothPrices(S.cover.dec) + '.' }));
   }
 
-  if (chosen.length < 2) {
-    kids.push(el('div', { class: 'warn-box', text: 'Pick at least two players.' }));
+  // One player is allowed. A cover of one is a single bet — 2^1 - 1 is one
+  // slip — and the table still says what it returns and what it costs, which
+  // is the question someone with one name in mind is asking. Refusing it made
+  // the reader pick a second player they did not want in order to see the
+  // first one's numbers.
+  if (chosen.length < 1) {
+    kids.push(el('div', { class: 'warn-box', text: 'Pick at least one player.' }));
     return card('Cover the field', '', kids);
   }
   if (chosen.length > (cov.max_players || 12)) {
@@ -1259,11 +1264,16 @@ function paneCover() {
   }));
   const v = coverPortfolio(legs, S.cover.stake, cov.rho || 0, S.cover.dec);
 
+  const plural = (k, one, many) => k + ' ' + (k === 1 ? one : many);
   kids.push(el('p', { class: 'muted', html:
-    '<b>' + v.bets + ' slips</b> on ' + v.n + ' players at $' +
-    cents(v.stake) + ' each, <b>' + usd(v.staked) + '</b> staked. ' +
-    (v.all_priced ? 'All ' + v.n + ' legs priced by the book.'
-      : v.priced + ' of ' + v.n + ' legs priced; the rest at an assumed ' +
+    '<b>' + plural(v.bets, 'slip', 'slips') + '</b> on ' +
+    plural(v.n, 'player', 'players') + ' at $' + cents(v.stake) +
+    ' each, <b>' + usd(v.staked) + '</b> staked. ' +
+    (v.all_priced
+      ? (v.n === 1 ? 'Priced by the book.'
+                   : 'All ' + v.n + ' legs priced by the book.')
+      : v.priced + ' of ' + plural(v.n, 'leg', 'legs') +
+        ' priced; the rest at an assumed ' +
         bothPrices(v.assumed_decimal) + '.') }));
 
   const cols = [
@@ -1279,8 +1289,29 @@ function paneCover() {
     wins: r.winning_bets, ret: r.returned, net: r.net,
   })), {}));
 
+  // With one leg the k-of-n framing says nothing a bettor wants: the whole
+  // question is the price against the probability. So it gets the numbers that
+  // do answer it — what the price demands, what we make it, and the gap.
+  if (v.n === 1) {
+    const leg = legs[0];
+    const d = has(leg.dec) ? leg.dec : v.assumed_decimal;
+    const need = 1 / d;
+    const gap = (leg.prob - need) * 100;
+    kids.push(el('div', {
+      class: 'warn-box ' + (gap > 0 ? 'good-box' : 'bad-box'), html:
+        '<b>This is a single bet.</b> At ' + bothPrices(d) + ' the price needs '
+        + '<b>' + pct(need, 1) + '</b> to break even and we make it <b>' +
+        pct(leg.prob, 1) + '</b> \u2014 ' +
+        (gap > 0 ? 'an edge of <b>' + pp(gap, 1)
+                 : 'a shortfall of <b>' + Math.abs(gap).toFixed(1)) +
+        ' points</b>' +
+        (has(leg.dec) ? '.' : ', against a price you assumed rather than one ' +
+         'a book has posted \u2014 so the edge is an artefact of that ' +
+         'assumption, not a measurement.') }));
+  }
+
   const be = v.breakeven_scored;
-  kids.push(el('div', { class: 'warn-box' + (be == null ? ' bad-box' : ' good-box'),
+  if (v.n > 1) kids.push(el('div', { class: 'warn-box' + (be == null ? ' bad-box' : ' good-box'),
     html: be == null
       ? '<b>No number of scorers turns a profit.</b> Even all ' + v.n +
         ' landing returns ' + usd(v.rows[v.n].returned) + ' against ' +
@@ -1298,19 +1329,24 @@ function paneCover() {
       'the ' + bothPrices(v.assumed_decimal) + ' you assumed. A book that agreed ' +
       'with these numbers would not offer that price.' }));
   }
-  kids.push(el('p', { class: 'muted', html:
-    'Expected result <b>' + money(v.expected_net) + '</b> (' +
-    pct(v.expected_roi, 1) + ') against <b>' + money(v.singles_net) + '</b> (' +
-    pct(v.singles_roi, 1) + ') for the same ' + usd(v.staked) +
-    ' on the ' + v.n + ' singles alone. A cover is leverage on the edge in each ' +
-    'leg: per dollar a single returns <i>e</i> and a k-fold returns ' +
-    '<i>(1+e)<sup>k</sup> \u2212 1</i>. ' +
-    (v.expected_roi > v.singles_roi
-      ? 'These prices leave a positive edge, so multiplying them compounds it ' +
-        '\u2014 at far higher variance, and on the model\u2019s probabilities ' +
-        'rather than a measured result.'
-      : 'These prices leave a negative edge, so multiplying them pays the ' +
-        'margin once per leg and the cover loses harder than the singles do.') }));
+  kids.push(el('p', { class: 'muted', html: v.n === 1
+    ? 'Expected result <b>' + money(v.expected_net) + '</b> (' +
+      pct(v.expected_roi, 1) + ') on ' + usd(v.staked) + '. With one leg ' +
+      'there is nothing to multiply, so this is the edge itself rather than ' +
+      'leverage on it \u2014 add a second player and the same edge is ' +
+      'compounded, in both directions.'
+    : 'Expected result <b>' + money(v.expected_net) + '</b> (' +
+      pct(v.expected_roi, 1) + ') against <b>' + money(v.singles_net) + '</b> (' +
+      pct(v.singles_roi, 1) + ') for the same ' + usd(v.staked) +
+      ' on the ' + v.n + ' singles alone. A cover is leverage on the edge in each ' +
+      'leg: per dollar a single returns <i>e</i> and a k-fold returns ' +
+      '<i>(1+e)<sup>k</sup> \u2212 1</i>. ' +
+      (v.expected_roi > v.singles_roi
+        ? 'These prices leave a positive edge, so multiplying them compounds it ' +
+          '\u2014 at far higher variance, and on the model\u2019s probabilities ' +
+          'rather than a measured result.'
+        : 'These prices leave a negative edge, so multiplying them pays the ' +
+          'margin once per leg and the cover loses harder than the singles do.') }));
 
   // What the rule actually returned. Everything above is a product of
   // estimates and prices; this is the only part nothing can argue with.
