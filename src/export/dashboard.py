@@ -160,10 +160,13 @@ h3 { font-size: 14px; margin: 18px 0 6px; letter-spacing: -0.005em; }
 .pchip.ghost { border-color: var(--rule); background: var(--surface); color: var(--ink-2); }
 .pchip.ghost:hover { color: var(--ink); border-color: var(--border); }
 
+/* Three rows deep and it scrolls. The section sits above the table it feeds,
+   so every row of picker is a row of answer pushed off the screen; the list is
+   for finding a name, not for reading the board, and the board has its own tab. */
 .ppick {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
   gap: 6px; margin: 4px 0 6px;
-  max-height: 340px; overflow-y: auto; padding-right: 4px;
+  max-height: 222px; overflow-y: auto; padding-right: 4px;
 }
 .ppick-i {
   display: grid; grid-template-columns: 1fr auto; gap: 0 8px; text-align: left;
@@ -175,8 +178,12 @@ h3 { font-size: 14px; margin: 18px 0 6px; letter-spacing: -0.005em; }
 .ppick-i .n { font-size: 13px; font-weight: 560; overflow: hidden;
               text-overflow: ellipsis; white-space: nowrap; }
 .ppick-i .v { font-size: 13px; font-weight: 620; font-variant-numeric: tabular-nums; }
-.ppick-i .m, .ppick-i .o { font-size: 11px; color: var(--muted); }
-.ppick-i .o { text-align: right; font-variant-numeric: tabular-nums; }
+.ppick-i .d {
+  grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 10px;
+  font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.ppick-i .d span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ppick-i.on .d { color: var(--ink-2); }
 .ppick-i.on .v { color: var(--accent); }
 
 /* ── Tiles ─────────────────────────────────────────────────────────── */
@@ -336,6 +343,28 @@ const decToAm = d => {
   const profit = d - 1;
   return profit >= 1 ? profit * 100 : -100 / profit;
 };
+// The inverse, over whatever a reader actually types. Every price on this page
+// is displayed American, so a box that only accepted decimals was asking them
+// to convert the one number they have in front of them.
+//
+// A sign always means American. Unsigned, the two notations cannot collide:
+// American odds are never inside ±100 and a decimal price never reaches it, so
+// 100 is the boundary rather than a guess. Below it, a decimal has to beat 1 —
+// at evens or shorter there is no stake to win back.
+const parsePrice = v => {
+  const t = String(v == null ? '' : v).trim().replace(/[,\s$]/g, '');
+  if (!t) return null;
+  const x = parseFloat(t);
+  if (!isFinite(x)) return null;
+  if (/^[+-]/.test(t) || Math.abs(x) >= 100) {
+    if (Math.abs(x) < 100) return null;
+    return x > 0 ? 1 + x / 100 : 1 + 100 / Math.abs(x);
+  }
+  return x > 1 ? x : null;
+};
+// Both notations, so nothing on the page is only readable in the one the
+// reader did not type.
+const bothPrices = d => american(decToAm(d)) + ' (' + d.toFixed(2) + ')';
 const cls = v => !has(v) ? '' : (v > 0 ? 'pos' : (v < 0 ? 'neg' : ''));
 
 // ── State ───────────────────────────────────────────────────────────────
@@ -349,7 +378,10 @@ const S = {
   // guts the all-score tail.
   // `picked` fills from the top five on first render; after that it is
   // whatever the reader chose.
-  cover: { picked: null, stake: 1, dec: 2.0, q: '', game: '', pricedOnly: false },
+  // `dec` is the price the table uses; `decRaw` is what was typed to get it,
+  // in either notation. They part company only while a price is half-entered.
+  cover: { picked: null, stake: 1, dec: 2.0, decRaw: '+100', q: '', game: '',
+           pricedOnly: false, open: true },
   // `priced` mirrors the master table's control and defaults the same way:
   // the whole slate. A priced-only default answered "what can I bet on"
   // while being read as "which players go together".
@@ -451,7 +483,12 @@ function select(label, value, options, onchange, title) {
   return el('div', { class: 'field' }, [el('label', { text: label }), s]);
 }
 function text(label, value, onchange, placeholder) {
-  const i = el('input', { type: 'text', value: value, placeholder: placeholder || '' });
+  // The label doubles as the field's identity across a re-render. Without it
+  // the focus restore below grabs the first text input on the pane, so typing
+  // into the third one throws the caret back into the first — which the cover
+  // pane now has three of.
+  const i = el('input', { type: 'text', value: value,
+    placeholder: placeholder || '', 'data-k': label });
   let tmr;
   i.oninput = () => { clearTimeout(tmr); tmr = setTimeout(() => { onchange(i.value); render(true); }, 120); };
   const f = el('div', { class: 'field' }, [el('label', { text: label }), i]);
@@ -966,7 +1003,7 @@ function coverToggle(name) {
 // be chosen. Forty checkboxes in a wrapped row made those three things one
 // thing — the reader had to re-scan the whole list to answer "who is in?",
 // and anyone outside the top forty could not be picked at all.
-function coverPicker(pool) {
+function coverPicker(pool, blended, extra) {
   const f = S.cover;
   const inSet = {};
   f.picked.forEach(n => { inSet[n] = 1; });
@@ -976,7 +1013,7 @@ function coverPicker(pool) {
     const b = el('button', { class: 'pchip', type: 'button',
       title: 'Remove ' + name });
     b.innerHTML = esc(name) +
-      (r ? ' <i>' + pct(r.ours, 0) + '</i>' : '') + ' <span>\u00d7</span>';
+      (r ? ' <i>' + pct(r.ours, 0) + '</i>' : '') + ' <span>×</span>';
     b.onclick = () => coverToggle(name);
     return b;
   });
@@ -987,17 +1024,28 @@ function coverPicker(pool) {
     text: 'Top 5, one per game',
     title: 'The best player in each of five different games.' });
   five.onclick = () => { f.picked = coverDefault(pool, 5); render(true); };
+  const fold = el('button', { class: 'pchip ghost', type: 'button',
+    text: f.open ? 'Hide the list' : 'Choose players',
+    title: 'The list of everyone who could go in. Collapsing it puts the '
+         + 'table below on screen without scrolling.' });
+  fold.onclick = () => { f.open = !f.open; render(true); };
 
   const picked = el('div', { class: 'picked' }, [
     el('div', { class: 'picked-h', html:
       '<b>' + f.picked.length + '</b> selected' +
       (f.picked.length >= 2
-        ? ' \u2014 <b>' + (Math.pow(2, f.picked.length) - 1).toLocaleString() +
+        ? ' — <b>' + (Math.pow(2, f.picked.length) - 1).toLocaleString() +
           '</b> slips'
         : '') }),
     el('div', { class: 'chips' },
-      chips.concat(f.picked.length ? [clear, five] : [five])),
+      chips.concat(f.picked.length ? [clear, five, fold] : [five, fold])),
   ]);
+
+  // Collapsed, the filters go with the list they filter — but the stake and
+  // the assumed price drive the table below, so they stay either way.
+  if (!f.open) {
+    return el('div', { class: 'picker' }, [picked, bar(extra)]);
+  }
 
   const games = Array.from(new Set(pool.map(r => r.game).filter(Boolean))).sort();
   const controls = bar([
@@ -1006,7 +1054,7 @@ function coverPicker(pool) {
       v => { f.game = v; }),
     check('Priced only', f.pricedOnly, v => { f.pricedOnly = v; }, false,
       'Hide players no book has posted a price for.'),
-  ]);
+  ].concat(extra));
 
   let rows = pool;
   if (f.q) {
@@ -1020,16 +1068,40 @@ function coverPicker(pool) {
 
   const grid = el('div', { class: 'ppick' }, rows.map(r => {
     const on = !!inSet[r.player];
+    // The second line is where a priced player earns the extra ink: the three
+    // numbers that disagree. `ours` is what the card leads with because it is
+    // what the table below computes from; `model` is that number before the
+    // blend and `book` is the price de-vigged, and the gap between those two
+    // is the only thing on this card that is an argument for a bet rather
+    // than a description of a player.
+    //
+    // An unpriced player has neither, and `ours` is then the model's own
+    // number — so repeating it as `model` would dress a single estimate up as
+    // two agreeing ones. It says `no price` instead, which is the fact.
+    const det = [];
+    if (blended && r.priced && has(r.model_only)) {
+      det.push('model ' + pct(r.model_only, 0));
+    }
+    if (has(r.book)) det.push('book ' + pct(r.book, 0));
     const b = el('button', {
       class: 'ppick-i' + (on ? ' on' : ''), type: 'button',
       'aria-pressed': on ? 'true' : 'false',
-      title: (r.game || '') + (r.priced ? ' \u00b7 ' + r.odds : ' \u00b7 no price'),
+      title: [r.player, r.game, r.priced ? 'priced ' + r.odds : 'no price',
+              'ours ' + pct(r.ours, 1),
+              blended && has(r.model_only) ? 'model only ' + pct(r.model_only, 1) : null,
+              has(r.book) ? 'bookmaker ' + pct(r.book, 1) : null,
+             ].filter(Boolean).join(' · '),
     });
+    // The detail line spans both columns rather than sitting in the right one.
+    // In a two-column cell it set the column width for the whole card, and
+    // `model 59% · book 48%` is wider than a name — so every player on a
+    // priced card lost their surname to an ellipsis.
     b.innerHTML =
       '<span class="n">' + esc(r.player) + '</span>' +
       '<span class="v">' + pct(r.ours, 0) + '</span>' +
-      '<span class="m">' + esc(r.team || '') + '</span>' +
-      '<span class="o">' + (r.priced ? esc(r.odds) : 'no price') + '</span>';
+      '<span class="d"><span>' + esc(r.team || '') +
+        (r.priced ? ' · ' + esc(r.odds) : '') + '</span><span>' +
+        (det.length ? det.join(' · ') : 'no price') + '</span></span>';
     b.onclick = () => coverToggle(r.player);
     return b;
   }));
@@ -1041,7 +1113,7 @@ function coverPicker(pool) {
   } else if (total > rows.length) {
     out.appendChild(el('p', { class: 'fine', text:
       'Showing the ' + rows.length + ' likeliest of ' + total +
-      ' \u2014 search or pick a game to reach the rest.' }));
+      ' — search or pick a game to reach the rest.' }));
   }
   return out;
 }
@@ -1057,22 +1129,41 @@ function paneCover() {
   if (!S.cover.picked) S.cover.picked = coverDefault(pool, 5);
   const chosen = pool.filter(r => S.cover.picked.indexOf(r.player) >= 0);
 
-  const boxes = coverPicker(pool);
-
-  const controls = bar([
+  // No `render()` in these callbacks: `text` re-renders for itself, with the
+  // focus restore, and a second render nested inside the change handler tore
+  // the field out from under the caret first — so a stake typed one digit at a
+  // time lost focus on the first keystroke.
+  const money2 = [
     text('Stake per slip', String(S.cover.stake),
-      v => { const x = parseFloat(v); if (x > 0) { S.cover.stake = x; render(); } }),
-    text('Assumed price if unpriced', String(S.cover.dec),
-      v => { const x = parseFloat(v); if (x > 1) { S.cover.dec = x; render(); } }),
-  ]);
+      v => { const x = parseFloat(v); if (x > 0) S.cover.stake = x; }),
+    // What was typed is held as typed, and the parsed price beside it. Parsing
+    // into the field's own value would rewrite `-2` to something else on the
+    // keystroke before `-200`, which is a box that fights the person using it.
+    text('Assumed price if unpriced', S.cover.decRaw,
+      v => { S.cover.decRaw = v;
+             const d = parsePrice(v);
+             if (d) S.cover.dec = d; },
+      '+120 or 2.20'),
+  ];
+  const boxes = coverPicker(pool, m.topk && m.topk.blended, money2);
 
   const kids = [
     el('p', { class: 'muted', html:
       'Pick players and back every combination of them \u2014 <b>n</b> players ' +
       'is <b>2\u207f \u2212 1</b> slips, so five is 31. The table is what each ' +
       'number of scorers returns.' }),
-    boxes, controls,
+    boxes,
   ];
+
+  // Half-typed prices are normal and silent; a finished one that means nothing
+  // has to say so, or the table quietly answers a different question from the
+  // one on screen.
+  if (S.cover.decRaw && !parsePrice(S.cover.decRaw)) {
+    kids.push(el('div', { class: 'warn-box', html:
+      '<b>' + esc(S.cover.decRaw) + '</b> is not a price. Type American \u2014 ' +
+      '<b>+120</b>, <b>-200</b> \u2014 or decimal, <b>2.20</b>. Still using ' +
+      bothPrices(S.cover.dec) + '.' }));
+  }
 
   if (chosen.length < 2) {
     kids.push(el('div', { class: 'warn-box', text: 'Pick at least two players.' }));
@@ -1097,7 +1188,7 @@ function paneCover() {
     v.stake.toFixed(2) + ' each, <b>$' + v.staked.toFixed(2) + '</b> staked. ' +
     (v.all_priced ? 'All ' + v.n + ' legs priced by the book.'
       : v.priced + ' of ' + v.n + ' legs priced; the rest at an assumed ' +
-        v.assumed_decimal.toFixed(2) + '.') }));
+        bothPrices(v.assumed_decimal) + '.') }));
 
   const cols = [
     { k: 'who', label: 'Players who score', t: 1 },
@@ -1128,7 +1219,7 @@ function paneCover() {
     kids.push(el('div', { class: 'warn-box', html:
       '<b>The expected result below is not a measured edge.</b> Some legs have ' +
       'no market price, so it weighs the model\u2019s own probabilities against ' +
-      'the ' + v.assumed_decimal.toFixed(2) + ' you assumed. A book that agreed ' +
+      'the ' + bothPrices(v.assumed_decimal) + ' you assumed. A book that agreed ' +
       'with these numbers would not offer that price.' }));
   }
   kids.push(el('p', { class: 'muted', html:
@@ -1264,6 +1355,7 @@ function paneMPlayers() { return panePlayers(); }
 function render(keepFocus) {
   const active = keepFocus ? document.activeElement : null;
   const sel = active && active.selectionStart;
+  const key = active && active.dataset ? active.dataset.k : null;
   const m = M();
 
   $('#meta').innerHTML =
@@ -1287,7 +1379,8 @@ function render(keepFocus) {
   main.appendChild(t[2]());
 
   if (active && active.tagName === 'INPUT' && active.type === 'text') {
-    const again = main.querySelector('input[type=text]') ||
+    const again = (key && main.querySelector('input[data-k="' + key + '"]')) ||
+                  main.querySelector('input[type=text]') ||
                   document.querySelector('input[type=text]');
     if (again) { again.focus(); if (sel != null) again.setSelectionRange(sel, sel); }
   }

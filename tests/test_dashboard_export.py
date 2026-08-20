@@ -22,6 +22,8 @@ import importlib.util
 import json
 import math
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -370,6 +372,107 @@ def test_the_picker_can_reach_a_player_outside_the_top_forty():
         "the cap must come after the filters, or filtering only ever searches "
         "the top of the board")
     assert "'Showing the '" in body, "a truncated list has to say it is truncated"
+
+
+def test_the_assumed_price_reads_american_the_way_the_rest_of_the_project_does():
+    """The one free-text price on the page, parsed by the page.
+
+    Every price the dashboard displays is American, so a box that took only
+    decimals asked the reader to convert the number already in front of them.
+    The conversion is small enough that the page does it in the browser — which
+    makes it the second implementation of `bets.american_to_decimal`, so this
+    runs the shipped parser under node and holds it to the Python.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available to run the page's own parser")
+
+    from src.export import dashboard
+    from src.prediction.bets import american_to_decimal
+
+    odds = [-500, -250, -110, -105, 100, 120, 450, 1500]
+    typed = [f"+{o}" if o > 0 else str(o) for o in odds]
+    driver = (dashboard.JS + "\nconsole.log(JSON.stringify(" +
+              json.dumps(typed) + ".map(parsePrice)));")
+    out = subprocess.run([node, "-e", driver], capture_output=True, text=True,
+                         check=True)
+    assert json.loads(out.stdout) == pytest.approx(
+        [american_to_decimal(o) for o in odds]), (
+        "the page converts American odds differently from src/prediction/bets")
+
+    # Unsigned, the two notations cannot collide: American odds never fall
+    # inside ±100 and a decimal price never reaches it. Anything else is not a
+    # price and must come back as nothing rather than as a number.
+    driver = (dashboard.JS + "\nconsole.log(JSON.stringify(" +
+              json.dumps(["850", "2.20", " -250 ", "+50", "-50", "1", "0",
+                          "abc", ""]) + ".map(parsePrice)));")
+    out = subprocess.run([node, "-e", driver], capture_output=True, text=True,
+                         check=True)
+    got = json.loads(out.stdout)
+    assert got[:3] == pytest.approx([american_to_decimal(850), 2.20,
+                                     american_to_decimal(-250)])
+    assert got[3:] == [None] * 6, (
+        "a half-typed sign, a price inside the dead band and anything "
+        "unparseable must all read as no price, not as a silent default")
+
+
+def test_a_half_typed_price_does_not_change_the_table_or_fight_the_caret():
+    """`decRaw` exists so the box can hold `-` on the way to `-200`.
+
+    Parsing into the field's own value rewrites what someone is in the middle
+    of typing. Keeping the text and the price apart means the table goes on
+    using the last price that meant something, and says so rather than
+    silently answering a different question from the one on screen.
+    """
+    from src.export import dashboard
+
+    assert "decRaw: '+100'" in dashboard.JS, (
+        "the default has to be expressible in the notation the box advertises")
+    pane = dashboard.JS_TEAMS
+    body = pane[pane.index("function paneCover()"):]
+    assert "S.cover.decRaw = v;" in body and "if (d) S.cover.dec = d;" in body, (
+        "an unparseable keystroke must leave the price alone")
+    assert "is not a price" in body, "and the page must say it is being ignored"
+
+
+def test_the_picker_shows_the_three_numbers_only_where_three_exist():
+    """Model, ours and book on a card — where there are three of them.
+
+    An unpriced player has no book number and no blend, so `ours` IS the
+    model's number; printing it twice under two labels would dress one estimate
+    up as two that agree. First TD does not blend either, by measurement rather
+    than by declaration, so `model only` there is the same column again.
+    """
+    from src.export import dashboard
+
+    js = dashboard.JS_TEAMS
+    body = js[js.index("function coverPicker("):js.index("function paneCover(")]
+    assert "if (blended && r.priced && has(r.model_only))" in body, (
+        "the model-only figure is only a second opinion on a blended, priced "
+        "row; anywhere else it is `ours` under another name")
+    assert "if (has(r.book)) det.push" in body
+
+    pane = js[js.index("function paneCover()"):]
+    assert "coverPicker(pool, m.topk && m.topk.blended, money2)" in pane, (
+        "whether the market blends is measured, not assumed — the picker has "
+        "to be told rather than deciding for itself")
+
+
+def test_the_picker_collapses_without_taking_the_stake_with_it():
+    """The section sits above the table it feeds, so its height is the cost.
+
+    Collapsing hides the list and the filters that act on it. The stake and the
+    assumed price drive the table below, so they stay — a collapsed picker that
+    hid them would make the numbers underneath unadjustable.
+    """
+    from src.export import dashboard
+
+    js = dashboard.JS_TEAMS
+    body = js[js.index("function coverPicker("):js.index("function paneCover(")]
+    collapsed = body[body.index("if (!f.open)"):]
+    collapsed = collapsed[:collapsed.index("const games =")]
+    assert "bar(extra)" in collapsed, "the stake fields must survive the collapse"
+    assert "grid" not in collapsed
 
 
 def test_the_shipped_dashboard_carries_the_cover_tab():
