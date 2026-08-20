@@ -1349,6 +1349,39 @@ def version_accuracy(tt: str, model: str, version: str | None) -> dict | None:
 
 
 @st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)
+def published_accuracy(tt: str, model: str) -> dict | None:
+    """The strip's figures, measured on the column the board actually shows.
+
+    `walkforward.json` scores the model's own ranking. Anytime TD does not
+    publish that ranking — it publishes `final`, the model blended with the
+    price — so the strip was describing an object the board never displays. The
+    page carried 49.6% here and 51.6% in the purpose panel, both labelled
+    Top-1, and the larger sample was the one measuring the wrong column.
+
+    Preferred only where the blend MOVES the number. It does on anytime TD, by
+    up to 0.289; on first TD `final` and `prob_calibrated` are identical to the
+    last decimal, so nothing is gained by narrowing to the price era and the
+    walk-forward's extra season is kept.
+
+    The window cannot be widened for a blended market: blending needs a price,
+    the odds archive starts in 2023, and `10_backtest.py --season 2022` exits
+    with "no weeks had both predictions and prices". That is a limit of the
+    data, not a choice.
+
+    Used for BOTH markets, blended or not. First TD's blend leaves the number
+    untouched, so the walk-forward would be a legitimate wider window for it —
+    but then the strip would sit on 1,131 games while the purpose panel below
+    sat on 849, and the page would carry two Top-1 figures again for a
+    different reason. One source for every figure beats one market's extra
+    season. The walk-forward is still reported in Model performance, where it
+    is labelled as the longer history rather than as the headline.
+    """
+    from src.evaluation.hit_rates import published_topk
+
+    return published_topk(tt, model)
+
+
 def walkforward_accuracy(tt: str, model: str) -> dict | None:
     """Pooled out-of-sample accuracy from scripts/11_walkforward.py.
 
@@ -1421,6 +1454,7 @@ def headline_accuracy(tt: str, model: str, version: str | None = None):
     if version and served and version == served.get("id"):
         version = None
     return (version_accuracy(tt, model, version)
+            or published_accuracy(tt, model)
             or walkforward_accuracy(tt, model)
             or historical_accuracy(tt, model))
 
@@ -2285,7 +2319,10 @@ def render_purpose(tt: str, model: str, version: str | None = None):
             f"This board ranks players by how likely they are to score. "
             f"Its top pick is right **{overall:.1%}** of the time against "
             f"**{base:.1%}** for a candidate drawn at random — about "
-            f"**{overall / max(base, 1e-9):.1f}x** the field."
+            f"**{overall / max(base, 1e-9):.1f}x** the field"
+            + (f", over {s['games']:,} backtested games"
+               + (f" ({s['span']})" if s.get("span") else "") + "."
+               if s.get("games") else ".")
             + (f" Restricted to picks it rates above **{best['threshold']:.2f}** "
                f"it reaches **{best['hit_rate']:.1%}** "
                f"[{best['lo_ci']:.1%}, {best['hi_ci']:.1%}], on "
@@ -2312,9 +2349,18 @@ def render_purpose(tt: str, model: str, version: str | None = None):
                              "Difference": (o - m) * 100})
             if rows:
                 st.markdown(
-                    f"**Against the bookmaker, same {cmp_['games']:,} games.** "
-                    f"The honest yardstick — a price, not a coin flip."
+                    f"**Against the bookmaker, same "
+                    f"{cmp_['games']:,} games"
+                    + (f" ({cmp_['span']})" if cmp_.get("span") else "")
+                    + ".** The honest yardstick — a price, not a coin flip."
                 )
+                st.caption(
+                    f":material/info: **A different window from the accuracy "
+                    f"strip above.** That pools every retrained fold; only the "
+                    f"seasons with archived prices can be set against a book, "
+                    f"so these {cmp_['games']:,} games are a subset. The two "
+                    f"Top-1 figures on this page are not the same measurement "
+                    f"and are not subtractable.")
                 st.dataframe(
                     pd.DataFrame(rows), hide_index=True,
                     column_config={

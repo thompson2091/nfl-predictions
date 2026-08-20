@@ -165,8 +165,18 @@ def topk_ladder(df, ks=KS) -> dict | None:
     # own number, so its two series are the same column and a chart with two
     # identical lines invites a reading of a distinction that is not there.
     blended = bool(pre and float((d[pub] - d[pre]).abs().max() or 0) > 1e-9)
+    # The seasons, not only the count. This ladder and the walk-forward strip
+    # at the top of the same page are measured on DIFFERENT windows — the
+    # strip pools every retrained fold, the ladder only the seasons with
+    # archived prices — and on 2026-08-19 they read 49.6% and 51.6% for the
+    # same Top-1 with nothing on the page explaining why. The 2022 fold is in
+    # one and not the other, and it is the weakest of the four at 45.7%.
+    seasons = sorted(
+        d["game_id"].str.slice(0, 4).cast(pl.Int64).unique().to_list())
     return {"games": d["game_id"].n_unique(), "rows": d.height,
-            "blended": blended, "k": rows}
+            "blended": blended, "k": rows,
+            "seasons": seasons,
+            "span": (f"{seasons[0]}-{seasons[-1]}" if seasons else None)}
 
 
 def _rate_frame(df, prob_col: str, label_col: str, top_only: bool):
@@ -544,6 +554,7 @@ def teams(season: int, week: int, target_type: str) -> dict:
 def market(target_type: str, label: str, season: int | None,
            week: int | None) -> dict:
     from src.evaluation.combo_backtest import load as load_combos
+    from src.evaluation.hit_rates import published_topk
     from src.evaluation.longshot import load as load_longshot
     from src.evaluation.rank_economics import load as load_econ
     from src.presentation import board as bp
@@ -606,7 +617,15 @@ def market(target_type: str, label: str, season: int | None,
     return {
         "key": target_type, "label": label, "season": season, "week": week,
         "served": who, "model": model, "measured_on": fell_back,
-        "walkforward": wf,
+        # The strip reads the PUBLISHED column, not walkforward.json. That
+        # artifact scores the model's own ranking, which anytime TD does not
+        # publish — it publishes `final`, blended with the price — so the strip
+        # described an object the board never shows. The page carried 49.6%
+        # here and 51.6% in the ladder below, both labelled Top-1, and the
+        # bigger sample was the one measuring the wrong column. `walkforward`
+        # is still carried, as the longer unblended history.
+        "walkforward": published_topk(target_type, model) or wf,
+        "walkforward_model_only": wf,
         "topk": topk_ladder(df),
         "h2h": head_to_head(target_type, model, who["version"]),
         "selectivity": selectivity(df),

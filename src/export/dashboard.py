@@ -598,7 +598,7 @@ function paneModel() {
   const t = [];
   if (wf) {
     t.push({ k: 'Games', v: wf.games.toLocaleString(),
-             d: wf.span + ', ' + wf.seasons + ' folds',
+             d: wf.span + ', ' + wf.seasons + ' folds \u2014 a wider window than the ladder below',
              help: 'Walk-forward: the model is retrained for each season and never sees the one it is scored on.' });
     [['top1', 'Top-1', 'our highest-rated player in a game scored'],
      ['top3', 'Top-3', 'at least one of our top 3 scored'],
@@ -654,7 +654,12 @@ function paneModel() {
     const d1 = rows[0].diff;
     out.appendChild(card('Top-1 to Top-10, against the bookmaker',
       'The honest yardstick is a price, not a coin flip. All three columns are the same ' +
-      tk.games.toLocaleString() + ' backtested games and the same priced players — only the ranking differs. ' +
+      tk.games.toLocaleString() + ' backtested games' +
+      (tk.span ? ' (' + tk.span + ')' : '') +
+      ' and the same priced players — only the ranking differs. ' +
+      '<b>This is a different window from the accuracy strip above</b>, which pools every ' +
+      'retrained fold; only the seasons with archived prices can be compared to a book, ' +
+      'so the two Top-1 figures on this page are not the same measurement. ' +
       (tk.blended
         ? '<b>Us</b> is the number the board publishes, blended with the price because that predicts scorers better; <b>Model only</b> is the same model before the blend.'
         : 'This market is not blended, so our published number <i>is</i> the model’s own — there is no separate column for it.'),

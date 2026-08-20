@@ -140,8 +140,17 @@ def top_pick_bands(target_type: str, model: str | None = None,
                      "share_of_games": sel.height / games_total,
                      "hit_rate": rate, "lo_ci": l, "hi_ci": h})
 
+    # The span, so a caller can say WHICH games. Three panels quote a Top-1
+    # figure and they sit on two different windows: this and the market
+    # comparison read the backtest frames (seasons with archived prices), the
+    # accuracy strip pools every retrained walk-forward fold. On 2026-08-19 one
+    # page showed 51.6% and 49.6% with nothing saying why.
+    seasons = sorted(
+        df["game_id"].str.slice(0, 4).cast(pl.Int64).unique().to_list())
     return {"target_type": target_type, "model": model, "games": games_total,
             "base_rate": base, "bands": rows, "cuts": cuts,
+            "seasons": seasons,
+            "span": f"{seasons[0]}-{seasons[-1]}" if seasons else None,
             "overall_hit_rate": float(top[lc].mean())}
 
 
@@ -253,10 +262,78 @@ def topk_vs_market(target_type: str, model: str | None = None,
              .group_by("game_id").agg(pl.col(lc).max().alias("any")))
         return float(t["any"].mean())
 
+    # The seasons, not only the count. This is a NARROWER window than the
+    # walk-forward strip both surfaces show beside it: that pools every
+    # retrained fold, this only the seasons with archived prices. On
+    # 2026-08-19 they read 49.6% and 51.6% for the same Top-1 on the same page
+    # with nothing explaining the gap, and the answer was the 2022 fold — in
+    # one window, not the other, and the weakest of the four at 45.7%.
+    seasons = sorted(
+        df["game_id"].str.slice(0, 4).cast(pl.Int64).unique().to_list())
     return {
         "target_type": target_type,
         "games": df["game_id"].n_unique(),
         "rows": df.height,
+        "seasons": seasons,
+        "span": f"{seasons[0]}-{seasons[-1]}" if seasons else None,
         "ours": {k: topk(pc, k) for k in ks},
         "market": {k: topk("market_prob", k) for k in ks},
     }
+
+
+def published_topk(target_type: str, model: str | None = None,
+                   ks=(1, 3, 5)) -> dict | None:
+    """Top-K of the column the board actually publishes.
+
+    **Why this exists rather than reading `walkforward.json`.** That artifact
+    scores the model's own ranking. Anytime TD does not publish that ranking —
+    it publishes `final`, the model blended with the market — so the headline
+    was describing an object the board never shows. On 2026-08-19 one page
+    carried 49.6% in the accuracy strip and 51.6% in the purpose panel, both
+    labelled Top-1, and the larger sample was the one measuring the wrong
+    column.
+
+    The rule is: measure what is on screen, over the widest window where that
+    column exists. For a blended market the blend needs a price, and the odds
+    archive starts in 2023, so the window is 2023 onward and cannot be widened
+    — there were no 2022 prices to blend with, which is why
+    `10_backtest.py --season 2022` exits with "no weeks had both predictions
+    and prices". For a market that publishes the model's own number the two
+    windows are the same thing and the walk-forward covers more seasons.
+
+    Returns None when there are no frames, so a caller falls back rather than
+    inventing a figure.
+    """
+    df = _load_backtests(target_type, model)
+    if df is None:
+        return None
+    pc, lc = _prob_col(df), _label_col(df)
+    d = df.filter(pl.col(pc).is_not_null() & pl.col(lc).is_not_null())
+    if d.height == 0:
+        return None
+
+    def topk(k: int) -> float:
+        t = (d.sort(pc, descending=True).group_by("game_id").head(k)
+             .group_by("game_id").agg(pl.col(lc).max().alias("any")))
+        return float(t["any"].mean())
+
+    # Whether the blend MOVES anything, not whether the column is called
+    # `final`. First TD publishes `final` too and its blend weight leaves the
+    # number untouched — max |final - prob_calibrated| is exactly 0.0 — so
+    # calling it blended would send a caller to the narrower price-era window
+    # for no reason. Anytime TD moves by up to 0.289.
+    pre = "prob_calibrated" if "prob_calibrated" in d.columns else None
+    moves = bool(pre and float((d[pc] - d[pre]).abs().max() or 0) > 1e-9)
+
+    seasons = sorted(
+        d["game_id"].str.slice(0, 4).cast(pl.Int64).unique().to_list())
+    games = d["game_id"].n_unique()
+    out = {"games": games, "pooled": True, "model": model,
+           "column": pc, "seasons": len(seasons),
+           "span": f"{seasons[0]}-{seasons[-1]}" if seasons else None,
+           "blended": moves}
+    for k in ks:
+        rate = topk(k)
+        out[f"top{k}"] = rate
+        out[f"top{k}_se"] = float((rate * (1 - rate) / max(games, 1)) ** 0.5)
+    return out

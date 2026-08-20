@@ -179,3 +179,103 @@ def test_the_joint_model_comes_from_the_same_directory_as_the_weights():
         assert f'md / "{artifact}"' in fn, (
             f"{artifact} must be read from the same directory as the weights, "
             f"not from production's")
+
+
+def test_every_top1_figure_says_which_games_it_was_measured_on():
+    """One page, two windows, and until 2026-08-19 nothing saying so.
+
+    The accuracy strip pools every retrained walk-forward fold — 1,131 games
+    across 2022-2025. The purpose panel and the market comparison read the
+    backtest frames, which only cover the seasons with archived prices — 849
+    games across 2023-2025. They reported 49.6% and 51.6% for "Top-1" side by
+    side, and the whole difference is the 2022 fold, the weakest of the four at
+    45.7%.
+
+    Neither number was wrong. Neither said what it was measured on, which is
+    the defect: two figures for the same-sounding quantity are not subtractable
+    and a reader has no way to know that.
+    """
+    from pathlib import Path
+
+    from src.evaluation.hit_rates import top_pick_bands, topk_vs_market
+
+    for fn in (top_pick_bands, topk_vs_market):
+        out = fn("anytime_td")
+        if out is None:
+            pytest.skip("no backtest frames in this checkout")
+        assert out.get("span"), (
+            f"{fn.__name__} must report the seasons it covers, not only a "
+            f"game count — a count cannot tell a reader why two figures differ")
+        assert out.get("seasons")
+
+    # Matched on a fragment rather than the whole sentence: the copy is written
+    # across wrapped f-string continuations, so no long literal appears
+    # contiguously in the source.
+    app = (Path(__file__).resolve().parents[1] / "app.py").read_text()
+    assert "different window from the accuracy" in app, (
+        "the market comparison must say it sits on a narrower window than the "
+        "strip above it")
+    assert "backtested games" in app
+
+
+def test_the_dashboard_says_the_two_windows_differ():
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] /
+           "src" / "export" / "dashboard.py").read_text()
+    assert "different window from the accuracy strip" in src, (
+        "the exported page shows both figures too and must explain the gap")
+    assert "a wider window than the ladder below" in src
+
+
+def test_the_strip_and_the_purpose_panel_report_the_same_top1():
+    """One page, one number. This is the check that failed in the wild.
+
+    The accuracy strip read `walkforward.json` — the model's own ranking,
+    2022-2025 — while the purpose panel read the backtest frames on the
+    PUBLISHED column, 2023-2025. Anytime TD publishes the blended number, so
+    the strip was describing an object the board never displays, and the page
+    showed 49.6% and 51.6% side by side, both labelled Top-1.
+
+    Both now read `published_topk`, so they agree by construction rather than
+    by coincidence.
+    """
+    from src.evaluation.hit_rates import published_topk, top_pick_bands
+    from src.utils.config import production_model
+
+    for market in ("anytime_td", "first_td"):
+        strip = published_topk(market, production_model(market))
+        panel = top_pick_bands(market)
+        if strip is None or panel is None:
+            pytest.skip(f"no backtest frames for {market}")
+        assert strip["games"] == panel["games"], (
+            f"{market}: strip on {strip['games']} games, panel on "
+            f"{panel['games']} — same page, different denominators")
+        assert strip["top1"] == pytest.approx(panel["overall_hit_rate"]), (
+            f"{market}: strip {strip['top1']:.4f} vs panel "
+            f"{panel['overall_hit_rate']:.4f}")
+
+
+def test_a_blended_market_is_measured_on_the_column_it_publishes():
+    """Measure what is on screen.
+
+    Anytime TD's blend moves the number by up to 0.289, so scoring the
+    unblended ranking answers a question nobody asked. First TD's blend leaves
+    it identical to the last decimal, which is why `blended` is decided by
+    effect rather than by the column being named `final`.
+    """
+    from src.evaluation.hit_rates import published_topk
+    from src.utils.config import production_model
+
+    anytime = published_topk("anytime_td", production_model("anytime_td"))
+    first = published_topk("first_td", production_model("first_td"))
+    if anytime is None or first is None:
+        pytest.skip("no backtest frames")
+
+    assert anytime["column"] == "final"
+    assert anytime["blended"] is True, (
+        "anytime TD blends; a strip on the unblended column describes "
+        "something the board does not show")
+    assert first["blended"] is False, (
+        "first TD's blend does not move the number — calling it blended would "
+        "narrow its window for nothing")
