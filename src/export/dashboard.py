@@ -332,7 +332,13 @@ const esc = s => String(s == null ? '' : s)
 const has = v => v != null && !Number.isNaN(v);
 const pct = (v, d) => has(v) ? (v * 100).toFixed(d == null ? 1 : d) + '%' : '';
 const pp = (v, d) => has(v) ? (v >= 0 ? '+' : '') + v.toFixed(d == null ? 1 : d) : '';
-const money = v => has(v) ? (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2) : '';
+// Grouped, because the stake is a free-text dollar amount now and $31000.00
+// is a number you have to count the digits of. Two decimals always: a money
+// column that drops them is a money column that stops lining up.
+const cents = v => Math.abs(v).toLocaleString('en-US',
+  { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const usd = v => has(v) ? '$' + cents(v) : '';
+const money = v => has(v) ? (v >= 0 ? '+$' : '-$') + cents(v) : '';
 const american = o => {
   if (!has(o)) return '';
   const n = Math.round(o);
@@ -366,6 +372,16 @@ const parsePrice = v => {
 // Both notations, so nothing on the page is only readable in the one the
 // reader did not type.
 const bothPrices = d => american(decToAm(d)) + ' (' + d.toFixed(2) + ')';
+// A stake as anyone would write one: `2.50`, `$2.50`, `1,000`. `parseFloat`
+// alone reads `$2.50` as nothing and `1,000` as one, and the second of those
+// is the dangerous one — it is not an error, it is a thousandfold understatement
+// of what the table below says is at risk.
+const parseMoney = v => {
+  const t = String(v == null ? '' : v).trim().replace(/[$,\s]/g, '');
+  if (!t || !/^[0-9]*\.?[0-9]+$/.test(t)) return null;
+  const x = parseFloat(t);
+  return isFinite(x) && x > 0 ? x : null;
+};
 const cls = v => !has(v) ? '' : (v > 0 ? 'pos' : (v < 0 ? 'neg' : ''));
 
 // ── State ───────────────────────────────────────────────────────────────
@@ -381,7 +397,8 @@ const S = {
   // whatever the reader chose.
   // `dec` is the price the table uses; `decRaw` is what was typed to get it,
   // in either notation. They part company only while a price is half-entered.
-  cover: { picked: null, stake: 1, dec: 2.0, decRaw: '+100', q: '', game: '',
+  cover: { picked: null, stake: 1, stakeRaw: '1.00', dec: 2.0, decRaw: '+100',
+           q: '', game: '',
            pricedOnly: false, open: true },
   // `priced` mirrors the master table's control and defaults the same way:
   // the whole slate. A priced-only default answered "what can I bet on"
@@ -1135,8 +1152,14 @@ function paneCover() {
   // the field out from under the caret first — so a stake typed one digit at a
   // time lost focus on the first keystroke.
   const money2 = [
-    text('Stake per slip', String(S.cover.stake),
-      v => { const x = parseFloat(v); if (x > 0) S.cover.stake = x; }),
+    // Raw text and parsed value kept apart, for the same reason the price
+    // field does it: `2.` is a normal thing to be in the middle of typing and
+    // rewriting it mid-keystroke makes a box that fights the person using it.
+    text('Stake per slip', S.cover.stakeRaw,
+      v => { S.cover.stakeRaw = v;
+             const x = parseMoney(v);
+             if (x) S.cover.stake = x; },
+      '$2.50'),
     // What was typed is held as typed, and the parsed price beside it. Parsing
     // into the field's own value would rewrite `-2` to something else on the
     // keystroke before `-200`, which is a box that fights the person using it.
@@ -1193,10 +1216,21 @@ function paneCover() {
 
   kids.push(boxes);
 
-  // Half-typed prices are normal and silent; a finished one that means nothing
-  // has to say so, or the table quietly answers a different question from the
-  // one on screen.
-  if (S.cover.decRaw && !parsePrice(S.cover.decRaw)) {
+  // A finished entry that means nothing has to say so, or the table quietly
+  // answers a different question from the one on screen. But `2.` and `-` are
+  // not mistakes, they are the middle of `2.50` and `-200` — and a warning box
+  // that appears on those shoves the picker down the page mid-keystroke. Only
+  // the two shapes that can only ever be incomplete are silent; `+50` is a
+  // finished thought that happens to be wrong, so it still gets told.
+  const midStake = /^\$?[0-9,]*\.$/.test(S.cover.stakeRaw || '');
+  const midPrice = /^[+-]$/.test(S.cover.decRaw || '');
+  if (S.cover.stakeRaw && !midStake && !parseMoney(S.cover.stakeRaw)) {
+    kids.push(el('div', { class: 'warn-box', html:
+      '<b>' + esc(S.cover.stakeRaw) + '</b> is not an amount. Type dollars ' +
+      '\u2014 <b>2.50</b>, <b>$2.50</b>, <b>1,000</b>. Still staking <b>' +
+      usd(S.cover.stake) + '</b> a slip.' }));
+  }
+  if (S.cover.decRaw && !midPrice && !parsePrice(S.cover.decRaw)) {
     kids.push(el('div', { class: 'warn-box', html:
       '<b>' + esc(S.cover.decRaw) + '</b> is not a price. Type American \u2014 ' +
       '<b>+120</b>, <b>-200</b> \u2014 or decimal, <b>2.20</b>. Still using ' +
@@ -1223,7 +1257,7 @@ function paneCover() {
 
   kids.push(el('p', { class: 'muted', html:
     '<b>' + v.bets + ' slips</b> on ' + v.n + ' players at $' +
-    v.stake.toFixed(2) + ' each, <b>$' + v.staked.toFixed(2) + '</b> staked. ' +
+    cents(v.stake) + ' each, <b>' + usd(v.staked) + '</b> staked. ' +
     (v.all_priced ? 'All ' + v.n + ' legs priced by the book.'
       : v.priced + ' of ' + v.n + ' legs priced; the rest at an assumed ' +
         bothPrices(v.assumed_decimal) + '.') }));
@@ -1232,8 +1266,8 @@ function paneCover() {
     { k: 'who', label: 'Players who score', t: 1 },
     { k: 'chance', label: 'Chance of this', fmt: x => pct(x, 1) },
     { k: 'wins', label: 'Winning bets' },
-    { k: 'ret', label: 'Total returned', fmt: x => '$' + x.toFixed(2) },
-    { k: 'net', label: 'Net on $' + v.staked.toFixed(2),
+    { k: 'ret', label: 'Total returned', fmt: x => usd(x) },
+    { k: 'net', label: 'Net on ' + usd(v.staked),
       fmt: x => money(x), cls: x => cls(x) },
   ];
   kids.push(table('cover-rows', cols, v.rows.map(r => ({
@@ -1245,8 +1279,8 @@ function paneCover() {
   kids.push(el('div', { class: 'warn-box' + (be == null ? ' bad-box' : ' good-box'),
     html: be == null
       ? '<b>No number of scorers turns a profit.</b> Even all ' + v.n +
-        ' landing returns $' + v.rows[v.n].returned.toFixed(2) + ' against $' +
-        v.staked.toFixed(2) + ' staked.'
+        ' landing returns ' + usd(v.rows[v.n].returned) + ' against ' +
+        usd(v.staked) + ' staked.'
       : '<b>Breakeven is ' + be + ' of ' + v.n + '</b> \u2014 and that happens <b>' +
         pct(v.p_breakeven, 1) + '</b> of the time' +
         (v.rho ? ', with the measured teammate correlation of ' +
@@ -1263,7 +1297,7 @@ function paneCover() {
   kids.push(el('p', { class: 'muted', html:
     'Expected result <b>' + money(v.expected_net) + '</b> (' +
     pct(v.expected_roi, 1) + ') against <b>' + money(v.singles_net) + '</b> (' +
-    pct(v.singles_roi, 1) + ') for the same $' + v.staked.toFixed(2) +
+    pct(v.singles_roi, 1) + ') for the same ' + usd(v.staked) +
     ' on the ' + v.n + ' singles alone. A cover is leverage on the edge in each ' +
     'leg: per dollar a single returns <i>e</i> and a k-fold returns ' +
     '<i>(1+e)<sup>k</sup> \u2212 1</i>. ' +
@@ -1303,7 +1337,7 @@ function paneCover() {
         ' of everything returned').join('\n'),
       html:
         '<b>Graded.</b> Replayed over ' + rec.weeks + ' weeks (' + rec.span +
-        ') at $' + rec.stake.toFixed(2) + ' a slip on the prices actually ' +
+        ') at ' + usd(rec.stake) + ' a slip on the prices actually ' +
         'posted, this rule returned between ' +
         pct(Math.min.apply(null, rois), 1) + ' and ' +
         pct(Math.max.apply(null, rois), 1) + ' depending on pool size, and ' +

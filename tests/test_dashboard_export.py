@@ -417,6 +417,41 @@ def test_the_assumed_price_reads_american_the_way_the_rest_of_the_project_does()
         "unparseable must all read as no price, not as a silent default")
 
 
+def test_the_stake_takes_a_dollar_amount_as_anyone_would_write_one():
+    """`2.50`, `$2.50`, `1,000` — and the comma is the one that matters.
+
+    `parseFloat` reads `$2.50` as nothing, which is a visible failure, and
+    `1,000` as **one**, which is not: the table would go on showing a staked
+    total a thousandfold under what was typed, with nothing on screen wrong.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available to run the page's own parser")
+
+    from src.export import dashboard
+
+    good = {"1": 1, "2.50": 2.5, "$2.50": 2.5, "1,000": 1000,
+            "$1,250.75": 1250.75, "0.05": 0.05, ".5": 0.5}
+    bad = ["0", "-5", "abc", "", "2.", "1e3", "$", "1.2.3"]
+    driver = (dashboard.JS + "\nconsole.log(JSON.stringify(" +
+              json.dumps(list(good) + bad) + ".map(parseMoney)));")
+    out = subprocess.run([node, "-e", driver], capture_output=True, text=True,
+                         check=True)
+    got = json.loads(out.stdout)
+    assert got[:len(good)] == pytest.approx(list(good.values()))
+    assert got[len(good):] == [None] * len(bad), (
+        "a stake has to be a positive amount; anything else must read as no "
+        "amount rather than as a number")
+
+    # And the amounts it produces have to be legible once they get large.
+    driver = (dashboard.JS +
+              "\nconsole.log(JSON.stringify([usd(38773.25), money(-31), "
+              "money(239348.09)]));")
+    out = subprocess.run([node, "-e", driver], capture_output=True, text=True,
+                         check=True)
+    assert json.loads(out.stdout) == ["$38,773.25", "-$31.00", "+$239,348.09"]
+
+
 def test_a_half_typed_price_does_not_change_the_table_or_fight_the_caret():
     """`decRaw` exists so the box can hold `-` on the way to `-200`.
 
@@ -433,7 +468,16 @@ def test_a_half_typed_price_does_not_change_the_table_or_fight_the_caret():
     body = pane[pane.index("function paneCover()"):]
     assert "S.cover.decRaw = v;" in body and "if (d) S.cover.dec = d;" in body, (
         "an unparseable keystroke must leave the price alone")
+    assert "S.cover.stakeRaw = v;" in body and "if (x) S.cover.stake = x;" in body
     assert "is not a price" in body, "and the page must say it is being ignored"
+    assert "is not an amount" in body
+
+    # `2.` and `-` are the middles of `2.50` and `-200`. A warning box on those
+    # shoves the picker down the page between keystrokes, so those two shapes
+    # — and only those — are silent. `+50` is a finished thought that happens
+    # to be wrong and still gets told.
+    assert "const midStake = /^\\$?[0-9,]*\\.$/" in body
+    assert "const midPrice = /^[+-]$/" in body
 
 
 def test_the_picker_shows_the_three_numbers_only_where_three_exist():
