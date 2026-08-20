@@ -292,6 +292,77 @@ def receptions_week_lines(season: int):
     return j.with_columns(pl.Series("p_model", p)).to_pandas()
 
 
+@st.cache_data(show_spinner=False)
+@guarded
+def cover_record(tt: str, model: str | None = None):
+    """How the full-cover rule has actually done. Absent is a real state."""
+    from src.evaluation.cover_backtest import load
+    return load(get_path("output", tt) / "cover_backtest.json")
+
+
+def render_cover_record(tt: str, n: int) -> None:
+    """What this rule returned when it was replayed, not what it projects.
+
+    Everything above is a product of estimates and prices, and a product
+    compounds whatever is wrong with each term — a model two points
+    overconfident per leg is two points wrong on a single and closer to ten on
+    a five-fold. So the gap between what a cover projects and what it returned
+    is the sharpest calibration reading on the board, and it is the only figure
+    here that cannot be argued with: slips either landed or they did not.
+    """
+    rec, err = cover_record(tt)
+    if err or not rec:
+        st.caption(
+            ":material/warning: **Nothing in this section has been graded.** "
+            f"Every figure above is a projection. Run `make cover-backtest "
+            f"TARGET={tt}` to replay the rule over the backtested weeks.")
+        return
+
+    row = next((s for s in rec["sizes"] if s["n"] == n), None)
+    st.markdown("**What this rule actually returned**")
+    st.dataframe(
+        pd.DataFrame([{
+            "Players": s["n"], "Weeks": s["weeks"],
+            "Slips a week": s["slips_per_week"],
+            "Staked": s["staked"], "Returned": s["returned"],
+            "Cover": s["roi"] * 100,
+            "90% CI": f"{s['roi_lo']:.0%} to {s['roi_hi']:.0%}",
+            "Singles": s["singles_roi"] * 100,
+            "Weeks ahead": f"{s['weeks_profitable']}/{s['weeks']}",
+            "Best week's share": s["top_week_share"] * 100,
+        } for s in rec["sizes"]]),
+        hide_index=True,
+        column_config={
+            "Staked": st.column_config.NumberColumn(format="$%.0f"),
+            "Returned": st.column_config.NumberColumn(format="$%.0f"),
+            "Cover": st.column_config.NumberColumn(format="%+.1f%%"),
+            "Singles": st.column_config.NumberColumn(
+                format="%+.1f%%",
+                help="The same money spread over the N singles instead."),
+            "Best week's share": st.column_config.NumberColumn(
+                format="%.1f%%",
+                help="How much of everything returned came from the single "
+                     "best week. A high number means the headline is an "
+                     "anecdote rather than a rate."),
+        })
+
+    worse = [s for s in rec["sizes"] if s["roi"] < s["singles_roi"]]
+    st.caption(
+        f":material/history: Replayed over {rec['weeks']} graded weeks "
+        f"({rec['span']}) at {rec['stake']:.2f} a slip, on the prices actually "
+        f"posted. **No pool size has an interval clearing zero.** "
+        + (f"{len(worse)} of {len(rec['sizes'])} sizes returned less than "
+           f"backing the same money on the singles — which is what a negative "
+           f"edge per leg does when it is multiplied: a k-fold pays the "
+           f"bookmaker's margin k times. " if worse else "")
+        + (f"At the {n} you have picked it returned "
+           f"**{row['roi']:+.1%}** [{row['roi_lo']:.0%}, {row['roi_hi']:.0%}] "
+           f"with {row['weeks_profitable']} of {row['weeks']} weeks ahead."
+           if row else
+           f"{n} players is outside the replayed range, so there is no "
+           f"measured figure for it."))
+
+
 def render_cover(cov: dict, tt: str) -> None:
     """What every combination of the selected players returns, by how many score.
 
@@ -394,6 +465,8 @@ def render_cover(cov: dict, tt: str) -> None:
               "the margin once per leg and the cover loses harder than the "
               "singles do. Only a better price or a better probability fixes "
               "that; the structure cannot.")))
+
+    render_cover_record(tt, n)
 
 
 def render_feature_set(tt: str, version: str | None = None):

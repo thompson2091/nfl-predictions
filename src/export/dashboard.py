@@ -1451,6 +1451,49 @@ function paneCover() {
       : 'These prices leave a negative edge, so multiplying them pays the ' +
         'margin once per leg and the cover loses harder than the singles do.') }));
 
+  // What the rule actually returned. Everything above is a product of
+  // estimates and prices; this is the only part nothing can argue with.
+  const rec = cov.record;
+  if (!rec) {
+    kids.push(el('div', { class: 'warn-box', html:
+      '<b>Nothing in this section has been graded.</b> Every figure above is a ' +
+      'projection. `make cover-backtest` replays the rule over the backtested ' +
+      'weeks.' }));
+  } else {
+    const recCols = [
+      { k: 'n', label: 'Players' },
+      { k: 'weeks', label: 'Weeks' },
+      { k: 'slips', label: 'Slips a week' },
+      { k: 'staked', label: 'Staked', fmt: x => '$' + x.toFixed(0) },
+      { k: 'returned', label: 'Returned', fmt: x => '$' + x.toFixed(0) },
+      { k: 'roi', label: 'Cover', fmt: x => pct(x, 1), cls: x => cls(x) },
+      { k: 'ci', label: '90% CI', t: 1 },
+      { k: 'singles', label: 'Singles', fmt: x => pct(x, 1), cls: x => cls(x),
+        title: 'The same money spread over the N singles instead.' },
+      { k: 'ahead', label: 'Weeks ahead', t: 1 },
+      { k: 'top', label: 'Best week\u2019s share', fmt: x => pct(x, 1),
+        title: 'How much of everything returned came from one week. High means ' +
+               'the headline is an anecdote rather than a rate.' },
+    ];
+    kids.push(el('h4', { text: 'What this rule actually returned' }));
+    kids.push(table('cover-record', recCols, rec.sizes.map(s => ({
+      n: s.n, weeks: s.weeks, slips: s.slips_per_week, staked: s.staked,
+      returned: s.returned, roi: s.roi,
+      ci: pct(s.roi_lo, 0) + ' to ' + pct(s.roi_hi, 0),
+      singles: s.singles_roi, ahead: s.weeks_profitable + '/' + s.weeks,
+      top: s.top_week_share,
+    })), {}));
+    const worse = rec.sizes.filter(s => s.roi < s.singles_roi).length;
+    kids.push(el('p', { class: 'muted', html:
+      'Replayed over ' + rec.weeks + ' graded weeks (' + rec.span + ') at $' +
+      rec.stake.toFixed(2) + ' a slip, on the prices actually posted. ' +
+      '<b>No pool size has an interval clearing zero.</b> ' +
+      (worse ? worse + ' of ' + rec.sizes.length + ' sizes returned less than ' +
+        'backing the same money on the singles \u2014 which is what a negative ' +
+        'edge per leg does when it is multiplied: a k-fold pays the margin k ' +
+        'times.' : '') }));
+  }
+
   return card('Cover the field', '', kids);
 }
 

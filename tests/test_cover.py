@@ -263,3 +263,74 @@ def test_multi_select_segmented_control_is_refused_rather_than_collapsed():
     with _pytest.raises(NotImplementedError, match="multi-select"):
         cap._el_segmented_control(cap.main, "Modes", ["a", "b"],
                                   selection_mode="multi")
+
+
+def test_a_graded_cover_reports_an_interval_not_only_a_point_estimate():
+    """The number that made this necessary.
+
+    First TD's three-player cover replayed at +52.7% — off ten profitable weeks
+    in sixty, with the single best week supplying 35.5% of everything returned.
+    A point estimate on that shape is an anecdote. The week-clustered bootstrap
+    puts it at [-23.4%, +156.9%], which is the honest reading.
+    """
+    from src.evaluation.cover_backtest import load
+    from src.utils.paths import get_path
+
+    seen = False
+    for market in ("anytime_td", "first_td"):
+        rec = load(get_path("output", market) / "cover_backtest.json")
+        if rec is None:
+            continue
+        seen = True
+        for s in rec["sizes"]:
+            assert s["roi_lo"] <= s["roi"] <= s["roi_hi"], (
+                f"{market} N={s['n']}: the point estimate must sit inside its "
+                f"own interval")
+            assert 0.0 <= s["top_week_share"] <= 1.0
+            assert s["roi_beats_zero"] == (s["roi_lo"] > 0), (
+                "profitable must mean the interval clears zero, not that the "
+                "point estimate happens to be positive")
+        assert rec["any_profitable"] == any(
+            s["roi_beats_zero"] for s in rec["sizes"])
+    if not seen:
+        pytest.skip("no graded cover backtest in this checkout")
+
+
+def test_the_replay_grades_a_slip_only_when_every_leg_scored():
+    """One wrong leg is the same as all of them wrong — that is the whole point."""
+    import pandas as pd
+
+    from src.evaluation.cover_backtest import replay_week
+
+    # Three legs at +100 (decimal 2.0); two score. Winning slips are the two
+    # singles and the one double between them: 2 + 4 = $6 back on $7 staked.
+    board = pd.DataFrame({
+        "game_id": ["g1", "g2", "g3"],
+        "_p": [0.6, 0.5, 0.4],
+        "_hit": [1.0, 1.0, 0.0],
+        "odds": [100, 100, 100],
+    })
+    out = replay_week(board, 3, stake=1.0)
+    assert out["slips"] == 7 and out["staked"] == 7.0
+    assert out["won"] == 3, "two singles and one double"
+    assert out["returned"] == pytest.approx(2.0 + 2.0 + 4.0)
+    assert out["scorers"] == 2
+    assert out["net"] == pytest.approx(1.0)
+
+
+def test_the_replay_takes_one_player_per_game():
+    """A single game's top N are usually teammates, which guts the tail."""
+    import pandas as pd
+
+    from src.evaluation.cover_backtest import replay_week
+
+    board = pd.DataFrame({
+        "game_id": ["g1", "g1", "g1", "g2"],
+        "_p": [0.9, 0.8, 0.7, 0.6],
+        "_hit": [1.0, 1.0, 1.0, 0.0],
+        "odds": [100, 100, 100, 100],
+    })
+    # Only two distinct games, so a three-player cover cannot be formed.
+    assert replay_week(board, 3, stake=1.0) is None
+    out = replay_week(board, 2, stake=1.0)
+    assert out["scorers"] == 1, "the second leg must come from the other game"

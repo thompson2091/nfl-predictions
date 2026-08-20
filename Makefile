@@ -7,7 +7,8 @@
 	decay shop site combos publish dashboard \
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune \
-	families ablate retention settle-overlay line-movement filter-sweep
+	families ablate retention settle-overlay line-movement filter-sweep \
+	cover-backtest
 
 # The interpreter, resolved once. Every recipe used to call a bare `python`,
 # which does not exist on a machine where the venv is not activated — this is
@@ -129,6 +130,7 @@ evaluate:
 		$(PYTHON) scripts/21_clusters.py --target $$t; \
 		$(PYTHON) scripts/13_clv.py --target $$t; \
 		$(PYTHON) scripts/29_combos.py --target $$t; \
+		$(PYTHON) scripts/37_cover_backtest.py --target $$t; \
 	done
 	$(PYTHON) scripts/12_longshot.py --target anytime_td
 
@@ -226,6 +228,13 @@ line-movement:
 # survivors, and within-team share normalisation rescales teammates.
 filter-sweep:
 	$(PYTHON) scripts/36_filter_sweep.py --market $(TARGET) $(if $(SHOW),--show)
+
+# Grade the full-cover section against results. Everything that section shows
+# is a product of five estimates and five prices, and a product compounds
+# whatever is wrong with each term — so what it projects and what it returned
+# is the sharpest reading of calibration on the board.
+cover-backtest:
+	$(PYTHON) scripts/37_cover_backtest.py --target $(TARGET) $(if $(SHOW),--show)
 
 # ── Model versions ────────────────────────────────────────────────────────
 # `models/` holds one state and every `make train` overwrites it. Lock a state

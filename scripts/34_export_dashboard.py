@@ -670,7 +670,11 @@ def cover_variants(rows: list[dict], target_type: str) -> dict:
         rho = float((fit_correlation(target_type) or {}).get("teammate_rho") or 0.0)
     except Exception:                                        # noqa: BLE001
         rho = 0.0
-    return {"rho": rho, "max_players": 12}
+    from src.evaluation.cover_backtest import load as load_cover
+    from src.utils.paths import get_path as _gp
+
+    record = load_cover(_gp("output", target_type) / "cover_backtest.json")
+    return {"rho": rho, "max_players": 12, "record": record}
 
 
 def clean(x):
