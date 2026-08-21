@@ -1,7 +1,7 @@
 {
   "n_features": 236,
-  "n_columns_mapped": 330,
-  "n_families": 36,
+  "n_columns_mapped": 348,
+  "n_families": 37,
   "unattributed": [
     "has_scored_td",
     "is_high_snap",
@@ -419,6 +419,26 @@
       "wx_precip_mm",
       "wx_temp_f",
       "wx_wind_mph"
+    ],
+    "build_weather_interactions": [
+      "wxi_precip_x_carries",
+      "wxi_precip_x_qb",
+      "wxi_precip_x_rb",
+      "wxi_precip_x_targets",
+      "wxi_precip_x_te",
+      "wxi_precip_x_wr",
+      "wxi_temp_x_carries",
+      "wxi_temp_x_qb",
+      "wxi_temp_x_rb",
+      "wxi_temp_x_targets",
+      "wxi_temp_x_te",
+      "wxi_temp_x_wr",
+      "wxi_wind_x_carries",
+      "wxi_wind_x_qb",
+      "wxi_wind_x_rb",
+      "wxi_wind_x_targets",
+      "wxi_wind_x_te",
+      "wxi_wind_x_wr"
     ]
   }
 }

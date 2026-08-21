@@ -134,3 +134,64 @@ def coverage(schedules: pl.DataFrame,
         })
     return {"archive_games": len(have),
             "seasons": sorted(rows, key=lambda r: r["season"])}
+
+
+#: The skill positions the candidate pool is drawn from. `position_*` dummies
+#: exist by the time the interactions are built; `_is_wr` is derived separately
+#: because `to_dummies(drop_first=True)` drops DEFST rather than WR.
+INTERACTION_POSITIONS = ("RB", "TE", "QB", "WR")
+
+#: Usage columns the weather is crossed with. Wind and rain do not lower every
+#: player's chance by the same factor — they move the run/pass mix — so the
+#: interaction a ranking model could actually use is weather against how a
+#: player is used, not weather on its own.
+INTERACTION_USAGE = ("player_targets_avg_5g", "player_carries_avg_5g")
+
+
+def build_weather_interactions(df: "pl.DataFrame") -> "pl.DataFrame":
+    """Weather crossed with position and usage, added to the assembled frame.
+
+    **Why the main effects could not help, and these might.** Top-1 and Top-3
+    score ranking WITHIN a game. Wind lowers everyone's chance in that game by
+    roughly the same factor, so it moves the level and not the order, and a
+    per-game main effect cannot improve a per-game ranking. The market has the
+    level anyway — wind correlates -0.116 with the closing total, a stronger
+    relationship than it has with touchdowns themselves.
+
+    What could reorder a board is weather changing WHO scores. Measured on
+    outdoor games, at 15mph and above:
+
+        RB   10.62% -> 10.93%   (x1.03)
+        TE    6.45% ->  5.22%   (x0.81)
+
+    A tree can reach that by splitting on wind and then on position, but only
+    with the depth to spend on it and only from the ~2,000 windy tight-end rows
+    that exist. The product states it directly.
+
+    **Found after seeing the null result on the main effects**, which is the
+    reason this is a family to be screened rather than a feature to be added.
+    `experiments/weather-*.yaml` tests it against the same guards.
+    """
+    cols, made = df.columns, []
+    wx = [c for c in ("wx_wind_mph", "wx_precip_mm", "wx_temp_f") if c in cols]
+    if not wx:
+        return df
+
+    for w in wx:
+        short = w.replace("wx_", "").replace("_mph", "").replace("_mm", "") \
+                 .replace("_f", "")
+        for pos in INTERACTION_POSITIONS:
+            dummy = "_is_wr" if pos == "WR" else f"position_{pos}"
+            if dummy not in cols:
+                continue
+            made.append((pl.col(w).cast(pl.Float64)
+                         * pl.col(dummy).cast(pl.Float64))
+                        .alias(f"wxi_{short}_x_{pos.lower()}"))
+        for usage in INTERACTION_USAGE:
+            if usage not in cols:
+                continue
+            tag = usage.replace("player_", "").replace("_avg_5g", "")
+            made.append((pl.col(w).cast(pl.Float64)
+                         * pl.col(usage).cast(pl.Float64).fill_null(0.0))
+                        .alias(f"wxi_{short}_x_{tag}"))
+    return df.with_columns(made) if made else df

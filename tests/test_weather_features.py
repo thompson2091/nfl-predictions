@@ -275,3 +275,47 @@ def test_weather_cannot_be_served_until_the_forecast_window_opens():
             f"the archive covers the predict season only partially: "
             f"{sorted(set(wx) - set(constant))} vary and {sorted(constant)} "
             f"do not. Re-run `python scripts/28_weather.py --fetch`")
+
+
+def test_an_interaction_hides_the_constancy_its_inputs_have():
+    """`n_unique == 2` is not the same as "this feature varies".
+
+    The main effects are caught by
+    `test_no_feature_takes_one_value_at_predict_time` because they take exactly
+    one value for the season being served. Their products with a position dummy
+    take TWO — zero, and one constant — so the same guard passes them while the
+    feature is a scaled dummy carrying no weather at all. A model trained where
+    `wxi_wind_x_te` means "how windy, for a tight end" would be served one where
+    it means "is a tight end", which is a distinction it already has.
+
+    So the rule is stated on the input rather than the output: no weather
+    interaction may be served while the weather it derives from is constant.
+    """
+    import polars as pl
+
+    from src.evaluation.harness import _features
+    from src.models.trainer import get_feature_cols
+    from src.utils.config import get_config
+
+    df = _features("anytime_td")
+    wxi = [c for c in df.columns if c.startswith("wxi_")]
+    if not wxi:
+        pytest.skip("feature matrix predates the interaction family")
+
+    predict_season = get_config()["seasons"]["predict_season"]
+    upcoming = df.filter(pl.col("season") == predict_season)
+    if upcoming.is_empty():
+        pytest.skip("no rows for the predict season")
+
+    served = get_feature_cols(df, "anytime_td")
+    if not [c for c in served if c.startswith("wxi_")]:
+        return                      # not served; nothing to protect against
+
+    inputs = [c for c in df.columns if c.startswith("wx_")]
+    degenerate = [c for c in inputs if upcoming[c].n_unique() <= 1]
+    assert not degenerate, (
+        f"weather interactions are in the served set while {sorted(degenerate)} "
+        f"take one value for {predict_season}. Each interaction is then a "
+        f"constant multiple of its other factor — a position dummy the model "
+        f"already has. Re-run `python scripts/28_weather.py --fetch` once the "
+        f"season is inside the 16-day forecast horizon")

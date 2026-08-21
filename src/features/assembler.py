@@ -37,6 +37,7 @@ from src.features.personnel_features import build_personnel_features
 from src.features.box_features import build_box_features
 from src.features.weather_features import available as weather_available
 from src.features.weather_features import build_weather_features
+from src.features.weather_features import build_weather_interactions
 
 
 def _build_game_context_features(schedules: pl.DataFrame) -> pl.DataFrame:
@@ -732,6 +733,15 @@ def assemble_features() -> pl.DataFrame:
             (pl.col("_position_raw") == "WR").cast(pl.Int8).alias("_is_wr")
         )
         df = df.drop("_position_raw")
+
+    # === Weather crossed with position and usage ===
+    # After the one-hot encoding, because that is when the position dummies
+    # exist, and after the weather join above. A main effect cannot improve a
+    # within-game ranking; only something that changes WHO scores can.
+    if weather_feats is not None:
+        before = df.width
+        df = build_weather_interactions(df)
+        print(f"  Weather interactions: {df.width - before} columns")
 
     # Week as numeric
     df = df.with_columns(pl.col("week").cast(pl.Float64).alias("week_num"))

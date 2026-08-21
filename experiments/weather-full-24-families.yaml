@@ -1,0 +1,58 @@
+# Weather main effects AND the interactions, together.
+#
+# The main effects were screened on 2026-08-20 and REJECTED: Top-1 49.6% ->
+# 48.7% (p=0.308) with three guards tripped, AUC worse by 2.7x its noise band.
+# The reason is structural rather than a weakness in the data. Top-K scores
+# ranking WITHIN a game, wind lowers everyone in that game by roughly the same
+# factor, and a per-game main effect cannot reorder a per-game board. The market
+# has the level anyway: wind correlates -0.116 with the closing total, a
+# stronger relationship than it has with touchdowns themselves.
+#
+# What could reorder a board is weather changing WHO scores. On outdoor games at
+# 15mph and above, tight ends lose a fifth of their scoring rate while running
+# backs do not:
+#
+#     RB   10.62% -> 10.93%   (x1.03)
+#     TE    6.45% ->  5.22%   (x0.81)
+#
+# `build_weather_interactions` states that directly as products of the forecast
+# with the position dummies and the two usage columns.
+#
+# **This split was found after seeing the null result**, which is exactly the
+# circumstance that produces a plausible finding a control dissolves. It is
+# screened against the same champion and the same guard bands as everything
+# else, and the windy tight-end sample is about 2,000 rows.
+#
+#   make screen EXP=experiments/weather-full-24-families.yaml MARKET=anytime_td
+id: 2026.08.21-weather-full
+note: "the served 24 families plus weather and its position/usage interactions"
+overlay:
+  models:
+    include_feature_families_by_target:
+      anytime_td:
+      - _build_game_context_features
+      - build_box_features
+      - build_depth_chart_features
+      - build_game_features
+      - build_goalline_features
+      - build_injury_features
+      - build_matchup_interaction_features
+      - build_momentum_features
+      - build_opening_drive_features
+      - build_opponent_features
+      - build_pace_features
+      - build_personnel_features
+      - build_player_redzone_features
+      - build_player_rolling_features
+      - build_player_share_features
+      - build_player_target_history
+      - build_qb_features
+      - build_receiver_features
+      - build_score_first_features
+      - build_snap_features
+      - build_td_proxy_features
+      - build_td_streak_features
+      - build_team_features
+      - build_team_target_tendency
+      - build_weather_features
+      - build_weather_interactions
