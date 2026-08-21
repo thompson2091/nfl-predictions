@@ -560,3 +560,36 @@ def blend_moves_the_number(frame, tol: float = 0.005) -> bool:
         return False
     diff = (frame["prob_model"] - frame["probability"]).abs()
     return bool(diff.max() > tol)
+
+
+def cover_headline(cov: dict, money) -> str:
+    """The line above a cover's table: how many slips, on how many players.
+
+    Lives here rather than inline in `app.py` so it can be tested without a
+    Streamlit process. The case it exists for is n = 1, where the old inline
+    version read "**1 slips** on 1 players — at $1.00 each" and then claimed
+    "All 1 legs priced by the book" — three plural errors in one sentence, and
+    the tell that nobody looked at the single-player case after enabling it.
+
+    `money` is passed in because the app escapes dollar signs for Streamlit's
+    LaTeX and nothing else does.
+    """
+    def pl(k: int, one: str, many: str) -> str:
+        return f"{k} {one if k == 1 else many}"
+
+    n, staked = cov["n"], cov["staked"]
+    priced = sum(1 for leg in cov["legs"] if leg["priced"])
+    parts = [f"**{pl(cov['bets'], 'slip', 'slips')}** on "
+             f"{pl(n, 'player', 'players')}"]
+    if n > 1:
+        parts.append(" — " + " · ".join(f"{c['combinations']}×{c['legs']}-leg"
+                                        for c in cov["counts"]))
+    parts.append(f" — at {money(cov['stake'])} each, "
+                 f"**{money(staked)}** staked. ")
+    if priced == n:
+        parts.append("Priced by the book." if n == 1
+                     else f"All {n} legs priced by the book.")
+    else:
+        parts.append(f"{priced} of {pl(n, 'leg', 'legs')} priced; the rest at "
+                     f"an assumed {cov['assumed_decimal']:.2f}.")
+    return "".join(parts)

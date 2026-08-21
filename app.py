@@ -318,49 +318,83 @@ def render_cover_record(tt: str, n: int) -> None:
             f"TARGET={tt}` to replay the rule over the backtested weeks.")
         return
 
-    row = next((s for s in rec["sizes"] if s["n"] == n), None)
-    st.markdown("**What this rule actually returned**")
-    st.dataframe(
-        pd.DataFrame([{
-            "Players": s["n"], "Weeks": s["weeks"],
-            "Slips a week": s["slips_per_week"],
-            "Staked": s["staked"], "Returned": s["returned"],
-            "Cover": s["roi"] * 100,
-            "90% CI": f"{s['roi_lo']:.0%} to {s['roi_hi']:.0%}",
-            "Singles": s["singles_roi"] * 100,
-            "Weeks ahead": f"{s['weeks_profitable']}/{s['weeks']}",
-            "Best week's share": s["top_week_share"] * 100,
-        } for s in rec["sizes"]]),
-        hide_index=True,
-        column_config={
-            "Staked": st.column_config.NumberColumn(format="$%.0f"),
-            "Returned": st.column_config.NumberColumn(format="$%.0f"),
-            "Cover": st.column_config.NumberColumn(format="%+.1f%%"),
-            "Singles": st.column_config.NumberColumn(
-                format="%+.1f%%",
-                help="The same money spread over the N singles instead."),
-            "Best week's share": st.column_config.NumberColumn(
-                format="%.1f%%",
-                help="How much of everything returned came from the single "
-                     "best week. A high number means the headline is an "
-                     "anecdote rather than a rate."),
-        })
-
-    worse = [s for s in rec["sizes"] if s["roi"] < s["singles_roi"]]
+    # One line, not the ten-column table this used to be. That table was the
+    # whole grading and it earned its place while nothing here had been
+    # measured at all; the answer is short, and it was ten columns of it under
+    # the projection it qualifies. `roi_beats_zero` is the artifact's own
+    # verdict — profitable means the interval clears zero, not that the point
+    # estimate happened to land positive.
+    row = next((x for x in rec["sizes"] if x["n"] == n), None)
+    rois = [x["roi"] for x in rec["sizes"]]
+    worse = [x for x in rec["sizes"] if x["roi"] < x["singles_roi"]]
+    clears = [x for x in rec["sizes"] if x.get("roi_beats_zero")]
     st.caption(
-        f":material/history: Replayed over {rec['weeks']} graded weeks "
-        f"({rec['span']}) at {rec['stake']:.2f} a slip, on the prices actually "
-        f"posted. **No pool size has an interval clearing zero.** "
-        + (f"{len(worse)} of {len(rec['sizes'])} sizes returned less than "
-           f"backing the same money on the singles — which is what a negative "
-           f"edge per leg does when it is multiplied: a k-fold pays the "
-           f"bookmaker's margin k times. " if worse else "")
-        + (f"At the {n} you have picked it returned "
-           f"**{row['roi']:+.1%}** [{row['roi_lo']:.0%}, {row['roi_hi']:.0%}] "
-           f"with {row['weeks_profitable']} of {row['weeks']} weeks ahead."
+        f":material/history: **Graded.** Replayed over {rec['weeks']} weeks "
+        f"({rec['span']}) at ${rec['stake']:.2f} a slip on the prices actually "
+        f"posted, this rule returned between {min(rois):+.1%} and "
+        f"{max(rois):+.1%} depending on pool size, and "
+        + (f"**{len(clears)} of {len(rec['sizes'])} sizes had an interval "
+           f"clearing zero.** " if clears else
+           "**no pool size had an interval clearing zero.** ")
+        + (f"{len(worse)} of {len(rec['sizes'])} returned less than the same "
+           f"money on the singles — which is what a negative edge per leg does "
+           f"when it is multiplied: a k-fold pays the margin k times. "
+           if worse else "")
+        + (f"At the {n} you have picked it returned **{row['roi']:+.1%}** "
+           f"[{row['roi_lo']:.0%}, {row['roi_hi']:.0%}] with "
+           f"{row['weeks_profitable']} of {row['weeks']} weeks ahead."
            if row else
            f"{n} players is outside the replayed range, so there is no "
            f"measured figure for it."))
+    render_cover_selection(tt)
+
+
+@guarded
+def cover_selection(tt: str):
+    """Whether a different cover rule would have done better. Absent is fine."""
+    from src.evaluation.cover_selection import load
+    return load(get_path("output", tt) / "cover_selection.json")
+
+
+def render_cover_selection(tt: str) -> None:
+    """The one line worth carrying from `make cover-selection`.
+
+    That measurement is 44 variants, a hindsight ceiling, a walk-forward chooser
+    and a random control redrawn five times. None of it belongs under a bet
+    slip; the single pattern in it that is not one lucky cell does, and it never
+    travels without the control. The best of 44 RANDOM orderings reached +274%
+    on the same weeks, so a best-of-44 quoted alone is not evidence of anything.
+    """
+    sel, err = cover_selection(tt)
+    if err or not sel:
+        return
+    fam = sel.get("unblended_vs_published") or {}
+    ctl = (sel.get("control") or {}).get("best_roi") or {}
+    if fam.get("identical"):
+        st.caption(
+            f":material/science: **Would a different rule have helped?** Not by "
+            f"re-ranking: this market's blend does not move the number, so the "
+            f"model's own ordering and the published one pick the same players "
+            f"at every size. Of {sel['n_variants']} rules tried over "
+            f"{sel['weeks']} weeks, none has an interval clearing zero.")
+        return
+    pairs = fam.get("sizes") or []
+    if not pairs:
+        return
+    best = max(pairs, key=lambda p: p["gap"])
+    st.caption(
+        f":material/science: **Would a different rule have helped?** Over the "
+        f"same {sel['weeks']} weeks, ranking by the model's own number instead "
+        f"of the blended one returned **{best['model_roi']:+.1%}** at "
+        f"{best['n']} players against **{best['published_roi']:+.1%}** — ahead "
+        f"at {fam.get('model_wins')} of {len(pairs)} sizes. "
+        + ("" if (sel.get("verdict") or {}).get("any_variant_beats_zero")
+           else "No interval clears zero, ")
+        + f"and the best of {sel['n_variants']} *random* orderings reached "
+          f"{ctl.get('max', 0):+.0%} on the same weeks — so read this as a "
+          f"direction, not a result. Blending pulls our number toward the "
+          f"price, which is what makes it better calibrated and also what "
+          f"deletes the disagreement a bet lives on.")
 
 
 def render_cover(cov: dict, tt: str) -> None:
@@ -389,14 +423,7 @@ def render_cover(cov: dict, tt: str) -> None:
 
     n, staked = cov["n"], cov["staked"]
     priced = sum(1 for l in cov["legs"] if l["priced"])
-    st.caption(
-        f"**{cov['bets']} slips** on {n} players — "
-        + " · ".join(f"{c['combinations']}×{c['legs']}-leg" for c in cov["counts"])
-        + f" — at {_m(cov['stake'])} each, **{_m(staked)}** staked. "
-        + (f"All {n} legs priced by the book."
-           if priced == n else
-           f"{priced} of {n} legs priced; the rest at an assumed "
-           f"{cov['assumed_decimal']:.2f}."))
+    st.caption(bp.cover_headline(cov, _m))
 
     rows, wide = [], False
     for r in cov["rows"]:
@@ -422,7 +449,26 @@ def render_cover(cov: dict, tt: str) -> None:
         })
 
     be, p_be = cov["breakeven_scored"], cov["p_breakeven"]
-    if be is None:
+    if n == 1:
+        # With one leg the k-of-n framing says nothing a bettor wants: the whole
+        # question is the price against the probability. So it gets the two
+        # numbers that answer it, and says when the price is one you assumed.
+        from src.prediction.bets import decimal_to_american
+        leg = cov["legs"][0]
+        d = float(leg.get("decimal") or cov["assumed_decimal"] or 2.0)
+        need, gap = 1.0 / d, (leg["prob"] - 1.0 / d) * 100
+        st.success(
+            f"**This is a single bet.** At {bp.american(decimal_to_american(d))} "
+            f"({d:.2f}) the price needs **{need:.1%}** to break even and we "
+            f"make it **{leg['prob']:.1%}** — "
+            + (f"an edge of **{gap:+.1f} points**." if gap > 0
+               else f"a shortfall of **{abs(gap):.1f} points**.")
+            + ("" if leg["priced"] else
+               " That is against a price you assumed rather than one a book "
+               "has posted, so the edge is an artefact of the assumption, not "
+               "a measurement."),
+            icon=(":material/target:" if gap > 0 else ":material/block:"))
+    elif be is None:
         st.error(
             f"**No number of scorers turns a profit.** Even all {n} landing "
             f"returns {_m(cov['rows'][-1]['returned'])} against "
@@ -451,6 +497,15 @@ def render_cover(cov: dict, tt: str) -> None:
             f"agreed with these numbers would not offer that price — a positive "
             f"figure here mostly means the assumed payout is generous relative "
             f"to what the model believes.", icon=":material/warning:")
+    if n == 1:
+        st.caption(
+            f":material/functions: Expected result "
+            f"**{bp.signed_money(cov['expected_net'])}** ({ev:+.1%}) on "
+            f"{_m(staked)}. With one leg there is nothing to multiply, so this "
+            f"is the edge itself rather than leverage on it — add a second "
+            f"player and the same edge is compounded, in both directions.")
+        render_cover_record(tt, n)
+        return
     st.caption(
         f":material/functions: Expected result **{bp.signed_money(cov['expected_net'])}** "
         f"({ev:+.1%}) against **{bp.signed_money(cov['singles_only']['expected_net'])}** "
@@ -3419,11 +3474,54 @@ if tab_board.open:
             # names you chose and answers the only question that follows.
             from src.prediction import cover as _cover
 
-            st.markdown("#### Cover the field")
+            st.markdown("#### Parlay")
             st.caption(
-                "Pick players and back every combination of them — "
-                "**n** players is **2ⁿ − 1** slips, so five is 31. The table "
-                "below is what each number of scorers returns.")
+                "Pick players and back **every combination** of them — a full "
+                "cover, not one slip. **n** players is **2ⁿ − 1** slips, so "
+                "one is a single bet and five is 31. The table below is what "
+                "each number of scorers returns.")
+
+            # Whether there is any basis for preferring these numbers to the
+            # price, put where the question is being asked. Both halves, never
+            # their average: most of the model's accuracy on big disagreements
+            # comes from rating players DOWN, and these markets only sell the
+            # Yes side, so the blend sells fade skill as though it were a bet.
+            # Here that compounds literally — a cover multiplies whatever edge
+            # each leg carries, so it multiplies the backable half alone.
+            _h2h = market_headtohead(target_type, selected_model,
+                                     selected_version)
+            _hi = (_h2h or {}).get("disagree_higher_pct")
+            _lo = (_h2h or {}).get("disagree_lower_pct")
+            if _hi is not None or _lo is not None:
+                _ptiles = st.container(horizontal=True)
+                if _hi is not None:
+                    _ptiles.metric(
+                        "Closer — backable", f"{_hi:+.0f}%",
+                        delta=f"{_h2h.get('disagree_higher_n', 0):,} players",
+                        delta_color="off",
+                        help="On the tenth of players we differ from the book "
+                             "on most, taking only those we rate **higher** — "
+                             "the direction these markets let you bet. The "
+                             "percentage by which our average squared miss is "
+                             "smaller than the book's. **0% would mean we "
+                             "match the book**; it is not a win rate and there "
+                             "is no 50% baseline.")
+                if _lo is not None:
+                    _ptiles.metric(
+                        "Closer — fade", f"{_lo:+.0f}%",
+                        delta=f"{_h2h.get('disagree_lower_n', 0):,} players",
+                        delta_color="off",
+                        help="The same comparison for players we rate "
+                             "**lower** than the book. This is the model's "
+                             "sharpest skill by a wide margin and there is no "
+                             "way to bet it — these markets only sell the Yes "
+                             "side. Read it as a veto: a big disagreement "
+                             "downward is a player to leave out of a cover.")
+                st.caption(
+                    "Only the backable half is a bet. A cover multiplies "
+                    "whatever edge each leg carries, so it multiplies that "
+                    "half — not the average of the two, which is higher "
+                    "because the fade side is sharper.")
 
             _cov_src = (shown if pick != "All games" else board)
             _cov_src = _cov_src.sort_values("probability", ascending=False)
@@ -3443,18 +3541,39 @@ if tab_board.open:
                 help="Every player on the board above, likeliest first. The "
                      "number you choose sets the number of slips.")
 
+            # Text rather than number_input, because a stake is written `$2.50`
+            # or `1,000` and a price is written `+120`. `bets.parse_money` and
+            # `bets.parse_price` do the reading, and the exported page's
+            # JavaScript copies are held to them by test — see
+            # tests/test_dashboard_export.py.
             _cbar2 = st.container(horizontal=True)
-            _cov_stake = _cbar2.number_input(
-                "Stake per slip", min_value=0.5, max_value=100.0, value=1.0,
-                step=0.5, key="cover_stake")
-            _cov_price = _cbar2.number_input(
-                "Assumed price if unpriced", min_value=1.05, max_value=21.0,
-                value=2.0, step=0.05, key="cover_price",
-                help="Decimal odds to stand in for a leg with no market price. "
-                     "Real prices are used wherever the board has one.")
+            _stake_raw = _cbar2.text_input(
+                "Stake per slip", value="1.00", key="cover_stake",
+                help="Dollars: 2.50, $2.50, 1,000.")
+            _price_raw = _cbar2.text_input(
+                "Assumed price if unpriced", value="+100", key="cover_price",
+                help="American (+120, -200) or decimal (2.20), to stand in for "
+                     "a leg with no market price. Real prices are used "
+                     "wherever the board has one.")
+            from src.prediction.bets import parse_money, parse_price
+            _cov_stake = parse_money(_stake_raw)
+            _cov_price = parse_price(_price_raw)
+            if _cov_stake is None:
+                st.warning(f"**{_stake_raw}** is not an amount — type dollars, "
+                           f"like 2.50 or $2.50 or 1,000. Using $1.00 a slip.",
+                           icon=":material/warning:")
+                _cov_stake = 1.0
+            if _cov_price is None:
+                st.warning(f"**{_price_raw}** is not a price — type American "
+                           f"(+120, -200) or decimal (2.20). Using +100 (2.00).",
+                           icon=":material/warning:")
+                _cov_price = 2.0
 
-            if len(_picked) < 2:
-                st.info("Pick at least two players.", icon=":material/info:")
+            # One player is allowed: 2^1 - 1 is one slip, and the table still
+            # says what it returns. Refusing it made the reader add a second
+            # player they did not want in order to see the first one's numbers.
+            if len(_picked) < 1:
+                st.info("Pick at least one player.", icon=":material/info:")
             elif len(_picked) > _cover.MAX_PLAYERS:
                 st.warning(
                     f"{len(_picked)} players is {2 ** len(_picked) - 1:,} "

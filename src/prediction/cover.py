@@ -18,7 +18,7 @@ per-count rows are a weighted summary of those, carrying the spread as well as
 the average.
 
 Correlation. Teammates are not independent: two backs share goal-line carries,
-and `portfolio.fit_correlation` measures the residual correlation at -0.023 on
+and `portfolio.fit_correlation` measures the residual correlation at -0.024 on
 anytime TD. Small, but the pattern probabilities are products of five terms and
 the five-fold is the product of all of them, so it is applied rather than
 assumed to be zero. Independence is available as a switch to show what the

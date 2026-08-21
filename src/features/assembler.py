@@ -35,6 +35,7 @@ from src.features.coverage_features import build_coverage_features
 from src.features.momentum_features import build_momentum_features
 from src.features.personnel_features import build_personnel_features
 from src.features.box_features import build_box_features
+from src.features.weather_features import build_weather_features
 
 
 def _build_game_context_features(schedules: pl.DataFrame) -> pl.DataFrame:
@@ -267,6 +268,10 @@ def assemble_features() -> pl.DataFrame:
     # === Game context features from schedules ===
     game_context_feats = _build_game_context_features(schedules)
     print(f"  Game context features: {game_context_feats.shape}")
+
+    # === Pre-kickoff weather forecast (outdoor games only; null indoors) ===
+    weather_feats = build_weather_features(schedules)
+    print(f"  Weather features: {weather_feats.shape}")
 
     # === Player share features ===
     player_share_feats = build_player_share_features(weekly_stats, spine)
@@ -614,6 +619,11 @@ def assemble_features() -> pl.DataFrame:
 
     # Game context features (dome, divisional, surface)
     df = df.join(game_context_feats, on=["game_id", "team"], how="left")
+
+    # Weather: a property of the fixture, so joined on the game alone rather
+    # than duplicated per side. Null indoors and null for a game further out
+    # than the forecast horizon — `is_dome` above is what separates the two.
+    df = df.join(weather_feats, on="game_id", how="left")
 
     # Situational game features (rest advantage, post-bye, season opener)
     df = df.join(sit_game_feats, on=["game_id", "team"], how="left")

@@ -364,7 +364,11 @@ const decToAm = d => {
 // at evens or shorter there is no stake to win back.
 const parsePrice = v => {
   const t = String(v == null ? '' : v).trim().replace(/[,\s$]/g, '');
-  if (!t) return null;
+  // Shape first, then value. `parseFloat` reads `1.2.3` as 1.2 and Python's
+  // `float` refuses it; neither string is a price, and a box that disagrees
+  // with itself across two languages is how the page and the app come to stake
+  // different money on the same input.
+  if (!/^[+-]?[0-9]*\.?[0-9]+$/.test(t)) return null;
   const x = parseFloat(t);
   if (!isFinite(x)) return null;
   if (/^[+-]/.test(t) || Math.abs(x) >= 100) {
@@ -387,6 +391,9 @@ const parseMoney = v => {
   return isFinite(x) && x > 0 ? x : null;
 };
 const cls = v => !has(v) ? '' : (v > 0 ? 'pos' : (v < 0 ? 'neg' : ''));
+// A return needs its sign even when it is positive: `19.0%` beside `-12.9%`
+// reads as a magnitude, and the whole comparison is directional.
+const spct = (v, d) => has(v) ? (v > 0 ? '+' : '') + pct(v, d) : '';
 
 // ── State ───────────────────────────────────────────────────────────────
 const S = {
@@ -1177,9 +1184,10 @@ function paneCover() {
 
   const kids = [
     el('p', { class: 'muted', html:
-      'Pick players and back every combination of them \u2014 <b>n</b> players ' +
-      'is <b>2\u207f \u2212 1</b> slips, so one is a single bet and five is 31. ' +
-      'The table is what each number of scorers returns.' }),
+      'Pick players and back <b>every combination</b> of them \u2014 a full ' +
+      'cover, not one slip. <b>n</b> players is <b>2\u207f \u2212 1</b> slips, ' +
+      'so one is a single bet and five is 31. The table is what each number of ' +
+      'scorers returns.' }),
   ];
 
   // Whether there is any basis for preferring these numbers to the price, put
@@ -1226,8 +1234,8 @@ function paneCover() {
   // that appears on those shoves the picker down the page mid-keystroke. Only
   // the two shapes that can only ever be incomplete are silent; `+50` is a
   // finished thought that happens to be wrong, so it still gets told.
-  const midStake = /^\$?[0-9,]*\.$/.test(S.cover.stakeRaw || '');
-  const midPrice = /^[+-]$/.test(S.cover.decRaw || '');
+  const midStake = /^\$?[0-9,]*\.?$/.test(S.cover.stakeRaw || '');
+  const midPrice = /^[+-]?[0-9]*\.?$/.test(S.cover.decRaw || '');
   if (S.cover.stakeRaw && !midStake && !parseMoney(S.cover.stakeRaw)) {
     kids.push(el('div', { class: 'warn-box', html:
       '<b>' + esc(S.cover.stakeRaw) + '</b> is not an amount. Type dollars ' +
@@ -1248,14 +1256,14 @@ function paneCover() {
   // first one's numbers.
   if (chosen.length < 1) {
     kids.push(el('div', { class: 'warn-box', text: 'Pick at least one player.' }));
-    return card('Cover the field', '', kids);
+    return card('Parlay', '', kids);
   }
   if (chosen.length > (cov.max_players || 12)) {
     kids.push(el('div', { class: 'warn-box bad-box', html:
       '<b>' + chosen.length + ' players is ' +
       (Math.pow(2, chosen.length) - 1).toLocaleString() + ' slips.</b> ' +
       (cov.max_players || 12) + ' is the most this will enumerate.' }));
-    return card('Cover the field', '', kids);
+    return card('Parlay', '', kids);
   }
 
   const legs = chosen.map(r => ({
@@ -1392,7 +1400,35 @@ function paneCover() {
         ' Hover for each size.' }));
   }
 
-  return card('Cover the field', '', kids);
+  // What `make cover-selection` found, in one line. That measurement is 44
+  // variants, a hindsight ceiling, a walk-forward chooser and a random control
+  // redrawn five times; none of that belongs under a bet slip, and the single
+  // pattern in it that is not one lucky cell does.
+  const sel = cov.selection;
+  if (sel && !sel.identical && sel.best_pair) {
+    const bp = sel.best_pair;
+    kids.push(el('p', { class: 'fine', html:
+      '<b>Would a different rule have helped?</b> Over the same ' + sel.weeks +
+      ' weeks, ranking by the model\u2019s own number instead of the blended ' +
+      'one returned <b>' + spct(bp.model_roi, 1) + '</b> at ' + bp.n +
+      ' players against <b>' + spct(bp.published_roi, 1) + '</b> \u2014 ahead ' +
+      'at ' + sel.model_wins + ' of ' + sel.n_sizes + ' sizes. ' +
+      (sel.any_beats_zero ? '' : 'No interval clears zero, ') +
+      'and the best of ' + sel.n_variants + ' <i>random</i> orderings reached ' +
+      spct(sel.control_best_roi, 0) + ' on the same weeks \u2014 so read this ' +
+      'as a direction, not a result. Blending pulls our number toward the ' +
+      'price, which is what makes it better calibrated and also what deletes ' +
+      'the disagreement a bet lives on.' }));
+  } else if (sel && sel.identical) {
+    kids.push(el('p', { class: 'fine', html:
+      '<b>Would a different rule have helped?</b> Not by re-ranking: this ' +
+      'market\u2019s blend does not move the number, so the model\u2019s own ' +
+      'ordering and the published one pick the same players at every size. ' +
+      'Of ' + sel.n_variants + ' rules tried over ' + sel.weeks + ' weeks, ' +
+      'none has an interval clearing zero.' }));
+  }
+
+  return card('Parlay', '', kids);
 }
 
 function paneTeams() {

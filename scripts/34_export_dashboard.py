@@ -587,7 +587,44 @@ def cover_variants(rows: list[dict], target_type: str,
 
     record = load_cover(_gp("output", target_type) / "cover_backtest.json")
     return {"rho": rho, "max_players": 12, "record": record,
-            "parity": par}
+            "parity": par, "selection": selection(target_type)}
+
+
+def selection(target_type: str) -> dict | None:
+    """The one line worth carrying from `make cover-selection`.
+
+    That measurement is 44 variants, a hindsight ceiling, a walk-forward
+    chooser and a random control redrawn five times, which is a page of its own
+    and not one anybody wants under a bet slip. What ships is the only pattern
+    in it that is not a single cell — the unblended ordering against the
+    published one at matched size — with the control's luckiest redraw beside
+    it, because without that the reader has no way to know a best-of-44 is
+    worth nothing on its own.
+    """
+    from src.evaluation.cover_selection import load as load_sel
+
+    sel = load_sel(get_path("output", target_type) / "cover_selection.json")
+    if not sel:
+        return None
+    fam = sel.get("unblended_vs_published") or {}
+    best_pair = (max(fam.get("sizes") or [], key=lambda p: p["gap"], default=None)
+                 if not fam.get("identical") else None)
+    ctl = sel.get("control") or {}
+    return {
+        "weeks": sel.get("weeks"), "span": sel.get("span"),
+        "n_variants": sel.get("n_variants"),
+        "identical": bool(fam.get("identical")),
+        "model_wins": fam.get("model_wins"),
+        "n_sizes": len(fam.get("sizes") or []),
+        "best_pair": best_pair,
+        "baseline_roi": (sel.get("baseline_result") or {}).get("roi"),
+        "chooser_roi": (sel.get("chooser") or {}).get("roi"),
+        "best_variant": (sel.get("best_variant") or {}).get("name"),
+        "best_variant_roi": (sel.get("best_variant") or {}).get("roi"),
+        "any_beats_zero": (sel.get("verdict") or {}).get("any_variant_beats_zero"),
+        "control_best_roi": (ctl.get("best_roi") or {}).get("max"),
+        "control_chooser_roi": (ctl.get("chooser_roi") or {}).get("max"),
+    }
 
 
 def clean(x):

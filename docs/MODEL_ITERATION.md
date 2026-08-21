@@ -60,6 +60,32 @@ honest and the production choice re-derivable.
 
 A screen result never promotes anything. It only decides what is worth gating.
 
+### Two evaluation windows, and why they never match
+
+Two figures on the same page can both be labelled Top-1, both be correct, and
+differ by two points. They are measured over different seasons, and the reason
+is worth writing down once so nobody spends an afternoon "fixing" it.
+
+| Window | Seasons | Games | Where it comes from |
+| --- | --- | --- | --- |
+| Walk-forward | 2022–2025 | 1,131 | `walkforward.json`, one retrained fold per test season |
+| Backtest frames | 2023–2025 | 849 | `backtest_<model>_<season>.csv`, which need archived prices |
+
+**The odds archive starts in 2023.** Anytime TD publishes `final` — the model
+blended with the market — and a blend needs a price, so there is no 2022 row to
+measure it on. `scripts/10_backtest.py --season 2022` exits with *"no weeks had
+both predictions and prices"*, and that is correct behaviour rather than a bug
+to route around. `make evaluate` runs 2023–2025 for the same reason.
+
+So the narrower window cannot be widened, and the wider one cannot describe the
+blended column. Both surfaces label what each figure covers instead of trying to
+reconcile them — see `published_topk` and `topk_vs_market` in
+`src/evaluation/hit_rates.py`, which carry `span` and `seasons` for exactly this.
+
+The 2022 fold is also the weakest of the four at 45.7% Top-1, which is most of
+why the pooled walk-forward number reads lower than the priced-seasons one. That
+is a property of the seasons, not of the model or of either measurement.
+
 ---
 
 ## Phase 0 — Lock the baseline — **DONE (2026-08-12)**

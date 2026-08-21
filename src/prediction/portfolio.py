@@ -12,15 +12,22 @@ three independent bets, because a shootout lifts all of them. Measured over
 three seasons of residuals, that intuition is wrong for this market, and in an
 interesting way:
 
-    teammates  correlation -0.023     (very slightly NEGATIVE)
-    opponents  correlation +0.007     (very slightly positive)
+    anytime TD  teammate correlation -0.024     (very slightly NEGATIVE)
+    first TD    teammate correlation -0.046
 
 Teammates compete for the same touchdowns, and that substitution effect just
-outweighs the shared game total. Both numbers are small enough that independent
+outweighs the shared game total. First TD is more negative still, and
+structurally so: exactly one player scores a game's first touchdown, so two
+teammates cannot both be it. Both numbers are small enough that independent
 draws are an excellent approximation here, so that is what we use — not from
 convenience but because the measurement says the correction would be smaller
 than the simulation noise. `fit_correlation` re-derives it, so if the market or
 the model changes the assumption can be rechecked rather than trusted.
+
+An opponents figure used to be quoted here too (+0.007). Nothing computes it —
+it survived in prose after the code that produced it went, which is its own
+small lesson about numbers in docstrings. `fit_correlation` measures teammates
+and only teammates.
 
 First touchdown is the exception and needs no estimate: exactly one player
 scores, so our selections in a game are exactly mutually exclusive and that is
@@ -140,7 +147,7 @@ def simulate(bets: pl.DataFrame, n_draws: int = 20_000, seed: int = 0,
     Single-winner markets are modelled exactly — one scorer per game, our
     selections mutually exclusive, the remaining probability belonging to
     someone we did not back. Multi-winner markets are drawn independently,
-    which the measured teammate correlation of -0.023 justifies (see the module
+    which the measured teammate correlation of -0.024 justifies (see the module
     docstring; `fit_correlation` re-derives it).
     """
     n = bets.height
@@ -256,18 +263,36 @@ def compare(bets: pl.DataFrame, bankroll: float, target_type: str,
     return out
 
 
-def fit_correlation(target_type: str = "anytime_td") -> dict | None:
+def fit_correlation(target_type: str = "anytime_td",
+                    model: str | None = None) -> dict | None:
     """Measure how much teammates' outcomes actually move together.
 
     Residual covariance between players on the same team, after removing each
     player's own probability, scaled by the mean Bernoulli variance. Run this
     before assuming independence — it is what justifies the assumption, and it
     is cheap enough to recheck whenever the model changes.
+
+    **One model's frames, not every file that matches.** This globbed
+    `backtest_*.csv`, which matches the current model's frames AND the
+    unprefixed ones left by an older run — and on first TD an `ensemble` set
+    besides. Concatenated, every game-team appeared two or three times with a
+    different `prob_calibrated` each time, so the covariance was largely each
+    player correlating with his own duplicate. It reported **+0.022** where the
+    single-model answer is **-0.024**: not a small error but a sign error, and
+    the sign is the whole content of the number. The cover section applies this
+    to teammate pairs, so it had been inflating the chance of teammates scoring
+    together where the measurement says to deflate it.
+
+    `n_team_games` did not notice, because grouping by (game_id, team) folds the
+    duplicates into one larger group rather than making more of them.
     """
+    from src.utils.config import production_model
     from src.utils.paths import get_path
 
+    who = model or production_model(target_type)
     frames = []
-    for path in sorted(get_path("output", target_type).glob("backtest_*.csv")):
+    for path in sorted(get_path("output", target_type)
+                       .glob(f"backtest_{who}_[0-9][0-9][0-9][0-9].csv")):
         d = pl.read_parquet(path) if path.suffix == ".parquet" else pl.read_csv(path)
         if {"scored", "prob_calibrated", "game_id", "team"} <= set(d.columns):
             frames.append(d)

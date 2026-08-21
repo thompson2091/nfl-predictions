@@ -455,6 +455,26 @@ def test_the_stake_takes_a_dollar_amount_as_anyone_would_write_one():
                          check=True)
     assert json.loads(out.stdout) == ["$38,773.25", "-$31.00", "+$239,348.09"]
 
+    # The app takes the same two boxes, so the page's parsers and the app's are
+    # held to each other rather than each to a table of expected values. A
+    # table would let both drift together; this cannot.
+    from src.prediction.bets import parse_money, parse_price
+
+    cases = ["+120", "-200", "2.20", "850", "1", "0", "+50", "abc", "",
+             "$2.50", "1,000", "$1,250.75", "2.", ".5", "1e3", "1.2.3",
+             " -250 ", "-105", "+1500"]
+    driver = (dashboard.JS + "\nconsole.log(JSON.stringify([" +
+              json.dumps(cases) + ".map(parsePrice), " +
+              json.dumps(cases) + ".map(parseMoney)]));")
+    out = subprocess.run([node, "-e", driver], capture_output=True, text=True,
+                         check=True)
+    js_price, js_money = json.loads(out.stdout)
+    for i, case in enumerate(cases):
+        assert js_price[i] == pytest.approx(parse_price(case)), (
+            f"parsePrice({case!r}) differs between the page and the app")
+        assert js_money[i] == pytest.approx(parse_money(case)), (
+            f"parseMoney({case!r}) differs between the page and the app")
+
 
 def test_a_half_typed_price_does_not_change_the_table_or_fight_the_caret():
     """`decRaw` exists so the box can hold `-` on the way to `-200`.
@@ -476,12 +496,12 @@ def test_a_half_typed_price_does_not_change_the_table_or_fight_the_caret():
     assert "is not a price" in body, "and the page must say it is being ignored"
     assert "is not an amount" in body
 
-    # `2.` and `-` are the middles of `2.50` and `-200`. A warning box on those
-    # shoves the picker down the page between keystrokes, so those two shapes
-    # — and only those — are silent. `+50` is a finished thought that happens
-    # to be wrong and still gets told.
-    assert "const midStake = /^\\$?[0-9,]*\\.$/" in body
-    assert "const midPrice = /^[+-]$/" in body
+    # `2.` and `-` and `-2.` are all middles of something. A warning box on
+    # those shoves the picker down the page between keystrokes, so anything
+    # that could still become a price stays silent. `+50` cannot — it is a
+    # finished thought that happens to be wrong — so it is still told.
+    assert "const midStake = /^\\$?[0-9,]*\\.?$/" in body
+    assert "const midPrice = /^[+-]?[0-9]*\\.?$/" in body
 
 
 def test_the_picker_shows_the_three_numbers_only_where_three_exist():
@@ -522,6 +542,32 @@ def test_the_picker_collapses_without_taking_the_stake_with_it():
     collapsed = collapsed[:collapsed.index("const games =")]
     assert "bar(extra)" in collapsed, "the stake fields must survive the collapse"
     assert "grid" not in collapsed
+
+
+def test_the_selection_experiment_reaches_the_page_with_its_control():
+    """One line from `make cover-selection`, and never without the control.
+
+    The finding is that the unblended ordering beat the published one at 4 of 6
+    sizes. Printed alone that reads as an instruction. It is the best of 44
+    variants over 66 weeks, and the best of 44 RANDOM orderings reached +274%
+    on the same weeks — so the control travels with it or neither does.
+    """
+    from src.export import dashboard
+
+    pane = dashboard.JS_TEAMS
+    pane = pane[pane.index("function paneCover()"):]
+    assert "Would a different rule have helped" in pane
+    assert "control_best_roi" in pane, (
+        "the random control must appear beside the finding, not only in the "
+        "JSON — a best-of-44 with no control is not evidence of anything")
+    assert "sel.identical" in pane, (
+        "first TD's blend does not move the number, so its two orderings are "
+        "the same ordering; saying one beat the other there would be a claim "
+        "about arithmetic")
+
+    script = SCRIPT.read_text()
+    assert "def selection(target_type" in script
+    assert '"control_best_roi"' in script
 
 
 def test_one_player_is_a_selection_and_not_an_error():
@@ -608,5 +654,5 @@ def test_the_shipped_dashboard_carries_the_cover_tab():
     if not page.exists():
         pytest.skip("dashboard not exported in this checkout")
     html = page.read_text()
-    assert "Cover the field" in html
+    assert "Parlay" in html, "the tab and the card both use the reader's word"
     assert "coverPortfolio" in html, "the page must carry the calculation"

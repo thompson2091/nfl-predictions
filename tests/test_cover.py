@@ -431,3 +431,70 @@ def test_a_measured_selection_run_reports_its_control_beside_its_result():
             f"{market}: the walk-forward chooser does not beat a random one")
     if not seen:
         pytest.skip("no cover selection measured in this checkout")
+
+
+def test_the_teammate_correlation_is_fitted_on_one_model_not_every_frame_on_disk():
+    """A sign error that hid inside a glob.
+
+    `fit_correlation` matched `backtest_*.csv`, which is the current model's
+    frames AND the unprefixed ones from an older run — on first TD, an
+    `ensemble` set as well. Concatenated, each game-team appeared two or three
+    times with a different `prob_calibrated`, so the covariance was substantially
+    each player correlating with his own duplicate. It read +0.022 where one
+    model's frames read -0.024.
+
+    The sign is the entire content of this number: the cover applies it to
+    teammate pairs, so the wrong sign inflates the chance of teammates scoring
+    together exactly where the measurement says to deflate it. And nothing
+    downstream could have caught it — `n_team_games` is identical either way,
+    because grouping by (game_id, team) folds duplicates into one larger group.
+    """
+    import inspect
+
+    from src.prediction.portfolio import fit_correlation
+
+    src = inspect.getsource(fit_correlation)
+    assert 'glob("backtest_*.csv")' not in src, (
+        "this glob mixes model runs; scope it to one model's frames")
+    assert "backtest_{who}_" in src
+
+    for market in ("anytime_td", "first_td"):
+        got = fit_correlation(market)
+        if got is None:
+            continue
+        rho = got["teammate_rho"]
+        assert rho < 0, (
+            f"{market}: teammate correlation came back {rho:+.4f}. Teammates "
+            f"compete for the same touchdowns, and on first TD only one player "
+            f"can score first at all — a positive reading is the duplicate-frame "
+            f"bug returning, not a discovery")
+        assert abs(rho) < 0.05, "independence is no longer a fair approximation"
+
+
+def test_a_one_player_cover_reads_as_one_bet_not_as_one_slips():
+    """Three plural errors in one sentence, and the tell that nobody looked.
+
+    The app's headline read "**1 slips** on 1 players — at $1.00 each" and then
+    "All 1 legs priced by the book" the moment a single player was allowed. The
+    line moved out of `app.py` so it can be checked without a Streamlit process
+    running, which is the only reason it was not checked before.
+    """
+    from src.prediction.cover import portfolio
+    from src.presentation.board import cover_headline
+
+    m = lambda x: f"${x:,.2f}"                                   # noqa: E731
+    one = portfolio([{"name": "A", "team": "X", "prob": 0.6, "odds": -120}],
+                    stake=1.0)
+    line = cover_headline(one, m)
+    assert "**1 slip** on 1 player" in line
+    assert "slips" not in line and "players" not in line
+    assert "Priced by the book." in line
+    assert "-leg" not in line, (
+        "the slip breakdown is a list of one at n=1 and says nothing")
+
+    two = portfolio([{"name": "A", "team": "X", "prob": 0.6, "odds": -120},
+                     {"name": "B", "team": "Y", "prob": 0.5, "odds": None}],
+                    stake=1.0, assumed_decimal=2.0)
+    line = cover_headline(two, m)
+    assert "**3 slips** on 2 players" in line
+    assert "1 of 2 legs priced" in line

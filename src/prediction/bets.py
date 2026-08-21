@@ -21,6 +21,9 @@ A play only appears if the book prices it. No price, no bet.
 """
 from __future__ import annotations
 
+import math
+import re
+
 import polars as pl
 
 from src.utils.config import get_config
@@ -28,6 +31,57 @@ from src.utils.config import get_config
 
 def american_to_decimal(odds: float) -> float:
     return 1.0 + (odds / 100.0 if odds > 0 else 100.0 / -odds)
+
+
+def parse_price(text) -> float | None:
+    """A price as anyone would type it, as a decimal. None if it is not one.
+
+    `+120`, `-200` and `2.20` all mean something to a bettor and only the last
+    means anything to `float()`. Every price this project displays is American,
+    so a box that took decimals alone asked the reader to convert the number
+    already in front of them.
+
+    Unsigned, the two notations cannot collide: American odds never fall inside
+    +/-100 and a decimal price never reaches it, so 100 is a boundary rather
+    than a guess. Below it a decimal has to beat 1 — at evens or shorter there
+    is no stake to win back.
+
+    `src/export/dashboard.py` carries the same rule in JavaScript, because a
+    static page cannot call Python. `tests/test_dashboard_export.py` runs that
+    copy under node against this one rather than against a table of expected
+    values, so the two cannot drift apart without a test failing.
+    """
+    t = re.sub(r"[,\s$]", "", str("" if text is None else text)).strip()
+    # Shape first, then value. `float` is lenient in one direction and
+    # `parseFloat` in another — Python reads `1e3` as a thousand and refuses
+    # `1.2.3`, JavaScript takes `1.2.3` as 1.2 — and a price box that disagrees
+    # with itself across two languages is how the app and the page come to
+    # stake different money on the same input. Neither string is a price.
+    if not re.fullmatch(r"[+-]?[0-9]*\.?[0-9]+", t):
+        return None
+    x = float(t)
+    if not math.isfinite(x):
+        return None
+    if t[0] in "+-" or abs(x) >= 100:
+        if abs(x) < 100:
+            return None
+        return american_to_decimal(x)
+    return x if x > 1 else None
+
+
+def parse_money(text) -> float | None:
+    """A dollar amount as anyone would type it. None if it is not one.
+
+    `2.50`, `$2.50`, `1,000`. The comma is the one that matters: `float` reads
+    `$2.50` as an error, which anyone notices, and a naive strip-and-parse reads
+    `1,000` as **one**, which nobody does — a thousandfold understatement with
+    nothing on screen looking wrong.
+    """
+    t = re.sub(r"[,\s$]", "", str("" if text is None else text)).strip()
+    if not t or not re.fullmatch(r"[0-9]*\.?[0-9]+", t):
+        return None
+    x = float(t)
+    return x if math.isfinite(x) and x > 0 else None
 
 
 def decimal_to_american(decimal: float) -> float:
