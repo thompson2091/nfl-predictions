@@ -1,28 +1,31 @@
-"""What the weather was forecast to be, hours before kickoff.
+"""Pre-kickoff weather, as it was forecast rather than as it turned out.
 
-`temp` and `wind` ship in `schedules.parquet` and are excluded from the model,
-correctly: they are recorded **at** kickoff, so a model trained on them learns
-against information nobody has when a board goes up. That is not a precision
-problem, it is a total break — the column is 100% null at predict time. See
-`scripts/28_weather.py`.
+Phase 3g. `temp` and `wind` are excluded from the model because they are
+measured at kickoff and are 100% null for a game that has not been played — a
+total train/serve break, not a precision problem. So were `is_cold` and
+`is_windy`, which derived from them with `.fill_null(False)` and therefore read
+"not cold" for every upcoming game while 11-15% of training rows were cold.
 
-A forecast issued the day before restores the signal honestly, and it is the
-only remaining idea in this project that adds *information* rather than
-rearranging what the model already sees. Measured over 34 games, a 24-hour
-forecast misses kickoff temperature by 2.2F against a signal that varies by
-17.6F — so it carries essentially all of the signal and none of the hindsight.
+This replaces all four with a 24-hour-ahead forecast, which is available when a
+board goes up and misses kickoff temperature by 2.2F on average against a signal
+that varies by 17.6F. `scripts/28_weather.py` fetches it and verifies the
+stadium coordinates against the recorded kickoff temperatures.
 
-**Nulls indoors, not a constant.** A dome has no outdoor temperature, and every
-way of supplying one is an invented number. Zero is worse than useless (a tree
-splitting on `temp < 32` would catch every dome), and 70F is a guess: nflverse
-records `temp` for exactly one dome game in eleven seasons, so there is nothing
-to fit a dome constant *from*. So indoor games are null, and `is_dome` — already
-a feature — is what tells the model those nulls mean "indoors" rather than
-"unknown". XGBoost learns a direction for missing natively; that is the honest
-place to leave this.
+Two decisions worth stating, because both are silent failure modes:
 
-**One row per game.** Weather is a property of the fixture, not of a side, so
-this joins on `game_id` alone rather than being duplicated across both teams.
+**Domes get the average, not zero.** `trainer.prepare_data` runs
+`np.nan_to_num(x, nan=0.0)`, so a null temperature would reach the model as 0F —
+the coldest reading in the data by a wide margin, and applied to exactly the
+games where weather cannot matter. Indoor games and unmapped venues are filled
+with the outdoor mean instead, which reads as "weather is not a factor", and
+`is_dome` remains a feature so the model can still tell them apart. The mean is
+computed from the data rather than written down, so it tracks the league's
+scoring environment instead of a number someone typed once.
+
+**The derived flags are computed from the forecast**, not from the observation,
+so they carry the same availability guarantee as the columns they come from.
+Indoors they are zero, which is the truthful answer: it is not cold on the field
+of a closed stadium.
 """
 from __future__ import annotations
 
@@ -30,77 +33,104 @@ from pathlib import Path
 
 import polars as pl
 
-#: Where `scripts/28_weather.py --fetch` writes the archive.
 WEATHER_PATH = (Path(__file__).resolve().parents[2]
                 / "data" / "processed" / "weather.parquet")
 
-COLUMNS = ["wx_temp_f", "wx_wind_mph", "wx_precip_mm", "wx_is_forecast"]
+#: Thresholds match the flags this replaces, so the two are comparable.
+COLD_F = 40.0
+WINDY_MPH = 15.0
+
+#: Roofs where outdoor weather does not reach the field.
+INDOOR = ("dome", "closed")
 
 
-def load_archive(path: Path | None = None) -> pl.DataFrame | None:
-    """The fetched forecasts, or None when nobody has fetched them."""
-    p = Path(path) if path else WEATHER_PATH
-    if not p.exists():
-        return None
-    return pl.read_parquet(p)
+def available(weather_path: Path | None = None) -> bool:
+    """Has anybody fetched the archive on this machine?
+
+    The assembler asks before joining. A checkout without the archive builds a
+    matrix WITHOUT these columns rather than one full of neutral values: an
+    absent family is visible in `feature_matrix_hash` and in the family map,
+    where a family of six constants is not visible anywhere at all.
+    """
+    return (Path(weather_path) if weather_path else WEATHER_PATH).exists()
 
 
 def build_weather_features(schedules: pl.DataFrame,
-                           weather: pl.DataFrame | None = None
-                           ) -> pl.DataFrame:
-    """One row per game: the pre-kickoff forecast, null where there is none.
+                           weather_path: Path | None = None) -> pl.DataFrame:
+    """One row per game: forecast conditions, neutralised for indoor venues."""
+    path = Path(weather_path) if weather_path else WEATHER_PATH
+    if not path.exists():
+        # A missing fetch must not silently produce a column of zeros that the
+        # model reads as "freezing everywhere". Better to have no feature.
+        raise FileNotFoundError(
+            f"{path} does not exist — run `python scripts/28_weather.py "
+            "--fetch` before building features.")
 
-    Two kinds of null arrive here and they are not the same thing, which is why
-    neither is filled:
+    wx = pl.read_parquet(path).select(
+        ["game_id", "wx_temp_f", "wx_wind_mph", "wx_precip_mm"])
 
-      * **Indoors.** No outdoor weather exists. `is_dome` marks these.
-      * **Not fetched yet.** An upcoming game outside the forecast horizon —
-        Open-Meteo runs 16 days ahead, and Week 1 in August is further out than
-        that. The column fills in as the week approaches.
+    games = schedules.select(["game_id", "roof"]).unique(subset=["game_id"])
+    df = games.join(wx, on="game_id", how="left")
 
-    Filling either would make the model learn on a number that means "we do not
-    know", and the two would become indistinguishable from each other.
-    """
-    games = schedules.select(["game_id"]).unique()
-    if weather is None:
-        weather = load_archive()
-    if weather is None or weather.is_empty():
-        return games.with_columns([
-            pl.lit(None, dtype=pl.Float64).alias(c) for c in COLUMNS
-        ])
+    indoor = pl.col("roof").is_in(INDOOR).fill_null(False)
 
-    wx = (weather.select(["game_id"] + [c for c in COLUMNS
-                                        if c in weather.columns])
-          .unique(subset=["game_id"], keep="last"))
-    out = games.join(wx, on="game_id", how="left")
-    for c in COLUMNS:
-        if c not in out.columns:
-            out = out.with_columns(pl.lit(None, dtype=pl.Float64).alias(c))
-    return out.with_columns([pl.col(c).cast(pl.Float64) for c in COLUMNS])
+    # The neutral value is the outdoor mean, computed here rather than declared.
+    mean_temp = df.filter(~indoor)["wx_temp_f"].mean()
+    mean_wind = df.filter(~indoor)["wx_wind_mph"].mean()
+
+    return df.with_columns([
+        # Indoors, and anywhere the fetch has no reading, take the average so
+        # the model sees "unremarkable" rather than "coldest game on record".
+        pl.when(indoor).then(pl.lit(mean_temp))
+          .otherwise(pl.col("wx_temp_f").fill_null(mean_temp))
+          .alias("wx_temp_f"),
+        pl.when(indoor).then(pl.lit(mean_wind))
+          .otherwise(pl.col("wx_wind_mph").fill_null(mean_wind))
+          .alias("wx_wind_mph"),
+        # Zero precipitation indoors is not a fill, it is the fact.
+        pl.when(indoor).then(pl.lit(0.0))
+          .otherwise(pl.col("wx_precip_mm").fill_null(0.0))
+          .alias("wx_precip_mm"),
+    ]).with_columns([
+        # Flags from the forecast, so they are known when the board goes up.
+        (pl.when(indoor).then(pl.lit(0.0))
+           .otherwise((pl.col("wx_temp_f") < COLD_F).cast(pl.Float64))
+         ).alias("wx_is_cold"),
+        (pl.when(indoor).then(pl.lit(0.0))
+           .otherwise((pl.col("wx_wind_mph") >= WINDY_MPH).cast(pl.Float64))
+         ).alias("wx_is_windy"),
+        (pl.when(indoor).then(pl.lit(0.0))
+           .otherwise((pl.col("wx_precip_mm") > 0.1).cast(pl.Float64))
+         ).alias("wx_is_wet"),
+    ]).select(["game_id", "wx_temp_f", "wx_wind_mph", "wx_precip_mm",
+               "wx_is_cold", "wx_is_windy", "wx_is_wet"])
 
 
 def coverage(schedules: pl.DataFrame,
-             weather: pl.DataFrame | None = None) -> dict:
-    """How much of the schedule the archive actually covers, per season.
+             weather_path: Path | None = None) -> dict:
+    """How much of the schedule the archive actually reaches, per season.
 
-    Reported rather than assumed: a feature that is 100% null for the season
-    being served is not a feature, and the difference between "indoors" and
-    "not fetched" is the whole reason to look.
+    Reported rather than assumed. Two gaps look identical in the built matrix
+    once indoor games are neutralised, and they are not the same thing: a dome
+    has no outdoor weather, while an upcoming game simply sits beyond
+    Open-Meteo's 16-day horizon and fills in as the week approaches. If the
+    season being served is 0% covered, the family is six constants and the
+    model is learning nothing from it.
     """
-    if weather is None:
-        weather = load_archive()
-    have = set() if weather is None else set(weather["game_id"].to_list())
+    path = Path(weather_path) if weather_path else WEATHER_PATH
+    have = (set(pl.read_parquet(path)["game_id"].to_list())
+            if path.exists() else set())
     rows = []
     for season, chunk in schedules.group_by("season"):
         s = season[0] if isinstance(season, tuple) else season
         roof = chunk["roof"].fill_null("unknown").str.to_lowercase()
-        indoor = int((roof.is_in(["dome", "closed"])).sum())
-        outdoor = int(chunk.height - indoor)
+        indoor = int(roof.is_in(INDOOR).sum())
+        outdoor = chunk.height - indoor
         covered = sum(1 for g in chunk["game_id"] if g in have)
         rows.append({
             "season": int(s), "games": chunk.height,
             "indoor": indoor, "outdoor": outdoor, "covered": covered,
             "outdoor_covered": covered / outdoor if outdoor else None,
         })
-    return {"seasons": sorted(rows, key=lambda r: r["season"]),
-            "archive_games": len(have)}
+    return {"archive_games": len(have),
+            "seasons": sorted(rows, key=lambda r: r["season"])}
