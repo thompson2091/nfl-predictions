@@ -3316,3 +3316,48 @@ def test_the_matrix_hash_moves_when_values_move():
     assert digest(a) != digest(b), (
         "same shape, same column names, one different value — these must not "
         "hash alike or a re-joined matrix reads as the one it replaced")
+
+
+def test_retraining_today_would_produce_the_feature_set_that_is_served():
+    """A new family must be opted in, not arrive by default.
+
+    first TD had no allow-list, which reads as "keep everything" — and
+    "everything" is whatever the assembler happens to produce on the day. The
+    weather families made that concrete: 24 columns nothing had screened on
+    that market, carrying a value that is constant for the season being served,
+    would have entered its model the moment it was retrained. No allow-list, no
+    ablation and no ledger row would have mentioned them, because nobody added
+    them to anything — they were simply there.
+
+    The invariant is stated on the outcome instead of on any one door into it:
+    what `get_feature_cols` returns today must be what the served model was
+    trained on. Drift in either direction is a failure — a family that appeared,
+    or one that vanished — and the diff says which.
+    """
+    import pickle
+
+    import polars as pl
+
+    from src.models.trainer import get_feature_cols
+    from src.utils.paths import get_path
+
+    for market in ("anytime_td", "first_td"):
+        path = get_path("models", market) / "feature_cols.pkl"
+        if not path.exists():
+            continue
+        served = set(pickle.loads(path.read_bytes()))
+        fpath = get_path("processed", market) / "features.parquet"
+        if not fpath.exists():
+            continue
+        df = pl.read_parquet(fpath)
+        today = set(get_feature_cols(df, market))
+        appeared = sorted(today - served)
+        vanished = sorted(served - today)
+        assert not appeared, (
+            f"{market}: retraining would add {len(appeared)} features the "
+            f"served model has never seen: {appeared[:8]}. If they belong, "
+            f"screen them and retrain; if they do not, they need saying so in "
+            f"`include_feature_families_by_target`")
+        assert not vanished, (
+            f"{market}: retraining would drop {len(vanished)} features the "
+            f"served model uses: {vanished[:8]}")

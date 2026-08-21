@@ -289,6 +289,53 @@ models:
     - build_td_streak_features
     - build_team_features
     - build_team_target_tendency
+    # first TD had NO allow-list, which reads as "keep everything" — and
+    # "everything" is whatever the assembler happens to produce on the day. The
+    # weather families made that concrete: 24 columns nothing had screened on
+    # this market would have entered its model the moment it was retrained,
+    # carrying a predict-time constant, with no allow-list, ablation or ledger
+    # row mentioning them.
+    #
+    # This is the 35 families it already trains on and reproduces its served
+    # 318 columns exactly, so it changes nothing today. What it changes is the
+    # default: a new family now has to be opted in per market rather than
+    # arriving silently in whichever market forgot to say no.
+    first_td:
+    - _build_game_context_features
+    - build_box_features
+    - build_coach_features
+    - build_coverage_features
+    - build_depth_chart_features
+    - build_first_half_features
+    - build_game_features
+    - build_goalline_features
+    - build_injury_features
+    - build_interaction_features
+    - build_matchup_interaction_features
+    - build_momentum_features
+    - build_odds_features
+    - build_opening_drive_features
+    - build_opp_target_features
+    - build_opponent_features
+    - build_opponent_position_features
+    - build_pace_features
+    - build_personnel_features
+    - build_player_redzone_features
+    - build_player_rolling_features
+    - build_player_share_features
+    - build_player_target_history
+    - build_qb_features
+    - build_receiver_features
+    - build_rushing_efficiency_features
+    - build_score_first_features
+    - build_situational_features
+    - build_snap_features
+    - build_td_proxy_features
+    - build_td_streak_features
+    - build_team_features
+    - build_team_redzone_features
+    - build_team_target_tendency
+    - build_vegas_features
 # Hyperparameters. Every key here reaches the model, and every key the model
 # reads is declared here — tests/test_leakage.py asserts both directions
 # against DEFAULTS in each wrapper. That check exists because this block used
