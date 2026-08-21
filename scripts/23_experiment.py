@@ -588,6 +588,56 @@ def cmd_compare(a) -> int:
     return 0
 
 
+def cmd_note(a) -> int:
+    """Record the WRITTEN verdict for a line of experiments.
+
+    The ground rule in docs/MODEL_ITERATION.md is that REJECTED "stays in the
+    ledger so nobody retries it blind" — and a row of numbers does not stop
+    anyone. It says a thing did not work; it does not say why, and the why is
+    the part that decides whether the next person should try a variant or drop
+    the idea.
+
+    The runs log themselves. This logs the reading of them, against the run ids
+    it covers, so `ledger` shows the conclusion beside the evidence rather than
+    in someone's memory.
+    """
+    covers = [x.strip() for x in (a.covers or "").split(",") if x.strip()]
+    known = {r["id"] for r in read_ledger()}
+    unknown = [c for c in covers if c not in known]
+    if unknown:
+        # A note pointing at runs that do not exist is worse than no note: it
+        # reads as evidence and is not.
+        raise SystemExit(
+            f"these ids are not in the ledger: {unknown}. A written verdict "
+            f"has to reference runs that happened.")
+
+    text = a.text
+    if a.text_file:
+        text = Path(a.text_file).read_text().strip()
+    if not text:
+        raise SystemExit("a written verdict needs text; pass --text or --text-file")
+
+    row = {
+        "id": a.id, "kind": "note", "tier": "note",
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "git": git_state(),
+        "verdict": a.verdict,
+        "note": a.summary,
+        "covers": covers,
+        "doc": a.doc,
+        "text": text,
+    }
+    append_ledger(row)
+    print(f"Recorded {a.verdict} for {a.id}")
+    if covers:
+        print(f"  covering: {', '.join(covers)}")
+    if a.doc:
+        print(f"  written up in: {a.doc}")
+    print()
+    print(text)
+    return 0
+
+
 def cmd_ledger(a) -> int:
     rows = read_ledger()
     if not rows:
@@ -655,6 +705,21 @@ def main() -> int:
     p.add_argument("a")
     p.add_argument("b")
     p.set_defaults(fn=cmd_compare)
+
+    p = sub.add_parser(
+        "note", help="record the written verdict for a line of experiments")
+    p.add_argument("--id", required=True)
+    p.add_argument("--verdict", required=True,
+                   choices=["REJECTED", "PROMOTED", "KEPT_WITH_JUSTIFICATION",
+                            "INCONCLUSIVE"])
+    p.add_argument("--summary", required=True, help="one line, shown by `ledger`")
+    p.add_argument("--covers", default="",
+                   help="comma-separated run ids this verdict reads")
+    p.add_argument("--doc", default=None, help="where it is written up in full")
+    p.add_argument("--text", default=None)
+    p.add_argument("--text-file", default=None,
+                   help="read the written verdict from a file")
+    p.set_defaults(fn=cmd_note)
 
     p = sub.add_parser("ledger", help="what has been tried")
     p.add_argument("--limit", type=int, default=40)

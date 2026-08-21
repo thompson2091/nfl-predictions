@@ -1100,11 +1100,71 @@ weather code stays, unwired: `scripts/28_weather.py` fetches and validates,
 kickoff temperatures to a median bias of 0.9F.
 
 **What a second attempt would need.** 2026 weather cannot be fetched until games
-are inside the 15-day forecast horizon, so today every 2026 row takes the
+are inside the 16-day forecast horizon, so today every 2026 row takes the
 neutral fill and the family is constant exactly where it has to vary. Retrying
 this in season — with real forecasts on the board — is a different experiment
 from retrying it now, and the guard in `tests/test_leakage.py` will refuse the
 promotion until that is true.
+
+#### Second attempt — **RUN 2026-08-20/21, REJECTED three ways**
+
+The first attempt was gated on the 318-column set. This one screens on the lean
+24 families now served, and adds a variant that did not exist before: weather
+crossed with position and usage. Against `2026.08.21-champion-wx-interactions`
+(xgb 49.6%, itself unchanged across two matrix rebuilds — 6 then 18 unused
+columns move nothing, which is the control the comparison rests on):
+
+| variant | Top-1 | p | guards tripped |
+| --- | --- | --- | --- |
+| main effects (6 cols) | 49.6% → 48.7% (−0.88pp) | 0.308 | auc, brier |
+| interactions (18 cols) | 49.6% → 48.6% (−0.97pp) | 0.242 | top3 |
+| both (24 cols) | 49.6% → 48.6% (−0.97pp) | 0.260 | top3, top5 |
+
+Three variants, three rejections, all inside a standard error and a half of
+zero, each tripping a guard the others do not, and CLV pointing the same way in
+all three (60.18% → 59.72%/59.97%/59.94%, reported not gated).
+
+**Why the main effects cannot work, which the first attempt did not say.**
+Top-K scores ranking *within* a game. Wind lowers everyone in that game by
+roughly the same factor, so it moves the level and not the order — a per-game
+main effect cannot reorder a per-game board however real it is. And it is real:
+scored rate falls monotonically from 8.47% under 5mph to 7.23% over 20mph,
+`r = −0.10` against touchdowns per game. Temperature is flat (`r = +0.02`) and
+never was the variable. The market has the level already — wind correlates
+**−0.116** with the closing total, a stronger relationship than it has with the
+touchdowns, and the model reads implied team totals.
+
+**The interactions did what they were built to do, and it was not enough.** The
+only route to a better ranking is weather changing *who* scores, and there is a
+real signal: at 15mph and above tight ends lose a fifth of their scoring rate
+(6.45% → 5.22%) while running backs do not (10.62% → 10.93%). Crossing the
+forecast with position and usage moved AUC the *right* way for the first time,
++0.00045 against a 0.00024 band, where the main effects had it at −0.00064. But
+AUC is pooled across games and Top-K is ordered within one: better global
+separation coexisted with a worse per-game ordering, and Top-3 fell by 0.62pp
+against a 0.00275 band. About 2,000 windy tight-end rows cannot beat a 0.64pp
+seed band.
+
+Both splits were found **after** seeing the null on the main effects, which is
+the circumstance that manufactures plausible findings. The AUC movement is a
+hint that the mechanism is real, not evidence it is usable.
+
+**An interaction launders a constant input past the guard.** For 2026,
+`wx_wind_mph` takes one value and
+`test_no_feature_takes_one_value_at_predict_time` catches it. Its product with a
+position dummy takes *two* — zero and one constant — so the same guard passes a
+feature that is a scaled position dummy carrying no weather. Crossed with a
+usage column it takes 47, every one of them from the usage side. The rule is now
+stated on the inputs: no weather interaction may be served while the weather it
+derives from is constant. That generalises past weather and is in
+`tests/test_weather_features.py`.
+
+**What is still untried.** The in-season retry the section above describes.
+Everything here measures whether weather helps on seasons that have it —
+training and every walk-forward fold carry real forecasts — so the measurement
+is sound and the promotion is a separate question. Nothing about these three
+results tells you what happens when the board itself carries live weather,
+because no experiment in this project ever has.
 
 ---
 

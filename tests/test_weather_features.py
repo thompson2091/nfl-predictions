@@ -319,3 +319,36 @@ def test_an_interaction_hides_the_constancy_its_inputs_have():
         f"constant multiple of its other factor — a position dummy the model "
         f"already has. Re-run `python scripts/28_weather.py --fetch` once the "
         f"season is inside the 16-day forecast horizon")
+
+
+def test_the_written_verdict_is_in_the_ledger_and_points_at_runs_that_happened():
+    """A row of numbers does not stop anyone retrying an idea blind.
+
+    The ground rule in docs/MODEL_ITERATION.md is that REJECTED "stays in the
+    ledger so nobody retries it blind", and the runs log themselves. What they
+    do not log is the reading of them — that the main effects cannot reorder a
+    within-game ranking however real the weather is, and that the interactions
+    move AUC while costing Top-3. Someone will try weather again; this is what
+    they should find when they look.
+    """
+    import json
+
+    ledger = ROOT / "models" / "registry" / "ledger.jsonl"
+    if not ledger.exists():
+        pytest.skip("no ledger in this checkout")
+    rows = [json.loads(x) for x in ledger.read_text().splitlines() if x.strip()]
+    notes = [r for r in rows if r.get("kind") == "note"
+             and "weather" in r.get("id", "")]
+    if not notes:
+        pytest.skip("no weather verdict recorded yet")
+
+    note = notes[-1]
+    assert note["verdict"] == "REJECTED"
+    assert note.get("doc"), "a verdict has to say where it is written up"
+    ids = {r["id"] for r in rows}
+    assert note["covers"], "a verdict with no runs behind it is an opinion"
+    assert set(note["covers"]) <= ids, (
+        "the verdict references runs that are not in the ledger")
+    # The two things that would otherwise have to be rediscovered.
+    assert "within" in note["text"].lower()
+    assert "DO NOT RETRY" in note["text"]
