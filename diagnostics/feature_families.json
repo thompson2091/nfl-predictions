@@ -1,6 +1,7 @@
 {
-  "n_features": 318,
-  "n_families": 33,
+  "n_features": 236,
+  "n_columns_mapped": 330,
+  "n_families": 36,
   "unattributed": [
     "has_scored_td",
     "is_high_snap",
@@ -105,6 +106,7 @@
       "ix_te_tgt_x_opp_te_td",
       "ix_teammate_out_x_snap",
       "ix_total_usage",
+      "ix_windy_x_rb",
       "ix_wr_air_x_opp_target_wr",
       "ix_wr_tgt_x_opp_wr_td"
     ],
@@ -123,6 +125,12 @@
       "player_targets_trend_3g",
       "player_touch_share_delta",
       "player_touch_share_trend_3g"
+    ],
+    "build_odds_features": [
+      "sbook_anytime_td_implied",
+      "sbook_anytime_td_rank",
+      "sbook_first_td_implied",
+      "sbook_first_td_rank"
     ],
     "build_opening_drive_features": [
       "player_od_touch_share_avg_5g",
@@ -318,7 +326,19 @@
       "team_fav_scored_first_rate_5g",
       "team_fav_scored_first_rate_szn",
       "team_home_scored_first_rate_5g",
-      "team_home_scored_first_rate_szn"
+      "team_home_scored_first_rate_szn",
+      "team_team_scored_first_flag_rate_5g",
+      "team_team_scored_first_flag_rate_szn"
+    ],
+    "build_situational_features": [
+      "career_seasons",
+      "is_new_team",
+      "is_post_bye",
+      "is_revenge_game",
+      "is_role_change",
+      "is_season_opener",
+      "rest_advantage",
+      "weeks_since_last_game"
     ],
     "build_snap_features": [
       "snap_pct"
@@ -383,10 +403,22 @@
     "build_vegas_features": [
       "implied_team_total",
       "is_big_favorite",
+      "is_cold",
       "is_favorite",
+      "is_windy",
       "rest_days",
       "spread_line",
-      "total_line"
+      "temp",
+      "total_line",
+      "wind"
+    ],
+    "build_weather_features": [
+      "wx_is_cold",
+      "wx_is_wet",
+      "wx_is_windy",
+      "wx_precip_mm",
+      "wx_temp_f",
+      "wx_wind_mph"
     ]
   }
 }

@@ -1,0 +1,58 @@
+# Does a pre-kickoff weather forecast add anything the model does not have?
+#
+# The 24 families now served, plus `build_weather_features` — six columns from
+# a 24-hour-ahead forecast, fetched by `scripts/28_weather.py` and joined by
+# `src/features/weather_features.py`. This is the only remaining idea in the
+# project that adds INFORMATION rather than rearranging what the model already
+# sees; everything since the lean-family lock has been a re-ordering of the
+# same 318 columns.
+#
+# What it is NOT: `temp` and `wind` from the schedule. Those are recorded at
+# kickoff and were removed for being 100% null when a board goes up. So were
+# `is_cold` and `is_windy`, which filled null to False and therefore told every
+# upcoming game it was mild while 11-15% of training rows were cold. The six
+# columns here derive from the forecast, so they carry the same availability
+# guarantee as everything else in the matrix.
+#
+# Two things to read the result against:
+#
+#   * 2015-2020 rows fall back to the reanalysis (`wx_is_forecast = 0`),
+#     because Open-Meteo archives forecasts-as-issued only from mid-2021. The
+#     two differ by 2.2F, an eighth of the signal's standard deviation.
+#   * Indoor games take the outdoor mean, so roughly a third of every season is
+#     deliberately uninformative here. `is_dome` is already a feature and is
+#     what lets the model separate them.
+#
+#   make screen EXP=experiments/weather-24-families.yaml MARKET=anytime_td
+#   make settle-overlay EXP=experiments/weather-24-families.yaml SEEDS=5 MARKET=anytime_td
+id: 2026.08.20-weather-24-families
+note: "the served 24 families plus a pre-kickoff weather forecast (6 columns)"
+overlay:
+  models:
+    include_feature_families_by_target:
+      anytime_td:
+      - _build_game_context_features
+      - build_box_features
+      - build_depth_chart_features
+      - build_game_features
+      - build_goalline_features
+      - build_injury_features
+      - build_matchup_interaction_features
+      - build_momentum_features
+      - build_opening_drive_features
+      - build_opponent_features
+      - build_pace_features
+      - build_personnel_features
+      - build_player_redzone_features
+      - build_player_rolling_features
+      - build_player_share_features
+      - build_player_target_history
+      - build_qb_features
+      - build_receiver_features
+      - build_score_first_features
+      - build_snap_features
+      - build_td_proxy_features
+      - build_td_streak_features
+      - build_team_features
+      - build_team_target_tendency
+      - build_weather_features

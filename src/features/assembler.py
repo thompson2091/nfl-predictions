@@ -35,7 +35,8 @@ from src.features.coverage_features import build_coverage_features
 from src.features.momentum_features import build_momentum_features
 from src.features.personnel_features import build_personnel_features
 from src.features.box_features import build_box_features
-from src.features import weather_features as wxf
+from src.features.weather_features import available as weather_available
+from src.features.weather_features import build_weather_features
 
 
 def _build_game_context_features(schedules: pl.DataFrame) -> pl.DataFrame:
@@ -273,7 +274,14 @@ def assemble_features() -> pl.DataFrame:
     # Skipped entirely when the archive has not been fetched. Joining a frame
     # of neutral values instead would put six constants into the matrix, which
     # is invisible everywhere a missing family is obvious.
-    weather_feats = wxf.build_weather_features(schedules) if wxf.available() else None
+    # Imported by name, not through the module, because
+    # `scripts/26_feature_families.py` records provenance by wrapping every
+    # `build_*` attribute ON THIS MODULE. Called as `wxf.build_weather_features`
+    # the wrapper never sees it, the six columns land in `unattributed`, and
+    # `get_feature_cols` keeps unattributed columns unconditionally — so the
+    # family would enter the locked 24-family model without ever being measured.
+    weather_feats = (build_weather_features(schedules)
+                     if weather_available() else None)
     print(f"  Weather features: "
           f"{weather_feats.shape if weather_feats is not None else 'skipped (no archive)'}")
 

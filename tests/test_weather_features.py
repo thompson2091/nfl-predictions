@@ -149,7 +149,7 @@ def test_a_checkout_without_the_archive_omits_the_family_rather_than_faking_it(
         build_weather_features(schedules, missing)
 
     asm = (ROOT / "src" / "features" / "assembler.py").read_text()
-    assert "wxf.available()" in asm, (
+    assert "weather_available()" in asm, (
         "the assembler must check before building, or a fetchless checkout "
         "cannot build features at all")
     assert "if weather_feats is not None:" in asm
@@ -175,3 +175,103 @@ def test_the_archive_that_ships_is_forecasts_where_forecasts_exist():
     assert share > 0.8, (
         f"only {share:.0%} of post-2021 rows are archived forecasts — the rest "
         f"are reanalysis, which is what happened rather than what was known")
+
+
+def test_every_weather_column_has_a_family():
+    """The trap that would have let this into the model unmeasured.
+
+    `scripts/26_feature_families.py` records provenance by wrapping every
+    `build_*` attribute ON THE ASSEMBLER MODULE. A builder reached through a
+    module alias — `wxf.build_weather_features(...)` — is never wrapped, so its
+    columns land in `unattributed`; and `trainer.get_feature_cols` keeps
+    unattributed columns UNCONDITIONALLY, so the family would have entered the
+    locked 24-family set without appearing in any allow-list or any ablation.
+
+    An unmeasured feature in a model whose whole point is a measured feature set
+    is worse than no feature.
+    """
+    import json
+
+    from src.features import assembler
+
+    src = (ROOT / "src" / "features" / "assembler.py").read_text()
+    assert "from src.features.weather_features import build_weather_features" in src
+    calls = [ln for ln in src.splitlines()
+             if "build_weather_features(" in ln and not ln.lstrip().startswith("#")]
+    assert calls and all("wxf." not in ln for ln in calls), (
+        f"called through an alias the provenance wrapper never sees it: {calls}")
+    assert hasattr(assembler, "build_weather_features"), (
+        "the name has to exist on the assembler module for wrapping to work")
+
+    path = ROOT / "diagnostics" / "feature_families.json"
+    if not path.exists():
+        pytest.skip("no family map in this checkout")
+    doc = json.loads(path.read_text())
+    owned = {c for cols in doc["families"].values() for c in cols}
+    wx = {c for c in owned if c.startswith("wx_")}
+    if not wx:
+        pytest.skip("family map predates the weather family")
+    assert wx <= set(doc["families"].get("build_weather_features", [])), (
+        "a wx_ column is attributed to some other builder")
+    assert not [c for c in doc["unattributed"] if c.startswith("wx_")]
+
+
+def test_weather_cannot_be_served_until_the_forecast_window_opens():
+    """The reason this family is measured but not promoted.
+
+    Open-Meteo forecasts 16 days ahead. In August, every Week 1 fixture is
+    further out than that, so every 2026 row takes the outdoor mean — the six
+    columns are CONSTANT for the season being served while they vary across
+    training. That is the defect commit 3a7e0ef removed three features for, and
+    `test_no_feature_takes_one_value_at_predict_time` in tests/test_leakage.py
+    already fails on it the moment weather enters the allow-list.
+
+    This test states the dependency explicitly so the failure reads as "wait
+    for the forecast" rather than as a mystery. It passes either way: before
+    the window opens because the family is not in the served set, and after it
+    because the columns vary.
+    """
+    import polars as pl
+    import yaml
+
+    from src.evaluation.harness import _features
+    from src.models.trainer import get_feature_cols
+    from src.utils.config import config_overlay, get_config
+
+    exp = ROOT / "experiments" / "weather-24-families.yaml"
+    if not exp.exists():
+        pytest.skip("no weather experiment in this checkout")
+
+    df = _features("anytime_td")
+    if not [c for c in df.columns if c.startswith("wx_")]:
+        pytest.skip("feature matrix predates the weather family")
+
+    served = get_feature_cols(df, "anytime_td")
+    assert not [c for c in served if c.startswith("wx_")], (
+        "weather is in the SERVED feature set. That is only safe once the "
+        "archive covers the predict season — see the constancy check below "
+        "and tests/test_leakage.py::test_no_feature_takes_one_value_at_"
+        "predict_time")
+
+    predict_season = get_config()["seasons"]["predict_season"]
+    upcoming = df.filter(pl.col("season") == predict_season)
+    if upcoming.is_empty():
+        pytest.skip("no rows for the predict season")
+
+    overlay = yaml.safe_load(exp.read_text())["overlay"]
+    with config_overlay({**overlay, "target": {"type": "anytime_td"}}):
+        with_wx = get_feature_cols(df, "anytime_td")
+    wx = [c for c in with_wx if c.startswith("wx_")]
+    assert wx, "the experiment must actually add the family"
+
+    constant = [c for c in wx if upcoming[c].n_unique() <= 1]
+    if constant:
+        # Expected while the window is shut. Assert the whole family is
+        # constant rather than some of it: a partial fill would mean the
+        # archive covers some fixtures and not others, which is a different
+        # and worse state — half the board carrying real weather and half
+        # carrying the mean, with nothing distinguishing them.
+        assert len(constant) == len(wx), (
+            f"the archive covers the predict season only partially: "
+            f"{sorted(set(wx) - set(constant))} vary and {sorted(constant)} "
+            f"do not. Re-run `python scripts/28_weather.py --fetch`")

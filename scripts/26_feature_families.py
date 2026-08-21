@@ -106,18 +106,26 @@ def build() -> dict:
     else:
         raise SystemExit("no feature_cols.pkl — train a model first")
 
-    unattributed = []
-    for col in model_features:
-        owners = provenance.get(col)
-        if not owners:
-            unattributed.append(col)
-            continue
+    # Every column any builder produced, not only the ones the current model
+    # happens to train on. The map's job is to say what a family CONTAINS, and
+    # a lean model's `feature_cols.pkl` cannot answer that: after the 24-family
+    # lock it lists 236 of 318 columns, so a map built from it would omit the
+    # families that were dropped and could never be used to add one back. New
+    # families arrive the same way — nothing has trained on weather yet, so
+    # nothing would record it.
+    #
+    # `unattributed` still measures the model's own columns, because that is
+    # the number that matters: those reach the model without a family, and
+    # `get_feature_cols` keeps them unconditionally.
+    for col, owners in provenance.items():
         # A column claimed by several builders belongs to the one that made it
         # first; later ones are re-joining it. Sorted for determinism.
         families[owners[0]].append(col)
+    unattributed = [c for c in model_features if not provenance.get(c)]
 
     payload = {
         "n_features": len(model_features),
+        "n_columns_mapped": sum(len(v) for v in families.values()),
         "n_families": len(families),
         "unattributed": sorted(unattributed),
         "families": {k: sorted(v) for k, v in sorted(families.items())},
