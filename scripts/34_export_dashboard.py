@@ -632,6 +632,7 @@ def _shortlist_record(target_type: str) -> dict | None:
         # against its price, not just the return, because the return is
         # priced at a number no market posts.
         "fade": d.get("fade"),
+        "fade_in_band": d.get("fade_in_band"),
         "arms": [{"arm": a["arm"], "note": a.get("note"),
                   **({} if a.get("pooled") is None else
                      {k: a["pooled"][k] for k in

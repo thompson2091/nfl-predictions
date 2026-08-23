@@ -1921,15 +1921,24 @@ function positionCard(pos) {
 function fadeCard(sl, rec) {
   const out = el('div');
   if (!sl.vetoes || !sl.vetoes.length) return out;
-  const f = rec && rec.fade;
+  // The banded measurement, because it describes the list actually shown.
+  // Outside that band a veto is still a player to leave out and laying him
+  // loses, so mixing the two makes a list nobody can act on.
+  const f = rec && (rec.fade_in_band || rec.fade);
+  const layable = sl.vetoes.filter(v => v.layable);
+  const outside = sl.vetoes.filter(v => !v.layable);
   const kids = [];
   if (f) {
     kids.push(tiles([
-      { k: 'They scored', v: pct(f.scored_pct / 100, 1),
-        d: 'priced at ' + pct(f.priced_pct / 100, 1),
+      { k: 'They scored', v: pct(f.scored_pct / 100, 2),
+        d: 'priced at ' + pct(f.priced_pct / 100, 2),
         help: 'Every player we rated ' + f.min_edge_pp + '+ points below the ' +
-              'de-vigged price, over ' + f.n.toLocaleString() + ' bets, graded ' +
-              'on whether they actually scored.' },
+              'de-vigged price' +
+              (f.band ? ', priced between ' + f.band[0].toFixed(1) + '% and ' +
+                        f.band[1].toFixed(1) + '% \u2014 the deciles where the ' +
+                        'market\u2019s own bias pays for itself' : '') +
+              ', over ' + f.n.toLocaleString() + ' bets, graded on whether they ' +
+              'actually scored.' },
       { k: 'Laying at fair', v: pp(f.roi, 1) + '%',
         d: pp(f.lo, 0) + ' to ' + pp(f.hi, 0),
         help: 'What backing the No side at the de-vigged price would have ' +
@@ -1959,11 +1968,21 @@ function fadeCard(sl, rec) {
       title: 'How far below their price we sit. This is the direction the model is measurably good at, and the direction you cannot buy.' },
     { k: 'odds', label: 'Price', t: 1, fmt: v => american(v) },
   ];
-  kids.push(table('fades', cols, sl.vetoes, {}));
+  if (layable.length) {
+    kids.push(el('h3', { text: 'In the band where laying pays' }));
+    kids.push(table('fades', cols, layable, {}));
+  }
+  if (outside.length) {
+    kids.push(el('h3', { text: 'Below the price, outside that band' }));
+    kids.push(table('fades-out', cols, outside, {}));
+  }
   kids.push(el('div', { class: 'warn-box', html:
-    '<b>These are not bets.</b> They are players to leave out \u2014 of a ' +
-    'single, of a parlay, of a cover. Where this list disagrees with your ' +
-    'instinct, it is the one with a measurement behind it.' }));
+    '<b>These are not bets you can place at a book.</b> The second list is ' +
+    'still players to leave out \u2014 of a single, of a parlay, of a cover \u2014 ' +
+    'but laying them has measured <i>negative</i>: past the band the book ' +
+    'under-prices rather than over-prices, and the same lay returns \u22123% to ' +
+    '\u22125%. Only the first list is a bet anybody could place, and only ' +
+    'somewhere that lets you lay.' }));
   out.appendChild(card('Fade \u2014 the half no book sells',
     'The filters above spend their first step throwing these away. They are ' +
     'also the only group here whose measured return clears zero, which is the ' +

@@ -77,6 +77,14 @@ def measure(target_type: str, model: str, deciles: int = DECILES) -> dict | None
         if part.empty:
             continue
         stat = clustered_roi(part["pnl"].to_numpy(), part["game_id"].to_numpy())
+        # The same rows from the other side: backing "No" at the de-vigged
+        # price. No model is involved — this is the market's own bias and
+        # nothing else, which is what makes the band it marks out a fact about
+        # the market rather than a fact about us.
+        mp = part["market_prob"].to_numpy()
+        lay_pnl = np.where(part["scored"].to_numpy() == 1,
+                           -(1.0 - mp) / mp, 1.0)
+        lay = clustered_roi(lay_pnl, part["game_id"].to_numpy())
         book = float(part["market_prob"].mean()) * 100
         actual = float(part["scored"].mean()) * 100
         posted = float(np.mean(1.0 / part["dec"].astype(float))) * 100
@@ -97,12 +105,41 @@ def measure(target_type: str, model: str, deciles: int = DECILES) -> dict | None
             if "odds" in part.columns else None,
             "roi": stat["roi"], "lo": stat["lo"], "hi": stat["hi"],
             "verdict": stat["verdict"],
+            "lay_roi": lay["roi"], "lay_lo": lay["lo"], "lay_hi": lay["hi"],
+            # What a No price could charge here before the bias is gone.
+            "lay_carries_pct": ((1 - float(part["scored"].mean()))
+                                / (1 - float(part["market_prob"].mean())) - 1) * 100,
         })
     if not rows:
         return None
+    # The band where the market's own bias pays for itself: the run of deciles
+    # whose lay interval clears zero. Derived rather than chosen, so a re-run
+    # on new seasons moves the band instead of leaving a hand-picked one
+    # describing a market that has changed.
+    payers = [r for r in rows if r["lay_lo"] > 0]
+    fade_band = None
+    if payers:
+        lo, hi = min(r["decile"] for r in payers), max(r["decile"] for r in payers)
+        inside = [r for r in rows if lo <= r["decile"] <= hi]
+        n = sum(r["n"] for r in inside)
+        fade_band = {
+            "deciles": [lo, hi],
+            "book_lo_pct": min(r["book_pct"] for r in inside),
+            "book_hi_pct": max(r["book_pct"] for r in inside),
+            "n": n,
+            # Weighted by bets, so the summary describes the band rather than
+            # the average of its rows.
+            "book_pct": sum(r["book_pct"] * r["n"] for r in inside) / n,
+            "actual_pct": sum(r["actual_pct"] * r["n"] for r in inside) / n,
+        }
+        fade_band["carries_pct"] = (
+            (1 - fade_band["actual_pct"] / 100)
+            / (1 - fade_band["book_pct"] / 100) - 1) * 100
+
     seasons = sorted(df["season"].unique().tolist())
     return {
         "kind": "market_shape",
+        "fade_band": fade_band,
         "target_type": target_type, "model": model,
         "seasons": [int(s) for s in seasons],
         "span": f"{seasons[0]}-{seasons[-1]}" if seasons else "",

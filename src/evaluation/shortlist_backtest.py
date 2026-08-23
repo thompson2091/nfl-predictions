@@ -124,7 +124,8 @@ def _bets(board: pd.DataFrame, floor: dict | None,
 FADE_EDGE_PP = 2.0
 
 
-def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP) -> dict | None:
+def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP,
+              band: tuple[float, float] | None = None) -> dict | None:
     """What the half of the model nobody can buy would have been worth.
 
     Every other measurement here is about players we rate *above* the price,
@@ -149,6 +150,13 @@ def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP) -> dict | No
             continue
         edge_pp = (b["prob_bet"].astype(float) - b["market_prob"].astype(float)) * 100
         m = (edge_pp <= -float(min_edge_pp)).to_numpy()
+        if band is not None:
+            # Only where the market's own bias pays for itself. Outside it a
+            # veto is still a player to leave out and laying him loses: on the
+            # top two deciles the same lay returns -3% to -5%, because there
+            # the book is under-pricing rather than over-pricing.
+            mp = b["market_prob"].astype(float).to_numpy()
+            m = m & (mp >= band[0]) & (mp <= band[1])
         if not m.any():
             continue
         scored = b["scored"].astype(float).to_numpy()[m]
@@ -169,6 +177,8 @@ def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP) -> dict | No
     return {
         **stat,
         "min_edge_pp": float(min_edge_pp),
+        "band": (None if band is None else
+                 [float(band[0]) * 100, float(band[1]) * 100]),
         "scored_pct": hit * 100,
         "priced_pct": priced * 100,
         # The whole answer in one number: how much a No price could charge
@@ -181,6 +191,23 @@ def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP) -> dict | No
             for c in (0.02, 0.05)
         ],
     }
+
+
+def _fade_band(target_type: str) -> tuple[float, float] | None:
+    """The deciles where laying at the de-vigged price clears zero.
+
+    Read off `market_shape.json` rather than written here: the band is a fact
+    about the market and it will move, and a hand-picked one would go on
+    describing a market that has changed.
+    """
+    from src.evaluation.market_shape import load
+    from src.utils.paths import get_path
+
+    d = load(get_path("output", target_type) / "market_shape.json") or {}
+    b = d.get("fade_band")
+    if not b:
+        return None
+    return (b["book_lo_pct"] / 100.0, b["book_hi_pct"] / 100.0)
 
 
 def shopped_returns(dec: np.ndarray, won: np.ndarray) -> list[dict]:
@@ -325,6 +352,11 @@ def replay(target_type: str, model: str) -> dict | None:
         # Graded over every week, not only the ones with a floor: nothing about
         # it depends on a threshold fitted from closing-line value.
         "fade": fade_side(weeks),
+        # The same group restricted to the deciles where the market's own bias
+        # pays — the list both surfaces actually show. Kept beside the
+        # unrestricted number rather than replacing it, because the difference
+        # between them is the price band doing work.
+        "fade_in_band": fade_side(weeks, band=_fade_band(target_type)),
         "target_type": target_type, "model": model,
         "seasons": seasons, "skipped_seasons": skipped,
         "hindsight_floor": (None if hindsight is None else

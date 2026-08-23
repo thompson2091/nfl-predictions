@@ -119,6 +119,23 @@ def price_bucket(odds: float, econ: dict | None) -> str | None:
     return None
 
 
+def _fade_band(target_type: str) -> tuple[float | None, float | None]:
+    """The book-probability band where laying at the de-vigged price pays.
+
+    Derived by `market_shape.measure` from the deciles whose lay interval
+    clears zero, so a re-run on new seasons moves it rather than leaving a
+    hand-picked band describing a market that has changed.
+    """
+    from src.evaluation.market_shape import load
+    from src.utils.paths import get_path
+
+    d = load(get_path("output", target_type) / "market_shape.json") or {}
+    b = d.get("fade_band")
+    if not b:
+        return (None, None)
+    return (b["book_lo_pct"] / 100.0, b["book_hi_pct"] / 100.0)
+
+
 #: How far below the price a player has to sit to be named as a fade, and how
 #: many to name. Mirrors `shortlist_backtest.FADE_EDGE_PP`, which is what the
 #: group's measured return is computed over.
@@ -213,16 +230,28 @@ def shortlist(board: pl.DataFrame, *, target_type: str, clv: dict | None,
     # which two thirds cannot act on it, and the one thing this model does
     # well is name these players.
     veto = board.filter(pl.col("model_edge_pp") <= -float(min_edge_pp))
+    # The band where the market's own bias pays for itself, read off
+    # `market_shape.json`. Outside it a veto is still a player to leave out and
+    # laying him *loses* — on the top deciles the book under-prices rather than
+    # over-prices, and the same lay returns -3% to -5%. A fade list that mixes
+    # the two is a list that cannot be acted on.
+    lo, hi = _fade_band(target_type)
     vetoes = []
-    for r in (veto.sort("model_edge_pp").head(int(top_vetoes))
-              .iter_rows(named=True) if veto.height else []):
+    for r in (veto.sort("model_edge_pp").iter_rows(named=True)
+              if veto.height else []):
+        mp = float(r["market_prob"])
         vetoes.append({
             "player": r.get("player_name"), "team": r.get("team"),
             "game": r.get("game_label"),
-            "ours": float(r["prob_bet"]), "book": float(r["market_prob"]),
+            "ours": float(r["prob_bet"]), "book": mp,
             "edge_pp": float(r["model_edge_pp"]),
             "odds": int(r["odds"]),
+            "layable": bool(lo is not None and lo <= mp <= hi),
         })
+    # Layable first, then the rest: both are players to leave out, and only one
+    # of them is a bet anybody could place.
+    vetoes.sort(key=lambda v: (not v["layable"], v["edge_pp"]))
+    vetoes = vetoes[:int(top_vetoes)]
     # Rules under observation, kept apart from the list above on purpose: they
     # have not earned a place in it, and the only way to find out whether they
     # ever will is to write down what they say every week and score it later.

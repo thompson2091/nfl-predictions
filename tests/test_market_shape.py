@@ -81,3 +81,38 @@ def test_no_priced_backtest_is_no_table(monkeypatch):
     monkeypatch.setattr("src.evaluation.market_shape.backtest_files",
                         lambda tt, m: [])
     assert measure("anytime_td", "xgb") is None
+
+
+def test_the_fade_band_is_derived_from_where_laying_clears_zero(monkeypatch, tmp_path):
+    """A hand-picked band goes on describing a market that has changed.
+
+    The band is the run of deciles whose lay interval clears zero, read off the
+    measurement itself — so a re-run on new seasons moves it. Nothing in the
+    code names a price.
+    """
+    # A market that badly over-prices its longshots and is fair on favourites.
+    df = pd.concat([_frame(9000, 0.06, 0.02, 0.02, seed=5),
+                    _frame(9000, 0.45, 0.45, 0.05, seed=6)],
+                   ignore_index=True)
+    path = tmp_path / "backtest_xgb_2024.csv"
+    df.to_csv(path, index=False)
+    monkeypatch.setattr("src.evaluation.market_shape.backtest_files",
+                        lambda tt, m: [path])
+    out = measure("anytime_td", "xgb", deciles=2)
+    band = out["fade_band"]
+    assert band is not None, "laying the overpriced half has to be found"
+    assert band["deciles"][0] == 1, "the overpriced longshots are decile 1"
+    assert band["book_hi_pct"] < 40, "the fair favourites must stay outside it"
+    assert band["carries_pct"] > 0
+
+
+def test_a_market_with_no_exploitable_bias_marks_no_band(monkeypatch, tmp_path):
+    """No band is a real answer, and the surfaces must be able to say it."""
+    df = pd.concat([_frame(9000, 0.06, 0.06, 0.02, seed=7),
+                    _frame(9000, 0.45, 0.45, 0.05, seed=8)],
+                   ignore_index=True)
+    path = tmp_path / "backtest_xgb_2024.csv"
+    df.to_csv(path, index=False)
+    monkeypatch.setattr("src.evaluation.market_shape.backtest_files",
+                        lambda tt, m: [path])
+    assert measure("anytime_td", "xgb", deciles=2)["fade_band"] is None

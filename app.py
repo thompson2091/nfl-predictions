@@ -3235,7 +3235,10 @@ if tab_short.open:
                     f"about two points. That is the entire arithmetic of this "
                     f"project on one screen.")
 
-        _fade = (_sl_rec or {}).get("fade")
+        # The banded measurement, because it describes the list actually
+        # shown. Outside that band a veto is still a player to leave out and
+        # laying him loses — mixing the two makes a list nobody can act on.
+        _fade = (_sl_rec or {}).get("fade_in_band") or (_sl_rec or {}).get("fade")
         _sl = shortlist_now(season, week, target_type, selected_model,
                             selected_version)
         if _sl is None:
@@ -3334,16 +3337,23 @@ if tab_short.open:
             # measured return, which is why they get named rather than counted.
             if _sl.get("vetoes"):
                 st.subheader("Fade — the half no book sells")
+                _layable = [v for v in _sl["vetoes"] if v.get("layable")]
+                _outside = [v for v in _sl["vetoes"] if not v.get("layable")]
                 if _fade:
                     _fbar = st.container(horizontal=True)
+                    _band = _fade.get("band")
                     _fbar.metric(
-                        "They scored", f"{_fade['scored_pct']:.1f}%",
-                        delta=f"priced at {_fade['priced_pct']:.1f}%",
+                        "They scored", f"{_fade['scored_pct']:.2f}%",
+                        delta=f"priced at {_fade['priced_pct']:.2f}%",
                         delta_color="off",
                         help=f"Every player we rated {_fade['min_edge_pp']:.0f}+ "
-                             f"points below the de-vigged price, over "
-                             f"{_fade['n']:,} bets — graded on whether they "
-                             f"actually scored.")
+                             f"points below the de-vigged price"
+                             + (f", priced between {_band[0]:.1f}% and "
+                                f"{_band[1]:.1f}% — the deciles where the "
+                                f"market's own bias pays for itself"
+                                if _band else "")
+                             + f", over {_fade['n']:,} bets, graded on whether "
+                               f"they actually scored.")
                     _fbar.metric(
                         "Laying at fair", f"{_fade['roi']:+.1f}%",
                         delta=f"{_fade['lo']:+.0f} to {_fade['hi']:+.0f}",
@@ -3368,14 +3378,7 @@ if tab_short.open:
                              "venue where laying a player is possible at all. "
                              "Assumes a fill at the de-vigged price, which is "
                              "optimistic where the book is thin.")
-                _vf = pd.DataFrame(_sl["vetoes"])
-                _vf["Ours"] = _vf["ours"] * 100
-                _vf["Book"] = _vf["book"] * 100
-                _vf["Price"] = _vf["odds"].map(bp.american)
-                st.dataframe(
-                    _vf[["player", "game", "Ours", "Book", "edge_pp", "Price"]],
-                    hide_index=True, use_container_width=True,
-                    column_config={
+                _vcfg = {
                         "player": st.column_config.TextColumn("Player"),
                         "game": st.column_config.TextColumn("Game", width="small"),
                         "Ours": st.column_config.NumberColumn(
@@ -3388,12 +3391,32 @@ if tab_short.open:
                                  "the direction the model is measurably good "
                                  "at, and the direction you cannot buy."),
                         "Price": st.column_config.TextColumn("Price", width="small"),
-                    })
-                st.caption(
-                    ":material/block: These are **not bets**. They are players "
-                    "to leave out — of a single, of a parlay, of a cover. "
-                    "Where the two lists disagree with your instinct, this is "
-                    "the one with a measurement behind it.")
+                    }
+
+                def _vtable(rows):
+                    _vf = pd.DataFrame(rows)
+                    _vf["Ours"] = _vf["ours"] * 100
+                    _vf["Book"] = _vf["book"] * 100
+                    _vf["Price"] = _vf["odds"].map(bp.american)
+                    st.dataframe(
+                        _vf[["player", "game", "Ours", "Book", "edge_pp", "Price"]],
+                        hide_index=True, use_container_width=True,
+                        column_config=_vcfg)
+
+                if _layable:
+                    st.markdown("**In the band where laying pays**")
+                    _vtable(_layable)
+                if _outside:
+                    st.markdown("**Below the price, outside that band**")
+                    _vtable(_outside)
+                    st.caption(
+                        ":material/block: The second list is still players to "
+                        "leave out — of a single, of a parlay, of a cover — but "
+                        "laying them has measured *negative*: past the band the "
+                        "book under-prices rather than over-prices, and the "
+                        "same lay returns −3% to −5%. Only the first list is a "
+                        "bet anybody could place, and only where you can place "
+                        "it.")
 
 if tab_board.open:
     with tab_board:

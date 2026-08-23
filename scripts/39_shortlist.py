@@ -78,21 +78,37 @@ def _fades(res: dict, out_dir) -> None:
     if not res.get("vetoes"):
         return
     rec = _load(out_dir / "shortlist_backtest.json") or {}
-    f = rec.get("fade")
-    print(f"\n  FADE \u2014 furthest below the price, the half no book sells")
+    f = rec.get("fade_in_band") or rec.get("fade")
+    layable = [r for r in res["vetoes"] if r.get("layable")]
+    rest = [r for r in res["vetoes"] if not r.get("layable")]
+
+    print(f"\n  FADE \u2014 the half no book sells")
     if f:
-        print(f"    this group scored {f['scored_pct']:.1f}% against a "
-              f"{f['priced_pct']:.1f}% de-vigged price over {f['n']:,} bets; "
-              f"laying at fair returned {f['roi']:+.1f}% "
-              f"[{f['lo']:+.1f}, {f['hi']:+.1f}]")
+        band = f.get("band")
+        where = (f" priced between {band[0]:.1f}% and {band[1]:.1f}%"
+                 if band else "")
+        print(f"    players we rate below the price{where}: this group scored "
+              f"{f['scored_pct']:.2f}% against a {f['priced_pct']:.2f}% "
+              f"de-vigged price over {f['n']:,} bets; laying at fair returned "
+              f"{f['roi']:+.1f}% [{f['lo']:+.1f}, {f['hi']:+.1f}]")
         print(f"    a No price could carry {f['margin_capacity_pct']:.2f}% of "
               f"margin before that is gone \u2014 on an exchange at 5% "
-              f"commission it is {f['exchange'][-1]['roi']:+.1f}% per unit at risk")
-    print(f"\n  {'Player':<24}{'Game':<12}{'Ours':>6}{'Book':>7}{'Gap':>7}{'Price':>8}")
-    for r in res["vetoes"][:10]:
-        print(f"  {r['player'][:23]:<24}{(r['game'] or '')[:11]:<12}"
-              f"{r['ours']:>6.1%}{r['book']:>7.1%}{r['edge_pp']:>+7.1f}"
-              f"{bp.american(r['odds']):>8}")
+              f"commission it is {f['exchange'][-1]['roi']:+.2f}% per unit at risk")
+
+    def _rows(rows, heading):
+        if not rows:
+            return
+        print(f"\n  {heading}")
+        print(f"  {'Player':<24}{'Game':<12}{'Ours':>6}{'Book':>7}{'Gap':>7}"
+              f"{'Price':>8}")
+        for r in rows[:10]:
+            print(f"  {r['player'][:23]:<24}{(r['game'] or '')[:11]:<12}"
+                  f"{r['ours']:>6.1%}{r['book']:>7.1%}{r['edge_pp']:>+7.1f}"
+                  f"{bp.american(r['odds']):>8}")
+
+    _rows(layable, "in the band where laying pays:")
+    _rows(rest, "below the price but outside that band \u2014 leave them out, "
+                "but laying them has measured negative:")
 
 
 def main(season: int, week: int, target: str, model: str) -> int:
