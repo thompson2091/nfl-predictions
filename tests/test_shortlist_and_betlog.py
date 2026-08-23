@@ -287,3 +287,84 @@ def test_a_price_improvement_is_a_proportion_and_not_a_flat_point():
     for r in shopped_returns(dec, won):
         assert -1.0 < r["roi"] / 100 < 0.3, r
         assert r["mean_pp"] < 1.0, "2% of a 2% price is a fifth of a point"
+
+
+# ── Rules under observation ────────────────────────────────────────────────
+
+
+def test_a_tracked_rule_carries_where_it_came_from():
+    """A band with no provenance reads as a recommendation.
+
+    Every field here is printed beside the picks on both surfaces: what the
+    rule is, the search that found it, the control that says the search is not
+    the whole story, and the out-of-sample record that says it is not settled.
+    """
+    from src.evaluation.tracked_rules import RULES
+
+    assert RULES, "the module exists to hold at least one"
+    for r in RULES:
+        for k in ("name", "market", "min_odds", "max_odds", "min_edge_pp",
+                  "status", "found", "control", "out_of_sample"):
+            assert r.get(k), f"{r.get('name')} is missing {k}"
+        assert "unproven" in r["status"], (
+            "a tracked rule must say so on its own row, not only in a docstring")
+
+
+def test_a_tracked_rule_picks_on_the_pre_blend_edge():
+    """The blend pulls our number toward the price it is compared against.
+
+    The replay that found this rule measured the pre-blend edge, so a live pick
+    on the blended one would be a different rule wearing the same name.
+    """
+    from src.evaluation.tracked_rules import picks
+
+    rule = {"name": "t", "min_odds": 300, "max_odds": 700, "min_edge_pp": 5.0}
+    board = pl.DataFrame([
+        # In band, big enough edge: a pick.
+        {"player_name": "In", "team": "A", "game_label": "A @ B",
+         "odds": 400.0, "prob_bet": 0.25, "market_prob": 0.18,
+         "model_edge_pp": 7.0},
+        # Same edge, price outside the band.
+        {"player_name": "Long", "team": "A", "game_label": "A @ B",
+         "odds": 900.0, "prob_bet": 0.17, "market_prob": 0.10,
+         "model_edge_pp": 7.0},
+        # In band, edge under the floor.
+        {"player_name": "Thin", "team": "A", "game_label": "A @ B",
+         "odds": 400.0, "prob_bet": 0.21, "market_prob": 0.18,
+         "model_edge_pp": 3.0},
+    ])
+    got = picks(board, rule)
+    assert [p["player"] for p in got] == ["In"]
+    assert got[0]["edge_pp"] == pytest.approx(7.0)
+
+
+def test_recording_a_week_twice_does_not_double_the_record(tmp_path):
+    """A record that can be inflated by re-running the report is not a record."""
+    from src.evaluation.tracked_rules import load, record
+
+    log = tmp_path / "tracked.csv"
+    rows = [{"rule": "t", "player": "A", "team": "X", "game": "X @ Y",
+             "odds": 400, "ours": 0.25, "book": 0.18, "edge_pp": 7.0}]
+    first = record(rows, season=2026, week=1, market="anytime_td",
+                   recorded_on="2026-09-10", path=log)
+    again = record(rows, season=2026, week=1, market="anytime_td",
+                   recorded_on="2026-09-11", path=log)
+    assert (first, again) == (1, 0)
+    assert load(log).height == 1
+    # A different week is a different observation, not a duplicate.
+    assert record(rows, season=2026, week=2, market="anytime_td",
+                  recorded_on="2026-09-17", path=log) == 1
+
+
+def test_a_week_with_no_picks_is_part_of_the_record():
+    """Silence has to be visible, or the rule looks like it never misses."""
+    from src.evaluation.shortlist import shortlist
+
+    board = pl.DataFrame([{"player_name": "A", "team": "X", "game_label": "X @ Y",
+                           "odds": 400.0, "prob_bet": 0.20, "market_prob": 0.19,
+                           "model_edge_pp": 1.0, "player_name_norm": "a",
+                           "bet_rank": 1}])
+    out = shortlist(board, target_type="anytime_td",
+                    clv={"by_edge": [band("higher", 0, None, +0.1)]}, econ=None)
+    assert out["tracked"], "the rule must appear even when it names nobody"
+    assert out["tracked"][0]["picks"] == []

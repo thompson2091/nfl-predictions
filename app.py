@@ -2094,6 +2094,16 @@ def combo_grid_range(record: dict | None, key: str) -> str:
 
 
 @st.cache_data(show_spinner=False)
+def _sl_tracked_record(tt: str) -> dict | None:
+    """How the rules under observation have done since they were written down."""
+    from src.evaluation.tracked_rules import score
+    try:
+        return score(tt)
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
+@st.cache_data(show_spinner=False)
 def position_rates(tt: str, model: str) -> dict | None:
     """What each position scores, is charged, and is rated at."""
     from src.evaluation.position_rates import load
@@ -3110,8 +3120,12 @@ if tab_short.open:
         # looking at a board, not while auditing one.
         _pos = position_rates(target_type, selected_model)
         if _pos:
-            with st.expander("What each position typically does",
-                             icon=":material/sports_football:"):
+            # A plain section rather than an expander: `simplify` drops
+            # expanders from the published page, and this is four rows of
+            # reference that the published page wants most — its reader has no
+            # sidebar and no way to ask what a normal percentage looks like.
+            with st.container():
+                st.subheader("What each position typically does")
                 _pf = pd.DataFrame(_pos["rows"])
                 _pf["Price"] = _pf["median_odds"].map(bp.american)
                 st.dataframe(
@@ -3191,6 +3205,61 @@ if tab_short.open:
                     "that price returned across the whole population, vetoed "
                     "players included: context for reading a row, never the "
                     "reason it is on the list.")
+
+            # ── Under observation ────────────────────────────────────────
+            # Kept out of the list above and labelled on every line: this is a
+            # rule that looked good in a slice of three seasons and has one
+            # good season and one bad one out of sample. Writing down what it
+            # says each week is the only way it can ever be settled — and a
+            # rule that is re-tuned instead can never fail, because every
+            # failure is absorbed into the next tuning.
+            for _rule in (_sl.get("tracked") or []):
+                st.subheader(f"Tracked — {_rule['name']}")
+                st.warning(
+                    f"**{_rule['status'].capitalize()}.** {_rule['found']}. "
+                    f"The control: {_rule['control']}. Out of sample: "
+                    f"{_rule['out_of_sample']}",
+                    icon=":material/science:")
+                _tk = _sl_tracked_record(target_type)
+                _r = (_tk or {}).get("rules", {}).get(_rule["name"])
+                if _r and _r["picks"]:
+                    _tbar = st.container(horizontal=True)
+                    _tbar.metric("Picks recorded", f"{_r['picks']:,}",
+                                 delta=f"{_r['weeks']} weeks",
+                                 delta_color="off")
+                    _tbar.metric(
+                        "Mean CLV",
+                        "—" if _r["mean_clv_pp"] is None
+                        else f"{_r['mean_clv_pp']:+.2f} pts",
+                        help="The price at the time against the price the "
+                             "market closed at. Positive means the market "
+                             "moved toward these picks after they were "
+                             "recorded — readable in dozens, where profit "
+                             "needs hundreds.")
+                    _tbar.metric(
+                        "Beat the close",
+                        "—" if _r["beat_close_pct"] is None
+                        else f"{_r['beat_close_pct']:.0%}")
+                if _rule.get("picks"):
+                    _tf = pd.DataFrame(_rule["picks"])
+                    _tf["Ours"] = _tf["ours"] * 100
+                    _tf["Book"] = _tf["book"] * 100
+                    _tf["Price"] = _tf["odds"].map(bp.american)
+                    st.dataframe(
+                        _tf[["player", "game", "Ours", "Book", "edge_pp", "Price"]],
+                        hide_index=True, use_container_width=True)
+                    st.caption(
+                        f":material/science: Recorded to `data/tracked_picks.csv` "
+                        f"every time this page is built, whether or not anyone "
+                        f"backs them. Not a recommendation — the point is the "
+                        f"record, not the picks.")
+                else:
+                    st.caption(
+                        f":material/science: Nothing on this board matches it "
+                        f"this week: it needs {_rule['min_edge_pp']:.0f}+ points "
+                        f"between {bp.american(_rule['min_odds'])} and "
+                        f"{bp.american(_rule['max_odds'])}. A week with no "
+                        f"picks is part of the record.")
 
             # ── The half that measures best ──────────────────────────────
             # The filters above spend their first step throwing these away.

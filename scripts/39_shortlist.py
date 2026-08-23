@@ -35,6 +35,36 @@ def _load(path):
     return json.loads(path.read_text()) if path.exists() else None
 
 
+def _tracked(res: dict, season: int, week: int, target: str) -> None:
+    """Write down what each rule under observation says this week.
+
+    Recorded whether or not anyone bets it: a rule can only be tested forward,
+    and reconstructing its picks later would quietly run today's model over
+    last week's board. See `src/evaluation/tracked_rules.py`.
+    """
+    from datetime import date
+
+    from src.evaluation.tracked_rules import PICKS_PATH, record
+
+    for rule in res.get("tracked") or []:
+        rows = rule.get("picks") or []
+        print(f"\n  TRACKED \u2014 {rule['name']} ({rule['status']})")
+        print(f"    {rule['found']}")
+        print(f"    control: {rule['control']}")
+        print(f"    out of sample: {rule['out_of_sample']}")
+        if not rows:
+            print("    nothing on this board matches it this week.")
+            continue
+        n = record(rows, season=season, week=week, market=target,
+                   recorded_on=date.today().isoformat())
+        print(f"    {len(rows)} picks this week ({n} newly recorded to "
+              f"{PICKS_PATH}):")
+        for r in rows:
+            print(f"      {r['player'][:23]:<24}{(r['game'] or '')[:11]:<12}"
+                  f"{r['ours']:>6.1%}{r['book']:>7.1%}{r['edge_pp']:>+7.1f}"
+                  f"{bp.american(r['odds']):>8}")
+
+
 def _fades(res: dict, out_dir) -> None:
     """The players we rate furthest below their price, and what that is worth.
 
@@ -92,6 +122,7 @@ def main(season: int, week: int, target: str, model: str) -> int:
         print("  That is the answer, not a gap: every filter above is a "
               "measurement that says this population loses money.")
         _fades(res, out_dir)
+        _tracked(res, season, week, target)
         return 0
 
     f = res["floor"]
@@ -114,6 +145,7 @@ def main(season: int, week: int, target: str, model: str) -> int:
           "never the reason it is on the list.")
 
     _fades(res, out_dir)
+    _tracked(res, season, week, target)
     path = out_dir / f"shortlist_{season}_week{week}.json"
     path.write_text(json.dumps(res, indent=2))
     print(f"\n  Saved: {path}")

@@ -138,8 +138,8 @@ def shortlist(board: pl.DataFrame, *, target_type: str, clv: dict | None,
     """
     reasons: list[dict] = []
     if board is None or board.height == 0:
-        return {"rows": [], "vetoes": [], "dropped": [], "floor": None,
-                "note": "No priced players this week."}
+        return {"rows": [], "vetoes": [], "tracked": [], "dropped": [],
+                "floor": None, "note": "No priced players this week."}
 
     df = board
     start = df.height
@@ -223,5 +223,19 @@ def shortlist(board: pl.DataFrame, *, target_type: str, clv: dict | None,
             "edge_pp": float(r["model_edge_pp"]),
             "odds": int(r["odds"]),
         })
-    return {"rows": rows, "vetoes": vetoes, "dropped": reasons, "floor": floor,
+    # Rules under observation, kept apart from the list above on purpose: they
+    # have not earned a place in it, and the only way to find out whether they
+    # ever will is to write down what they say every week and score it later.
+    from src.evaluation.tracked_rules import picks as _rule_picks
+    from src.evaluation.tracked_rules import rules_for
+
+    tracked = []
+    for rule in rules_for(target_type):
+        tracked.append({**{k: rule[k] for k in
+                           ("name", "status", "found", "control",
+                            "out_of_sample", "min_odds", "max_odds",
+                            "min_edge_pp")},
+                        "picks": _rule_picks(board, rule)})
+    return {"rows": rows, "vetoes": vetoes, "tracked": tracked,
+            "dropped": reasons, "floor": floor,
             "note": None if rows else "Nothing this week survives every filter."}

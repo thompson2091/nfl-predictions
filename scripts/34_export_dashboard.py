@@ -580,7 +580,8 @@ def market(target_type: str, label: str, season: int | None,
         "positions": _position_rates(target_type),
         "shortlist": (None if not pl_out.get("shortlist") else
                       {**pl_out["shortlist"],
-                       "record": _shortlist_record(target_type)}),
+                       "record": _shortlist_record(target_type),
+                       "tracked_record": _tracked_record(target_type)}),
         "combo_record": ({"span": combo_rec.get("span"),
                           "rows": [r for r in (combo_rec.get("rows") or [])
                                    if r.get("show") in set(PAGE_SHOW_STOPS)]}
@@ -592,6 +593,15 @@ def market(target_type: str, label: str, season: int | None,
         "cover": cover_variants(pl_out["rows"], target_type,
                                 parity(target_type, model, who["version"])),
     }
+
+
+def _tracked_record(target_type: str) -> dict | None:
+    """How the rules under observation have done since they were written down."""
+    from src.evaluation.tracked_rules import score
+    try:
+        return (score(target_type) or {}).get("rules")
+    except Exception:                                        # noqa: BLE001
+        return None
 
 
 def _position_rates(target_type: str) -> dict | None:

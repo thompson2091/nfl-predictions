@@ -1799,8 +1799,56 @@ function paneShortlist() {
     'filters measured on the right population did not reject.' }));
   out.appendChild(card(null, null, kids));
   out.appendChild(fadeCard(sl, rec));
+  (sl.tracked || []).forEach(r => out.appendChild(trackedCard(r, sl.tracked_record)));
   out.appendChild(positionCard(m.positions));
   return out;
+}
+
+// A rule that looked good in a slice of three seasons, with one good season
+// and one bad one out of sample. Kept out of the list above and labelled on
+// every line: writing down what it says each week is the only way it can ever
+// be settled, and a rule that is re-tuned instead can never fail — every
+// failure is absorbed into the next tuning.
+function trackedCard(rule, record) {
+  const kids = [];
+  kids.push(el('div', { class: 'warn-box', html:
+    '<b>' + esc(rule.status[0].toUpperCase() + rule.status.slice(1)) + '.</b> ' +
+    esc(rule.found) + '. The control: ' + esc(rule.control) + '. Out of sample: ' +
+    esc(rule.out_of_sample) }));
+
+  const r = record && record[rule.name];
+  if (r && r.picks) {
+    kids.push(tiles([
+      { k: 'Picks recorded', v: r.picks.toLocaleString(), d: r.weeks + ' weeks' },
+      { k: 'Mean CLV', v: has(r.mean_clv_pp) ? pp(r.mean_clv_pp, 2) + ' pts' : '\u2014',
+        d: 'price taken vs close',
+        help: 'Positive means the market moved toward these picks after they ' +
+              'were recorded. Readable in dozens, where profit needs hundreds.' },
+      { k: 'Beat the close',
+        v: has(r.beat_close_pct) ? pct(r.beat_close_pct, 0) : '\u2014', d: ' ' },
+    ]));
+  }
+
+  if (rule.picks && rule.picks.length) {
+    kids.push(table('tracked-' + rule.name.replace(/\W+/g, '-'), [
+      { k: 'player', label: 'Player', t: 1 },
+      { k: 'game', label: 'Game', t: 1 },
+      { k: 'ours', label: 'Our estimate', fmt: v => pct(v, 1) },
+      { k: 'book', label: 'Bookmaker says', fmt: v => pct(v, 1) },
+      { k: 'edge_pp', label: 'Difference', fmt: v => pp(v) + ' pts', cls: v => cls(v) },
+      { k: 'odds', label: 'Price', t: 1, fmt: v => american(v) },
+    ], rule.picks, {}));
+    kids.push(el('p', { class: 'fine', html:
+      'Recorded to <code>data/tracked_picks.csv</code> every time this page is ' +
+      'built, whether or not anyone backs them. Not a recommendation \u2014 the ' +
+      'point is the record, not the picks.' }));
+  } else {
+    kids.push(el('p', { class: 'fine', html:
+      'Nothing on this board matches it this week: it needs ' +
+      rule.min_edge_pp + '+ points between ' + american(rule.min_odds) + ' and ' +
+      american(rule.max_odds) + '. A week with no picks is part of the record.' }));
+  }
+  return card('Tracked \u2014 ' + esc(rule.name), null, kids);
 }
 
 // Reference rather than verdict: the numbers a reader keeps deriving by eye
