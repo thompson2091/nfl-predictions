@@ -34,6 +34,16 @@ from __future__ import annotations
 import html
 import json
 
+from src.prediction.combos import LEG_CAPS, MAX_LEGS
+
+#: The `Show` stops this page offers. The app's own control is a 5-50 slider in
+#: fives and the graded replay measures every one of those stops, but the page
+#: asks for deeper tables than the app does and can only ever look up these —
+#: so `scripts/34_export_dashboard.py` carries the measured rows for these
+#: stops and drops the rest. At eleven leg counts the full grid is 1,100 rows a
+#: market, four fifths of which nothing on the page can reach.
+PAGE_SHOW_STOPS = (25, 50, 100, 250, 500)
+
 CSS = """
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -232,6 +242,21 @@ h3 { font-size: 14px; margin: 18px 0 6px; letter-spacing: -0.005em; }
   border: 2px solid var(--surface); box-shadow: var(--shadow);
 }
 .field input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+/* A field that takes several answers. It gets its own line: sixteen fixtures
+   wrap to two or three rows, and squeezed in beside the selects it would push
+   them off the bar. */
+.field.chipset { flex: 1 1 100%; }
+.tog { display: flex; flex-wrap: wrap; gap: 6px; }
+.tog button {
+  font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 99px;
+  border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2);
+  cursor: pointer; white-space: nowrap;
+}
+.tog button:hover { color: var(--ink); border-color: var(--border); }
+.tog button[aria-pressed="true"] {
+  border-color: var(--accent); background: var(--accent-soft); color: var(--ink);
+  font-weight: 560;
+}
 .check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink-2);
          padding-bottom: 6px; cursor: pointer; }
 .check input { accent-color: var(--accent); }
@@ -283,6 +308,10 @@ tbody td:first-child::after, thead th:first-child::after {
 }
 td.num { font-variant-numeric: tabular-nums; }
 .wrap td { white-space: normal; }
+/* Twelve names joined by plus signs is a 600px cell that pushes every number
+   off the screen. Only the slip column, and only where a slip is long enough
+   to need it. */
+td.wrapcell { white-space: normal; max-width: 46ch; }
 .wrap td:first-child { white-space: nowrap; color: var(--ink-2); width: 1%; }
 .dim { color: var(--muted); }
 .pos { color: var(--good); }
@@ -347,6 +376,14 @@ const american = o => {
   if (!has(o)) return '';
   const n = Math.round(o);
   return (n > 0 ? '+' : '') + n;
+};
+// The same price, grouped. A single player's odds are three or four digits and
+// read fine unbroken; a twelve-leg slip's are +3237144, which is a number you
+// have to count the digits of — the same reason the money columns group.
+const americanLong = o => {
+  if (!has(o)) return '';
+  const n = Math.round(o);
+  return (n > 0 ? '+' : '-') + Math.abs(n).toLocaleString('en-US');
 };
 // Mirrors src/prediction/bets.decimal_to_american — a slip's price is the
 // product of its legs' decimal odds, and readers want it back in American.
@@ -419,7 +456,11 @@ const S = {
   // EV-ranked table is entirely priced, which is a priced-only table wearing a
   // different label. Likelihood is the one ranking every player has a number
   // for, so it is the one that opens.
-  c: { legs: 2, per: 4, metric: 'likely', show: 25, game: '', priced: 'all' },
+  // `games` is a list because a slip is the one thing on this page that
+  // deliberately spans fixtures: "these three games and nothing else" is
+  // the question it provokes, and a single-game dropdown could only ask it
+  // one game at a time. Empty is the whole slate.
+  c: { legs: 2, per: 4, metric: 'likely', show: 25, games: [], priced: 'all' },
   t: { game: '' },
   sort: {},
 };
@@ -510,6 +551,32 @@ function select(label, value, options, onchange, title) {
   });
   s.onchange = () => { onchange(s.value); render(); };
   return el('div', { class: 'field' }, [el('label', { text: label }), s]);
+}
+// Several answers to one question. Toggle chips rather than a native
+// `<select multiple>`: that control asks for ctrl-click, which nobody
+// discovers, and hides everything past its first few rows — and seeing what is
+// selected without opening anything is the whole point of the field. The
+// leading chip clears the selection rather than naming a value, so "all of
+// them" is one click from any state.
+function multi(label, values, options, onchange, allLabel, title) {
+  const on = {};
+  values.forEach(v => { on[v] = 1; });
+  const chip = (t, pressed, click) => {
+    const b = el('button', { type: 'button', text: t });
+    b.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+    b.onclick = () => { click(); render(); };
+    return b;
+  };
+  const wrap = el('div', { class: 'tog' }, [
+    chip(allLabel || 'All', !values.length, () => onchange([])),
+  ]);
+  options.forEach(o => {
+    const v = Array.isArray(o) ? o[0] : o, t = Array.isArray(o) ? o[1] : o;
+    wrap.appendChild(chip(t, !!on[v], () => onchange(
+      on[v] ? values.filter(x => x !== v) : values.concat([v]))));
+  });
+  return el('div', { class: 'field chipset', title: title || null },
+            [el('label', { text: label }), wrap]);
 }
 function text(label, value, onchange, placeholder) {
   // The label doubles as the field's identity across a re-render. Without it
@@ -665,15 +732,27 @@ const READ_ORDER = ['Matches book', 'Leans', 'Strong call'];
 //: product of positive per-leg factors, so a slip using a leg ranked below the
 //: cut is beaten by at least `show` slips built from the legs above it. Where
 //: it does bind, the caption says so rather than letting a bounded search read
-//: as an exhaustive one.
-const LEG_CAP = { 2: 400, 3: 140, 4: 64 };
+//: as an exhaustive one — and past four legs it always binds, because the pool
+//: that would carry the proof is more combinations than any machine will
+//: enumerate.
+//:
+//: Written out of `src/prediction/combos.LEG_CAPS` at export time rather than
+//: typed here: the page and the app search the same slips, and two hand-kept
+//: tables of caps are two searches that quietly disagree about what "the
+//: strongest 20" means.
+const LEG_CAP = __LEG_CAP__;
+//: Every slip length the control offers, and the same lengths the app offers.
+const LEG_CHOICES = Object.keys(LEG_CAP).map(k => [+k, k]);
+//: A slip length as a word, for a line that reads like a sentence.
+const LEG_WORDS = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven',
+                   'eight', 'nine', 'ten', 'eleven', 'twelve'];
 
 //: Each game's top `per` by the board's own #, over whichever population is
 //: asked for. Ranked within the game before the cut, so widening `per` reaches
 //: further down every game rather than deeper into one.
-function comboPool(players, per, game, pricedOnly) {
+function comboPool(players, per, games, pricedOnly) {
   let pool = players.filter(p => has(p.ours) && !p.blocked);
-  if (game) pool = pool.filter(p => p.game === game);
+  if (games && games.length) pool = pool.filter(p => games.indexOf(p.game) >= 0);
   if (pricedOnly) pool = pool.filter(p => p.priced);
   const byGame = {};
   pool.forEach(p => { (byGame[p.game] = byGame[p.game] || []).push(p); });
@@ -754,13 +833,13 @@ function buildCombos() {
   };
 
   if (ev) {
-    const priced = comboPool(m.players, per, c.game, true);
+    const priced = comboPool(m.players, per, c.games, true);
     const found = comboSearch(rank(priced, p => p.model_only * p.dec), legs, singleWinner);
     searched += found.length;
     scored = found.filter(r => r.priced).sort((a, b) => b.ev - a.ev);
   }
   if (!ev || !pricedOnly) {
-    const all = comboPool(m.players, per, c.game, pricedOnly);
+    const all = comboPool(m.players, per, c.games, pricedOnly);
     const found = comboSearch(rank(all, p => p.ours), legs, singleWinner);
     searched += found.length;
     // Under EV this pass exists only to reach the slips the first pass could
@@ -782,7 +861,8 @@ function buildCombos() {
     return {
       players: r.ps.map(p => p.player).join(' + '),
       game: gs.length === 1 ? gs[0] : gs.length + ' games',
-      odds: r.dec ? american(decToAm(r.dec)) : null,
+      games: gs.length,
+      odds: r.dec ? americanLong(decToAm(r.dec)) : null,
       ours: r.ours, mo: r.mo, book: r.book,
       diff: r.book != null ? (r.ours - r.book) * 100 : null,
       read: readable ? READ_ORDER[Math.min.apply(null, reads.map(x => READ_ORDER.indexOf(x)))] : '',
@@ -816,29 +896,36 @@ function paneCombos() {
   const ev = c.metric === 'ev';
 
   out.appendChild(bar([
-    select('Legs', c.legs, [[2, '2'], [3, '3'], [4, '4']], v => c.legs = +v,
-      'How many players on the slip. Each one lengthens the price and shortens the chance, and both move faster than they look: three 40% legs is a 6% shot.'),
+    select('Legs', c.legs, LEG_CHOICES, v => c.legs = +v,
+      'How many players on the slip. Each one lengthens the price and shortens the chance, and both move faster than they look: three 40% legs is a 6% shot, six of them is 1 in 244, and twelve is 1 in 59,605. Past four legs the table is the best the search found rather than a proven best — the line under it says which.'),
     select('From each game’s top', c.per, [2, 3, 4, 5, 6, 7, 8], v => c.per = +v,
       'Which players are eligible: each game’s top N by #. Widening this reaches further down every game rather than deeper into one.'),
     select('Rank by', c.metric, [['likely', 'Most likely'], ['ev', 'Expected value']], v => c.metric = v,
       'Most likely ranks on the chance the slip lands, which every player has a number for. Expected value ranks on what $100 expects to return — it needs a price, so it can only order the slips that carry one, and the rest follow it by likelihood. Different questions and usually different tables: the likeliest slips are short-priced and the best value ones are not.'),
-    select('Show', c.show, [25, 50, 100, 250, 500], v => c.show = +v),
-    select('Game', c.game, [['', 'All games']].concat(games.map(g => [g, g])), v => c.game = v),
+    select('Show', c.show, __SHOW_STOPS__, v => c.show = +v),
     select('Players', c.priced, [['all', 'Priced and unpriced'], ['yes', 'Priced only']],
       v => c.priced = v,
       'The whole slate by default. A slip touching a player no book has quoted carries no odds, no bookmaker number and no expected value — there is nothing to compute them from — so those cells are blank. Priced only narrows it to the games a book has posted, which is also the population the graded replay covers.'),
+    multi('Games', c.games, games, v => c.games = v, 'All games',
+      'Which fixtures the legs may come from — as many as you like, or none for the whole slate.'),
   ]));
 
   const rec = comboRecord();
   if (rec) {
+    // Enough places that the three chances stay comparable. At twelve legs the
+    // replay says we predicted 1 in 55,000 and none of 1,500 slips landed,
+    // which one place prints as 0.0% against 0.0% — the reading a perfectly
+    // calibrated strip gets, from the setting that says least.
+    const hi = Math.max(rec.landed || 0, rec.we_said || 0, rec.book_said || 0) * 100;
+    const rp = hi > 0 ? Math.min(4, Math.max(1, 2 - Math.floor(Math.log10(hi)))) : 1;
     out.appendChild(card('This exact setting, replayed and graded',
       'Every slip these controls would have shown, replayed week by week over ' +
       esc(m.combo_record.span) + ' and graded on results. It sits above the table because it is the context for reading any row: a table of expected values built on a probability that runs hot is a table of fiction, and <b>Landed</b> against <b>We said</b> is the only thing that says which.',
       [tiles([
         { k: 'Slips graded', v: rec.slips.toLocaleString(), d: rec.weeks + ' weeks' },
-        { k: 'Landed', v: pct(rec.landed), d: 'every leg scored' },
-        { k: 'We said', v: pct(rec.we_said), d: pp((rec.landed - rec.we_said) * 100) + ' pts vs landed' },
-        { k: 'Book said', v: pct(rec.book_said), d: 'their de-vigged prices' },
+        { k: 'Landed', v: pct(rec.landed, rp), d: 'every leg scored' },
+        { k: 'We said', v: pct(rec.we_said, rp), d: pp((rec.landed - rec.we_said) * 100, rp) + ' pts vs landed' },
+        { k: 'Book said', v: pct(rec.book_said, rp), d: 'their de-vigged prices' },
         { k: 'Return per $100', v: money(rec.return_per_100),
           d: has(rec.return_ex_top10) ? money(rec.return_ex_top10) + ' without the 10 biggest wins' : '' },
         { k: 'As singles', v: money(rec.as_singles_per_100), d: 'same money, staked separately' },
@@ -866,15 +953,25 @@ function paneCombos() {
   const r = buildCombos();
   const blended = m.topk && m.topk.blended;
   const anyBacking = r.rows.some(x => x.backing);
+  // A twelve-leg slip lands about once in a hundred thousand, and one decimal
+  // place prints every row of that table as 0.0%. Enough places to keep two
+  // significant figures on the likeliest row — chosen once for the whole
+  // column rather than per cell, so the numbers still line up under each other.
+  const top = r.rows.reduce((mx, x) => Math.max(mx, x.ours || 0), 0) * 100;
+  const dp = top >= 5 ? 1
+    : top > 0 ? Math.min(9, Math.max(2, 2 - Math.floor(Math.log10(top)))) : 2;
   const cols = [
-    { k: 'players', label: 'Players', t: 1,
+    { k: 'players', label: 'Players', t: 1, cls: () => r.legs >= 5 ? 'wrapcell' : '',
       title: 'Every one of these has to score for the slip to pay. That is the whole difference between this table and the board.' },
-    { k: 'game', label: 'Game', t: 1, fmt: (v, x) => esc(v) + (x.same ? ' <span class="chip warn">same game</span>' : '') },
+    { k: 'game', label: 'Game', t: 1,
+      fmt: (v, x) => esc(v) + (x.same
+        ? ' <span class="chip warn">' + (x.games === 1 ? 'same game' : 'shares a game') + '</span>'
+        : '') },
     { k: 'odds', label: 'Odds', t: 1, fmt: v => v || '<span class="dim">—</span>' },
-    { k: 'ours', label: 'Our estimate', fmt: v => pct(v, v < 0.05 ? 2 : 1) },
-    blended ? { k: 'mo', label: 'Model only', fmt: v => pct(v, v < 0.05 ? 2 : 1) } : null,
-    { k: 'book', label: 'Bookmaker says', fmt: v => has(v) ? pct(v, v < 0.05 ? 2 : 1) : '<span class="dim">—</span>' },
-    { k: 'diff', label: 'Difference', fmt: v => has(v) ? pp(v) + ' pts' : '', cls: v => cls(v) },
+    { k: 'ours', label: 'Our estimate', fmt: v => pct(v, dp) },
+    blended ? { k: 'mo', label: 'Model only', fmt: v => pct(v, dp) } : null,
+    { k: 'book', label: 'Bookmaker says', fmt: v => has(v) ? pct(v, dp) : '<span class="dim">—</span>' },
+    { k: 'diff', label: 'Difference', fmt: v => has(v) ? pp(v, dp) + ' pts' : '', cls: v => cls(v) },
     { k: 'read', label: 'Our read', t: 1, fmt: v => v ? '<span class="chip">' + esc(v) + '</span>' : '',
       title: 'The weakest read its legs carry. Not the average and not the strongest: a slip needs all of them, so the leg we have least to say about is the one that decides what it is. Blank where no leg carries a read, which is any slip with an unpriced player on it.' },
     { k: 'ev', label: 'Expected on $100', fmt: v => has(v) ? money(v) : '<span class="dim">—</span>', cls: v => cls(v) },
@@ -882,13 +979,30 @@ function paneCombos() {
       title: 'Each leg’s own tier, in the order the slip names its players. Never one tier for the slip: the tiers were fitted on single bets.' } : null,
   ].filter(Boolean);
 
-  const legWord = { 2: 'two', 3: 'three', 4: 'four' }[r.legs];
-  const where = c.game || 'every game on the slate';
+  const legWord = LEG_WORDS[r.legs];
+  // Named while the list is short enough to read, counted after that: eight
+  // fixture labels inside a sentence is not a sentence.
+  const where = !c.games.length ? 'every game on the slate'
+    : c.games.length > 3 ? 'the ' + c.games.length + ' games selected'
+    : c.games.length === 1 ? c.games[0]
+    : c.games.slice(0, -1).join(', ') + ' and ' + c.games[c.games.length - 1];
+  // Why the table is empty, counted over what the search actually had rather
+  // than over what the filters selected. A slip can now be longer than the
+  // slate, and "not enough players" is the wrong thing to go looking for when
+  // the shortage is games.
+  const emptyPool = comboPool(m.players, +c.per, c.games, c.priced === 'yes');
+  const emptyGames = new Set(emptyPool.map(p => p.game)).size;
+  const short = m.key === 'first_td' && emptyGames < r.legs;
   out.appendChild(card(null, null, [
     r.rows.length ? table('combos', cols, r.rows, {}) : el('p', { class: 'note', html:
-      (m.key === 'first_td' && c.game)
-        ? '<b>One game has no combinations on this market.</b> Exactly one player scores a game’s first touchdown, so two legs from the same game cannot both land. Choose <b>All games</b> to combine across the slate.'
-        : 'Not enough eligible players here to build a combination.' }),
+      short
+        ? '<b>A ' + legWord + '-leg slip needs ' + r.legs + ' different games on this market.</b> ' +
+          'Exactly one player scores a game’s first touchdown, so no two legs can come from the same game, and there ' +
+          (emptyGames === 1 ? 'is 1 game' : 'are ' + emptyGames + ' games') + ' to choose from here. ' +
+          'Add games above, or shorten the slip.'
+        : '<b>Not enough eligible players here.</b> A ' + legWord + '-leg slip needs ' + r.legs +
+          ' of them and the top ' + c.per + ' of ' + esc(where) + ' leaves ' + emptyPool.length +
+          '. Widen <b>From each game’s top</b>, add games, or shorten the slip.' }),
     el('p', { class: 'rowcount', html:
       r.rows.length
         ? 'The ' + r.rows.length + ' best ' + legWord + '-leg combinations of the top ' + c.per +
@@ -921,7 +1035,8 @@ function paneCombos() {
   out.appendChild(el('div', { class: 'warn-box', html: notes.join(' ') }));
   return out;
 }
-"""
+""".replace("__LEG_CAP__", json.dumps({str(k): v for k, v in LEG_CAPS.items()})
+   ).replace("__SHOW_STOPS__", json.dumps(list(PAGE_SHOW_STOPS)))
 
 JS_TEAMS = r"""
 // ── Pane: by team ───────────────────────────────────────────────────────
@@ -1540,7 +1655,7 @@ function boot() {
   const mk = $('#markets');
   DATA.markets.forEach((m, i) => {
     const b = el('button', { text: m.label, type: 'button' });
-    b.onclick = () => { S.market = i; S.sort = {}; S.p.game = ''; S.c.game = ''; S.t.game = ''; render(); };
+    b.onclick = () => { S.market = i; S.sort = {}; S.p.game = ''; S.c.games = []; S.t.game = ''; render(); };
     mk.appendChild(b);
   });
   const tb = $('#tabs');

@@ -33,6 +33,7 @@ replayed against results. It is what the model expects, not what it returned.
 from __future__ import annotations
 
 from itertools import chain, combinations
+from math import comb
 
 import numpy as np
 import pandas as pd
@@ -55,6 +56,50 @@ METRICS = {
 
 #: The columns `build` needs from a board, and what it uses each one for.
 REQUIRED = ("player_name", "game_label", "odds", "probability", "market_prob")
+
+#: The longest slip anything here will build. Twelve, because that is where a
+#: reader stops asking "what does this pay" and starts asking "how absurd does
+#: this get" — and both are answerable from the same arithmetic.
+MAX_LEGS = 12
+
+#: The candidate pools two, three and four legs are searched over. Tuned, and
+#: pinned by test on both surfaces; the numbers below extend them rather than
+#: replace them.
+SHORT_SLIP_CAPS = {2: 400, 3: 140, 4: 64}
+
+
+def _extend_caps(caps: dict[int, int], max_legs: int) -> dict[int, int]:
+    """The pool each longer slip is searched over, on the shorter ones' budget.
+
+    Combinations grow as C(n, legs), so a cap that is generous at four legs is
+    ruinous at twelve: the 64 candidates a four-leg search enumerates would be
+    C(64, 12) — a hundred billion slips — at twelve. The rule is that no slip
+    length may cost more work than the longest one already did, measured in the
+    leg-slots the search actually materialises (`C(n, legs) * legs`), so the
+    budget is read off the tuned caps rather than typed in beside them.
+
+    Monotone by construction: a longer slip never searches a wider pool than a
+    shorter one, which is what makes "the strongest N legs" mean the same thing
+    as the control moves.
+    """
+    out = dict(caps)
+    budget = max(comb(n, k) * k for k, n in caps.items())
+    for k in range(max(caps) + 1, max_legs + 1):
+        # At least `k` candidates, or there is no slip of that length at all.
+        n, ceiling = k, out[k - 1]
+        while n < ceiling and comb(n + 1, k) * k <= budget:
+            n += 1
+        out[k] = n
+    return out
+
+
+#: Every slip length the controls offer, and the pool each one searches.
+LEG_CAPS = _extend_caps(SHORT_SLIP_CAPS, MAX_LEGS)
+
+
+def search_cap(legs: int) -> int:
+    """How many candidate legs a slip of this length is searched over."""
+    return LEG_CAPS[min(max(int(legs), min(LEG_CAPS)), max(LEG_CAPS))]
 
 
 def _factor(frame: pd.DataFrame, metric: str) -> pd.Series:
@@ -121,6 +166,14 @@ def build(frame: pd.DataFrame, *, legs: int = 2, per_game: int = 4,
     here is a product of positive per-leg factors, so a combination using a leg
     ranked below that cut is beaten by at least `top_k` combinations built from
     the legs above it. `n_candidates` on the result records what was searched.
+
+    Past four legs that guarantee is not buyable at any price: 25 rows of a
+    twelve-leg table would need 37 candidates, and C(37, 12) is 1.8 billion
+    slips. `search_cap` caps the pool at what the search can afford, so a long
+    slip is the best table found among the strongest legs rather than a proven
+    top `top_k`. `exact` on the result says which of the two a caller is
+    holding, and both surfaces print the difference rather than letting a
+    bounded search read as an exhaustive one.
     """
     if metric not in METRICS:
         raise ValueError(f"metric must be one of {sorted(METRICS)}, got {metric!r}")
@@ -130,6 +183,8 @@ def build(frame: pd.DataFrame, *, legs: int = 2, per_game: int = 4,
     picked = pool(frame, per_game)
     empty = pd.DataFrame(columns=["Players", "Game", "Odds", "Ours", "Book",
                                   "edge_pp", "EV", "SameGame", "Legs", "_legs"])
+    empty.attrs.update(n_candidates=0, n_pool=len(picked), metric=metric,
+                       exact=True)
     if len(picked) < legs:
         return empty
 
@@ -137,7 +192,8 @@ def build(frame: pd.DataFrame, *, legs: int = 2, per_game: int = 4,
     # long odds, they are impossible, and a product would price them as neither.
     single_winner = target_type == "first_td"
 
-    keep = max(int(max_candidates), int(top_k) + int(legs))
+    keep = min(max(int(max_candidates), int(top_k) + int(legs)),
+               search_cap(int(legs)))
     # Stable, and tie-broken by name: two legs can price to exactly the same
     # factor, and pandas' default sort would then order them by whatever the
     # array size happened to make quicksort do — so the same board rebuilt
@@ -233,4 +289,10 @@ def build(frame: pd.DataFrame, *, legs: int = 2, per_game: int = 4,
     out.attrs["n_candidates"] = len(cand)
     out.attrs["n_pool"] = len(picked)
     out.attrs["metric"] = metric
+    # Whether the cut is provably harmless: either nothing was cut, or enough
+    # legs survived it that no slip built from a discarded one could reach the
+    # table. Without this a caller cannot tell a proven top `top_k` from the
+    # best `top_k` found, and the two want different sentences under the table.
+    out.attrs["exact"] = bool(len(cand) == len(picked)
+                              or len(cand) >= int(top_k) + int(legs))
     return out

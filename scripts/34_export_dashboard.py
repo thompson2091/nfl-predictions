@@ -40,6 +40,7 @@ import polars as pl
 
 sys.path.insert(0, ".")
 
+from src.export.dashboard import PAGE_SHOW_STOPS
 from src.models.registry import ensure_registered
 from src.utils.config import config_overlay, get_config, production_model
 from src.utils.paths import get_path
@@ -547,8 +548,14 @@ def market(target_type: str, label: str, season: int | None,
         "topk": topk_ladder(df),
         "rule": rule,
         "longshot": load_longshot(get_path("output", target_type) / "longshot_skill.json"),
+        # Only the stops this page's own control can ask for. The file on
+        # disk keeps every one the app's 5-50 slider offers; carrying them all
+        # here is four fifths of a 1,100-row grid that nothing on the page can
+        # look up, embedded twice over.
         "combo_record": ({"span": combo_rec.get("span"),
-                          "rows": combo_rec.get("rows")} if combo_rec else None),
+                          "rows": [r for r in (combo_rec.get("rows") or [])
+                                   if r.get("show") in set(PAGE_SHOW_STOPS)]}
+                         if combo_rec else None),
         "min_edge": float(cfg.get("betting", {}).get("min_edge_pp", 2.0)),
         "players": pl_out["rows"],
         "problems": pl_out["problems"] + tm["problems"],

@@ -8,6 +8,8 @@ should be testable without standing up a browser.
 """
 from __future__ import annotations
 
+import math
+
 import pandas as pd
 
 #: How each tier reads on the board. Two levels and a blank — no letter grade,
@@ -41,6 +43,24 @@ def american(o) -> str:
         return f"{int(o):+d}"
     except (TypeError, ValueError):
         return "—"
+
+
+def american_long(o) -> str:
+    """A price with its thousands grouped: `+3,237,144`.
+
+    For prices that get long, which is what a slip of several legs pays. One
+    player's odds are three or four digits and read fine unbroken; twelve legs
+    multiplied is a seven-digit number you would otherwise have to count the
+    digits of — the same reason money is grouped everywhere here.
+    """
+    try:
+        # Rounded, not truncated: the page's own formatter rounds, and at seven
+        # figures the two disagreeing puts a different price on one slip on
+        # two surfaces.
+        n = math.floor(float(o) + 0.5)
+    except (TypeError, ValueError):
+        return "\u2014"
+    return f"{'+' if n > 0 else '-'}{abs(n):,}"
 
 
 def signed_money(x: float, places: int = 2, escape: bool = True) -> str:

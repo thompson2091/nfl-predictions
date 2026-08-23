@@ -18,7 +18,7 @@ import sys
 
 sys.path.insert(0, ".")
 
-from src.evaluation.combo_backtest import lookup, measure, save
+from src.evaluation.combo_backtest import LEG_COUNTS, lookup, measure, save
 from src.utils.config import get_config, production_model
 from src.utils.paths import get_path
 
@@ -37,14 +37,14 @@ def main(target_type: str, model: str) -> int:
           f"{stats['span']}, {len(stats['rows'])} measured settings")
     # The published default, spelled out, so a run says something a person can
     # check rather than only writing a file.
-    for legs in (2, 3, 4):
+    for legs in LEG_COUNTS:
         row = lookup(stats, legs=legs, per_game=4, metric="ev", show=25)
         if row is None:
             continue
-        print(f"  {legs} legs, top 4 a game, best 25 by EV: "
-              f"{row['slips']:,} slips, landed {row['landed']:.1%} "
-              f"against {row['we_said']:.1%} said "
-              f"(book {row['book_said']:.1%}), "
+        print(f"  {legs:2d} legs, top 4 a game, best 25 by EV: "
+              f"{row['slips']:,} slips, landed {row['landed']:.2%} "
+              f"against {row['we_said']:.2%} said "
+              f"(book {row['book_said']:.2%}), "
               f"${row['return_per_100']:+.2f} per $100")
     print(f"\nSaved: {out}")
     return 0

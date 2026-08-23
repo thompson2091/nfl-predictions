@@ -121,22 +121,38 @@ def test_combination_search_is_capped_per_leg_count():
     """The cap has to shrink as slips get longer, or the browser stalls.
 
     C(n, legs) is the whole problem: 128 eligible players is 10.7 million
-    four-leg slips. Each cap is chosen so the search stays under about a
-    million combinations.
+    four-leg slips, and the 64 candidates a four-leg search enumerates would be
+    a hundred billion twelve-leg ones. Every length is held to the work the
+    longest tuned search already did, counted in the leg-slots it materialises.
     """
+    from src.prediction import combos
+
     js = _js()
-    assert "LEG_CAP" in js
-    caps = {}
-    body = js.split("LEG_CAP = {", 1)[1].split("}", 1)[0]
-    for part in body.split(","):
-        k, v = part.split(":")
-        caps[int(k.strip())] = int(v.strip())
-    assert set(caps) == {2, 3, 4}
+    caps = {int(k): v for k, v in
+            json.loads(js.split("const LEG_CAP = ", 1)[1].split(";", 1)[0]).items()}
+    # One table, written out of the search's own module. Two hand-kept copies
+    # are two searches that disagree about what "the strongest 20" means, and
+    # the page and the app are supposed to be showing the same slips.
+    assert caps == dict(combos.LEG_CAPS)
+    assert set(caps) == set(range(2, combos.MAX_LEGS + 1)), (
+        "every slip length the controls offer needs a pool to search"
+    )
+
+    # The tuned short-slip pools are the budget: no longer slip may cost more
+    # work than the longest one already did.
+    budget = max(math.comb(n, k) * k
+                 for k, n in combos.SHORT_SLIP_CAPS.items())
     for legs, n in caps.items():
-        assert math.comb(n, legs) < 1_500_000, (
-            f"{legs} legs from {n} candidates is {math.comb(n, legs):,} "
-            f"combinations — too many to search in a page"
+        assert n >= legs, f"{legs} legs cannot be built from {n} candidates"
+        assert math.comb(n, legs) * legs <= budget, (
+            f"{legs} legs from {n} candidates materialises "
+            f"{math.comb(n, legs) * legs:,} leg-slots against a budget of "
+            f"{budget:,} — too much work to do in a page"
         )
+    assert all(caps[k] >= caps[k + 1] for k in range(2, combos.MAX_LEGS)), (
+        "a longer slip must never search a wider pool than a shorter one, or "
+        "'the strongest N legs' means something different at every setting"
+    )
     assert caps[2] > caps[3] > caps[4]
 
 
@@ -194,11 +210,142 @@ def test_a_slip_is_only_as_strong_as_the_leg_nobody_priced():
     assert "read: readable ?" in js
 
 
+def test_the_page_carries_only_the_graded_rows_it_can_ask_for():
+    """Eleven leg counts is 1,100 measured settings a market, embedded twice.
+
+    The file on disk keeps every `Show` stop, because the app's slider offers
+    all of them. The page's control offers five values and can never look up
+    the rest, so the export drops them — four fifths of the grid.
+
+    The guard that matters is the overlap: if the page's stops and the graded
+    ones stopped intersecting, the trim would carry nothing and every setting
+    would quietly read as ungraded rather than as missing.
+    """
+    from src.evaluation.combo_backtest import SHOW_STOPS
+    from src.export import dashboard
+
+    lit = dashboard.JS_COMBOS.split("select('Show', c.show, ", 1)[1]
+    assert json.loads(lit.split("]", 1)[0] + "]") == list(dashboard.PAGE_SHOW_STOPS), (
+        "the control and the trim have to name the same stops, or the page asks "
+        "for rows the export threw away"
+    )
+    assert set(dashboard.PAGE_SHOW_STOPS) & set(SHOW_STOPS), (
+        "no stop the page offers has been graded — every setting would read as "
+        "ungraded, which is indistinguishable from a stale file"
+    )
+    assert 'if r.get("show") in set(PAGE_SHOW_STOPS)' in SCRIPT.read_text()
+
+
+def test_every_slip_length_the_page_offers_has_been_graded():
+    """The controls and the replay grid are supposed to be the same range.
+
+    Raising the leg ceiling without widening `LEG_COUNTS` leaves the top of the
+    control's range permanently ungraded — the page would say so honestly, but
+    "not measured" and "not measurable" are different claims and only one of
+    them is true here.
+    """
+    from src.evaluation.combo_backtest import LEG_COUNTS
+    from src.prediction import combos
+
+    assert set(LEG_COUNTS) == set(range(2, combos.MAX_LEGS + 1))
+
+
 def test_the_graded_replay_is_only_quoted_over_the_rows_it_measured():
     """It settles against closing prices, so it describes priced slips only."""
     js = _js()
     rec = js.split("function comboRecord()", 1)[1].split("\n}", 1)[0]
     assert "if (c.priced !== 'yes') return null;" in rec
+
+
+def test_a_long_slips_price_is_grouped_the_same_way_on_both_surfaces():
+    """Twelve legs multiplied is a seven-figure price.
+
+    `+3237144` is a number you have to count the digits of, which is the reason
+    the money columns group — so the slip price groups too. It is formatted
+    twice, once per language, so the two are held to each other here: a page
+    and an app quoting different prices for one slip is worse than either
+    format.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available to run the page's own formatter")
+
+    from src.export import dashboard
+    from src.presentation.board import american_long
+
+    prices = [-150, 464, 3120, -1050.4, 3237143.7, 59604000]
+    driver = (dashboard.JS + "\nconsole.log(JSON.stringify(" +
+              json.dumps(prices) + ".map(americanLong)));")
+    out = subprocess.run([node, "-e", driver], capture_output=True, text=True,
+                         check=True)
+    assert json.loads(out.stdout) == [american_long(p) for p in prices]
+    assert american_long(3237143.7) == "+3,237,144"
+
+
+def test_the_game_filter_takes_more_than_one_game():
+    """A slip is the one thing on the page that deliberately spans fixtures.
+
+    "These three games and nothing else" is the question the combinations
+    section provokes, and the single-game dropdown it used to carry could only
+    ask it one game at a time. The filter is a set now: empty is the whole
+    slate, and the search has to honour every game in it — a pool that kept
+    only the first would silently answer a narrower question than the chips on
+    screen describe.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available to run the page's own search")
+
+    from src.export import dashboard
+
+    state = dashboard.JS.split("const S = {", 1)[1].split("\n};", 1)[0]
+    assert "games: []" in state, "the combinations filter must open on the whole slate"
+    assert "game: ''" not in state.split("c: {", 1)[1].split("}", 1)[0], (
+        "one game and a set of games are two controls; keeping both leaves the "
+        "table filtered by whichever one the reader did not touch"
+    )
+    # Switching market has to clear it with the rest: last week's fixture is
+    # not on this slate, and a stale chip filters the table down to nothing.
+    assert "S.c.games = []" in dashboard.JS_SHELL
+
+    players = [{"player": n, "game": g, "ours": p, "priced": True,
+                "book": 0.4, "dec": 2.0, "model_only": p, "read": "Leans"}
+               for n, g, p in [("A", "G1", 0.5), ("B", "G1", 0.4),
+                               ("C", "G2", 0.45), ("D", "G3", 0.35)]]
+    driver = (dashboard.JS + dashboard.JS_COMBOS +
+              "\nconst P = " + json.dumps(players) + ";" +
+              "\nconst names = gs => comboPool(P, 4, gs, false)"
+              ".map(p => p.player).sort();" +
+              "\nconsole.log(JSON.stringify({ none: names([]), "
+              "one: names(['G1']), two: names(['G1', 'G3']) }));")
+    out = subprocess.run([node, "-e", driver], capture_output=True, text=True,
+                         check=True)
+    got = json.loads(out.stdout)
+    assert got["none"] == ["A", "B", "C", "D"], "empty must mean every game"
+    assert got["one"] == ["A", "B"]
+    assert got["two"] == ["A", "B", "D"], (
+        "the pool must keep every selected game, not just the first"
+    )
+
+
+def test_an_empty_first_td_table_counts_games_not_chips():
+    """One player scores a game's first touchdown, so legs need games.
+
+    Two things can empty this table now and they send a reader in opposite
+    directions: too few eligible players, or — on first TD only — fewer games
+    than the slip has legs. A nine-leg slip over a six-game slate is not short
+    of players, and telling someone to widen the player pool would have them
+    turning the one control that cannot help.
+
+    Counted over the pool the search actually had rather than over the selected
+    chips: an unpriced or ruled-out game contributes no legs, and the old
+    `games.length === 1` test could only see the filter.
+    """
+    js = _js()
+    assert "const emptyGames = new Set(emptyPool.map(p => p.game)).size;" in js
+    assert "m.key === 'first_td' && emptyGames < r.legs" in js
+    assert "different games on this market" in js
+    assert "Not enough eligible players here" in js
 
 
 def test_the_named_scorers_come_from_the_market_being_built():

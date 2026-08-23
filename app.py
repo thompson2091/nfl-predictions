@@ -1998,7 +1998,7 @@ def combo_columns(decimals: int = 1, graded: dict | None = None) -> dict:
              "whole difference between this table and the board above it."),
     "Game": st.column_config.TextColumn(
         "Game", width="small",
-        help="A game named here means both legs come from it — a same-game "
+        help="A game named here means every leg comes from it — a same-game "
              "slip. The price beside it is this board's two prices multiplied, "
              "which is what a book pays for legs in *different* games; on one "
              "game they price their own correlation in and quote shorter. "
@@ -2056,6 +2056,25 @@ def combo_columns(decimals: int = 1, graded: dict | None = None) -> dict:
                 "bets at closing prices — `scripts/29_combos.py` grades "
                 "this one.")),
     }
+
+
+#: A slip length as a word, for a caption that reads like a sentence.
+LEG_WORDS = ("", "one", "two", "three", "four", "five", "six", "seven",
+             "eight", "nine", "ten", "eleven", "twelve")
+
+
+def combo_grid_range(record: dict | None, key: str) -> str:
+    """What the graded replay covers on one axis, as `2\u201312`.
+
+    Read off the file rather than repeated from the sweep's own constants: the
+    grid is a measurement that exists or does not, and a caption quoting the
+    range it was *meant* to have is how a stale file reads as a fresh one.
+    """
+    vals = sorted({int(r[key]) for r in (record or {}).get("rows", [])
+                   if r.get(key) is not None})
+    if not vals:
+        return "?"
+    return f"{vals[0]}" if len(vals) == 1 else f"{vals[0]}\u2013{vals[-1]}"
 
 
 @st.cache_data(show_spinner=False)
@@ -3211,10 +3230,13 @@ if tab_board.open:
             st.markdown("#### Combinations")
             _cbar = st.container(horizontal=True)
             _legs = _cbar.selectbox(
-                "Legs", [2, 3, 4], key="combo_legs",
+                "Legs", list(range(2, combos.MAX_LEGS + 1)), key="combo_legs",
                 help="How many players on the slip. Each one you add lengthens "
                      "the price and shortens the chance, and both move faster "
-                     "than they look: three 40% legs is a 6% shot.",
+                     "than they look: three 40% legs is a 6% shot, six of them "
+                     "is 1 in 244, and twelve is 1 in 59,605. Past four legs "
+                     "the table is the best the search found rather than a "
+                     "proven best — the caption under it says which.",
             )
             _pool_n = _cbar.slider(
                 "From each game's top", min_value=2, max_value=6, value=4,
@@ -3236,6 +3258,33 @@ if tab_board.open:
                 "Show", min_value=5, max_value=50, value=25, step=5,
                 key="combo_show", help="How many rows to list.",
             )
+            # Its own game filter rather than the board's. A slip is the one
+            # thing on this page that deliberately spans fixtures, so "these
+            # three games and nothing else" is the question it provokes, and a
+            # single-game dropdown can only ask it one game at a time. Empty
+            # means the whole slate.
+            #
+            # Seeded once from the board's Game selector, so someone who
+            # filtered the board first still lands where they were, and
+            # re-checked against this week's slate every run: a game held over
+            # from another week is not an option any more, and Streamlit raises
+            # on a stored value outside the options rather than dropping it.
+            _game_opts = sorted(board["game_label"].dropna().unique().tolist())
+            if "combo_games" not in st.session_state:
+                st.session_state["combo_games"] = (
+                    [] if pick == "All games" else [pick])
+            else:
+                st.session_state["combo_games"] = [
+                    g for g in st.session_state["combo_games"] if g in _game_opts]
+            _games = st.multiselect(
+                "Games", _game_opts, key="combo_games",
+                placeholder="All games",
+                help="Which fixtures the legs may come from — pick as many as "
+                     "you like, or none for the whole slate. This is the "
+                     "combinations' own filter: the **Game** selector above "
+                     "narrows the board you read, and picking two games at "
+                     "once is a question it cannot ask.",
+            )
 
             # What this configuration has actually done, from the graded
             # replay. It sits above the table rather than below it because it
@@ -3250,6 +3299,18 @@ if tab_board.open:
                               metric=("ev" if _rank_by == "Expected value"
                                       else "likely"), show=int(_show_n))
             if _rec:
+                # Enough decimal places that the three chances on this strip
+                # stay comparable. At twelve legs the replay says we predicted
+                # 1 in 55,000 and none of 1,500 slips landed, which one place
+                # prints as "0.0%" against "0.0%" — the same reading a strip
+                # gets when the model is perfectly calibrated, from the one
+                # setting where it says least.
+                _rates = [_rec[k] for k in ("landed", "we_said", "book_said")
+                          if _rec.get(k)]
+                _rp = 1
+                if _rates:
+                    _hi = max(_rates) * 100
+                    _rp = min(4, max(1, 2 - int(np.floor(np.log10(_hi)))))
                 _strip = st.container(horizontal=True)
                 _strip.metric(
                     "Slips graded", f"{_rec['slips']:,}",
@@ -3261,13 +3322,13 @@ if tab_board.open:
                          f"never trained on it, and each slip priced at the "
                          f"same closing prices the single-bet figures use.")
                 _strip.metric(
-                    "Landed", f"{_rec['landed']:.1%}",
+                    "Landed", f"{_rec['landed']:.{_rp}%}",
                     help="How often **every** leg scored. One leg short is the "
                          "same as all of them short, which is the whole "
                          "difference between this and the board's accuracy.")
                 _strip.metric(
-                    "We said", f"{_rec['we_said']:.1%}",
-                    delta=f"{_rec['landed'] - _rec['we_said']:+.1%} vs landed",
+                    "We said", f"{_rec['we_said']:.{_rp}%}",
+                    delta=f"{_rec['landed'] - _rec['we_said']:+.{_rp}%} vs landed",
                     delta_color="off",
                     help="What we thought that chance was, averaged over the "
                          "same slips. This is the number that matters most on "
@@ -3275,7 +3336,7 @@ if tab_board.open:
                          "calibration error, so a gap here is the reason to "
                          "distrust every expected value in the table below.")
                 _strip.metric(
-                    "Book said", f"{_rec['book_said']:.1%}",
+                    "Book said", f"{_rec['book_said']:.{_rp}%}",
                     help="The same product on the bookmaker's de-vigged "
                          "prices. It sits well below what these slips actually "
                          "landed because they are selected on disagreement — "
@@ -3303,18 +3364,30 @@ if tab_board.open:
                          "out of. It compounds a *wrong* edge exactly as "
                          "eagerly, which is the risk in the whole table.")
             elif _record:
+                # Not a stale file: the replay is a fixed grid and the controls
+                # reach outside it on purpose. Long slips are the reason — a
+                # twelve-leg slip lands about once in a hundred thousand, so
+                # replaying three seasons of them grades thousands and settles
+                # essentially none, and a measured number for that does not
+                # exist rather than being missing. Say which grid, so the way
+                # back to a measured setting is on screen.
                 st.caption(
-                    f":material/warning: This setting has not been graded — "
-                    f"the replay in `output/{target_type}/combo_backtest.json` "
-                    f"covers the settings these controls offer, so this means "
-                    f"it predates a control that has changed. Re-run "
-                    f"`python scripts/29_combos.py --target {target_type}`.")
+                    f":material/warning: **This setting has not been graded.** "
+                    f"The replay covers legs "
+                    f"{combo_grid_range(_record, 'legs')}, the top "
+                    f"{combo_grid_range(_record, 'per_game')} from each game "
+                    f"and {combo_grid_range(_record, 'show')} rows. Move back "
+                    f"inside that grid to see a measured number, or widen "
+                    f"`LEG_COUNTS` in `src/evaluation/combo_backtest.py` and "
+                    f"re-run `python scripts/29_combos.py --target "
+                    f"{target_type}` — on a slip this long it will mostly "
+                    f"measure how rarely one lands.")
 
-            # Follows the board's own Game selector, so filtering to one game
-            # gives that game's slips. Search and depth are left out on purpose:
-            # they narrow which rows you are reading, not which bets exist.
-            _combo_src = (board if pick == "All games"
-                          else board[board["game_label"] == pick])
+            # Only the Games control above filters what is built. Search and
+            # depth are left out on purpose: they narrow which rows you are
+            # reading, not which bets exist.
+            _combo_src = (board if not _games
+                          else board[board["game_label"].isin(_games)])
             _combo_metric = "ev" if _rank_by == "Expected value" else "likely"
             _combos = combos.build(
                 _combo_src, legs=int(_legs), per_game=int(_pool_n),
@@ -3323,19 +3396,37 @@ if tab_board.open:
             )
 
             if _combos.empty:
-                if target_type == "first_td" and pick != "All games":
+                # What the search actually had, not what the filter selected:
+                # the pool drops unpriced and ruled-out players, and a message
+                # counting rows the search never saw sends a reader looking for
+                # the wrong thing.
+                _elig = combos.pool(_combo_src, int(_pool_n))
+                _n_games = int(_elig["game_label"].nunique()) if len(_elig) else 0
+                if target_type == "first_td" and _n_games < int(_legs):
                     st.info(
-                        "**One game has no combinations on this market.** "
-                        "Exactly one player scores a game's first touchdown, so "
-                        "two legs from the same game cannot both land. Choose "
-                        "**All games** to combine across the slate.",
+                        f"**A {LEG_WORDS[int(_legs)]}-leg slip needs "
+                        f"{int(_legs)} different games on this market.** "
+                        f"Exactly one player scores a game's first touchdown, "
+                        f"so no two legs can come from the same game, and "
+                        f"there {'is' if _n_games == 1 else 'are'} "
+                        f"{_n_games} to choose from here. Add games above, or "
+                        f"shorten the slip.",
                         icon=":material/info:")
                 else:
-                    st.info("Not enough priced players here to build a "
-                            "combination.", icon=":material/info:")
+                    st.info(
+                        f"**Not enough eligible players here.** A "
+                        f"{LEG_WORDS[int(_legs)]}-leg slip needs {int(_legs)} "
+                        f"of them and the top {int(_pool_n)} of "
+                        f"{'this game' if len(_games) == 1 else 'these games'} "
+                        f"leaves {len(_elig)}. Widen **From each game's top**, "
+                        f"add games, or shorten the slip.",
+                        icon=":material/info:")
             else:
                 _cshow = _combos.copy()
-                _cshow["Odds"] = _cshow["Odds"].map(bp.american)
+                # Grouped, unlike the board's single-player prices: a slip
+                # of several legs pays in seven figures and +3237144 is a
+                # number you have to count the digits of.
+                _cshow["Odds"] = _cshow["Odds"].map(bp.american_long)
 
                 # The board's two verdicts, carried onto a slip. Both are
                 # derived per leg and then reduced, rather than recomputed on
@@ -3363,29 +3454,56 @@ if tab_board.open:
                         _combo_cols = _combo_cols + ["InRange"]
                 # A first-TD double lands under 1% of the time and a two-leg
                 # anytime slip around a fifth of the time. One decimal place
-                # prints the first as "0.5%" for everything.
-                _dp = 2 if float(_cshow["Ours"].max()) < 5 else 1
+                # prints the first as "0.5%" for everything — and a twelve-leg
+                # slip, which lands about once in a hundred thousand, as
+                # "0.0%" for every row in the table. Enough places to keep two
+                # significant figures on the likeliest row, so the column still
+                # separates the rows a reader is being asked to choose between.
+                _top = float(_cshow["Ours"].max())
+                _dp = (1 if _top >= 5 else
+                       min(9, max(2, 2 - int(np.floor(np.log10(_top)))))
+                       if _top > 0 else 2)
                 st.dataframe(
                     _cshow[_combo_cols],
                     hide_index=True, column_config=combo_columns(_dp, _rec),
                     use_container_width=True)
 
-                _leg_word = {2: "two", 3: "three", 4: "four"}[int(_legs)]
+                _leg_word = LEG_WORDS[int(_legs)]
                 _ranked = ("expected value" if _combo_metric == "ev"
                            else "how likely the slip is to land")
-                _where = ("every game on the slate" if pick == "All games"
-                          else pick)
-                # Say when the search was bounded, and why that is not a
-                # shortcut — a silent cap reads as "these are all of them".
+                # Named while the list is short enough to read, counted after
+                # that: eight game labels inside a sentence is not a sentence.
+                if not _games:
+                    _where = "every game on the slate"
+                elif len(_games) <= 3:
+                    _where = (" and ".join(_games) if len(_games) < 3
+                              else f"{_games[0]}, {_games[1]} and {_games[2]}")
+                else:
+                    _where = f"the {len(_games)} games selected"
+                # Say when the search was bounded, and which of the two kinds
+                # of bound it was — a silent cap reads as "these are all of
+                # them", and a cap that cannot carry the proof must not borrow
+                # the sentence belonging to one that can.
                 _searched = ""
                 if _combos.attrs["n_candidates"] < _combos.attrs["n_pool"]:
                     _searched = (
                         f" Built from the {_combos.attrs['n_candidates']} "
                         f"strongest of the {_combos.attrs['n_pool']} eligible "
-                        f"players, which is enough to find them: every number "
-                        f"here is a product of the legs', so a slip using a "
-                        f"weaker leg cannot outrank {len(_cshow)} built without "
-                        f"it.")
+                        f"players")
+                    _searched += (
+                        (f", which is enough to find them: every number here "
+                         f"is a product of the legs', so a slip using a weaker "
+                         f"leg cannot outrank {len(_cshow)} built without it.")
+                        if _combos.attrs["exact"] else
+                        (f". **That is a bounded search, not an exhaustive "
+                         f"one**: proving these are the exact best "
+                         f"{int(_show_n)} would take the strongest "
+                         f"{int(_show_n) + int(_legs)}, and at {int(_legs)} "
+                         f"legs that many candidates is more combinations than "
+                         f"anything here can enumerate. Read the table as the "
+                         f"best it found, and shorten the slip or ask for "
+                         f"fewer rows for an answer that is provably the top "
+                         f"of the list."))
                 st.caption(
                     f":material/functions: The {len(_cshow)} best {_leg_word}-leg "
                     f"combinations of the top {int(_pool_n)} in {_where}, ranked "
@@ -3437,10 +3555,12 @@ if tab_board.open:
                 elif bool(_cshow["SameGame"].any()):
                     _n_same = int(_cshow["SameGame"].sum())
                     _exclusion = (
-                        f" {_n_same} of these rows are same-game slips, named by "
-                        f"their game above. Their price is arithmetic, not a "
-                        f"quote — a book prices its own correlation into a "
-                        f"same-game parlay and will come back shorter.")
+                        f" {_n_same} of these rows put more than one leg in the "
+                        f"same game — the **Game** column says how many games a "
+                        f"slip spans, and a long one nearly always doubles up "
+                        f"somewhere. Their price is arithmetic, not a quote: a "
+                        f"book prices its own correlation into a same-game "
+                        f"parlay and will come back shorter.")
                 else:
                     _exclusion = ""
 

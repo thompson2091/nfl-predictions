@@ -63,7 +63,14 @@ from src.utils.paths import get_path
 
 #: The grid the app can ask about: the same controls the section exposes, so
 #: every setting a reader can select has been measured rather than interpolated.
-LEG_COUNTS = (2, 3, 4)
+#: Read off `combos.MAX_LEGS` rather than typed, so raising the control's
+#: ceiling cannot quietly leave the top of its range ungraded.
+#:
+#: The long end is worth measuring precisely because of what it will say. A
+#: twelve-leg slip lands about once in a hundred thousand, so thousands of them
+#: replayed over three seasons settle almost none — and "these have never once
+#: landed" is a measurement, not a gap in one.
+LEG_COUNTS = tuple(range(2, combos.MAX_LEGS + 1))
 METRICS = ("ev", "likely")
 POOL_SIZES = (2, 3, 4, 5, 6)
 #: `Show` on the section is a 5-50 slider in fives, and the strip has to

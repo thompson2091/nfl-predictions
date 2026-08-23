@@ -9,8 +9,11 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from math import comb
+
 from src.prediction.bets import american_to_decimal, decimal_to_american
-from src.prediction.combos import build, pool
+from src.prediction.combos import (LEG_CAPS, MAX_LEGS, SHORT_SLIP_CAPS, build,
+                                   pool, search_cap)
 
 
 def board(rows: list[dict]) -> pd.DataFrame:
@@ -173,6 +176,75 @@ def test_truncating_the_candidate_pool_does_not_change_the_answer(metric, legs):
                  max_candidates=32)
     assert cut["Players"].tolist() == full["Players"].tolist()
     assert cut.attrs["n_candidates"] < full.attrs["n_candidates"]
+
+
+# ── Long slips ─────────────────────────────────────────────────────────────
+
+
+def test_every_slip_length_the_controls_offer_is_searchable():
+    """Twelve legs is C(n, 12), which is a different order of problem.
+
+    The 64 candidates a four-leg search enumerates would be a hundred billion
+    twelve-leg slips. Each length gets the widest pool it can afford on the
+    budget the tuned short-slip caps already spend, and never a wider one than
+    a shorter slip searches — otherwise "the strongest N legs" means something
+    different at every setting of the control.
+    """
+    budget = max(comb(n, k) * k for k, n in SHORT_SLIP_CAPS.items())
+    assert set(LEG_CAPS) == set(range(2, MAX_LEGS + 1))
+    for legs, n in LEG_CAPS.items():
+        assert n >= legs
+        assert comb(n, legs) * legs <= budget
+    assert all(LEG_CAPS[k] >= LEG_CAPS[k + 1] for k in range(2, MAX_LEGS))
+    # The tuned pools are kept exactly, not re-derived into something near them.
+    assert {k: LEG_CAPS[k] for k in SHORT_SLIP_CAPS} == SHORT_SLIP_CAPS
+    assert search_cap(MAX_LEGS + 5) == LEG_CAPS[MAX_LEGS]
+
+
+def test_a_long_slip_says_its_search_was_bounded():
+    """A cap that cannot carry the proof must not borrow its sentence.
+
+    Below five legs the pool can hold `top_k + legs` candidates, which is what
+    makes the cut provably harmless. At twelve it cannot — 25 rows would need
+    37 candidates and C(37, 12) is 1.8 billion slips — so the table is the best
+    the search found rather than the proven best, and `exact` is the flag both
+    surfaces read to say which one a reader is looking at.
+    """
+    frame = slate(n_games=16, per_game=4)
+    short = build(frame, legs=3, per_game=4, top_k=25, metric="likely")
+    assert short.attrs["exact"] is True
+
+    long = build(frame, legs=12, per_game=4, top_k=25, metric="likely")
+    assert len(long) == 25
+    assert long.attrs["n_candidates"] == search_cap(12)
+    assert long.attrs["exact"] is False
+
+    # Ask for few enough rows and the same capped pool does carry the proof:
+    # `n_candidates >= top_k + legs` is the whole condition, at any length.
+    few = build(frame, legs=12, per_game=4, top_k=5, metric="likely")
+    assert few.attrs["exact"] is True
+
+
+def test_the_likeliest_long_slip_is_the_strongest_legs():
+    """A product of positive factors: no other twelve can beat the top twelve.
+
+    Cheap to state and the one thing a bounded search must still get right — if
+    the cut ever dropped a leg belonging in the best slip, this is what would
+    catch it.
+    """
+    frame = slate(n_games=16, per_game=4)
+    out = build(frame, legs=12, per_game=4, top_k=3, metric="likely")
+    best = (frame.sort_values("probability", ascending=False)
+            .head(12)["player_name"].tolist())
+    assert sorted(out.iloc[0]["Players"].split(" + ")) == sorted(best)
+    assert out["Ours"].is_monotonic_decreasing
+
+
+def test_first_td_needs_a_game_per_leg():
+    """One player scores a game's first touchdown, so twelve legs is 12 games."""
+    frame = slate(n_games=6, per_game=4)
+    assert build(frame, legs=6, per_game=4, target_type="first_td").empty is False
+    assert build(frame, legs=7, per_game=4, target_type="first_td").empty
 
 
 def test_a_pool_smaller_than_the_leg_count_returns_nothing():
