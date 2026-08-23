@@ -203,3 +203,87 @@ def test_a_bet_needs_the_fields_that_make_it_measurable(tmp_path):
     with pytest.raises(ValueError):
         betlog.record({"season": 2026, "week": 1, "market": "anytime_td",
                        "player": "A", "stake": 10.0}, path=tmp_path / "b.csv")
+
+
+# ── The replay ─────────────────────────────────────────────────────────────
+
+
+def _clv_rows(*specs) -> pl.DataFrame:
+    """Rows shaped like `clv.hit_rows`, for fitting a floor from."""
+    rows = []
+    for season, moved, n in specs:
+        rows += [{"season": season, "prob_calibrated": 0.30, "open_fair": 0.20,
+                  "we_are_higher": True, "hit": moved,
+                  "move": 0.02 if moved else -0.02} for _ in range(n)]
+    return pl.DataFrame(rows)
+
+
+def test_the_floor_is_fitted_on_earlier_seasons_only(monkeypatch):
+    """A threshold graded on the data that chose it is not evidence.
+
+    The first season on record has nothing before it and must be absent from
+    the mapping entirely — screening it with its own answer is exactly the
+    hindsight this replay exists to avoid.
+    """
+    from src.evaluation import shortlist_backtest as sb
+
+    rows = _clv_rows((2023, True, 600), (2024, False, 600))
+    monkeypatch.setattr(sb, "published_predictions", lambda tt: rows)
+    monkeypatch.setattr(sb, "hit_rows", lambda preds, tt: rows)
+
+    floors = sb.floors_by_season("anytime_td")
+    assert 2023 not in floors, "the first season cannot screen itself"
+    assert floors[2024] is not None, "2024 is screened by 2023, which was positive"
+
+
+def test_a_season_whose_history_says_no_is_a_stand_down_not_a_gap(monkeypatch):
+    """First TD gives this: no band on the bettable side ever qualifies.
+
+    Keyed with a `None` floor rather than dropped, so the replay can say the
+    rule bet nothing that year. Dropping the season instead would hide a rule
+    declining to play behind a rule with no data.
+    """
+    from src.evaluation import shortlist_backtest as sb
+
+    rows = _clv_rows((2023, False, 600), (2024, False, 600))
+    monkeypatch.setattr(sb, "published_predictions", lambda tt: rows)
+    monkeypatch.setattr(sb, "hit_rows", lambda preds, tt: rows)
+    floors = sb.floors_by_season("first_td")
+    assert 2024 in floors and floors[2024] is None
+
+
+def test_each_arm_is_the_one_above_it_plus_a_filter():
+    """Otherwise the difference between two rows is not what a filter bought."""
+    import numpy as np
+    import pandas as pd
+
+    from src.evaluation.shortlist_backtest import _bets
+
+    board = pd.DataFrame({"prob_bet": [0.40, 0.30, 0.10],
+                          "market_prob": [0.20, 0.29, 0.30]})
+    masks = _bets(board, {"lo": 5.0}, {"lo": 15.0})
+    assert list(masks["all priced"]) == [True, True, True]
+    assert list(masks["we rate higher"]) == [True, True, False]
+    assert list(masks["shortlist"]) == [True, False, False]
+    assert list(masks["shortlist (hindsight)"]) == [True, False, False]
+    for arm in ("we rate higher", "shortlist"):
+        assert np.all(masks[arm] <= masks["all priced"])
+
+
+def test_a_price_improvement_is_a_proportion_and_not_a_flat_point():
+    """Flat points break at long odds, and they broke loudly.
+
+    Taking 1.5 points of implied probability off a 2% first-TD longshot leaves
+    0.5% — a price four times longer, which is an arithmetic accident rather
+    than a shopped quote, and it printed a +554% return before this was fixed.
+    """
+    import numpy as np
+
+    from src.evaluation.shortlist_backtest import SHOPPING_REL, shopped_returns
+
+    assert all(0 < r < 1 for r in SHOPPING_REL), "relative, not points"
+    dec = np.full(50, 50.0)              # a 2% shot at +4900...
+    won = np.array([1.0] + [0.0] * 49)   # ...that came in once in fifty
+    for r in shopped_returns(dec, won):
+        assert -1.0 < r["roi"] / 100 < 0.3, r
+        assert r["mean_pp"] < 1.0, "2% of a 2% price is a fifth of a point"

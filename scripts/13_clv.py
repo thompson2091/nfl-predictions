@@ -19,7 +19,8 @@ sys.path.insert(0, ".")
 
 import polars as pl
 
-from src.evaluation.clv import by_edge, hit_rows, line_movement, measure
+from src.evaluation.clv import (by_edge, hit_rows, line_movement,
+                                measure, published_predictions)
 from src.utils.config import get_config
 from src.utils.paths import get_path
 
@@ -52,64 +53,6 @@ def _write(stats: dict, moves: pl.DataFrame, target_type: str):
     return path
 
 
-def _predictions(target_type: str) -> pl.DataFrame | None:
-    """Every published prediction CSV, keyed for joining to the archive."""
-    import glob
-    import re
-
-    rows = []
-    for path in sorted(glob.glob(str(get_path("output", target_type) /
-                                     "predictions_*_week*.csv"))):
-        m = re.search(r"predictions_(\d+)_week(\d+)\.csv", path)
-        if not m:
-            continue
-        d = pl.read_csv(path)
-        if "player_name" not in d.columns:
-            continue
-        # Prefer the pre-blend column. The published `probability` for anytime
-        # TD is blended with the closing price and cannot be scored against it.
-        src_col = next((c for c in ("prob_model", "prob_calibrated", "probability")
-                        if c in d.columns), None)
-        if src_col is None:
-            continue
-        d = d.with_columns(pl.col(src_col).alias("prob_calibrated"))
-        rows.append(d.with_columns([
-            pl.lit(int(m.group(1))).alias("season"),
-            pl.lit(int(m.group(2))).alias("week"),
-            # Loses to the backtest frame where both cover a player-game — see
-            # the dedup note in clv.hit_rows.
-            pl.lit(1).alias("_src_rank"),
-        ]))
-    from src.features.odds_features import _normalize_name  # noqa
-
-    # Always add the backtest frames alongside any weekly prediction files.
-    # The weekly files only cover weeks actually predicted — right now that is
-    # the upcoming season, which has no settled line movement at all — while
-    # the backtest holds the same published probability for every historical
-    # week. Using both is what makes closing-line value answerable now instead
-    # of one week at a time from Week 1.
-    if True:
-        for path in sorted(glob.glob(str(get_path("output", target_type) /
-                                         "backtest_*.csv"))):
-            season = int(path.rsplit("_", 1)[-1].split(".")[0])
-            d = pl.read_csv(path)
-            if "prob_calibrated" not in d.columns:
-                continue
-            rows.append(
-                d.select(["game_id", "player_name", "prob_calibrated"])
-                 .with_columns([pl.lit(season).alias("season"),
-                                pl.lit(0).alias("_src_rank")])
-            )
-        if not rows:
-            return None
-
-    out = pl.concat(rows, how="diagonal_relaxed")
-    return out.with_columns(
-        pl.col("player_name").map_elements(_normalize_name, return_dtype=pl.Utf8)
-        .alias("player_name_norm")
-    )
-
-
 def main(target_type: str) -> int:
     moves = line_movement(target_type)
     if moves is None or moves.height == 0:
@@ -122,7 +65,7 @@ def main(target_type: str) -> int:
     print(f"Line movement pairs: {moves.height:,} across "
           f"{moves['game_id'].n_unique()} games")
 
-    preds = _predictions(target_type)
+    preds = published_predictions(target_type)
     if preds is None:
         print("No published predictions to compare against yet "
               "(scripts/06_predict.py).")

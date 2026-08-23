@@ -1117,9 +1117,10 @@ if target_type == "receptions":
 # search also re-ran Weekly results, Model performance, Betting reality and
 # Player types — five tabs of work for one keystroke, four of them not on
 # screen. Each body is now guarded by `if tab.open:`.
-tab_board, tab_results, tab2, tab_bet, tab_clusters = st.tabs(
-    ["Full board", "Weekly results", "Model performance", "Betting reality",
-     "Player types"],
+(tab_short, tab_board, tab_results, tab2, tab_bet,
+ tab_clusters) = st.tabs(
+    ["Shortlist", "Full board", "Weekly results", "Model performance",
+     "Betting reality", "Player types"],
     on_change="rerun",
 )
 
@@ -2093,6 +2094,88 @@ def combo_grid_range(record: dict | None, key: str) -> str:
 
 
 @st.cache_data(show_spinner=False)
+def shortlist_record(tt: str, model: str) -> dict | None:
+    """How the shortlist rule has actually done, or None if never graded.
+
+    Written by scripts/41_shortlist_backtest.py. Absent is a meaningful state
+    rather than an error: the tab says so and shows the week's list without a
+    verdict, which is worse but honest.
+    """
+    import json
+    p = get_path("output", tt) / "shortlist_backtest.json"
+    if not p.exists():
+        return None
+    d = json.loads(p.read_text())
+    return d if d.get("model") in (None, model) else None
+
+
+@st.cache_data(show_spinner=False)
+def shortlist_now(season: int, week: int, tt: str, model: str,
+                  version: str | None) -> dict | None:
+    """This week's shortlist, from the same board the Full board tab draws."""
+    import json
+
+    from src.evaluation.line_shopping import best_vs_consensus
+    from src.evaluation.shortlist import shortlist
+    from src.prediction.bets import board_for_week
+
+    clv_path = get_path("output", tt) / "clv.json"
+    if not clv_path.exists():
+        return None
+    clv = json.loads(clv_path.read_text())
+    if not clv.get("by_edge"):
+        return None
+    econ_path = get_path("output", tt) / "rank_economics.json"
+    econ = json.loads(econ_path.read_text()) if econ_path.exists() else None
+
+    board, _ = board_for_week(season, week, tt, model, persist=False)
+    if board is None or board.height == 0:
+        return None
+    try:
+        shopped = best_vs_consensus(season, week, tt)
+    except Exception:                                        # noqa: BLE001
+        shopped = None
+    return shortlist(board, target_type=tt, clv=clv, econ=econ, shopped=shopped)
+
+
+def shortlist_columns() -> dict:
+    """The shortlist table, in the same terms as the board it comes from."""
+    return {
+        "player": st.column_config.TextColumn("Player"),
+        "game": st.column_config.TextColumn("Game", width="small"),
+        "Ours": st.column_config.NumberColumn(
+            "Our estimate", format="%.1f%%",
+            help="Our pre-blend number — the one every money figure in this "
+                 "app is measured on."),
+        "Book": st.column_config.NumberColumn(
+            "Bookmaker says", format="%.1f%%",
+            help="Their price with the margin removed, so both columns measure "
+                 "the same thing."),
+        "edge_pp": st.column_config.NumberColumn(
+            "Difference", format="%+.1f pts",
+            help="How far above their price we sit. Everything on this list "
+                 "clears the floor where closing-line value has not moved "
+                 "against us."),
+        "Price": st.column_config.TextColumn("Price", width="small"),
+        "Best": st.column_config.TextColumn(
+            "Best posted", width="small",
+            help="The best price any archived book posted this week."),
+        "best_book": st.column_config.TextColumn("At", width="small"),
+        "shopped_pp": st.column_config.NumberColumn(
+            "Shop", format="%+.2f pts",
+            help="What the best price is worth against the consensus, in "
+                 "points of implied probability. The only edge here that does "
+                 "not need the model to be right."),
+        "band": st.column_config.TextColumn("Price band", width="small"),
+        "band_roi": st.column_config.NumberColumn(
+            "Band returned", format="%+.0f%%",
+            help="What every bet at this price returned across the whole "
+                 "population, vetoed players included. Context for the row, "
+                 "never the reason it is on the list — see the caption."),
+    }
+
+
+@st.cache_data(show_spinner=False)
 def combo_record(tt: str, model: str) -> dict | None:
     """How the combinations table has actually done, or None if never graded.
 
@@ -2931,6 +3014,106 @@ def week_board(season, week, tt: str, model: str,
     lower = board[board["edge_pp"] <= -floor].sort_values("edge_pp")
     return board, higher, lower, problems
 
+
+# ── Shortlist ───────────────────────────────────────────────────────────────
+# The board says who scores and the bet card says where we disagree with a
+# price. This is the only tab that asks whether either is worth money, and it
+# leads with the answer rather than with the list — a card of two plays every
+# week trains a reader to take two plays every week.
+if tab_short.open:
+    with tab_short:
+        st.subheader("What survives every measurement")
+        _sl_rec = shortlist_record(target_type, selected_model)
+        if _sl_rec and _sl_rec.get("arms"):
+            _arms = {a["arm"]: a for a in _sl_rec["arms"]}
+            _strip2 = st.container(horizontal=True)
+            for _name, _label, _help in (
+                ("all priced", "Every priced bet",
+                 "Flat stakes on every player a book priced, at the archived "
+                 "closing price. The market's own answer, and the thing any "
+                 "selection has to beat."),
+                ("we rate higher", "Only where we're higher",
+                 "The same weeks, staking only the players we rate above the "
+                 "de-vigged price. This is the veto doing its work: it is the "
+                 "one filter here that measurably improves the return."),
+                ("shortlist", "This tab's rule",
+                 "The same, plus the closing-line-value floor fitted on "
+                 "*earlier seasons only*. Where it matches the row above, the "
+                 "honestly-fitted floor did not exclude anything — which is a "
+                 "result about the rule, not a bug."),
+                ("shortlist (hindsight)", "With hindsight",
+                 "The same rule with its floor fitted on every season, "
+                 "including the ones being graded. Nobody could have followed "
+                 "it. It is the ceiling: what the screen would look like if "
+                 "you had known the answer first."),
+            ):
+                _a = _arms.get(_name)
+                _p = (_a or {}).get("pooled")
+                if _p is None:
+                    _strip2.metric(_label, "stood down",
+                                   delta="bet nothing", delta_color="off",
+                                   help=_help + "\n\nNo week cleared it.")
+                    continue
+                _strip2.metric(
+                    _label, f"{_p['roi']:+.1f}%",
+                    delta=f"{_p['lo']:+.0f} to {_p['hi']:+.0f}",
+                    delta_color="off",
+                    help=f"{_help}\n\n{_p['n']:,} bets, hit "
+                         f"{_p['hit_pct']:.1f}% where the price needed "
+                         f"{_p['breakeven_pct']:.1f}% — short by "
+                         f"{_p['breakeven_gap_pp']:.1f} points of implied "
+                         f"probability.")
+            st.caption(
+                f":material/warning: Replayed over {', '.join(str(x) for x in _sl_rec['seasons'])}"
+                + (f" ({', '.join(str(x) for x in _sl_rec['skipped_seasons'])} "
+                   f"has no earlier season to fit a floor from, so it cannot be "
+                   f"screened)" if _sl_rec.get("skipped_seasons") else "")
+                + f", flat stakes at the {_sl_rec['priced_at']}. Every arm is "
+                f"negative. The list below is what the rule offers this week, "
+                f"not a claim that taking it makes money — and the gap between "
+                f"the last two figures is how much of this screen's apparent "
+                f"value is knowing the answer first.")
+        else:
+            st.info("This rule has not been graded — run `python "
+                    f"scripts/41_shortlist_backtest.py --target {target_type}`.",
+                    icon=":material/info:")
+
+        _sl = shortlist_now(season, week, target_type, selected_model,
+                            selected_version)
+        if _sl is None:
+            st.warning("No priced board for this week yet, or no closing-line "
+                       "value measured — the shortlist needs both.",
+                       icon=":material/warning:")
+        else:
+            for _d in _sl["dropped"]:
+                st.caption(f":material/filter_alt: −{_d['dropped']} {_d['filter']} "
+                           f"→ {_d['left']} left")
+            if not _sl["rows"]:
+                st.success(
+                    f"**{_sl['note']}** That is the answer rather than a gap: "
+                    f"every filter above is a measurement, and this week they "
+                    f"leave nothing.", icon=":material/check:")
+            else:
+                _slf = pd.DataFrame(_sl["rows"])
+                _slf["Ours"] = _slf["ours"] * 100
+                _slf["Book"] = _slf["book"] * 100
+                _slf["Price"] = _slf["odds"].map(bp.american)
+                _slf["Best"] = [bp.american(o) if o else "—"
+                                for o in _slf["best_odds"]]
+                st.dataframe(
+                    _slf[["player", "game", "Ours", "Book", "edge_pp",
+                          "Price", "Best", "best_book", "shopped_pp", "band",
+                          "band_roi"]],
+                    hide_index=True, use_container_width=True,
+                    column_config=shortlist_columns())
+                st.caption(
+                    ":material/info: **Best** is the best price any archived "
+                    "book posted, and **Shop** is what that is worth in points "
+                    "of implied probability — the one edge here that does not "
+                    "need the model to be right. **Band** is what every bet at "
+                    "that price returned across the whole population, vetoed "
+                    "players included: context for reading a row, never the "
+                    "reason it is on the list.")
 
 if tab_board.open:
     with tab_board:

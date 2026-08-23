@@ -290,10 +290,11 @@ def players(season: int, week: int, target_type: str, model: str,
     except Exception as e:                                   # noqa: BLE001
         problems.append(f"Unpriced players: {e}")
 
-    shop = None
+    shop = shopped_raw = None
     try:
         d = best_vs_consensus(season, week, target_type)
-        shop = d.to_pandas() if d is not None and d.height else None
+        shopped_raw = d if d is not None and d.height else None
+        shop = shopped_raw.to_pandas() if shopped_raw is not None else None
     except Exception as e:                                   # noqa: BLE001
         problems.append(f"Best available price: {e}")
     inj = None
@@ -387,7 +388,26 @@ def players(season: int, week: int, target_type: str, model: str,
         prev = r["game"]
         r["rank"] = n
     rows.sort(key=lambda r: -(r["ours"] or 0))
-    return {"rows": rows, "problems": problems}
+
+    # The shortlist, off the board already in hand rather than a second build:
+    # `board_for_week` runs a prediction, and running it twice to answer two
+    # questions about one week is a minute of export for nothing.
+    short = None
+    try:
+        import json as _json
+
+        from src.evaluation.shortlist import shortlist as _shortlist
+
+        clv_p = get_path("output", target_type) / "clv.json"
+        econ_p = get_path("output", target_type) / "rank_economics.json"
+        clv = _json.loads(clv_p.read_text()) if clv_p.exists() else None
+        econ_j = _json.loads(econ_p.read_text()) if econ_p.exists() else None
+        if clv and clv.get("by_edge"):
+            short = _shortlist(board, target_type=target_type, clv=clv,
+                               econ=econ_j, shopped=shopped_raw)
+    except Exception as e:                                   # noqa: BLE001
+        problems.append(f"Shortlist: {e}")
+    return {"rows": rows, "problems": problems, "shortlist": short}
 
 
 def teams(season: int, week: int, target_type: str) -> dict:
@@ -552,6 +572,12 @@ def market(target_type: str, label: str, season: int | None,
         # disk keeps every one the app's 5-50 slider offers; carrying them all
         # here is four fifths of a 1,100-row grid that nothing on the page can
         # look up, embedded twice over.
+        # The rule, and how it has actually done. Trimmed to the pooled arms:
+        # the per-season detail is in the artifact and the page's job is the
+        # verdict, which is one line per arm.
+        "shortlist": (None if not pl_out.get("shortlist") else
+                      {**pl_out["shortlist"],
+                       "record": _shortlist_record(target_type)}),
         "combo_record": ({"span": combo_rec.get("span"),
                           "rows": [r for r in (combo_rec.get("rows") or [])
                                    if r.get("show") in set(PAGE_SHOW_STOPS)]}
@@ -562,6 +588,24 @@ def market(target_type: str, label: str, season: int | None,
         "teams": tm["rows"],
         "cover": cover_variants(pl_out["rows"], target_type,
                                 parity(target_type, model, who["version"])),
+    }
+
+
+def _shortlist_record(target_type: str) -> dict | None:
+    """The graded verdict on the shortlist rule, pooled arms only."""
+    p = get_path("output", target_type) / "shortlist_backtest.json"
+    if not p.exists():
+        return None
+    d = json.loads(p.read_text())
+    return {
+        "seasons": d.get("seasons"), "skipped": d.get("skipped_seasons"),
+        "priced_at": d.get("priced_at"),
+        "arms": [{"arm": a["arm"], "note": a.get("note"),
+                  **({} if a.get("pooled") is None else
+                     {k: a["pooled"][k] for k in
+                      ("n", "roi", "lo", "hi", "hit_pct", "breakeven_pct",
+                       "breakeven_gap_pp", "verdict", "shopped")})}
+                 for a in d.get("arms", [])],
     }
 
 

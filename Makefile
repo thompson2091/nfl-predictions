@@ -8,7 +8,7 @@
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune \
 	families ablate retention settle-overlay line-movement filter-sweep \
-	shortlist betlog \
+	shortlist shortlist-backtest betlog \
 	cover-backtest cover-selection
 
 # The interpreter, resolved once. Every recipe used to call a bare `python`,
@@ -70,6 +70,13 @@ clv:
 # which measurement emptied it. Usage: make shortlist WEEK=1
 shortlist:
 	$(PYTHON) scripts/39_shortlist.py --week $(WEEK) $(if $(TARGET),--target $(TARGET))
+
+# Grade the shortlist rule itself: replayed week by week, staked flat at the
+# archived close, with its one threshold fitted walk-forward. Four arms, so
+# each filter has to beat the simpler thing above it.
+# Usage: make shortlist-backtest  ·  make shortlist-backtest TARGET=first_td
+shortlist-backtest:
+	$(PYTHON) scripts/41_shortlist_backtest.py $(if $(TARGET),--target $(TARGET))
 
 # Bets you actually placed, scored against the closing line — the only figure
 # here that says whether an edge exists before the bankroll does.

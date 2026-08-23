@@ -521,14 +521,19 @@ def test_the_page_opens_on_the_thing_being_built_not_on_its_own_report_card():
     The keys are checked rather than the labels: `cover` is the pane, `Parlay`
     is what the strip calls it, and the two are allowed to differ — the key is
     what the state, the tests and any saved link refer to.
+
+    `shortlist` opens the page now, ahead of the thing being built. It is the
+    only pane that answers "is any of this worth money", and it answers it
+    before it lists anything: the graded strip says every arm of the rule lost,
+    and the week's rows sit underneath that sentence rather than above it.
     """
     from src.export import dashboard
 
     tabs = dashboard.JS_SHELL[dashboard.JS_SHELL.index("const TABS = ["):]
     tabs = tabs[:tabs.index("];")]
     order = re.findall(r"\['(\w+)'", tabs)
-    assert order == ["cover", "players", "combos", "teams"], order
-    assert "tab: 'cover'," in dashboard.JS, "the default tab must be a real tab"
+    assert order == ["shortlist", "cover", "players", "combos", "teams"], order
+    assert "tab: 'shortlist'," in dashboard.JS, "the default tab must be a real tab"
 
     js = "".join(v for k, v in vars(dashboard).items() if k.startswith("JS"))
     for gone in ("paneModel", "paneHits", "lineChart", "divergingBars"):

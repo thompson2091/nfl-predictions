@@ -435,7 +435,7 @@ const spct = (v, d) => has(v) ? (v > 0 ? '+' : '') + pct(v, d) : '';
 // ── State ───────────────────────────────────────────────────────────────
 const S = {
   market: 0,
-  tab: 'cover',
+  tab: 'shortlist',
   p: { game: '', q: '', depth: 0, priced: 'all', longshot: false, differ: false },
   // Five players, one per game. Five because 31 slips is the size the question
   // is usually asked at, and one-per-game because taking the top five from a
@@ -1703,9 +1703,94 @@ function paneTeams() {
 }
 """
 
+JS_SHORTLIST = r"""
+// ── Pane: shortlist ─────────────────────────────────────────────────────
+// The board says who scores and the combinations table says what they pay
+// together. This is the only pane that asks whether either is worth money, so
+// it leads with the graded verdict and puts the week's list underneath it — a
+// card of three plays every week trains a reader to take three plays every
+// week, and the verdict is the part that says not to.
+function paneShortlist() {
+  const m = M(), out = el('div');
+  const sl = m.shortlist;
+  if (!sl) {
+    out.appendChild(card('Shortlist',
+      'Not built for this market. It needs closing-line value by disagreement ' +
+      'size (<code>scripts/13_clv.py</code>) and a priced board for the week.', []));
+    return out;
+  }
+
+  const rec = sl.record;
+  if (rec && rec.arms && rec.arms.length) {
+    out.appendChild(card('This rule, replayed and graded',
+      'Every arm is the one above it plus a filter, so the difference between ' +
+      'two rows is what that filter bought. Flat stakes at the ' +
+      esc(rec.priced_at || 'closing price') + ' over ' +
+      (rec.seasons || []).join(', ') +
+      ((rec.skipped || []).length
+        ? ' (' + rec.skipped.join(', ') + ' has no earlier season to fit the ' +
+          'floor from, so it cannot be screened)'
+        : '') +
+      '. <b>With hindsight</b> is not a rule anyone could have followed \u2014 its ' +
+      'floor is fitted on the seasons it is being graded on, so the gap to the ' +
+      'row above it is how much of this screen is knowing the answer first.',
+      [tiles(rec.arms.map(a => (a.roi == null
+        ? { k: a.arm, v: 'stood down', d: a.note || 'bet nothing' }
+        : { k: a.arm, v: pp(a.roi, 1) + '%',
+            d: a.n.toLocaleString() + ' bets \u00b7 ' + pp(a.lo, 0) + ' to ' + pp(a.hi, 0),
+            help: 'Hit ' + pct(a.hit_pct / 100, 1) + ' where the price needed ' +
+                  pct(a.breakeven_pct / 100, 1) + ' \u2014 short by ' +
+                  a.breakeven_gap_pp.toFixed(1) + ' points of implied probability.' })))]));
+  }
+
+  const kids = [];
+  (sl.dropped || []).forEach(d => {
+    kids.push(el('p', { class: 'fine', html:
+      '\u2212' + d.dropped + ' ' + esc(d.filter) + ' \u2192 <b>' + d.left + '</b> left' }));
+  });
+
+  if (!sl.rows || !sl.rows.length) {
+    kids.push(el('div', { class: 'warn-box', html:
+      '<b>' + esc(sl.note || 'Nothing survives every filter this week.') + '</b> ' +
+      'That is the answer rather than a gap: every filter above is a ' +
+      'measurement, and this week they leave nothing.' }));
+    out.appendChild(card(null, null, kids));
+    return out;
+  }
+
+  const cols = [
+    { k: 'player', label: 'Player', t: 1 },
+    { k: 'game', label: 'Game', t: 1 },
+    { k: 'ours', label: 'Our estimate', fmt: v => pct(v, 1) },
+    { k: 'book', label: 'Bookmaker says', fmt: v => pct(v, 1) },
+    { k: 'edge_pp', label: 'Difference', fmt: v => pp(v) + ' pts', cls: v => cls(v) },
+    { k: 'odds', label: 'Price', t: 1, fmt: v => american(v) },
+    { k: 'best_odds', label: 'Best posted', t: 1,
+      fmt: (v, r) => has(v) ? american(v) + ' <span class="dim">' +
+        esc(r.best_book || '') + '</span>' : '<span class="dim">\u2014</span>',
+      title: 'The best price any archived book posted this week. Every backtested return here is measured at the consensus, so it understates a shopped price.' },
+    { k: 'shopped_pp', label: 'Shop', fmt: v => has(v) ? pp(v, 2) + ' pts' : '',
+      cls: v => cls(v),
+      title: 'What the best price is worth against the consensus, in points of implied probability \u2014 the one edge here that does not need the model to be right.' },
+    { k: 'band_roi', label: 'Band returned', fmt: (v, r) => has(v)
+        ? pp(v, 0) + '% <span class="dim">' + esc(r.band || '') + '</span>' : '',
+      cls: v => cls(v),
+      title: 'What every bet at this price returned across the whole population, vetoed players included. Context for reading a row, never the reason it is on the list.' },
+  ];
+  kids.push(table('shortlist', cols, sl.rows, {}));
+  kids.push(el('p', { class: 'note', html:
+    'Nothing here is a claim that these are profitable. The strip above says ' +
+    'the population they come from loses money; these are the rows the two ' +
+    'filters measured on the right population did not reject.' }));
+  out.appendChild(card(null, null, kids));
+  return out;
+}
+"""
+
 JS_SHELL = r"""
 // ── Shell ───────────────────────────────────────────────────────────────
 const TABS = [
+  ['shortlist', 'Shortlist', paneShortlist],
   ['cover', 'Parlay', paneCover],
   ['players', 'Players', paneMPlayers],
   ['combos', 'Combinations', paneCombos],
@@ -1820,7 +1905,8 @@ def render(payload: dict) -> str:
     # that produces one.
     data = (json.dumps(payload, separators=(",", ":"), allow_nan=False)
             .replace("</", "<\\/"))
-    js = "\n".join([JS, JS_PLAYERS, JS_COMBOS, JS_TEAMS, JS_SHELL])
+    js = "\n".join([JS, JS_PLAYERS, JS_COMBOS, JS_TEAMS, JS_SHORTLIST,
+                    JS_SHELL])
     labels = " and ".join(m["label"] for m in payload["markets"]) or "NFL"
     return (SHELL
             .replace("__TITLE__", html.escape(f"{labels} — model dashboard"))
