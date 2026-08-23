@@ -260,10 +260,11 @@ def shortlist(board: pl.DataFrame, *, target_type: str, clv: dict | None,
 
     tracked = []
     for rule in rules_for(target_type):
-        tracked.append({**{k: rule[k] for k in
-                           ("name", "status", "found", "control",
-                            "out_of_sample", "min_odds", "max_odds",
-                            "min_edge_pp")},
+        keys = ("name", "status", "found", "control", "out_of_sample")
+        shape = ("min_odds", "max_odds", "min_edge_pp") if rule.get("kind") != "lay" \
+            else ("min_book_pct", "max_book_pct", "max_ratio")
+        tracked.append({**{k: rule[k] for k in keys + shape},
+                        "kind": rule.get("kind", "back"),
                         "picks": _rule_picks(board, rule)})
     return {"rows": rows, "vetoes": vetoes, "tracked": tracked,
             "dropped": reasons, "floor": floor,

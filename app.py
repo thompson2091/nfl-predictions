@@ -3284,7 +3284,10 @@ if tab_short.open:
             # rule that is re-tuned instead can never fail, because every
             # failure is absorbed into the next tuning.
             for _rule in (_sl.get("tracked") or []):
-                st.subheader(f"Tracked — {_rule['name']}")
+                st.subheader(
+                    f"Tracked — {_rule['name']}"
+                    + (" (a lay, not a bet at a book)"
+                       if _rule.get("kind") == "lay" else ""))
                 st.warning(
                     f"**{_rule['status'].capitalize()}.** {_rule['found']}. "
                     f"The control: {_rule['control']}. Out of sample: "
@@ -3324,12 +3327,19 @@ if tab_short.open:
                         f"backs them. Not a recommendation — the point is the "
                         f"record, not the picks.")
                 else:
+                    _needs = (
+                        f"a player the book prices between "
+                        f"{_rule['min_book_pct']:.1f}% and "
+                        f"{_rule['max_book_pct']:.1f}% that we rate under "
+                        f"{_rule['max_ratio'] * 100:.0f}% of their number"
+                        if _rule.get("kind") == "lay" else
+                        f"{_rule['min_edge_pp']:.0f}+ points between "
+                        f"{bp.american(_rule['min_odds'])} and "
+                        f"{bp.american(_rule['max_odds'])}")
                     st.caption(
                         f":material/science: Nothing on this board matches it "
-                        f"this week: it needs {_rule['min_edge_pp']:.0f}+ points "
-                        f"between {bp.american(_rule['min_odds'])} and "
-                        f"{bp.american(_rule['max_odds'])}. A week with no "
-                        f"picks is part of the record.")
+                        f"this week: it needs {_needs}. A week with no picks is "
+                        f"part of the record.")
 
             # ── The half that measures best ──────────────────────────────
             # The filters above spend their first step throwing these away.

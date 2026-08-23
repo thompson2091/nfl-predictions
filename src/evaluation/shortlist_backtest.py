@@ -123,6 +123,14 @@ def _bets(board: pd.DataFrame, floor: dict | None,
 #: the other side.
 FADE_EDGE_PP = 2.0
 
+#: How much stricter the fade can be pushed, as the fraction of the book's own
+#: number we have to be under. Reported as a ladder rather than one cut,
+#: because the choice is a trade against a real number: a thin prop market
+#: carries an embedded spread of roughly 1-4%, so what matters is not the
+#: return but how much margin the group can carry — and that rises as the cut
+#: tightens while the volume falls.
+FADE_RATIOS = (1.0, 2 / 3, 1 / 2, 1 / 3)
+
 
 def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP,
               band: tuple[float, float] | None = None) -> dict | None:
@@ -143,7 +151,7 @@ def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP,
     `exchange` prices the one venue where laying is possible at all, which
     takes commission on winnings rather than margin on the price.
     """
-    pnl, scored_all, implied_all, games = [], [], [], []
+    pnl, scored_all, implied_all, games, ours_all = [], [], [], [], []
     for wk in weeks:
         b = wk["board"]
         if "prob_bet" not in b.columns or b.empty:
@@ -164,6 +172,7 @@ def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP,
         pnl.append(np.where(scored == 1, -(1.0 - implied) / implied, 1.0))
         scored_all.append(scored)
         implied_all.append(implied)
+        ours_all.append(b["prob_bet"].astype(float).to_numpy()[m])
         games.append(b["game_label"].to_numpy()[m])
     if not pnl:
         return None
@@ -171,6 +180,7 @@ def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP,
     pnl = np.concatenate(pnl)
     scored = np.concatenate(scored_all)
     implied = np.concatenate(implied_all)
+    ours_all_arr = np.concatenate(ours_all)
     hit, priced = float(scored.mean()), float(implied.mean())
     stat = clustered_roi(pnl, np.concatenate(games))
     fair_no, need_no = 1.0 - priced, 1.0 - hit
@@ -190,7 +200,32 @@ def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP,
                           * 100)}
             for c in (0.02, 0.05)
         ],
+        # The trade the venue forces: tighter cuts carry more margin and fewer
+        # bets. A thin prop market embeds roughly 1-4% of spread, so the row to
+        # read is `carries_pct` against that, not the return.
+        "cuts": _fade_ladder(ours_all_arr, implied, scored, weeks),
     }
+
+
+def _fade_ladder(ours: np.ndarray, priced: np.ndarray, scored: np.ndarray,
+                 weeks: list[dict]) -> list[dict]:
+    """The same group at successively stricter cuts."""
+    n_weeks = max(1, len({(w["season"], w["week"]) for w in weeks}))
+    out = []
+    for ratio in FADE_RATIOS:
+        m = ours <= priced * ratio
+        if m.sum() < 200:
+            continue
+        hit, price = float(scored[m].mean()), float(priced[m].mean())
+        out.append({
+            "ratio": float(ratio),
+            "n": int(m.sum()),
+            "per_week": float(m.sum()) / n_weeks,
+            "scored_pct": hit * 100,
+            "priced_pct": price * 100,
+            "carries_pct": ((1 - hit) / (1 - price) - 1) * 100,
+        })
+    return out
 
 
 def _fade_band(target_type: str) -> tuple[float, float] | None:

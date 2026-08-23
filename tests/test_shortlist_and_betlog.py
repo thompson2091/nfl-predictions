@@ -303,8 +303,13 @@ def test_a_tracked_rule_carries_where_it_came_from():
 
     assert RULES, "the module exists to hold at least one"
     for r in RULES:
-        for k in ("name", "market", "min_odds", "max_odds", "min_edge_pp",
-                  "status", "found", "control", "out_of_sample"):
+        # The shape depends on the side: a lay is bounded by the book's own
+        # number and a ratio, a back by the posted price and a points gap.
+        shape = (("min_book_pct", "max_book_pct", "max_ratio")
+                 if r.get("kind") == "lay"
+                 else ("min_odds", "max_odds", "min_edge_pp"))
+        for k in ("name", "market", "status", "found", "control",
+                  "out_of_sample") + shape:
             assert r.get(k), f"{r.get('name')} is missing {k}"
         assert "unproven" in r["status"], (
             "a tracked rule must say so on its own row, not only in a docstring")

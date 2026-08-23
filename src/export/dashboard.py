@@ -1877,12 +1877,19 @@ function trackedCard(rule, record) {
       'built, whether or not anyone backs them. Not a recommendation \u2014 the ' +
       'point is the record, not the picks.' }));
   } else {
+    const needs = rule.kind === 'lay'
+      ? 'a player the book prices between ' + rule.min_book_pct.toFixed(1) + '% and ' +
+        rule.max_book_pct.toFixed(1) + ' that we rate under ' +
+        (rule.max_ratio * 100).toFixed(0) + '% of their number'
+      : rule.min_edge_pp + '+ points between ' + american(rule.min_odds) + ' and ' +
+        american(rule.max_odds);
     kids.push(el('p', { class: 'fine', html:
-      'Nothing on this board matches it this week: it needs ' +
-      rule.min_edge_pp + '+ points between ' + american(rule.min_odds) + ' and ' +
-      american(rule.max_odds) + '. A week with no picks is part of the record.' }));
+      'Nothing on this board matches it this week: it needs ' + needs +
+      '. A week with no picks is part of the record.' }));
   }
-  return card('Tracked \u2014 ' + esc(rule.name), null, kids);
+  return card('Tracked \u2014 ' + esc(rule.name) +
+              (rule.kind === 'lay' ? ' (a lay, not a bet at a book)' : ''),
+              null, kids);
 }
 
 // Reference rather than verdict: the numbers a reader keeps deriving by eye

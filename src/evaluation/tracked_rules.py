@@ -47,6 +47,30 @@ COLUMNS = ("recorded_on", "season", "week", "market", "rule", "player",
 #: recommendation the moment it is separated from this docstring.
 RULES = (
     {
+        "name": "fade the overpriced",
+        "market": "anytime_td",
+        "kind": "lay",
+        # Read off `market_shape.fade_band` when it exists; these are what that
+        # measurement currently says, frozen so the rule can be tested.
+        "min_book_pct": 4.26, "max_book_pct": 11.20,
+        "max_ratio": 1 / 3,
+        "status": "unproven at a real price — the measurement is strong and "
+                  "the venue is the question",
+        "found": "in the band where the market's own bias pays, players we "
+                 "rate under a third of the book's number scored 2.61% against "
+                 "a 6.92% de-vigged price over 690 bets: laying at fair is "
+                 "+62.5% [+44.3, +79.4]",
+        "control": "a permutation keeping prices, outcomes and weeks and "
+                   "shuffling only which player we called overrated never "
+                   "reached the real best cell in 200 draws (p = 0.000); the "
+                   "market's own bias gives +37.7% at the median, ours +72.7%",
+        "out_of_sample": "positive in all three seasons and strengthening: "
+                         "+40.6%, +45.7%, +49.8% at the -2pt cut. What is "
+                         "untested is a fill: it carries 4.63% of margin, and "
+                         "a thin prop market embeds roughly 1-4% of spread.",
+        "expected_per_week": 10,
+    },
+    {
         "name": "mid-price disagreement",
         "market": "anytime_td",
         "min_odds": 300, "max_odds": 700, "min_edge_pp": 5.0,
@@ -68,6 +92,30 @@ def rules_for(target_type: str) -> list[dict]:
     return [r for r in RULES if r["market"] == target_type]
 
 
+def _lay_picks(board: pl.DataFrame, rule: dict) -> list[dict]:
+    """Players to lay: inside the band, and rated well under the price.
+
+    A ratio rather than a points gap, because three points under a 30% player
+    and three under a 6% one are not the same disagreement — and this band is
+    all small numbers.
+    """
+    lo, hi = rule["min_book_pct"] / 100.0, rule["max_book_pct"] / 100.0
+    sel = board.filter(
+        (pl.col("market_prob") >= lo) & (pl.col("market_prob") <= hi)
+        & (pl.col("prob_bet") <= pl.col("market_prob") * float(rule["max_ratio"]))
+    )
+    out = []
+    for r in sel.sort("model_edge_pp").iter_rows(named=True):
+        out.append({
+            "rule": rule["name"], "player": r.get("player_name"),
+            "team": r.get("team"), "game": r.get("game_label"),
+            "odds": int(r["odds"]), "ours": float(r["prob_bet"]),
+            "book": float(r["market_prob"]),
+            "edge_pp": float(r["model_edge_pp"]),
+        })
+    return out
+
+
 def picks(board: pl.DataFrame, rule: dict) -> list[dict]:
     """Everything on this week's board the rule names.
 
@@ -77,6 +125,8 @@ def picks(board: pl.DataFrame, rule: dict) -> list[dict]:
     """
     if board is None or board.height == 0:
         return []
+    if rule.get("kind") == "lay":
+        return _lay_picks(board, rule)
     sel = board.filter(
         (pl.col("model_edge_pp") >= float(rule["min_edge_pp"]))
         & (pl.col("odds") >= float(rule["min_odds"]))
