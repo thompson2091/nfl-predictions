@@ -578,6 +578,8 @@ def market(target_type: str, label: str, season: int | None,
         # Reference for reading any table here: what a position typically
         # does, what it is charged, and what we say about it.
         "positions": _position_rates(target_type),
+        # Why every return here is negative, without reference to the model.
+        "market_shape": _market_shape(target_type),
         "shortlist": (None if not pl_out.get("shortlist") else
                       {**pl_out["shortlist"],
                        "record": _shortlist_record(target_type),
@@ -602,6 +604,12 @@ def _tracked_record(target_type: str) -> dict | None:
         return (score(target_type) or {}).get("rules")
     except Exception:                                        # noqa: BLE001
         return None
+
+
+def _market_shape(target_type: str) -> dict | None:
+    """The book's error, its margin, and what the two cost, by decile."""
+    from src.evaluation.market_shape import load
+    return load(get_path("output", target_type) / "market_shape.json")
 
 
 def _position_rates(target_type: str) -> dict | None:

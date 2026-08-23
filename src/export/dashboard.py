@@ -1800,7 +1800,41 @@ function paneShortlist() {
   out.appendChild(card(null, null, kids));
   out.appendChild(fadeCard(sl, rec));
   (sl.tracked || []).forEach(r => out.appendChild(trackedCard(r, sl.tracked_record)));
+  out.appendChild(marketShapeCard(m.market_shape));
   out.appendChild(positionCard(m.positions));
+  return out;
+}
+
+// The table that explains every negative return on this page without reference
+// to the model: the book's own error is real and small, its margin is larger,
+// and the two together are what you pay above the truth on every bet.
+function marketShapeCard(shape) {
+  const out = el('div');
+  if (!shape || !shape.rows || !shape.rows.length) return out;
+  const cols = [
+    { k: 'decile', label: 'Decile', t: 1,
+      title: 'Tenths of the priced population, ordered by the bookmaker\u2019s own de-vigged number \u2014 its opinion, not its price.' },
+    { k: 'n', label: 'Bets', fmt: v => v.toLocaleString() },
+    { k: 'book_pct', label: 'Book says', fmt: v => pct(v / 100, 2) },
+    { k: 'actual_pct', label: 'Actual', fmt: v => pct(v / 100, 2) },
+    { k: 'book_error_pp', label: 'Book error', fmt: v => pp(v, 2) + ' pts',
+      cls: v => cls(-v),
+      title: 'What the bookmaker\u2019s opinion gets wrong before it charges anything. Positive at the bottom and negative at the top is the favourite-longshot bias: longshots overpriced, favourites underpriced.' },
+    { k: 'posted_pct', label: 'Posted implies', fmt: v => pct(v / 100, 2) },
+    { k: 'margin_pp', label: 'Margin', fmt: v => pp(v, 2) + ' pts',
+      title: 'What it charges for that opinion.' },
+    { k: 'overpay_pp', label: 'You overpay', fmt: v => pp(v, 2) + ' pts',
+      title: 'The two together \u2014 what you pay above the truth. Nearly constant across the board, which is the whole story: the same four or five points is half the stake on a 5% shot and a tenth of it on a 50% one.' },
+    { k: 'roi', label: 'Returned', fmt: v => pp(v, 1) + '%', cls: v => cls(v) },
+  ];
+  out.appendChild(card('What the market gets wrong, and what it charges',
+    esc(shape.span || '') + '. The bookmaker\u2019s own number is genuinely ' +
+    'wrong \u2014 too high on longshots, too low on favourites \u2014 and the ' +
+    'margin is bigger than the error at every decile. A model would have to ' +
+    'beat the de-vigged number by more than the <b>overpay</b> column to ' +
+    'profit; on the bets we select we beat it by about two points. That is the ' +
+    'entire arithmetic of this project on one screen.',
+    [table('market-shape', cols, shape.rows, { nosort: true })]));
   return out;
 }
 

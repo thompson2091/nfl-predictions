@@ -2104,6 +2104,14 @@ def _sl_tracked_record(tt: str) -> dict | None:
 
 
 @st.cache_data(show_spinner=False)
+def market_shape(tt: str, model: str) -> dict | None:
+    """What the book gets wrong, what it charges, and what that costs."""
+    from src.evaluation.market_shape import load
+    d = load(get_path("output", tt) / "market_shape.json")
+    return d if d and d.get("model") in (None, model) else None
+
+
+@st.cache_data(show_spinner=False)
 def position_rates(tt: str, model: str) -> dict | None:
     """What each position scores, is charged, and is rated at."""
     from src.evaluation.position_rates import load
@@ -3167,6 +3175,65 @@ if tab_short.open:
                     f"market gets right, and against **We say** for what we "
                     f"do — the gap between the last two is where a position "
                     f"the model misreads would show up.")
+
+        # The table that explains every negative return here without
+        # reference to the model: the book's own error is real and small, its
+        # margin is larger, and the two together are what you pay above the
+        # truth on every bet.
+        _shape = market_shape(target_type, selected_model)
+        if _shape:
+            with st.container():
+                st.subheader("What the market gets wrong, and what it charges")
+                _sf = pd.DataFrame(_shape["rows"])
+                st.dataframe(
+                    _sf[["decile", "n", "book_pct", "actual_pct",
+                         "book_error_pp", "posted_pct", "margin_pp",
+                         "overpay_pp", "roi"]],
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "decile": st.column_config.NumberColumn(
+                            "Decile", format="%d", width="small",
+                            help="Tenths of the priced population, ordered by "
+                                 "the bookmaker's own de-vigged number — its "
+                                 "opinion, not its price."),
+                        "n": st.column_config.NumberColumn("Bets", format="%d"),
+                        "book_pct": st.column_config.NumberColumn(
+                            "Book says", format="%.2f%%"),
+                        "actual_pct": st.column_config.NumberColumn(
+                            "Actual", format="%.2f%%"),
+                        "book_error_pp": st.column_config.NumberColumn(
+                            "Book error", format="%+.2f pts",
+                            help="What the bookmaker's opinion gets wrong "
+                                 "before it charges anything. Positive at the "
+                                 "bottom and negative at the top is the "
+                                 "favourite-longshot bias: longshots are "
+                                 "overpriced, favourites underpriced."),
+                        "posted_pct": st.column_config.NumberColumn(
+                            "Posted price implies", format="%.2f%%"),
+                        "margin_pp": st.column_config.NumberColumn(
+                            "Margin", format="%+.2f pts",
+                            help="What it charges for that opinion."),
+                        "overpay_pp": st.column_config.NumberColumn(
+                            "You overpay", format="%+.2f pts",
+                            help="The two together — what you pay above the "
+                                 "truth. Nearly constant across the board, "
+                                 "which is the whole story: the same four or "
+                                 "five points is half the stake on a 5% shot "
+                                 "and a tenth of it on a 50% one."),
+                        "roi": st.column_config.NumberColumn(
+                            "Returned", format="%+.1f%%",
+                            help="Flat stakes on every bet in the decile at "
+                                 "posted prices."),
+                    })
+                st.caption(
+                    f":material/insights: {_shape['span']}. The bookmaker's "
+                    f"own number is genuinely wrong — too high on longshots, "
+                    f"too low on favourites — and the margin is bigger than "
+                    f"the error at every decile. A model would have to beat "
+                    f"the book's de-vigged number by more than the overpay "
+                    f"column to profit; on the bets we select we beat it by "
+                    f"about two points. That is the entire arithmetic of this "
+                    f"project on one screen.")
 
         _fade = (_sl_rec or {}).get("fade")
         _sl = shortlist_now(season, week, target_type, selected_model,

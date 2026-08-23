@@ -8,7 +8,7 @@
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune \
 	families ablate retention settle-overlay line-movement filter-sweep \
-	shortlist shortlist-backtest betlog positions \
+	shortlist shortlist-backtest betlog positions market-shape \
 	cover-backtest cover-selection
 
 # The interpreter, resolved once. Every recipe used to call a bare `python`,
@@ -82,6 +82,12 @@ shortlist-backtest:
 # Reference for reading any board here. Usage: make positions
 positions:
 	$(PYTHON) scripts/42_position_rates.py $(if $(TARGET),--target $(TARGET))
+
+# Why every return here is negative, without reference to the model: the book's
+# own error, its margin, and what the two cost — by decile of its own number.
+# Usage: make market-shape
+market-shape:
+	$(PYTHON) scripts/43_market_shape.py $(if $(TARGET),--target $(TARGET))
 
 # Bets you actually placed, scored against the closing line — the only figure
 # here that says whether an edge exists before the bankroll does.
