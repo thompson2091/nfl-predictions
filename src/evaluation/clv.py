@@ -192,6 +192,59 @@ def hit_rows(predictions: pl.DataFrame, target_type: str = "anytime_td",
     ).sort(["game_id", "player_name_norm"])
 
 
+#: How far we sat from the de-vigged opening price, in points, as bucket edges.
+#: The last one is open-ended. Chosen to match how the board is read rather
+#: than to balance the buckets: 2 points is the betting threshold, 5 is a
+#: "Leans", and past 10 is where "Strong call" lives.
+EDGE_BUCKETS = (0.0, 2.0, 5.0, 10.0)
+
+
+def by_edge(rows: pl.DataFrame, prob_col: str = CLEAN_PROB_COL) -> list[dict]:
+    """Which way the line went, by how far we were from it and on which side.
+
+    The headline agreement rate is one number over every disagreement, which is
+    the right number for gating a promotion and the wrong one for reading a
+    pick: it cannot say whether a 12-point disagreement anticipates more
+    movement than a 3-point one, and it pools the side you can bet with the
+    side you cannot. This splits both ways.
+
+    `moved_our_way` is the share of rows where the close went the direction we
+    said. `mean_move_pp` is signed *toward us*, so a positive number means the
+    market came our way on average and a negative one means it walked off.
+
+    Read the `higher` rows before backing anything: they are the only side
+    these markets sell, and the whole reason this table exists is that the
+    pooled number is carried by the other one.
+    """
+    if rows is None or rows.height == 0:
+        return []
+    edges = list(EDGE_BUCKETS)
+    gap = ((pl.col(prob_col) - pl.col("open_fair")).abs() * 100).alias("_gap")
+    # Signed toward whichever side we took, so the two halves are comparable.
+    toward = pl.when(pl.col("we_are_higher")).then(pl.col("move")) \
+               .otherwise(-pl.col("move"))
+    j = rows.with_columns([gap, (toward * 100).alias("_toward")])
+    out = []
+    for side, higher in (("higher", True), ("lower", False)):
+        part = j.filter(pl.col("we_are_higher") == higher)
+        for i, lo in enumerate(edges):
+            hi = edges[i + 1] if i + 1 < len(edges) else None
+            band = part.filter(pl.col("_gap") >= lo)
+            if hi is not None:
+                band = band.filter(pl.col("_gap") < hi)
+            if band.height == 0:
+                continue
+            out.append({
+                "side": side, "lo": float(lo),
+                "hi": None if hi is None else float(hi),
+                "n": int(band.height),
+                "moved_our_way": float(band["hit"].mean()),
+                "mean_move_pp": float(band["_toward"].mean()),
+                "median_move_pp": float(band["_toward"].median()),
+            })
+    return out
+
+
 def measure(predictions: pl.DataFrame, target_type: str = "anytime_td",
             prob_col: str = CLEAN_PROB_COL) -> dict | None:
     """Did the market move toward the players we rated above the opening price?

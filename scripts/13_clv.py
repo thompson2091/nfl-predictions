@@ -19,7 +19,7 @@ sys.path.insert(0, ".")
 
 import polars as pl
 
-from src.evaluation.clv import measure, line_movement
+from src.evaluation.clv import by_edge, hit_rows, line_movement, measure
 from src.utils.config import get_config
 from src.utils.paths import get_path
 
@@ -132,6 +132,22 @@ def main(target_type: str) -> int:
     if stats is None:
         print("Not enough overlap between predictions and captured lines yet.")
         return 0
+
+    # The headline is one number over every disagreement, which gates a
+    # promotion and cannot read a pick. This is the same measurement split by
+    # how far we sat from the open and — the part that decides everything —
+    # which side of it we were on.
+    rows = hit_rows(preds, target_type)
+    stats["by_edge"] = by_edge(rows) if rows is not None else []
+    if stats["by_edge"]:
+        print("\n  by how far we sat from the open, and which side:")
+        print(f"    {'side':<7}{'gap':<12}{'n':>7}  {'moved our way':>14}"
+              f"  {'mean move':>10}")
+        for r in stats["by_edge"]:
+            band = (f"{r['lo']:.0f}+" if r["hi"] is None
+                    else f"{r['lo']:.0f}-{r['hi']:.0f} pts")
+            print(f"    {r['side']:<7}{band:<12}{r['n']:>7,}  "
+                  f"{r['moved_our_way']:>13.1%}  {r['mean_move_pp']:>+9.2f}pp")
 
     print(f"\nClosing-line value — {target_type}, seasons {stats['seasons']}")
     print(f"  {stats['n']:,} player-games where the price actually moved")

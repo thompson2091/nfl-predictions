@@ -8,6 +8,7 @@
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune \
 	families ablate retention settle-overlay line-movement filter-sweep \
+	shortlist betlog \
 	cover-backtest cover-selection
 
 # The interpreter, resolved once. Every recipe used to call a bare `python`,
@@ -62,6 +63,19 @@ open-line:
 
 clv:
 	$(PYTHON) scripts/13_clv.py
+
+# What survives every measurement, for one week: the side these markets sell,
+# the disagreement sizes closing-line value has not moved against, priced at
+# the best number any archived book posted. Most weeks it is empty, and it says
+# which measurement emptied it. Usage: make shortlist WEEK=1
+shortlist:
+	$(PYTHON) scripts/39_shortlist.py --week $(WEEK) $(if $(TARGET),--target $(TARGET))
+
+# Bets you actually placed, scored against the closing line — the only figure
+# here that says whether an edge exists before the bankroll does.
+# Usage: make betlog  ·  see scripts/40_betlog.py --add for logging one.
+betlog:
+	$(PYTHON) scripts/40_betlog.py
 
 # Actionable bet card: model vs de-vigged market, ranked by EV, Kelly-staked.
 # Needs cached prices — run `make odds WEEK=n` first. Usage: make bets WEEK=1
