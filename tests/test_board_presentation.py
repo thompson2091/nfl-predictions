@@ -107,15 +107,32 @@ def test_american_prices():
 
 @pytest.mark.parametrize("edge_pp,expected", [
     (0.0, "Matches book"), (1.5, "Matches book"), (2.0, "Matches book"),
+    (-2.0, "Matches book"),
     (3.0, "Leans"), (5.0, "Leans"),
-    (9.0, "Strong call"), (-9.0, "Strong call"),
+    (9.0, "Strong call"),
+    (-3.0, "Veto"), (-9.0, "Veto"),
 ])
 def test_confidence_labels_the_gap_not_the_certainty(edge_pp, expected):
     assert bp.confidence(edge_pp, lo=0.02, hi=0.05) == expected
 
 
-def test_confidence_is_symmetric_about_zero():
-    assert bp.confidence(7.0, 0.02, 0.05) == bp.confidence(-7.0, 0.02, 0.05)
+def test_a_gap_below_the_price_is_a_refusal_and_not_a_call():
+    """It used to be symmetric, and that put a bet on a player to avoid.
+
+    -9pp and +9pp are the same size of disagreement and opposite instructions.
+    Two measurements say the down side is the sharper one — the closing line
+    moves our way when we are lower and stands still when we are higher, and
+    the head-to-head on big disagreements is far stronger on the players we
+    rate down — and these markets only sell the Yes side, so there is nothing
+    to bet there. A row that reads "Strong call" on one of them is the single
+    most expensive label this board could carry.
+    """
+    assert bp.confidence(7.0, 0.02, 0.05) == "Strong call"
+    assert bp.confidence(-7.0, 0.02, 0.05) == "Veto"
+    # And a slip inherits it: one leg we rate under its price is the leg that
+    # ends the slip, whatever the others read.
+    assert bp.combo_read(["Strong call", "Veto"]) == "Veto"
+    assert bp.READ_ORDER[0] == "Veto"
 
 
 # ── Tier assignment ─────────────────────────────────────────────────────────

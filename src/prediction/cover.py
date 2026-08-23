@@ -178,14 +178,79 @@ def assumed_price(probability, decimal, *, top_n: int = ASSUMED_FROM_TOP
     return float(np.median(d[top]))
 
 
+#: Fewest priced players a curve may be fitted on. Below this the fit is
+#: describing whichever handful a book happened to post rather than the market,
+#: and the flat median is the more honest stand-in.
+CURVE_MIN_POINTS = 8
+
+
+def _logit(x: np.ndarray) -> np.ndarray:
+    return np.log(x / (1.0 - x))
+
+
+def price_curve(probability, decimal) -> dict | None:
+    """What this market's books pay, as a function of what we rate a player.
+
+    A single stand-in price cannot be right for a cover, because the legs a
+    reader picks are the top of the board and the median priced player is not:
+    on week 1 of 2026 the median anytime-TD price is +106, while a player we
+    rate at 55% — which is what the default five look like — would be posted
+    around -141. Assuming +106 for that leg is a 20% overstatement of every
+    payout in the table, and the table cannot show it, because a payout column
+    is built from prices and does not move when the probabilities do.
+
+    So the stand-in is fitted rather than picked: a straight line through the
+    priced players on the logit scale, implied probability against ours, which
+    is monotone by construction and carries the market's margin curve with it —
+    books hold far more on a 10% player than on a 50% one, and a flat price
+    assumes the opposite.
+
+    `lo`/`hi` bound the fitted range. `assumed_decimal` clamps to them rather
+    than extrapolating: first TD has no player rated above 15%, and a line
+    fitted there says a 55% player would be posted at +266, which is not a
+    reading of any market — it is arithmetic run off the end of its evidence.
+
+    `None` when too few players carry a price to fit anything.
+    """
+    p = np.asarray(list(probability), dtype=float)
+    d = np.asarray([np.nan if x is None else x for x in decimal], dtype=float)
+    if len(p) == 0 or len(p) != len(d):
+        return None
+    ok = (np.isfinite(d) & (d > 1.0) & np.isfinite(p) & (p > 0.0) & (p < 1.0))
+    if ok.sum() < CURVE_MIN_POINTS:
+        return None
+    p, q = p[ok], 1.0 / d[ok]
+    q = np.clip(q, 1e-6, 1 - 1e-6)
+    b, a = np.polyfit(_logit(p), _logit(q), 1)
+    return {"a": float(a), "b": float(b), "n": int(ok.sum()),
+            "lo": float(p.min()), "hi": float(p.max())}
+
+
+def assumed_decimal(curve: dict | None, prob: float) -> float | None:
+    """The price to stand in for an unpriced leg we rate at `prob`."""
+    if not curve or prob is None or not np.isfinite(prob):
+        return None
+    p = float(np.clip(prob, curve["lo"], curve["hi"]))
+    if not 0.0 < p < 1.0:
+        return None
+    q = 1.0 / (1.0 + np.exp(-(curve["a"] + curve["b"] * _logit(np.array(p)))))
+    q = float(np.clip(q, 1e-6, 1 - 1e-6))
+    return 1.0 / q
+
+
 def portfolio(players: list[dict], *, stake: float = 1.0,
               rho: float = 0.0, assumed_decimal: float | None = None) -> dict:
     """Price a full cover of `players` and enumerate every outcome.
 
     `players` need `prob`; `odds` (American) is used when present. Where a
-    player has no price, `assumed_decimal` stands in for it — that is what makes
-    the table answerable on an unpriced board, and every row that used it is
-    flagged so the number is never mistaken for a quote.
+    player has no price, its own `assumed` (decimal) stands in, and failing
+    that the flat `assumed_decimal` — that is what makes the table answerable
+    on an unpriced board, and every row that used it is flagged so the number
+    is never mistaken for a quote.
+
+    Per leg rather than one price for all of them, because the legs differ: see
+    `price_curve`. `priced` still counts only the legs a book actually quoted,
+    so a filled-in price cannot pass itself off as a posted one.
     """
     n = len(players)
     if not 1 <= n <= MAX_PLAYERS:
@@ -196,6 +261,9 @@ def portfolio(players: list[dict], *, stake: float = 1.0,
     for x in players:
         d = _decimal(x.get("odds"))
         priced.append(d is not None)
+        stand_in = x.get("assumed")
+        if d is None and stand_in is not None and float(stand_in) > 1.0:
+            d = float(stand_in)
         dec.append(d if d is not None else assumed_decimal)
     if any(d is None for d in dec):
         raise ValueError(

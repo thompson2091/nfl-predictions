@@ -599,6 +599,14 @@ function text(label, value, onchange, placeholder, title) {
   f.dataset.focus = 'search';
   return f;
 }
+// A read as a chip. `Veto` is the one that has to look different: it is not a
+// weaker call, it is the opposite instruction — we rate the player under the
+// price, which is the side of this model that measures sharpest and the side
+// no book will sell you.
+function readChip(v) {
+  if (!v) return '';
+  return '<span class="chip' + (v === 'Veto' ? ' fade' : '') + '">' + esc(v) + '</span>';
+}
 function check(label, value, onchange, disabled, title) {
   const i = el('input', { type: 'checkbox' });
   i.checked = !!value; i.disabled = !!disabled;
@@ -686,8 +694,8 @@ function panePlayers() {
       title: 'The bookmaker’s own estimate with their margin removed, so both columns measure the same thing.' },
     { k: 'diff', label: 'Difference', fmt: v => has(v) ? pp(v) + ' pts' : '', cls: v => cls(v),
       title: 'How far our estimate sits above (+) or below (−) the bookmaker’s. A big number is where the value would be — and also where we are least reliable.' },
-    { k: 'read', label: 'Our read', t: 1, fmt: v => v ? '<span class="chip">' + esc(v) + '</span>' : '',
-      title: 'Matches book / Leans / Strong call, cut at the 33rd and 66th percentile of how far this model typically sits from the price.' },
+    { k: 'read', label: 'Our read', t: 1, fmt: readChip,
+      title: 'Matches book / Leans / Strong call where we rate a player above the price, cut at the 33rd and 66th percentile of how far this model typically sits from it — and Veto where we rate one below it. Veto is not a weaker call, it is the opposite instruction: the closing line moves our way when we are lower and stands still when we are higher, so that is the sharpest thing here, and these markets only sell the Yes side.' },
     blended ? { k: 'bet_rank', label: 'Bet #', fmt: v => has(v) ? v : '<span class="dim">—</span>',
       title: 'Our ranking before the bookmaker’s price is mixed in. # is the one to read for who scores; this is the one the money was measured on.' } : null,
     blended ? { k: 'bet_edge', label: 'Bet edge', fmt: v => has(v) ? pp(v) + ' pts' : '', cls: v => cls(v),
@@ -732,7 +740,7 @@ JS_COMBOS = r"""
 // expected value — those cells are blank, because there is no price to compute
 // them from, and blank is the honest answer rather than a reason to hide the
 // row.
-const READ_ORDER = ['Matches book', 'Leans', 'Strong call'];
+const READ_ORDER = ['Veto', 'Matches book', 'Leans', 'Strong call'];
 
 //: How many candidate legs the search keeps, by slip length. Combinations grow
 //: as C(n, legs), so the pool is cut to its strongest legs first. That cut
@@ -980,8 +988,8 @@ function paneCombos() {
     blended ? { k: 'mo', label: 'Model only', fmt: v => pct(v, dp) } : null,
     { k: 'book', label: 'Bookmaker says', fmt: v => has(v) ? pct(v, dp) : '<span class="dim">—</span>' },
     { k: 'diff', label: 'Difference', fmt: v => has(v) ? pp(v, dp) + ' pts' : '', cls: v => cls(v) },
-    { k: 'read', label: 'Our read', t: 1, fmt: v => v ? '<span class="chip">' + esc(v) + '</span>' : '',
-      title: 'The weakest read its legs carry. Not the average and not the strongest: a slip needs all of them, so the leg we have least to say about is the one that decides what it is. Blank where no leg carries a read, which is any slip with an unpriced player on it.' },
+    { k: 'read', label: 'Our read', t: 1, fmt: readChip,
+      title: 'The weakest read its legs carry. Not the average and not the strongest: a slip needs all of them, so the leg we have least to say about is the one that decides what it is — and a Veto leg, one we rate under its own price, ends the slip whatever the others say. Blank where no leg carries a read, which is any slip with an unpriced player on it.' },
     { k: 'ev', label: 'Expected on $100', fmt: v => has(v) ? money(v) : '<span class="dim">—</span>', cls: v => cls(v) },
     anyBacking ? { k: 'backing', label: 'Worth backing', t: 1,
       title: 'Each leg’s own tier, in the order the slip names its players. Never one tier for the slip: the tiers were fitted on single bets.' } : null,
@@ -1058,10 +1066,38 @@ JS_TEAMS = r"""
 // holds the Python to — k scorers win 2^k - 1 slips and, at a flat price d,
 // return (1+d)^k - 1 — so the two implementations are pinned to a third thing
 // rather than to each other.
+// What this market's books pay for a player we rate at `p`, from the line
+// `cover.price_curve` fitted over the priced ones — the JS half of
+// `src.prediction.cover.assumed_decimal`, pinned to it by test. Clamped to the
+// fitted range rather than extrapolated: first TD has nobody rated above 15%,
+// and a line run past that says a 55% player would be posted at +266, which is
+// arithmetic off the end of its evidence rather than a reading of any market.
+function curveDecimal(curve, p) {
+  if (!curve || !has(p) || p <= 0 || p >= 1) return null;
+  const x = Math.min(Math.max(p, curve.lo), curve.hi);
+  if (!(x > 0 && x < 1)) return null;
+  const q = 1 / (1 + Math.exp(-(curve.a + curve.b * Math.log(x / (1 - x)))));
+  return 1 / Math.min(Math.max(q, 1e-6), 1 - 1e-6);
+}
+
+// The prices the unpriced legs were charged, as a range a reader can check.
+// Naming them beats naming one number: five legs off a curve are five prices,
+// and "an assumed +106" for all of them is what made this table lie.
+function standInRange(ds) {
+  const xs = (ds || []).filter(has).slice().sort((a, b) => a - b);
+  if (!xs.length) return 'no stand-in needed';
+  const lo = american(decToAm(xs[0])), hi = american(decToAm(xs[xs.length - 1]));
+  return lo === hi ? lo : lo + ' to ' + hi;
+}
+
 function coverPortfolio(legs, stake, rho, assumedDec) {
   const n = legs.length, N = 1 << n;
   const p = legs.map(l => l.prob);
-  const dec = legs.map(l => has(l.dec) ? l.dec : assumedDec);
+  // A leg's own stand-in first, then the flat override. `priced` below still
+  // counts only what a book quoted, so a filled-in price cannot pass itself
+  // off as a posted one.
+  const dec = legs.map(l => has(l.dec) ? l.dec
+    : (has(l.assumed) ? l.assumed : assumedDec));
 
   // Pattern probabilities. Teammate pairs only: the measured correlation is a
   // team-game effect and applying it across fixtures inflates the tail.
@@ -1119,6 +1155,10 @@ function coverPortfolio(legs, stake, rho, assumedDec) {
   return {
     n: n, stake: stake, bets: slips, staked: staked, rho: rho, rows: rows,
     all_priced: legs.every(l => has(l.dec)), assumed_decimal: assumedDec,
+    // What each unpriced leg was actually charged, so the note under the table
+    // can name the prices the answer rests on rather than one that may not
+    // have been used.
+    stand_ins: legs.map((l, i) => has(l.dec) ? null : dec[i]).filter(has),
     priced: legs.filter(l => has(l.dec)).length,
     expected_net: ev, expected_roi: staked ? ev / staked : 0,
     breakeven_scored: be ? be.scored : null,
@@ -1253,7 +1293,9 @@ function coverPicker(pool, blended, extra) {
       '<span class="v">' + pct(r.ours, 0) + '</span>' +
       '<span class="d"><span>' + esc(r.team || '') +
         (r.priced ? ' · ' + esc(r.odds) : '') + '</span><span>' +
-        (det.length ? det.join(' · ') : 'no price') + '</span></span>';
+        (det.length ? det.join(' · ')
+          : (has(r.estDec) ? 'no price · est ' + american(decToAm(r.estDec))
+                           : 'no price')) + '</span></span>';
     b.onclick = () => coverToggle(r.player);
     return b;
   }));
@@ -1274,13 +1316,21 @@ function paneCover() {
   const m = M();
   const cov = m.cover || {};
   if (S.cover.decMarket !== m.key) {
+    // The flat median is the last resort for a leg the curve cannot price, and
+    // the box itself opens blank: blank means "charge each leg what this
+    // market charges players like it", which is the answer, and a number in
+    // the box means the reader is asking a what-if instead.
     S.cover.dec = has(cov.assumed_dec) ? cov.assumed_dec : 2.0;
-    S.cover.decRaw = american(decToAm(S.cover.dec));
+    S.cover.decRaw = '';
     S.cover.decMarket = m.key;
   }
+  // `estDec` is what this market would plausibly post for a player nobody has
+  // quoted, so the picker can say it on the card rather than leaving a reader
+  // to discover the number only in the payout table.
   const pool = (m.players || [])
     .filter(r => has(r.ours))
-    .slice()
+    .map(r => (r.priced && has(r.dec)) ? r
+              : Object.assign({}, r, { estDec: curveDecimal(cov.price_curve, r.ours) }))
     .sort((a, b) => b.ours - a.ours);
 
   if (!S.cover.picked) S.cover.picked = coverDefault(pool, 5);
@@ -1302,15 +1352,17 @@ function paneCover() {
     // What was typed is held as typed, and the parsed price beside it. Parsing
     // into the field's own value would rewrite `-2` to something else on the
     // keystroke before `-200`, which is a box that fights the person using it.
-    text('Assumed price if unpriced', S.cover.decRaw,
+    text('Price unpriced legs at', S.cover.decRaw,
       v => { S.cover.decRaw = v;
              const d = parsePrice(v);
              if (d) S.cover.dec = d; },
-      '+120 or 2.20',
+      has(cov.price_curve) ? 'this market\u2019s curve' : '+120 or 2.20',
       has(cov.assumed_dec)
-        ? 'Opens at ' + american(decToAm(cov.assumed_dec)) + ' and resets when you switch '
-          + 'market: the median price a book has actually posted on the ten best-rated '
-          + 'players it has priced here. A stand-in for a market, not a quote for a player.'
+        ? 'Leave it blank and each unpriced leg is charged what this market posts for a '
+          + 'player we rate that highly, read off a line fitted over its '
+          + ((cov.price_curve || {}).n || 0) + ' priced players. Type a price to override '
+          + 'that for every unpriced leg \u2014 a what-if, and one worth checking against '
+          + american(decToAm(cov.assumed_dec)) + ', the median this market actually posts.'
         : 'No player on this market carries a price, so there is nothing to derive a '
           + 'stand-in from and this opens at +100. Every payout below rests on that number '
           + 'rather than on a market.'),
@@ -1401,11 +1453,22 @@ function paneCover() {
     return card('Parlay', '', kids);
   }
 
+  const flat = parsePrice(S.cover.decRaw);
   const legs = chosen.map(r => ({
     name: r.player, team: r.team, prob: r.ours,
     dec: r.priced && has(r.dec) ? r.dec : null,
+    // Blank box means every unpriced leg is priced off the curve at its own
+    // probability, which is the only way this table stops flattering the top
+    // of the board: the default five are rated around 55% while the median
+    // posted price is +106, so one flat stand-in handed every one of them a
+    // 20% overlay that the payout column cannot show — it is built from
+    // prices and does not move when the probabilities do. A typed price is an
+    // override and beats the curve, because someone who types one is asking a
+    // what-if and should get the what-if they asked for.
+    assumed: flat ? null : curveDecimal(cov.price_curve, r.ours),
   }));
-  const v = coverPortfolio(legs, S.cover.stake, cov.rho || 0, S.cover.dec);
+  const v = coverPortfolio(legs, S.cover.stake, cov.rho || 0,
+                           flat || S.cover.dec);
 
   const plural = (k, one, many) => k + ' ' + (k === 1 ? one : many);
   kids.push(el('p', { class: 'muted', html:
@@ -1415,9 +1478,12 @@ function paneCover() {
     (v.all_priced
       ? (v.n === 1 ? 'Priced by the book.'
                    : 'All ' + v.n + ' legs priced by the book.')
-      : v.priced + ' of ' + plural(v.n, 'leg', 'legs') +
-        ' priced; the rest at an assumed ' +
-        bothPrices(v.assumed_decimal) + '.') }));
+      : v.priced + ' of ' + plural(v.n, 'leg', 'legs') + ' priced; the rest ' +
+        (flat
+          ? 'at the ' + bothPrices(v.assumed_decimal) + ' you typed.'
+          : 'at what this market posts for players we rate that highly \u2014 ' +
+            standInRange(v.stand_ins) + ', fitted over ' +
+            ((cov.price_curve || {}).n || 0) + ' priced players.')) }));
 
   const cols = [
     { k: 'who', label: 'Players who score', t: 1 },
@@ -1437,7 +1503,8 @@ function paneCover() {
   // do answer it — what the price demands, what we make it, and the gap.
   if (v.n === 1) {
     const leg = legs[0];
-    const d = has(leg.dec) ? leg.dec : v.assumed_decimal;
+    const d = has(leg.dec) ? leg.dec
+      : (has(leg.assumed) ? leg.assumed : v.assumed_decimal);
     const need = 1 / d;
     const gap = (leg.prob - need) * 100;
     kids.push(el('div', {
@@ -1467,10 +1534,20 @@ function paneCover() {
 
   if (!v.all_priced) {
     kids.push(el('div', { class: 'warn-box', html:
-      '<b>The expected result below is not a measured edge.</b> Some legs have ' +
-      'no market price, so it weighs the model\u2019s own probabilities against ' +
-      'the ' + bothPrices(v.assumed_decimal) + ' you assumed. A book that agreed ' +
-      'with these numbers would not offer that price.' }));
+      '<b>The expected result below is not a measured edge.</b> ' +
+      (flat
+        ? 'Some legs have no market price, so it weighs the model\u2019s own ' +
+          'probabilities against the ' + bothPrices(v.assumed_decimal) + ' you ' +
+          'typed. Type a price a book would not offer and the table will show ' +
+          'you the profit in the assumption: a player we rate at 55% posted at ' +
+          '+106 is a 14% overlay a leg, before anyone has been right about ' +
+          'anything.'
+        : 'Some legs have no market price, so they are charged what this ' +
+          'market posts for players we rate that highly (' +
+          standInRange(v.stand_ins) + '). That is a reading of a margin curve, ' +
+          'not a quote for these players \u2014 it says what a book would ' +
+          'plausibly ask, and being close to right about that is the whole ' +
+          'difference between a payout table and a wish.') }));
   }
   kids.push(el('p', { class: 'muted', html: v.n === 1
     ? 'Expected result <b>' + money(v.expected_net) + '</b> (' +

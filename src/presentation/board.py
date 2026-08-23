@@ -91,25 +91,42 @@ def roi_money(roi_pct: float | None) -> str:
 # ── Row-level verdicts ─────────────────────────────────────────────────────
 
 
+#: What a row reads as when we rate a player *below* the price. Its own label
+#: rather than a share of "Strong call", because the two are opposite
+#: instructions and the gap being large does not make them the same size of
+#: opinion — it makes them a bet and a refusal.
+VETO = "Veto"
+
+
 def confidence(edge_pp: float, lo: float, hi: float) -> str:
     """Label what the model is doing, not how sure it is.
 
     These read as verdicts, so the wording matters. Calling a large gap "Low
     confidence" said the opposite of what the data shows — on those players our
     estimate has been 12-24% closer to reality than the bookmaker's.
+
+    **Signed, and it used to be symmetric.** A -9pp gap and a +9pp gap both
+    read "Strong call", which put a betting verdict on a player the model is
+    telling you to leave alone. Two independent measurements say those are not
+    the same row: closing-line value moves about a point our way when we are
+    *lower* and does not move at all when we are higher, and the head-to-head
+    on big disagreements is far stronger on the players we rate down. That is
+    the sharpest thing this model does and these markets only sell the Yes
+    side, so the honest label for it is a refusal, not a call.
     """
     d = abs(edge_pp) / 100.0
     if d <= lo:
         return "Matches book"
-    if d <= hi:
-        return "Leans"
-    return "Strong call"
+    if edge_pp < 0:
+        return VETO
+    return "Leans" if d <= hi else "Strong call"
 
 
 #: The reads a row can carry, weakest first. A combination inherits the weakest
 #: of its legs': a slip is a single bet that needs all of them, so the leg we
-#: have the least to say about is the one that decides what the slip is.
-READ_ORDER = ("Matches book", "Leans", "Strong call")
+#: have the least to say about is the one that decides what the slip is — and a
+#: leg we rate below its price is weaker than one we have no opinion on.
+READ_ORDER = (VETO, "Matches book", "Leans", "Strong call")
 
 
 def combo_read(reads) -> str:

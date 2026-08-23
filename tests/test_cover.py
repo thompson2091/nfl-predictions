@@ -12,9 +12,9 @@ from math import comb
 import numpy as np
 import pytest
 
-from src.prediction.cover import (ASSUMED_FROM_TOP, MAX_PLAYERS,
-                                  assumed_price, portfolio, slip_counts,
-                                  slips)
+from src.prediction.cover import (ASSUMED_FROM_TOP, CURVE_MIN_POINTS,
+                                  MAX_PLAYERS, assumed_decimal, assumed_price,
+                                  portfolio, price_curve, slip_counts, slips)
 
 
 def _flat(n, p, odds=None, decimal=2.0):
@@ -551,3 +551,70 @@ def test_the_stand_in_price_is_read_off_a_cover_sized_slice():
     prob = [0.5 - 0.01 * i for i in range(40)]
     dec = [2.0] * 10 + [40.0] * 30
     assert assumed_price(prob, dec) == pytest.approx(2.0)
+
+
+# ── What a book would ask for a leg nobody quoted ──────────────────────────
+
+
+def _market(a: float, b: float, probs) -> tuple[list, list]:
+    """A market whose posted prices lie on a logit line through our numbers."""
+    import math
+    dec = []
+    for p in probs:
+        lg = math.log(p / (1 - p))
+        q = 1 / (1 + math.exp(-(a + b * lg)))
+        dec.append(1 / q)
+    return list(probs), dec
+
+
+def test_the_price_curve_recovers_the_line_the_market_priced_on():
+    probs = [0.05 + 0.03 * i for i in range(18)]
+    p, d = _market(0.16, 0.85, probs)
+    c = price_curve(p, d)
+    assert c["a"] == pytest.approx(0.16, abs=1e-6)
+    assert c["b"] == pytest.approx(0.85, abs=1e-6)
+    assert (c["lo"], c["hi"]) == (pytest.approx(min(probs)), pytest.approx(max(probs)))
+    assert c["n"] == len(probs)
+
+
+def test_the_curve_carries_the_margin_rather_than_a_flat_price():
+    """The whole reason one stand-in cannot serve a cover.
+
+    Books hold far more on a 10% player than on a 50% one. A single median
+    price assumes the opposite — it hands the top of the board, which is what a
+    cover is built from, an overlay that the payout column cannot show, because
+    that column is built from prices and does not move when the probabilities
+    do.
+    """
+    p, d = _market(0.16, 0.85, [0.05 + 0.03 * i for i in range(18)])
+    c = price_curve(p, d)
+    hold = lambda x: (1 / assumed_decimal(c, x)) / x - 1
+    assert hold(0.10) > hold(0.50) > 0, "margin must fall as the player gets likelier"
+    # And a 55% player must not be charged the median of the whole board.
+    flat = assumed_price(p, d)
+    assert assumed_decimal(c, 0.55) < flat
+
+
+def test_the_curve_is_clamped_rather_than_extrapolated():
+    """First TD has nobody rated above 15%; a line run past that is fiction."""
+    p, d = _market(-1.09, 0.50, [0.01 + 0.01 * i for i in range(14)])
+    c = price_curve(p, d)
+    assert assumed_decimal(c, 0.55) == pytest.approx(assumed_decimal(c, c["hi"]))
+    assert assumed_decimal(c, 0.0001) == pytest.approx(assumed_decimal(c, c["lo"]))
+
+
+def test_too_few_priced_players_is_no_curve_at_all():
+    probs = [0.4, 0.3, 0.2]
+    assert len(probs) < CURVE_MIN_POINTS
+    assert price_curve(probs, [2.0, 3.0, 5.0]) is None
+    assert assumed_decimal(None, 0.4) is None
+
+
+def test_a_legs_own_stand_in_beats_the_flat_one_and_is_not_called_priced():
+    """A filled-in price must never pass itself off as a posted one."""
+    legs = [{"name": "A", "prob": 0.5, "odds": None, "assumed": 1.8},
+            {"name": "B", "prob": 0.4, "odds": -110}]
+    cov = portfolio(legs, stake=1.0, assumed_decimal=4.0)
+    assert cov["legs"][0]["decimal"] == pytest.approx(1.8), "the leg's own price"
+    assert cov["legs"][0]["priced"] is False
+    assert cov["all_priced"] is False

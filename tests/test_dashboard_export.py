@@ -117,6 +117,11 @@ def _js() -> str:
     return dashboard.JS_COMBOS
 
 
+def _js_cover() -> str:
+    from src.export import dashboard
+    return dashboard.JS_TEAMS
+
+
 def test_combination_search_is_capped_per_leg_count():
     """The cap has to shrink as slips get longer, or the browser stalls.
 
@@ -255,6 +260,50 @@ def test_the_graded_replay_is_only_quoted_over_the_rows_it_measured():
     js = _js()
     rec = js.split("function comboRecord()", 1)[1].split("\n}", 1)[0]
     assert "if (c.priced !== 'yes') return null;" in rec
+
+
+def test_the_price_curve_prices_a_leg_the_same_way_in_both_languages():
+    """The page cannot call Python, so it fits nothing — it reads the line.
+
+    The fit ships in the payload and the page evaluates it, which makes
+    `curveDecimal` the second implementation of `cover.assumed_decimal`,
+    clamping included. Two surfaces charging one unpriced leg differently is
+    two different bets wearing one screenshot.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available to run the page's own curve")
+
+    from src.export import dashboard
+    from src.prediction.cover import assumed_decimal
+
+    curve = {"a": 0.159, "b": 0.853, "n": 73, "lo": 0.052, "hi": 0.562}
+    probs = [0.01, 0.052, 0.10, 0.35, 0.554, 0.562, 0.64, 0.99]
+    driver = (dashboard.JS + dashboard.JS_TEAMS +
+              "\nconst C = " + json.dumps(curve) + ";" +
+              "\nconsole.log(JSON.stringify(" + json.dumps(probs) +
+              ".map(p => curveDecimal(C, p))));")
+    out = subprocess.run([node, "-e", driver], capture_output=True, text=True,
+                         check=True)
+    assert json.loads(out.stdout) == pytest.approx(
+        [assumed_decimal(curve, p) for p in probs], rel=1e-9)
+
+
+def test_an_unpriced_leg_is_charged_per_leg_and_still_reads_as_unpriced():
+    """The bug this closes: one flat stand-in flattering the top of the board.
+
+    A 55% player posted at the market's median +106 is a 14% overlay a leg
+    before anyone has been right about anything, and the payout column cannot
+    show it — that column is built from prices and does not move when the
+    probabilities do. So each leg carries its own stand-in, a typed price
+    overrides all of them, and `priced` still counts only what a book quoted.
+    """
+    js = _js_cover()
+    assert "has(l.assumed) ? l.assumed : assumedDec" in js
+    assert "assumed: flat ? null : curveDecimal(cov.price_curve, r.ours)" in js
+    assert "all_priced: legs.every(l => has(l.dec))" in js, (
+        "a filled-in price must never make a slate read as priced"
+    )
 
 
 def test_a_long_slips_price_is_grouped_the_same_way_on_both_surfaces():

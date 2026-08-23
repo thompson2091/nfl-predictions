@@ -490,13 +490,25 @@ def render_cover(cov: dict, tt: str) -> None:
 
     ev, single = cov["expected_roi"], cov["singles_only"]["expected_roi"]
     if not cov["all_priced"]:
+        from src.prediction.bets import decimal_to_american
+        # Name the prices the answer actually rests on. One number for all of
+        # them is what made this table lie: five legs charged off a curve are
+        # five different prices, and the payout column cannot show which,
+        # because it is built from prices and does not move when the
+        # probabilities do.
+        _stand = sorted(float(l["decimal"]) for l in cov["legs"]
+                        if not l["priced"])
+        _rng = (bp.american(decimal_to_american(_stand[0])) if _stand else "—")
+        if _stand and _stand[0] != _stand[-1]:
+            _rng += f" to {bp.american(decimal_to_american(_stand[-1]))}"
         st.warning(
-            f"**The expected result below is not a measured edge.** Some legs "
-            f"have no market price, so it weighs the model's own probabilities "
-            f"against the {cov['assumed_decimal']:.2f} you assumed. A book that "
-            f"agreed with these numbers would not offer that price — a positive "
-            f"figure here mostly means the assumed payout is generous relative "
-            f"to what the model believes.", icon=":material/warning:")
+            f"**The expected result below is not a measured edge.** "
+            f"{len(_stand)} of {cov['n']} legs have no market price, so they "
+            f"are charged what this market posts for players we rate that "
+            f"highly ({_rng}). That is a reading of a margin curve rather than "
+            f"a quote for these players, and the whole table moves with it: "
+            f"charge them a price no book would offer and the profit you see "
+            f"is the profit in the assumption.", icon=":material/warning:")
     if n == 1:
         st.caption(
             f":material/functions: Expected result "
@@ -1903,14 +1915,15 @@ def board_columns(h2h: dict | None, region: dict | None = None) -> dict:
         "Our read", width="small",
         help="**Matches book** — we and the bookmaker landed on the same number. "
              "**Leans** — a modest difference. **Strong call** — we're a long "
-             "way from their price.\n\n"
-             "A strong call is not a warning: on the players we disagree with "
-             "the book about most, our estimate lands closer to what actually "
-             "happened than theirs. But read it with **Difference**: most of "
-             "that accuracy comes from correctly rating players *down*, which "
-             "is our sharpest skill and not something these markets let you "
-             "bet. A strong call where we are *higher* is the backable one — "
-             "and that is what **Worth backing** marks.",
+             "way above their price. **Veto** — we're below it.\n\n"
+             "Veto is not a weaker call, it is the opposite instruction. On "
+             "the players we disagree with the book about most our estimate "
+             "lands closer to what happened than theirs, but almost all of "
+             "that skill is in rating players *down*: the closing line moves "
+             "about a point our way when we are lower and does not move at all "
+             "when we are higher. These markets only sell the Yes side, so "
+             "there is nothing to bet on our best signal — a veto is a player "
+             "to leave out, of a single and of every slip.",
     ),
     "Book": st.column_config.NumberColumn(
         "Bookmaker says", format="%.0f%%",
@@ -2029,7 +2042,9 @@ def combo_columns(decimals: int = 1, graded: dict | None = None) -> dict:
              "above uses. Not the average and not the best of them: a slip "
              "needs every leg, so a **Strong call** beside a player we price "
              "exactly where the book does is a slip resting on the book's own "
-             "opinion, and it says so."),
+             "opinion, and it says so. **Veto** anywhere in a slip is the "
+             "whole slip: one leg we rate under its own price is the leg that "
+             "ends it."),
     "InRange": st.column_config.TextColumn(
         "Worth backing", width="medium",
         help="What the fitted rule would have marked each leg as **on its "
@@ -3677,35 +3692,37 @@ if tab_board.open:
             # flatters one market and damns the other — and the table below
             # says nothing about which, because a payout column built from an
             # assumed price does not move when the probabilities do.
-            from src.prediction.cover import assumed_price
+            from src.prediction.cover import assumed_price, price_curve
             from src.prediction.bets import american_to_decimal, decimal_to_american
             _cov_decs = (_cov_src["decimal_odds"] if "decimal_odds" in _cov_src.columns
                          else [None if pd.isna(o) else american_to_decimal(o)
                                for o in _cov_src["odds"]])
             _assumed = assumed_price(_cov_src["probability"], _cov_decs)
-            _assumed_str = (bp.american(decimal_to_american(_assumed))
-                            if _assumed else "+100")
+            _curve = price_curve(_cov_src["probability"], _cov_decs)
             if st.session_state.get("_cover_price_market") != target_type:
-                st.session_state["cover_price"] = _assumed_str
+                st.session_state["cover_price"] = ""
                 st.session_state["_cover_price_market"] = target_type
             _price_raw = _cbar2.text_input(
-                "Assumed price if unpriced", key="cover_price",
-                help=f"American (+120, -200) or decimal (2.20), to stand in "
-                     f"for a leg with no market price. Real prices are used "
-                     f"wherever the board has one.\n\n"
-                     + (f"Opens at **{_assumed_str}** and resets when you "
-                        f"switch market: the median price a book has actually "
-                        f"posted on the ten best-rated players it has priced "
-                        f"here. A stand-in for a market, not a quote for a "
-                        f"player — a leg's own price depends on the player, "
-                        f"and how deep you look moves this a long way (the "
-                        f"same slate reads +360 over every priced player "
-                        f"rather than the best ten)."
-                        if _assumed else
-                        "No player on this market carries a price, so there is "
-                        "nothing to derive a stand-in from and this opens at "
-                        "+100. Every payout below rests on that number rather "
-                        "than on a market."))
+                "Price unpriced legs at", key="cover_price",
+                placeholder=("this market's curve" if _curve else "+120 or 2.20"),
+                help=("Leave it blank and every unpriced leg is charged what "
+                      f"this market posts for a player we rate that highly — "
+                      f"a line fitted over its {_curve['n']} priced players, "
+                      f"which carries the margin curve with it. Books hold far "
+                      f"more on a 10% player than on a 50% one, and one flat "
+                      f"price assumes the opposite: at the median "
+                      f"{bp.american(decimal_to_american(_assumed))} this "
+                      f"market posts, a player we rate at 55% is handed a 14% "
+                      f"overlay a leg before anyone has been right about "
+                      f"anything.\n\nType a price (American +120/-200, or "
+                      f"decimal 2.20) to override it for every unpriced leg — "
+                      f"a what-if rather than a reading."
+                      if _curve else
+                      "American (+120, -200) or decimal (2.20), to stand in "
+                      "for a leg with no market price. Too few players on this "
+                      "market carry a price to fit what a book would ask, so "
+                      "there is nothing to fall back on and this defaults to "
+                      "+100."))
             from src.prediction.bets import parse_money, parse_price
             _cov_stake = parse_money(_stake_raw)
             _cov_price = parse_price(_price_raw)
@@ -3714,11 +3731,14 @@ if tab_board.open:
                            f"like 2.50 or $2.50 or 1,000. Using $1.00 a slip.",
                            icon=":material/warning:")
                 _cov_stake = 1.0
-            if _cov_price is None:
+            if _cov_price is None and _price_raw.strip():
                 st.warning(f"**{_price_raw}** is not a price — type American "
-                           f"(+120, -200) or decimal (2.20). Using +100 (2.00).",
+                           f"(+120, -200) or decimal (2.20). Pricing the "
+                           f"unpriced legs off this market instead.",
                            icon=":material/warning:")
-                _cov_price = 2.0
+            if _cov_price is None:
+                # The flat fallback for a leg the curve cannot price at all.
+                _cov_price = float(_assumed or 2.0)
 
             # One player is allowed: 2^1 - 1 is one slip, and the table still
             # says what it returns. Refusing it made the reader add a second
@@ -3733,6 +3753,7 @@ if tab_board.open:
                     f"long before it stops being computable.",
                     icon=":material/warning:")
             else:
+                from src.prediction.cover import assumed_decimal
                 _rho = (leg_correlation(target_type) or {}).get("teammate_rho", 0.0)
                 _legs_in = []
                 for _lbl in _picked:
@@ -3742,6 +3763,13 @@ if tab_board.open:
                         "prob": float(r["probability"]),
                         "odds": (None if pd.isna(r.get("odds"))
                                  else float(r["odds"])),
+                        # Blank box means each unpriced leg is charged what
+                        # this market asks for a player rated like it; a typed
+                        # price overrides that, because someone who types one
+                        # is asking a what-if and should get it.
+                        "assumed": (None if parse_price(_price_raw) else
+                                    assumed_decimal(_curve,
+                                                    float(r["probability"]))),
                     })
                 _cov = _cover.portfolio(_legs_in, stake=float(_cov_stake),
                                         rho=float(_rho),

@@ -598,11 +598,15 @@ def cover_variants(rows: list[dict], target_type: str,
     # leg near the top of the board and a fifth of the real price for a
     # first-TD one, and the payout table cannot tell the reader which — it is
     # built from prices and does not move when the probabilities do.
-    from src.prediction.cover import assumed_price
+    from src.prediction.cover import assumed_price, price_curve
 
+    probs = [r.get("ours") for r in rows]
+    decs = [r.get("dec") for r in rows]
     return {"rho": rho, "max_players": 12, "record": record,
-            "assumed_dec": assumed_price([r.get("ours") for r in rows],
-                                         [r.get("dec") for r in rows]),
+            # The median is the last resort; the curve is what an unpriced leg
+            # is actually charged, per leg, at its own probability.
+            "assumed_dec": assumed_price(probs, decs),
+            "price_curve": price_curve(probs, decs),
             "parity": par, "selection": selection(target_type)}
 
 
