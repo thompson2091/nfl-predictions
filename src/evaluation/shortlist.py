@@ -119,8 +119,17 @@ def price_bucket(odds: float, econ: dict | None) -> str | None:
     return None
 
 
+#: How far below the price a player has to sit to be named as a fade, and how
+#: many to name. Mirrors `shortlist_backtest.FADE_EDGE_PP`, which is what the
+#: group's measured return is computed over.
+FADE_EDGE_PP = 2.0
+TOP_VETOES = 15
+
+
 def shortlist(board: pl.DataFrame, *, target_type: str, clv: dict | None,
-           econ: dict | None, shopped: pl.DataFrame | None = None) -> dict:
+           econ: dict | None, shopped: pl.DataFrame | None = None,
+           min_edge_pp: float = FADE_EDGE_PP,
+           top_vetoes: int = TOP_VETOES) -> dict:
     """Apply every filter to one week's priced board, and say what each removed.
 
     The `dropped` counts are the point as much as the survivors are: a week
@@ -129,7 +138,7 @@ def shortlist(board: pl.DataFrame, *, target_type: str, clv: dict | None,
     """
     reasons: list[dict] = []
     if board is None or board.height == 0:
-        return {"rows": [], "dropped": [], "floor": None,
+        return {"rows": [], "vetoes": [], "dropped": [], "floor": None,
                 "note": "No priced players this week."}
 
     df = board
@@ -197,5 +206,22 @@ def shortlist(board: pl.DataFrame, *, target_type: str, clv: dict | None,
             "rank_verdict": (rank_row or {}).get("verdict"),
         })
     rows.sort(key=lambda x: -x["edge_pp"])
-    return {"rows": rows, "dropped": reasons, "floor": floor,
+
+    # The other half, which the filters above spend their first step throwing
+    # away and which measures better than anything they keep. Counted was not
+    # enough: a reader told two thirds of the board is a veto and never shown
+    # which two thirds cannot act on it, and the one thing this model does
+    # well is name these players.
+    veto = board.filter(pl.col("model_edge_pp") <= -float(min_edge_pp))
+    vetoes = []
+    for r in (veto.sort("model_edge_pp").head(int(top_vetoes))
+              .iter_rows(named=True) if veto.height else []):
+        vetoes.append({
+            "player": r.get("player_name"), "team": r.get("team"),
+            "game": r.get("game_label"),
+            "ours": float(r["prob_bet"]), "book": float(r["market_prob"]),
+            "edge_pp": float(r["model_edge_pp"]),
+            "odds": int(r["odds"]),
+        })
+    return {"rows": rows, "vetoes": vetoes, "dropped": reasons, "floor": floor,
             "note": None if rows else "Nothing this week survives every filter."}

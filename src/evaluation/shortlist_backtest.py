@@ -118,6 +118,71 @@ def _bets(board: pd.DataFrame, floor: dict | None,
     return masks
 
 
+#: How far below the price a player has to sit to count as a fade. The betting
+#: threshold, mirrored: the same distance that would make a bet worth taking on
+#: the other side.
+FADE_EDGE_PP = 2.0
+
+
+def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP) -> dict | None:
+    """What the half of the model nobody can buy would have been worth.
+
+    Every other measurement here is about players we rate *above* the price,
+    because that is the only side these markets sell. This one prices the other
+    half: the players we rate well below it, graded on whether they scored.
+
+    The return is what laying them at the de-vigged price would have paid —
+    win `1` when he does not score, lose `p/(1-p)` when he does. That price
+    does not exist: `bets.build_fade_card` measured 0 of 142 live quotes
+    carrying a No side, and a book that posted one would charge margin on it.
+    So the number to read is not the return but `margin_capacity`: how much a
+    No price could hold back before the edge is gone. Anything a real market
+    charges above that turns this from an edge into a loss.
+
+    `exchange` prices the one venue where laying is possible at all, which
+    takes commission on winnings rather than margin on the price.
+    """
+    pnl, scored_all, implied_all, games = [], [], [], []
+    for wk in weeks:
+        b = wk["board"]
+        if "prob_bet" not in b.columns or b.empty:
+            continue
+        edge_pp = (b["prob_bet"].astype(float) - b["market_prob"].astype(float)) * 100
+        m = (edge_pp <= -float(min_edge_pp)).to_numpy()
+        if not m.any():
+            continue
+        scored = b["scored"].astype(float).to_numpy()[m]
+        implied = b["market_prob"].astype(float).to_numpy()[m]
+        pnl.append(np.where(scored == 1, -(1.0 - implied) / implied, 1.0))
+        scored_all.append(scored)
+        implied_all.append(implied)
+        games.append(b["game_label"].to_numpy()[m])
+    if not pnl:
+        return None
+
+    pnl = np.concatenate(pnl)
+    scored = np.concatenate(scored_all)
+    implied = np.concatenate(implied_all)
+    hit, priced = float(scored.mean()), float(implied.mean())
+    stat = clustered_roi(pnl, np.concatenate(games))
+    fair_no, need_no = 1.0 - priced, 1.0 - hit
+    return {
+        **stat,
+        "min_edge_pp": float(min_edge_pp),
+        "scored_pct": hit * 100,
+        "priced_pct": priced * 100,
+        # The whole answer in one number: how much a No price could charge
+        # before this stops being worth anything.
+        "margin_capacity_pct": (need_no / fair_no - 1.0) * 100,
+        "exchange": [
+            {"commission": c,
+             "roi": float(((1 - hit) * (1 + (priced / (1 - priced)) * (1 - c)) - 1)
+                          * 100)}
+            for c in (0.02, 0.05)
+        ],
+    }
+
+
 def shopped_returns(dec: np.ndarray, won: np.ndarray) -> list[dict]:
     """The same bets at prices a little better than the ones they got.
 
@@ -256,6 +321,10 @@ def replay(target_type: str, model: str) -> dict | None:
 
     return {
         "kind": "shortlist_backtest",
+        # The half of the model that measures best and that no book will sell.
+        # Graded over every week, not only the ones with a floor: nothing about
+        # it depends on a threshold fitted from closing-line value.
+        "fade": fade_side(weeks),
         "target_type": target_type, "model": model,
         "seasons": seasons, "skipped_seasons": skipped,
         "hindsight_floor": (None if hindsight is None else

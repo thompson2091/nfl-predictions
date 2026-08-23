@@ -3026,6 +3026,21 @@ if tab_short.open:
         _sl_rec = shortlist_record(target_type, selected_model)
         if _sl_rec and _sl_rec.get("arms"):
             _arms = {a["arm"]: a for a in _sl_rec["arms"]}
+            _base = (_arms.get("all priced") or {}).get("pooled")
+            # Every arm is negative, so the level is not the news — the news is
+            # what each filter is worth against the arm above it, and how far
+            # the best of them still is from paying for itself. Four red
+            # numbers in a row said neither.
+            if _base:
+                _best = (_arms.get("we rate higher") or {}).get("pooled") or _base
+                st.markdown(
+                    f"**Backing every priced player returned "
+                    f"{_base['roi']:+.1f}% a bet. Taking only the ones we rate "
+                    f"above the price returns {_best['roi']:+.1f}% — the "
+                    f"model's ordering is worth "
+                    f"{_best['roi'] - _base['roi']:.1f} points, and still "
+                    f"{_best['breakeven_gap_pp']:.1f} points of implied "
+                    f"probability short of breaking even.**")
             _strip2 = st.container(horizontal=True)
             for _name, _label, _help in (
                 ("all priced", "Every priced bet",
@@ -3054,10 +3069,13 @@ if tab_short.open:
                                    delta="bet nothing", delta_color="off",
                                    help=_help + "\n\nNo week cleared it.")
                     continue
+                _delta = (None if _base is None or _name == "all priced" else
+                          f"{_p['roi'] - _base['roi']:+.1f} pts vs backing "
+                          f"everything")
                 _strip2.metric(
                     _label, f"{_p['roi']:+.1f}%",
-                    delta=f"{_p['lo']:+.0f} to {_p['hi']:+.0f}",
-                    delta_color="off",
+                    delta=_delta or f"{_p['lo']:+.0f} to {_p['hi']:+.0f}",
+                    delta_color="normal" if _delta else "off",
                     help=f"{_help}\n\n{_p['n']:,} bets, hit "
                          f"{_p['hit_pct']:.1f}% where the price needed "
                          f"{_p['breakeven_pct']:.1f}% — short by "
@@ -3078,6 +3096,7 @@ if tab_short.open:
                     f"scripts/41_shortlist_backtest.py --target {target_type}`.",
                     icon=":material/info:")
 
+        _fade = (_sl_rec or {}).get("fade")
         _sl = shortlist_now(season, week, target_type, selected_model,
                             selected_version)
         if _sl is None:
@@ -3114,6 +3133,73 @@ if tab_short.open:
                     "that price returned across the whole population, vetoed "
                     "players included: context for reading a row, never the "
                     "reason it is on the list.")
+
+            # ── The half that measures best ──────────────────────────────
+            # The filters above spend their first step throwing these away.
+            # They are also the only group in this project with a positive
+            # measured return, which is why they get named rather than counted.
+            if _sl.get("vetoes"):
+                st.subheader("Fade — the half no book sells")
+                if _fade:
+                    _fbar = st.container(horizontal=True)
+                    _fbar.metric(
+                        "They scored", f"{_fade['scored_pct']:.1f}%",
+                        delta=f"priced at {_fade['priced_pct']:.1f}%",
+                        delta_color="off",
+                        help=f"Every player we rated {_fade['min_edge_pp']:.0f}+ "
+                             f"points below the de-vigged price, over "
+                             f"{_fade['n']:,} bets — graded on whether they "
+                             f"actually scored.")
+                    _fbar.metric(
+                        "Laying at fair", f"{_fade['roi']:+.1f}%",
+                        delta=f"{_fade['lo']:+.0f} to {_fade['hi']:+.0f}",
+                        delta_color="off",
+                        help="What backing the No side at the de-vigged price "
+                             "would have returned. The interval clears zero, "
+                             "which nothing else in this project does — and "
+                             "that price does not exist: a live slate carried "
+                             "0 of 142 quotes with a No side.")
+                    _fbar.metric(
+                        "Margin it can carry",
+                        f"{_fade['margin_capacity_pct']:.2f}%",
+                        help="How much a No price could hold back before the "
+                             "edge is gone. This is the number that decides "
+                             "whether the skill is reachable: anything a real "
+                             "market charges above it turns this into a loss.")
+                    _fbar.metric(
+                        "On an exchange, 5% commission",
+                        f"{_fade['exchange'][-1]['roi']:+.1f}%",
+                        help="An exchange takes commission on winnings rather "
+                             "than margin on the price, which is the only "
+                             "venue where laying a player is possible at all. "
+                             "Assumes a fill at the de-vigged price, which is "
+                             "optimistic where the book is thin.")
+                _vf = pd.DataFrame(_sl["vetoes"])
+                _vf["Ours"] = _vf["ours"] * 100
+                _vf["Book"] = _vf["book"] * 100
+                _vf["Price"] = _vf["odds"].map(bp.american)
+                st.dataframe(
+                    _vf[["player", "game", "Ours", "Book", "edge_pp", "Price"]],
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "player": st.column_config.TextColumn("Player"),
+                        "game": st.column_config.TextColumn("Game", width="small"),
+                        "Ours": st.column_config.NumberColumn(
+                            "Our estimate", format="%.1f%%"),
+                        "Book": st.column_config.NumberColumn(
+                            "Bookmaker says", format="%.1f%%"),
+                        "edge_pp": st.column_config.NumberColumn(
+                            "Difference", format="%+.1f pts",
+                            help="How far below their price we sit. This is "
+                                 "the direction the model is measurably good "
+                                 "at, and the direction you cannot buy."),
+                        "Price": st.column_config.TextColumn("Price", width="small"),
+                    })
+                st.caption(
+                    ":material/block: These are **not bets**. They are players "
+                    "to leave out — of a single, of a parlay, of a cover. "
+                    "Where the two lists disagree with your instinct, this is "
+                    "the one with a measurement behind it.")
 
 if tab_board.open:
     with tab_board:

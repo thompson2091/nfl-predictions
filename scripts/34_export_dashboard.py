@@ -600,6 +600,11 @@ def _shortlist_record(target_type: str) -> dict | None:
     return {
         "seasons": d.get("seasons"), "skipped": d.get("skipped_seasons"),
         "priced_at": d.get("priced_at"),
+        # The half no book sells, and the only measured return here that
+        # clears zero. Carried whole: the page shows the group's realised rate
+        # against its price, not just the return, because the return is
+        # priced at a number no market posts.
+        "fade": d.get("fade"),
         "arms": [{"arm": a["arm"], "note": a.get("note"),
                   **({} if a.get("pooled") is None else
                      {k: a["pooled"][k] for k in

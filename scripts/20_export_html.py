@@ -48,8 +48,14 @@ APP = "app.py"
 #: rather than a description of the rows it was drawn from. Its "View" control
 #: offers Player types and Bet types; an export captures one value, and this
 #: publishes the first.
-PANES = [("board", "Full board"), ("model", "Model performance"),
-         ("clusters", "Player types")]
+#:
+#: "Shortlist" leads. It is the only pane that answers "is any of this worth
+#: betting", and it answers before it lists anything: the graded strip says
+#: every arm of the rule lost, and the week's rows sit under that sentence
+#: rather than above it. That makes it the opposite of betting advice, which is
+#: why it can be the thing a stranger lands on when "Betting reality" cannot.
+PANES = [("shortlist", "Shortlist"), ("board", "Full board"),
+         ("model", "Model performance"), ("clusters", "Player types")]
 
 MARKETS = [
     ("anytime_td", "Anytime TD"),

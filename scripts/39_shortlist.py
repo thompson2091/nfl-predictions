@@ -35,6 +35,36 @@ def _load(path):
     return json.loads(path.read_text()) if path.exists() else None
 
 
+def _fades(res: dict, out_dir) -> None:
+    """The players we rate furthest below their price, and what that is worth.
+
+    Printed even when the shortlist is empty, because on most weeks it is the
+    only thing here with a measurement behind it: laying this group at the
+    de-vigged price returned +25% on anytime TD across 2023-2025, on an
+    interval clearing zero. No book sells that side — the number that decides
+    whether it is reachable is how much margin a No price could carry, which
+    the replay reports.
+    """
+    if not res.get("vetoes"):
+        return
+    rec = _load(out_dir / "shortlist_backtest.json") or {}
+    f = rec.get("fade")
+    print(f"\n  FADE \u2014 furthest below the price, the half no book sells")
+    if f:
+        print(f"    this group scored {f['scored_pct']:.1f}% against a "
+              f"{f['priced_pct']:.1f}% de-vigged price over {f['n']:,} bets; "
+              f"laying at fair returned {f['roi']:+.1f}% "
+              f"[{f['lo']:+.1f}, {f['hi']:+.1f}]")
+        print(f"    a No price could carry {f['margin_capacity_pct']:.2f}% of "
+              f"margin before that is gone \u2014 on an exchange at 5% "
+              f"commission it is {f['exchange'][-1]['roi']:+.1f}% per unit at risk")
+    print(f"\n  {'Player':<24}{'Game':<12}{'Ours':>6}{'Book':>7}{'Gap':>7}{'Price':>8}")
+    for r in res["vetoes"][:10]:
+        print(f"  {r['player'][:23]:<24}{(r['game'] or '')[:11]:<12}"
+              f"{r['ours']:>6.1%}{r['book']:>7.1%}{r['edge_pp']:>+7.1f}"
+              f"{bp.american(r['odds']):>8}")
+
+
 def main(season: int, week: int, target: str, model: str) -> int:
     board, status = board_for_week(season, week, target, model)
     if board.height == 0:
@@ -61,6 +91,7 @@ def main(season: int, week: int, target: str, model: str) -> int:
         print(f"\n  {res['note']}")
         print("  That is the answer, not a gap: every filter above is a "
               "measurement that says this population loses money.")
+        _fades(res, out_dir)
         return 0
 
     f = res["floor"]
@@ -82,6 +113,7 @@ def main(season: int, week: int, target: str, model: str) -> int:
           "population, vetoed players included — context for reading a row, "
           "never the reason it is on the list.")
 
+    _fades(res, out_dir)
     path = out_dir / f"shortlist_{season}_week{week}.json"
     path.write_text(json.dumps(res, indent=2))
     print(f"\n  Saved: {path}")

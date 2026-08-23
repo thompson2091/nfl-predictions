@@ -1722,7 +1722,20 @@ function paneShortlist() {
 
   const rec = sl.record;
   if (rec && rec.arms && rec.arms.length) {
-    out.appendChild(card('This rule, replayed and graded',
+    // Every arm is negative, so the level is not the news. What each filter is
+    // worth against the arm above it, and how far the best of them still is
+    // from paying for itself, is — and four red numbers in a row said neither.
+    const armOf = k => (rec.arms.find(a => a.arm === k) || {});
+    const base = armOf('all priced'), best = armOf('we rate higher');
+    const lede = (has(base.roi) && has(best.roi))
+      ? '<b>Backing every priced player returned ' + pp(base.roi, 1) + '% a bet. ' +
+        'Taking only the ones we rate above the price returns ' + pp(best.roi, 1) +
+        '% \u2014 the model\u2019s ordering is worth ' +
+        (best.roi - base.roi).toFixed(1) + ' points, and still ' +
+        best.breakeven_gap_pp.toFixed(1) + ' points of implied probability short ' +
+        'of breaking even.</b><br><br>'
+      : '';
+    out.appendChild(card('This rule, replayed and graded', lede +
       'Every arm is the one above it plus a filter, so the difference between ' +
       'two rows is what that filter bought. Flat stakes at the ' +
       esc(rec.priced_at || 'closing price') + ' over ' +
@@ -1737,7 +1750,9 @@ function paneShortlist() {
       [tiles(rec.arms.map(a => (a.roi == null
         ? { k: a.arm, v: 'stood down', d: a.note || 'bet nothing' }
         : { k: a.arm, v: pp(a.roi, 1) + '%',
-            d: a.n.toLocaleString() + ' bets \u00b7 ' + pp(a.lo, 0) + ' to ' + pp(a.hi, 0),
+            d: (a.arm === 'all priced' || !has(base.roi)
+                ? a.n.toLocaleString() + ' bets \u00b7 ' + pp(a.lo, 0) + ' to ' + pp(a.hi, 0)
+                : pp(a.roi - base.roi, 1) + ' pts vs backing everything'),
             help: 'Hit ' + pct(a.hit_pct / 100, 1) + ' where the price needed ' +
                   pct(a.breakeven_pct / 100, 1) + ' \u2014 short by ' +
                   a.breakeven_gap_pp.toFixed(1) + ' points of implied probability.' })))]));
@@ -1783,6 +1798,65 @@ function paneShortlist() {
     'the population they come from loses money; these are the rows the two ' +
     'filters measured on the right population did not reject.' }));
   out.appendChild(card(null, null, kids));
+  out.appendChild(fadeCard(sl, rec));
+  return out;
+}
+
+// The half the filters above throw away in their first step, and the only
+// group in this project whose measured return clears zero. Counted was not
+// enough: a reader told two thirds of the board is a veto and never shown
+// which two thirds cannot act on it.
+function fadeCard(sl, rec) {
+  const out = el('div');
+  if (!sl.vetoes || !sl.vetoes.length) return out;
+  const f = rec && rec.fade;
+  const kids = [];
+  if (f) {
+    kids.push(tiles([
+      { k: 'They scored', v: pct(f.scored_pct / 100, 1),
+        d: 'priced at ' + pct(f.priced_pct / 100, 1),
+        help: 'Every player we rated ' + f.min_edge_pp + '+ points below the ' +
+              'de-vigged price, over ' + f.n.toLocaleString() + ' bets, graded ' +
+              'on whether they actually scored.' },
+      { k: 'Laying at fair', v: pp(f.roi, 1) + '%',
+        d: pp(f.lo, 0) + ' to ' + pp(f.hi, 0),
+        help: 'What backing the No side at the de-vigged price would have ' +
+              'returned. The interval clears zero, which nothing else here ' +
+              'does \u2014 and that price does not exist: a live slate carried ' +
+              '0 of 142 quotes with a No side.' },
+      { k: 'Margin it can carry', v: f.margin_capacity_pct.toFixed(2) + '%',
+        d: 'before the edge is gone',
+        help: 'How much a No price could hold back and still leave this worth ' +
+              'taking. This is the number that decides whether the skill is ' +
+              'reachable at all.' },
+      { k: 'Exchange, 5% commission',
+        v: pp(f.exchange[f.exchange.length - 1].roi, 1) + '%',
+        d: 'per unit at risk',
+        help: 'An exchange takes commission on winnings rather than margin on ' +
+              'the price, which is the only venue where laying a player is ' +
+              'possible. Assumes a fill at the de-vigged price, which is ' +
+              'optimistic where the book is thin.' },
+    ]));
+  }
+  const cols = [
+    { k: 'player', label: 'Player', t: 1 },
+    { k: 'game', label: 'Game', t: 1 },
+    { k: 'ours', label: 'Our estimate', fmt: v => pct(v, 1) },
+    { k: 'book', label: 'Bookmaker says', fmt: v => pct(v, 1) },
+    { k: 'edge_pp', label: 'Difference', fmt: v => pp(v) + ' pts', cls: v => cls(v),
+      title: 'How far below their price we sit. This is the direction the model is measurably good at, and the direction you cannot buy.' },
+    { k: 'odds', label: 'Price', t: 1, fmt: v => american(v) },
+  ];
+  kids.push(table('fades', cols, sl.vetoes, {}));
+  kids.push(el('div', { class: 'warn-box', html:
+    '<b>These are not bets.</b> They are players to leave out \u2014 of a ' +
+    'single, of a parlay, of a cover. Where this list disagrees with your ' +
+    'instinct, it is the one with a measurement behind it.' }));
+  out.appendChild(card('Fade \u2014 the half no book sells',
+    'The filters above spend their first step throwing these away. They are ' +
+    'also the only group here whose measured return clears zero, which is the ' +
+    'whole shape of this model: it is better at naming who will not score ' +
+    'than who will, and only one of those is for sale.', kids));
   return out;
 }
 """
