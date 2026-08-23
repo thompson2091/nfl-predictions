@@ -8,7 +8,7 @@
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune \
 	families ablate retention settle-overlay line-movement filter-sweep \
-	shortlist shortlist-backtest betlog \
+	shortlist shortlist-backtest betlog positions \
 	cover-backtest cover-selection
 
 # The interpreter, resolved once. Every recipe used to call a bare `python`,
@@ -77,6 +77,11 @@ shortlist:
 # Usage: make shortlist-backtest  ·  make shortlist-backtest TARGET=first_td
 shortlist-backtest:
 	$(PYTHON) scripts/41_shortlist_backtest.py $(if $(TARGET),--target $(TARGET))
+
+# What each position scores, what it is charged, and what we say about it.
+# Reference for reading any board here. Usage: make positions
+positions:
+	$(PYTHON) scripts/42_position_rates.py $(if $(TARGET),--target $(TARGET))
 
 # Bets you actually placed, scored against the closing line — the only figure
 # here that says whether an edge exists before the bankroll does.

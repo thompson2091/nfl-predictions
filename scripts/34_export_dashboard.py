@@ -575,6 +575,9 @@ def market(target_type: str, label: str, season: int | None,
         # The rule, and how it has actually done. Trimmed to the pooled arms:
         # the per-season detail is in the artifact and the page's job is the
         # verdict, which is one line per arm.
+        # Reference for reading any table here: what a position typically
+        # does, what it is charged, and what we say about it.
+        "positions": _position_rates(target_type),
         "shortlist": (None if not pl_out.get("shortlist") else
                       {**pl_out["shortlist"],
                        "record": _shortlist_record(target_type)}),
@@ -589,6 +592,12 @@ def market(target_type: str, label: str, season: int | None,
         "cover": cover_variants(pl_out["rows"], target_type,
                                 parity(target_type, model, who["version"])),
     }
+
+
+def _position_rates(target_type: str) -> dict | None:
+    """The measured position table, if `scripts/42_position_rates.py` has run."""
+    from src.evaluation.position_rates import load
+    return load(get_path("output", target_type) / "position_rates.json")
 
 
 def _shortlist_record(target_type: str) -> dict | None:

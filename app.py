@@ -2094,6 +2094,14 @@ def combo_grid_range(record: dict | None, key: str) -> str:
 
 
 @st.cache_data(show_spinner=False)
+def position_rates(tt: str, model: str) -> dict | None:
+    """What each position scores, is charged, and is rated at."""
+    from src.evaluation.position_rates import load
+    d = load(get_path("output", tt) / "position_rates.json")
+    return d if d and d.get("model") in (None, model) else None
+
+
+@st.cache_data(show_spinner=False)
 def shortlist_record(tt: str, model: str) -> dict | None:
     """How the shortlist rule has actually done, or None if never graded.
 
@@ -3095,6 +3103,56 @@ if tab_short.open:
             st.info("This rule has not been graded — run `python "
                     f"scripts/41_shortlist_backtest.py --target {target_type}`.",
                     icon=":material/info:")
+
+        # Reference, not a verdict: the numbers a reader keeps deriving by eye
+        # while reading any of these tables. Placed here rather than buried in
+        # Model performance because "is 12% good?" is a question you have while
+        # looking at a board, not while auditing one.
+        _pos = position_rates(target_type, selected_model)
+        if _pos:
+            with st.expander("What each position typically does",
+                             icon=":material/sports_football:"):
+                _pf = pd.DataFrame(_pos["rows"])
+                _pf["Price"] = _pf["median_odds"].map(bp.american)
+                st.dataframe(
+                    _pf[["position", "priced_weeks", "scored_pct", "book_pct",
+                         "ours_pct", "Price", "all_rated_pct"]],
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "position": st.column_config.TextColumn("Position", width="small"),
+                        "priced_weeks": st.column_config.NumberColumn(
+                            "Player-weeks", format="%d",
+                            help="Priced player-weeks behind the row."),
+                        "scored_pct": st.column_config.NumberColumn(
+                            "Scored", format="%.1f%%",
+                            help="How often a priced player at this position "
+                                 "actually scored."),
+                        "book_pct": st.column_config.NumberColumn(
+                            "Book says", format="%.1f%%",
+                            help="The de-vigged price they carried, averaged. "
+                                 "Beside the realised rate this is the "
+                                 "market's own accuracy, position by position."),
+                        "ours_pct": st.column_config.NumberColumn(
+                            "We say", format="%.1f%%",
+                            help="Our own average estimate for the same rows. "
+                                 "A model two points hot on one position and "
+                                 "two cold on another looks perfect in "
+                                 "aggregate and is wrong on every row."),
+                        "Price": st.column_config.TextColumn(
+                            "Median price", width="small"),
+                        "all_rated_pct": st.column_config.NumberColumn(
+                            "All rated", format="%.1f%%",
+                            help="The same rate over everyone the model rates, "
+                                 "priced or not. Far lower, because it counts "
+                                 "deep reserves nobody has ever posted a price "
+                                 "for — context, not a bet."),
+                    })
+                st.caption(
+                    f":material/insights: Priced players, {_pos['span']}. "
+                    f"Read **Scored** against **Book says** for what the "
+                    f"market gets right, and against **We say** for what we "
+                    f"do — the gap between the last two is where a position "
+                    f"the model misreads would show up.")
 
         _fade = (_sl_rec or {}).get("fade")
         _sl = shortlist_now(season, week, target_type, selected_model,

@@ -1799,6 +1799,36 @@ function paneShortlist() {
     'filters measured on the right population did not reject.' }));
   out.appendChild(card(null, null, kids));
   out.appendChild(fadeCard(sl, rec));
+  out.appendChild(positionCard(m.positions));
+  return out;
+}
+
+// Reference rather than verdict: the numbers a reader keeps deriving by eye
+// while reading any table on this page. "Is 12% good?" is a question you have
+// while looking at a board, not while auditing one, so it sits with the board
+// rather than in a report card.
+function positionCard(pos) {
+  const out = el('div');
+  if (!pos || !pos.rows || !pos.rows.length) return out;
+  const cols = [
+    { k: 'position', label: 'Position', t: 1 },
+    { k: 'priced_weeks', label: 'Player-weeks', fmt: v => v.toLocaleString() },
+    { k: 'scored_pct', label: 'Scored', fmt: v => pct(v / 100, 1),
+      title: 'How often a priced player at this position actually scored.' },
+    { k: 'book_pct', label: 'Book says', fmt: v => pct(v / 100, 1),
+      title: 'The de-vigged price they carried, averaged. Beside the realised rate this is the market\u2019s own accuracy, position by position.' },
+    { k: 'ours_pct', label: 'We say', fmt: v => has(v) ? pct(v / 100, 1) : '',
+      title: 'Our own average estimate for the same rows. A model two points hot on one position and two cold on another looks perfect in aggregate and is wrong on every row.' },
+    { k: 'median_odds', label: 'Median price', t: 1, fmt: v => american(v) },
+    { k: 'all_rated_pct', label: 'All rated', fmt: v => pct(v / 100, 1),
+      title: 'The same rate over everyone the model rates, priced or not. Far lower, because it counts deep reserves nobody has ever posted a price for \u2014 context, not a bet.' },
+  ];
+  out.appendChild(card('What each position typically does',
+    'Priced players, ' + esc(pos.span || '') + '. Read <b>Scored</b> against ' +
+    '<b>Book says</b> for what the market gets right, and against <b>We say</b> ' +
+    'for what we do \u2014 the gap between the last two is where a position the ' +
+    'model misreads would show up.',
+    [table('positions', cols, pos.rows, { nosort: true })]));
   return out;
 }
 
