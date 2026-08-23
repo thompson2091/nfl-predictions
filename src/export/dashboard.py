@@ -445,8 +445,15 @@ const S = {
   // whatever the reader chose.
   // `dec` is the price the table uses; `decRaw` is what was typed to get it,
   // in either notation. They part company only while a price is half-entered.
+  // `dec`/`decRaw` are seeded per market from what books have actually posted
+  // there — see `assumed_price` — and `decMarket` is which market they were
+  // seeded for. Carrying one price across a market switch was a trap: the
+  // payout table is built from prices and does not move when the
+  // probabilities do, so +100 assumed on both markets makes an anytime cover
+  // look ordinary and a first-TD cover look catastrophic for no reason a
+  // reader can see.
   cover: { picked: null, stake: 1, stakeRaw: '1.00', dec: 2.0, decRaw: '+100',
-           q: '', game: '',
+           decMarket: null, q: '', game: '',
            pricedOnly: false, open: true },
   // `priced` mirrors the master table's control and defaults the same way:
   // the whole slate. A priced-only default answered "what can I bet on"
@@ -578,7 +585,7 @@ function multi(label, values, options, onchange, allLabel, title) {
   return el('div', { class: 'field chipset', title: title || null },
             [el('label', { text: label }), wrap]);
 }
-function text(label, value, onchange, placeholder) {
+function text(label, value, onchange, placeholder, title) {
   // The label doubles as the field's identity across a re-render. Without it
   // the focus restore below grabs the first text input on the pane, so typing
   // into the third one throws the caret back into the first — which the cover
@@ -587,7 +594,8 @@ function text(label, value, onchange, placeholder) {
     placeholder: placeholder || '', 'data-k': label });
   let tmr;
   i.oninput = () => { clearTimeout(tmr); tmr = setTimeout(() => { onchange(i.value); render(true); }, 120); };
-  const f = el('div', { class: 'field' }, [el('label', { text: label }), i]);
+  const f = el('div', { class: 'field', title: title || null },
+               [el('label', { text: label }), i]);
   f.dataset.focus = 'search';
   return f;
 }
@@ -1265,6 +1273,11 @@ function coverPicker(pool, blended, extra) {
 function paneCover() {
   const m = M();
   const cov = m.cover || {};
+  if (S.cover.decMarket !== m.key) {
+    S.cover.dec = has(cov.assumed_dec) ? cov.assumed_dec : 2.0;
+    S.cover.decRaw = american(decToAm(S.cover.dec));
+    S.cover.decMarket = m.key;
+  }
   const pool = (m.players || [])
     .filter(r => has(r.ours))
     .slice()
@@ -1293,7 +1306,14 @@ function paneCover() {
       v => { S.cover.decRaw = v;
              const d = parsePrice(v);
              if (d) S.cover.dec = d; },
-      '+120 or 2.20'),
+      '+120 or 2.20',
+      has(cov.assumed_dec)
+        ? 'Opens at ' + american(decToAm(cov.assumed_dec)) + ' and resets when you switch '
+          + 'market: the median price a book has actually posted on the ten best-rated '
+          + 'players it has priced here. A stand-in for a market, not a quote for a player.'
+        : 'No player on this market carries a price, so there is nothing to derive a '
+          + 'stand-in from and this opens at +100. Every payout below rests on that number '
+          + 'rather than on a market.'),
   ];
   const boxes = coverPicker(pool, m.topk && m.topk.blended, money2);
 

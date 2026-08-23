@@ -593,7 +593,16 @@ def cover_variants(rows: list[dict], target_type: str,
     from src.utils.paths import get_path as _gp
 
     record = load_cover(_gp("output", target_type) / "cover_backtest.json")
+    # What an unpriced leg should be assumed to pay on *this* market. Carried
+    # rather than typed into the page, because +100 is odds-on for an anytime
+    # leg near the top of the board and a fifth of the real price for a
+    # first-TD one, and the payout table cannot tell the reader which — it is
+    # built from prices and does not move when the probabilities do.
+    from src.prediction.cover import assumed_price
+
     return {"rho": rho, "max_players": 12, "record": record,
+            "assumed_dec": assumed_price([r.get("ours") for r in rows],
+                                         [r.get("dec") for r in rows]),
             "parity": par, "selection": selection(target_type)}
 
 

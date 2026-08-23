@@ -3670,11 +3670,42 @@ if tab_board.open:
             _stake_raw = _cbar2.text_input(
                 "Stake per slip", value="1.00", key="cover_stake",
                 help="Dollars: 2.50, $2.50, 1,000.")
+            # Defaulted per market, and reset when the market changes. One
+            # number carried across that switch means opposite things: near
+            # the top of this board an anytime-TD leg is odds-on and a
+            # first-TD leg pays seven times the stake, so +100 assumed on both
+            # flatters one market and damns the other — and the table below
+            # says nothing about which, because a payout column built from an
+            # assumed price does not move when the probabilities do.
+            from src.prediction.cover import assumed_price
+            from src.prediction.bets import american_to_decimal, decimal_to_american
+            _cov_decs = (_cov_src["decimal_odds"] if "decimal_odds" in _cov_src.columns
+                         else [None if pd.isna(o) else american_to_decimal(o)
+                               for o in _cov_src["odds"]])
+            _assumed = assumed_price(_cov_src["probability"], _cov_decs)
+            _assumed_str = (bp.american(decimal_to_american(_assumed))
+                            if _assumed else "+100")
+            if st.session_state.get("_cover_price_market") != target_type:
+                st.session_state["cover_price"] = _assumed_str
+                st.session_state["_cover_price_market"] = target_type
             _price_raw = _cbar2.text_input(
-                "Assumed price if unpriced", value="+100", key="cover_price",
-                help="American (+120, -200) or decimal (2.20), to stand in for "
-                     "a leg with no market price. Real prices are used "
-                     "wherever the board has one.")
+                "Assumed price if unpriced", key="cover_price",
+                help=f"American (+120, -200) or decimal (2.20), to stand in "
+                     f"for a leg with no market price. Real prices are used "
+                     f"wherever the board has one.\n\n"
+                     + (f"Opens at **{_assumed_str}** and resets when you "
+                        f"switch market: the median price a book has actually "
+                        f"posted on the ten best-rated players it has priced "
+                        f"here. A stand-in for a market, not a quote for a "
+                        f"player — a leg's own price depends on the player, "
+                        f"and how deep you look moves this a long way (the "
+                        f"same slate reads +360 over every priced player "
+                        f"rather than the best ten)."
+                        if _assumed else
+                        "No player on this market carries a price, so there is "
+                        "nothing to derive a stand-in from and this opens at "
+                        "+100. Every payout below rests on that number rather "
+                        "than on a market."))
             from src.prediction.bets import parse_money, parse_price
             _cov_stake = parse_money(_stake_raw)
             _cov_price = parse_price(_price_raw)

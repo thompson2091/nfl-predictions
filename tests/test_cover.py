@@ -12,7 +12,9 @@ from math import comb
 import numpy as np
 import pytest
 
-from src.prediction.cover import MAX_PLAYERS, portfolio, slip_counts, slips
+from src.prediction.cover import (ASSUMED_FROM_TOP, MAX_PLAYERS,
+                                  assumed_price, portfolio, slip_counts,
+                                  slips)
 
 
 def _flat(n, p, odds=None, decimal=2.0):
@@ -498,3 +500,54 @@ def test_a_one_player_cover_reads_as_one_bet_not_as_one_slips():
     line = cover_headline(two, m)
     assert "**3 slips** on 2 players" in line
     assert "1 of 2 legs priced" in line
+
+
+# ── The stand-in price for an unpriced leg ─────────────────────────────────
+
+
+def test_the_stand_in_price_takes_the_best_rated_players_a_book_has_priced():
+    """Priced first, then the top of those — not the other way round.
+
+    Filtering the top of the board and keeping whichever happen to carry a
+    price makes the answer depend on how many unpriced rows the caller's frame
+    holds. That is not hypothetical: the app's board is priced-only and the
+    page's list is every rated player, and under the other order one slate read
+    +277 on one surface and +123 on the other.
+    """
+    # The likeliest four are unpriced; the priced ones sit below them.
+    prob = [0.60, 0.55, 0.50, 0.45, 0.40, 0.30, 0.20, 0.10]
+    dec = [None, None, None, None, 2.0, 3.0, 5.0, 21.0]
+    both = assumed_price(prob, dec, top_n=2)
+    # Top two *priced* are the 0.40 and 0.30 players: 2.0 and 3.0.
+    assert both == pytest.approx(2.5)
+
+    # The same players handed over as a priced-only frame — which is what the
+    # app passes — must give the same number.
+    assert assumed_price(prob[4:], dec[4:], top_n=2) == pytest.approx(2.5)
+
+
+def test_the_stand_in_price_is_a_median_not_a_mean():
+    """One +2500 reserve must not drag it somewhere unrecognisable."""
+    prob = [0.5, 0.4, 0.3]
+    assert assumed_price(prob, [2.0, 2.2, 26.0], top_n=3) == pytest.approx(2.2)
+
+
+def test_the_stand_in_price_is_none_when_nothing_is_priced():
+    """A real state three weeks before a season, and not a zero."""
+    assert assumed_price([0.5, 0.4], [None, None]) is None
+    assert assumed_price([], []) is None
+    # A decimal price pays back more than the stake; 1.0 is a missing value
+    # wearing a number.
+    assert assumed_price([0.5], [1.0]) is None
+
+
+def test_the_stand_in_price_is_read_off_a_cover_sized_slice():
+    """How deep it looks moves it a long way, so the depth is the calibre.
+
+    Ten is about the ceiling on cover size, so the answer describes the players
+    it is about to be used for rather than the reserves below them.
+    """
+    assert ASSUMED_FROM_TOP <= MAX_PLAYERS
+    prob = [0.5 - 0.01 * i for i in range(40)]
+    dec = [2.0] * 10 + [40.0] * 30
+    assert assumed_price(prob, dec) == pytest.approx(2.0)

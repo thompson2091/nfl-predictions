@@ -128,6 +128,56 @@ def _decimal(odds) -> float | None:
     return 1.0 + (o / 100.0 if o > 0 else 100.0 / abs(o))
 
 
+#: How many priced players the stand-in is read off. Ten, because the number is
+#: acutely sensitive to how deep it looks and a cover is built from the top of
+#: the board: on week 1 of 2026 the median posted anytime-TD price is +106 over
+#: the ten best-rated priced players, +277 over sixty of them and +360 over all
+#: seventy-three, because the tail is full of 5% reserves nobody puts on a
+#: slip. Ten is roughly `portfolio`'s own ceiling on cover size, so it is the
+#: calibre of player the answer is about to be used for.
+ASSUMED_FROM_TOP = 10
+
+
+def assumed_price(probability, decimal, *, top_n: int = ASSUMED_FROM_TOP
+                  ) -> float | None:
+    """A stand-in decimal price for a leg no book has quoted.
+
+    The median posted price over the `top_n` best-rated players a book has
+    actually quoted on this market. It exists because "assume +100" means
+    opposite things on the two markets: the best-rated anytime-TD players are
+    odds-on and the best-rated first-TD ones pay seven times the stake, so one
+    number carried across a market switch flatters one market and damns the
+    other — and the payout table cannot say so, because it is built from prices
+    and does not move when the probabilities do.
+
+    Priced players are selected *first* and the top `top_n` taken from those,
+    not the other way round. Taking the top of the board and keeping whichever
+    of them happen to carry a price makes the answer depend on how many
+    unpriced rows the caller's frame holds — which is why the app, whose board
+    is priced-only, and the page, whose list is every rated player, read +277
+    and +123 off the same slate under the other order.
+
+    A median rather than a mean: the tail is long, and one +2500 reserve drags
+    a mean somewhere no reader would recognise.
+
+    `None` when no player on this market carries a price at all — a real state
+    three weeks before a season opens, and one the caller has to answer for
+    rather than being handed a number with nothing behind it.
+    """
+    p = np.asarray(list(probability), dtype=float)
+    d = np.asarray([np.nan if x is None else x for x in decimal], dtype=float)
+    if len(p) == 0 or len(p) != len(d):
+        return None
+    # A decimal price pays back more than the stake by construction; anything
+    # at or below 1.0 is a missing value wearing a number.
+    quoted = np.isfinite(d) & (d > 1.0) & np.isfinite(p)
+    if not quoted.any():
+        return None
+    p, d = p[quoted], d[quoted]
+    top = np.argsort(-p, kind="stable")[:int(top_n)]
+    return float(np.median(d[top]))
+
+
 def portfolio(players: list[dict], *, stake: float = 1.0,
               rho: float = 0.0, assumed_decimal: float | None = None) -> dict:
     """Price a full cover of `players` and enumerate every outcome.
