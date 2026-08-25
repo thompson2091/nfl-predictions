@@ -34,9 +34,10 @@ def main(a) -> int:
                 return 1
         record({"placed_on": a.on or date.today().isoformat(),
                 "season": a.season, "week": a.week, "market": a.target,
-                "player": a.player, "book": a.book, "odds": a.odds,
-                "stake": a.stake, "note": a.note})
-        print(f"Logged: {a.player} {bp.american(a.odds)} for ${a.stake:.2f}"
+                "player": a.player, "book": a.book, "side": a.side,
+                "odds": a.odds, "stake": a.stake, "note": a.note})
+        print(f"Logged: {'LAY ' if a.side == 'no' else ''}{a.player} "
+              f"{bp.american(a.odds)} for ${a.stake:.2f}"
               + (f" at {a.book}" if a.book else "")
               + f" — {a.target} {a.season} week {a.week}")
 
@@ -55,14 +56,14 @@ def main(a) -> int:
         print(f"  {s['unmatched']} with no archived close yet — the capture "
               f"has not run for those weeks, or the name did not match")
 
-    print(f"\n  {'Week':<6}{'Player':<24}{'Book':<16}{'Took':>7}"
+    print(f"\n  {'Week':<6}{'Player':<24}{'Book':<16}{'Side':<5}{'Took':>7}"
           f"{'Closed':>8}{'CLV':>9}")
     for r in s["rows"]:
         closed = bp.american(r["close_odds"]) if r["close_odds"] else "—"
         clv = f"{r['clv_pp']:+.2f}pp" if r["clv_pp"] is not None else "—"
         print(f"  {str(r['week']):<6}{(r['player'] or '')[:23]:<24}"
-              f"{(r['book'] or '')[:15]:<16}{bp.american(r['odds']):>7}"
-              f"{closed:>8}{clv:>9}")
+              f"{(r['book'] or '')[:15]:<16}{(r.get('side') or 'yes'):<5}"
+              f"{bp.american(r['odds']):>7}{closed:>8}{clv:>9}")
 
     if s["scored"]:
         print("\n  Positive CLV means the market moved toward your number after "
@@ -83,5 +84,8 @@ if __name__ == "__main__":
     ap.add_argument("--odds", type=float)
     ap.add_argument("--stake", type=float)
     ap.add_argument("--on", help="date placed, default today")
+    ap.add_argument("--side", default="yes", choices=("yes", "no"),
+                    help="'no' if you laid the player on an exchange — it "
+                         "flips which way closing-line value counts")
     ap.add_argument("--note")
     sys.exit(main(ap.parse_args()))

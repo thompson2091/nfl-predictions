@@ -373,3 +373,52 @@ def test_a_week_with_no_picks_is_part_of_the_record():
                     clv={"by_edge": [band("higher", 0, None, +0.1)]}, econ=None)
     assert out["tracked"], "the rule must appear even when it names nobody"
     assert out["tracked"][0]["picks"] == []
+
+
+def test_a_lay_is_scored_the_other_way_up(tmp_path, monkeypatch):
+    """Backing and laying want opposite movement, and one sign cannot serve both.
+
+    The archive holds the Yes price only. Backing a player, a shorter close is
+    good; laying him, a drifting close is good — it is the market coming round
+    to his being overrated. Scored with one sign, the fade rule's best weeks
+    read as its worst.
+    """
+    from src.evaluation import betlog
+
+    log = tmp_path / "bets.csv"
+    row = {"placed_on": "2026-09-13", "season": 2026, "week": 1,
+           "market": "anytime_td", "player": "Some Guy", "book": "novig",
+           "odds": 600, "stake": 10.0, "note": ""}
+    betlog.record({**row, "side": "yes"}, path=log)
+    betlog.record({**row, "player": "Other Guy", "side": "no"}, path=log)
+    monkeypatch.setattr(betlog, "_closes", lambda market: pl.DataFrame([
+        # Both drifted from +600 to +900: worse for the backer, better for the layer.
+        {"season": 2026, "week": 1, "player_name_norm": "some guy",
+         "close_odds": 900.0},
+        {"season": 2026, "week": 1, "player_name_norm": "other guy",
+         "close_odds": 900.0},
+    ]))
+    got = {r["player"]: r["clv_pp"] for r in betlog.score(path=log)["rows"]}
+    assert got["Some Guy"] < 0, "a drifting price is bad for a back"
+    assert got["Other Guy"] > 0, "the same drift is good for a lay"
+    assert got["Some Guy"] == pytest.approx(-got["Other Guy"])
+
+
+def test_an_unknown_side_is_refused(tmp_path):
+    from src.evaluation import betlog
+
+    with pytest.raises(ValueError):
+        betlog.record({"season": 2026, "week": 1, "market": "anytime_td",
+                       "player": "A", "odds": 100, "stake": 1.0,
+                       "side": "maybe"}, path=tmp_path / "b.csv")
+
+
+def test_the_fade_rule_is_scored_as_a_lay():
+    """The rule that most needs the flip is the one that has it."""
+    from src.evaluation.tracked_rules import RULES
+
+    fade = [r for r in RULES if r.get("kind") == "lay"]
+    assert fade, "the fade rule is a lay and has to say so"
+    assert all(r["market"] == "anytime_td" for r in fade), (
+        "first TD failed its own permutation control (p = 0.105) and must not "
+        "be tracked as though it had passed")

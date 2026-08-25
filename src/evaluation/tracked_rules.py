@@ -25,6 +25,14 @@ close is readable in dozens of picks, while a 20% hit rate at +450 needs
 hundreds before the mean stops moving — so a rule that is real shows up here
 weeks before a bankroll could tell you, and a rule that is not stops wasting
 your Sundays sooner.
+
+**A lay is scored the other way up.** Backing a player, you want the market to
+come toward you: the closing price shorter than the one you took. Laying him,
+you want the opposite — the Yes price *drifting*, because that is the market
+agreeing he was overrated. Scoring both with one sign would have reported the
+fade rule's best weeks as its worst, so `score` reads each rule's `kind` and
+flips accordingly. The archive only ever holds the Yes side, which is why this
+is a sign convention rather than a second lookup.
 """
 from __future__ import annotations
 
@@ -225,17 +233,23 @@ def score(target_type: str, path: Path | str = PICKS_PATH) -> dict | None:
                           keep="last"))
         j = rows.join(closes, on=["season", "week", "player_name_norm"],
                       how="left")
+        # Which way is good, per rule. A lay wants the Yes price to drift.
+        sides = {r["name"]: (-1.0 if r.get("kind") == "lay" else 1.0)
+                 for r in RULES}
         for r in j.iter_rows(named=True):
             took, close = implied_odds(r["odds"]), implied_odds(r.get("close_odds"))
             if took is None or close is None:
                 continue
             clv_rows.append({"rule": r["rule"], "player": r["player"],
-                             "clv_pp": (close - took) * 100})
+                             "clv_pp": (close - took) * 100
+                                       * sides.get(r["rule"], 1.0)})
 
     out = {}
     for rule in sorted(set(rows["rule"].to_list())):
         mine = [c for c in clv_rows if c["rule"] == rule]
         out[rule] = {
+            "kind": next((r.get("kind", "back") for r in RULES
+                          if r["name"] == rule), "back"),
             "picks": int(rows.filter(pl.col("rule") == rule).height),
             "weeks": int(rows.filter(pl.col("rule") == rule)
                          .select(["season", "week"]).unique().height),

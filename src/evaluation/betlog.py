@@ -20,6 +20,13 @@ what you paid means the number moved your way. A season averaging positive
 `clv_pp` is the claim worth making; a season averaging negative means the
 market disagreed with every pick after you made it, whatever the results said.
 
+**A lay is scored the other way up**, which is why `side` exists. Backing a
+player you want the close shorter than what you took; laying him on an exchange
+you want the Yes price to drift, because that is the market agreeing he was
+overrated. The archive only ever holds the Yes side, so this is a sign flip
+rather than a second lookup — and without it the fade rule's best weeks would
+be reported as its worst.
+
 The log itself is a CSV you append to — `data/bets_placed.csv` — because a bet
 is a thing that happens away from this machine and typing eight fields is not
 the friction that stops anybody. `record` writes a row, `score` reads them all
@@ -42,11 +49,18 @@ LOG_PATH = Path("data") / "bets_placed.csv"
 #: it, because line shopping is the one edge here that is not in doubt and a
 #: log that cannot say where the price came from cannot measure it.
 COLUMNS = ("placed_on", "season", "week", "market", "player", "book",
-           "odds", "stake", "note")
+           "side", "odds", "stake", "note")
 
 SCHEMA = {"placed_on": pl.Utf8, "season": pl.Int64, "week": pl.Int64,
           "market": pl.Utf8, "player": pl.Utf8, "book": pl.Utf8,
-          "odds": pl.Float64, "stake": pl.Float64, "note": pl.Utf8}
+          "side": pl.Utf8, "odds": pl.Float64, "stake": pl.Float64,
+          "note": pl.Utf8}
+
+#: Which way a bet wants the market to move. Backing a player, you want the
+#: closing price shorter than the one you took; laying him on an exchange, you
+#: want it to drift, because that is the market agreeing he was overrated. One
+#: sign for both would report a lay's best weeks as its worst.
+SIDES = {"yes": 1.0, "no": -1.0}
 
 
 def _implied(odds) -> float | None:
@@ -89,6 +103,10 @@ def record(row: dict, path: Path | str = LOG_PATH) -> pl.DataFrame:
                if row.get(c) in (None, "")]
     if missing:
         raise ValueError(f"a bet needs {missing}")
+    side = (row.get("side") or "yes").lower()
+    if side not in SIDES:
+        raise ValueError(f"side must be one of {sorted(SIDES)}, got {side!r}")
+    row = {**row, "side": side}
     new = pl.DataFrame([{c: row.get(c) for c in COLUMNS}], schema=SCHEMA)
     out = pl.concat([load(p), new], how="vertical")
     out.write_csv(p)
@@ -126,6 +144,8 @@ def score(bets: pl.DataFrame | None = None, path: Path | str = LOG_PATH) -> dict
     df = load(path) if bets is None else bets
     if df.height == 0:
         return {"n": 0, "rows": [], "unmatched": 0, "note": "No bets logged yet."}
+    if "side" not in df.columns:
+        df = df.with_columns(pl.lit("yes").alias("side"))
 
     from src.prediction.predict import _norm_name_expr
 
@@ -143,14 +163,16 @@ def score(bets: pl.DataFrame | None = None, path: Path | str = LOG_PATH) -> dict
             taken, close = _implied(r["odds"]), _implied(r.get("close_odds"))
             if close is None:
                 unmatched += 1
+            sign = SIDES.get((r.get("side") or "yes").lower(), 1.0)
             out.append({
                 "placed_on": r.get("placed_on"), "season": r["season"],
                 "week": r["week"], "market": market, "player": r["player"],
-                "book": r.get("book"), "odds": r["odds"], "stake": r["stake"],
+                "book": r.get("book"), "side": r.get("side") or "yes",
+                "odds": r["odds"], "stake": r["stake"],
                 "close_odds": r.get("close_odds"),
                 "taken_prob": taken, "close_prob": close,
                 "clv_pp": (None if (taken is None or close is None)
-                           else (close - taken) * 100),
+                           else (close - taken) * 100 * sign),
             })
 
     scored = [r for r in out if r["clv_pp"] is not None]

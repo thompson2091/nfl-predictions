@@ -103,6 +103,26 @@ fi
 STATUS=${PIPESTATUS[0]}
 echo "$(date -u +%FT%TZ) exit=$STATUS" | tee -a "$LOG"
 
+# Write down what the tracked rules say, at the price that was just captured.
+#
+# Only on the opening snapshot: the close firings run fifteen times a week and
+# this costs a prediction each time. The open is also the right moment — it is
+# the price you could actually have acted on, and closing-line value is scored
+# against the close that comes later.
+#
+# Never allowed to fail the capture. The odds are the irreplaceable half: a
+# price the API has stopped serving cannot be bought back, while a missed
+# recording is one `make shortlist` away.
+if [ "$STATUS" -eq 0 ] && [ "$SNAPSHOT" = "open" ]; then
+    {
+        echo "--- recording tracked picks for week $WEEK"
+        for MARKET in anytime_td first_td; do
+            "$PY" scripts/39_shortlist.py --week "$WEEK" --target "$MARKET" \
+                || echo "  shortlist failed for $MARKET (exit $?) — picks not recorded"
+        done
+    } 2>&1 | tee -a "$LOG"
+fi
+
 # Keep the last 40 logs; this runs twice a week forever.
 ls -1t "$LOG_DIR"/odds_*.log 2>/dev/null | tail -n +41 | xargs -r rm -f
 exit "$STATUS"
