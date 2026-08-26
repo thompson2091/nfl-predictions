@@ -1925,6 +1925,15 @@ function positionCard(pos) {
 // group in this project whose measured return clears zero. Counted was not
 // enough: a reader told two thirds of the board is a veto and never shown
 // which two thirds cannot act on it.
+// The margin tile in the units an order book quotes. Backing No at decimal D
+// breaks even when (1 - q)(D - 1)(1 - c) = q; laying Yes at L is backing No at
+// L / (L - 1). Pinned against the Python in `lay_sheet.price_no`.
+function layCeiling(f, c) {
+  const q = f.scored_pct / 100;
+  const floor = 1 + q / ((1 - q) * (1 - c));
+  return floor / (floor - 1);
+}
+
 function fadeCard(sl, rec) {
   const out = el('div');
   if (!sl.vetoes || !sl.vetoes.length) return out;
@@ -1955,8 +1964,16 @@ function fadeCard(sl, rec) {
       { k: 'Margin it can carry', v: f.margin_capacity_pct.toFixed(2) + '%',
         d: 'before the edge is gone',
         help: 'How much a No price could hold back and still leave this worth ' +
-              'taking. This is the number that decides whether the skill is ' +
-              'reachable at all.' },
+              'taking. Measured on the No decimal \u2014 which is why it is ' +
+              'not comparable to a spread quoted on the Yes price, and why ' +
+              'the tile beside it converts one into the other.' },
+      { k: 'Worst lay still worth it', v: layCeiling(f, 0.05).toFixed(1),
+        d: 'fair is ' + (100 / f.priced_pct).toFixed(1),
+        help: 'The highest Yes price you could lay this group at, after 5% ' +
+              'commission, and still break even. The gap to fair is the ' +
+              'margin tile in a number an exchange actually shows \u2014 and ' +
+              'it is wide, which means the spread was never the constraint. ' +
+              'Whether a venue lists the market at all is.' },
       { k: 'Exchange, 5% commission',
         v: pp(f.exchange[f.exchange.length - 1].roi, 1) + '%',
         d: 'per unit at risk',

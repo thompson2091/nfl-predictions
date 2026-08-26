@@ -9,7 +9,7 @@
 	champion screen gate settle noise-floor experiments diagnose version-prune \
 	families ablate retention settle-overlay line-movement filter-sweep \
 	shortlist shortlist-backtest betlog positions market-shape \
-	cover-backtest cover-selection
+	cover-backtest cover-selection rehearse lay-sheet
 
 # The interpreter, resolved once. Every recipe used to call a bare `python`,
 # which does not exist on a machine where the venv is not activated — this is
@@ -88,6 +88,20 @@ positions:
 # Usage: make market-shape
 market-shape:
 	$(PYTHON) scripts/43_market_shape.py $(if $(TARGET),--target $(TARGET))
+
+# Drive the whole Sunday chain end to end against a scratch record: capture
+# checked, shortlist run, picks recorded, a paper bet on each side logged and
+# scored. Touches nothing under data/. Usage: make rehearse  ·  KEEP=1 to keep
+# the scratch directory around.
+rehearse:
+	$(PYTHON) scripts/44_rehearse.py $(if $(WEEK),--week $(WEEK)) $(if $(KEEP),--keep)
+
+# What a No price has to be for the fade to be worth taking, player by player,
+# plus a CSV with blank columns to fill in at an exchange. The only open
+# question about the fade is the venue, and no backtest can reach it.
+# Usage: make lay-sheet WEEK=1  ·  COMMISSION=0.02
+lay-sheet:
+	$(PYTHON) scripts/45_lay_sheet.py --week $(WEEK) $(if $(TARGET),--target $(TARGET)) $(if $(COMMISSION),--commission $(COMMISSION))
 
 # Bets you actually placed, scored against the closing line — the only figure
 # here that says whether an edge exists before the bankroll does.

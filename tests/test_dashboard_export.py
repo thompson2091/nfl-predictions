@@ -857,3 +857,33 @@ def test_the_shipped_dashboard_carries_the_cover_tab():
     html = page.read_text()
     assert "Parlay" in html, "the tab and the card both use the reader's word"
     assert "coverPortfolio" in html, "the page must carry the calculation"
+
+
+def test_the_lay_ceiling_is_the_same_number_on_both_surfaces():
+    """The page recomputes the fade's break-even lay price; Python owns it.
+
+    `layCeiling` is the second implementation of `lay_sheet.price_no`, and it
+    is the one number on that card a reader would take to an exchange. Two
+    surfaces quoting different ceilings is two different thresholds wearing one
+    screenshot — and the direction of the error is the expensive one, since a
+    ceiling that is too high accepts fills that lose.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available to run the page's own arithmetic")
+
+    from src.evaluation.lay_sheet import price_no
+    from src.export import dashboard
+
+    fades = [{"scored_pct": 4.17, "priced_pct": 7.47},
+             {"scored_pct": 2.61, "priced_pct": 6.92},
+             {"scored_pct": 0.50, "priced_pct": 2.00}]
+    driver = (dashboard.JS + dashboard.JS_SHORTLIST +
+              "\nconsole.log(JSON.stringify(" + json.dumps(fades) +
+              ".map(f => layCeiling(f, 0.05))));")
+    out = subprocess.run([node, "-e", driver], capture_output=True, text=True,
+                         check=True)
+    want = [price_no(f["priced_pct"] / 100,
+                     f["scored_pct"] / f["priced_pct"], 0.05)["lay_yes_max_dec"]
+            for f in fades]
+    assert json.loads(out.stdout) == pytest.approx(want, rel=1e-9)

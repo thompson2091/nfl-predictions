@@ -125,10 +125,12 @@ FADE_EDGE_PP = 2.0
 
 #: How much stricter the fade can be pushed, as the fraction of the book's own
 #: number we have to be under. Reported as a ladder rather than one cut,
-#: because the choice is a trade against a real number: a thin prop market
-#: carries an embedded spread of roughly 1-4%, so what matters is not the
-#: return but how much margin the group can carry — and that rises as the cut
-#: tightens while the volume falls.
+#: because the choice is a trade: margin capacity rises as the cut tightens
+#: while the volume falls. What that capacity has to survive is *not* the 1-4%
+#: spread a thin prop market embeds — see `lay_sheet`, which does the unit
+#: conversion this note originally got wrong. Capacity is measured on the No
+#: decimal and a spread is quoted on the Yes price, and a Yes quote a tenth
+#: above fair costs under a point of the No-side edge.
 FADE_RATIOS = (1.0, 2 / 3, 1 / 2, 1 / 3)
 
 
@@ -201,8 +203,9 @@ def fade_side(weeks: list[dict], min_edge_pp: float = FADE_EDGE_PP,
             for c in (0.02, 0.05)
         ],
         # The trade the venue forces: tighter cuts carry more margin and fewer
-        # bets. A thin prop market embeds roughly 1-4% of spread, so the row to
-        # read is `carries_pct` against that, not the return.
+        # bets. Read `carries_pct` rather than the return — but read it against
+        # the No-side cost of a quote, which `lay_sheet.cost_of_spread`
+        # computes, not against a spread quoted on the Yes price.
         "cuts": _fade_ladder(ours_all_arr, implied, scored, weeks),
     }
 

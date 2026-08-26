@@ -422,3 +422,32 @@ def test_the_fade_rule_is_scored_as_a_lay():
     assert all(r["market"] == "anytime_td" for r in fade), (
         "first TD failed its own permutation control (p = 0.105) and must not "
         "be tracked as though it had passed")
+
+
+def test_the_records_can_be_moved_out_of_the_way(monkeypatch, tmp_path):
+    """`NFL_RECORDS_DIR` relocates both irreplaceable files.
+
+    The rehearsal has to drive the real scripts to prove the chain runs, and a
+    rehearsal that appended August prices as week 1's tracked picks would
+    corrupt the one record the forward test is being built to hold. Pinned
+    because the override is read once at import, which is the kind of thing a
+    later refactor silently loses.
+    """
+    import importlib
+
+    monkeypatch.setenv("NFL_RECORDS_DIR", str(tmp_path / "scratch"))
+    for name in ("src.utils.paths", "src.evaluation.betlog",
+                 "src.evaluation.tracked_rules"):
+        importlib.reload(importlib.import_module(name))
+    from src.evaluation.betlog import LOG_PATH
+    from src.evaluation.tracked_rules import PICKS_PATH
+
+    assert LOG_PATH.parent == tmp_path / "scratch"
+    assert PICKS_PATH.parent == tmp_path / "scratch"
+
+    monkeypatch.delenv("NFL_RECORDS_DIR")
+    for name in ("src.utils.paths", "src.evaluation.betlog",
+                 "src.evaluation.tracked_rules"):
+        importlib.reload(importlib.import_module(name))
+    from src.evaluation.betlog import LOG_PATH as back
+    assert back.parent.name == "data"

@@ -24,6 +24,7 @@ from src.models.registry import get_model, ensure_registered
 from src.models.scoring import score
 from src.features.definitions import get_definition
 from src.presentation import board as bp
+from src.evaluation import lay_sheet
 
 
 ensure_registered()
@@ -3377,9 +3378,27 @@ if tab_short.open:
                         "Margin it can carry",
                         f"{_fade['margin_capacity_pct']:.2f}%",
                         help="How much a No price could hold back before the "
-                             "edge is gone. This is the number that decides "
-                             "whether the skill is reachable: anything a real "
-                             "market charges above it turns this into a loss.")
+                             "edge is gone. Measured on the No decimal, which "
+                             "is why it is not comparable to a spread quoted "
+                             "on the Yes price — the metric beside it converts "
+                             "one into the other.")
+                    _ceil = (lay_sheet.price_no(
+                        _fade["priced_pct"] / 100,
+                        _fade["scored_pct"] / _fade["priced_pct"], 0.05)
+                        if _fade.get("priced_pct") else None)
+                    if _ceil:
+                        _fbar.metric(
+                            "Worst lay still worth it",
+                            f"{_ceil['lay_yes_max_dec']:.1f}",
+                            delta=f"fair is {100 / _fade['priced_pct']:.1f}",
+                            delta_color="off",
+                            help="The highest Yes price you could lay this "
+                                 "group at, after 5% commission, and still "
+                                 "break even. The gap to fair is the margin "
+                                 "metric in a number an exchange actually "
+                                 "shows — and it is wide, which means the "
+                                 "spread was never the constraint. Whether a "
+                                 "venue lists the market at all is.")
                     _fbar.metric(
                         "On an exchange, 5% commission",
                         f"{_fade['exchange'][-1]['roi']:+.1f}%",
