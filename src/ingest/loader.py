@@ -200,8 +200,25 @@ def load_ngs_rushing(seasons: list[int]) -> pl.DataFrame:
 
 
 def load_injuries(seasons: list[int]) -> pl.DataFrame:
+    """Injury reports, per season so one unavailable year cannot empty the rest.
+
+    Called with `fwd`, which includes the predict season. nflverse publishes no
+    injury rows for a season until its game-week practice reports start, so the
+    upcoming season raises "Season must be between 2009 and YYYY" — and because
+    `_load` passes the whole list in one call, that failure used to return an
+    empty frame for ALL seasons and leave the previous file in place untouched.
+    Loading season by season keeps the training range and lets _report_coverage
+    name the predict season as missing, which is the thing worth knowing: the
+    four injury features are in the served matrix, so a season with no rows is
+    four constants at score time, not a neutral default.
+    """
     print(f"Loading injuries for {seasons[0]}-{seasons[-1]}...")
-    df = _load("injuries", nfl.load_injuries, seasons, required=False)
+    frames = []
+    for s in seasons:
+        df_s = _load(f"injuries {s}", nfl.load_injuries, [s], required=False)
+        if df_s.height:
+            frames.append(df_s)
+    df = pl.concat(frames, how="diagonal_relaxed") if frames else pl.DataFrame()
     if df.height == 0:
         return df
     df = normalize_teams(df, ["team"])
@@ -280,7 +297,13 @@ def ingest_all(test_mode: bool = False):
         load_ngs_receiving(ngs_seasons)
         load_ngs_rushing(ngs_seasons)
 
-    load_injuries(seasons)
+    # `fwd`, not `seasons`: four injury features (is_out, is_questionable,
+    # teammate_out_boost, starter_out_at_position) are in the served matrix, so
+    # the predict season needs its own rows. Passing the training range left
+    # them 100% null for every predicted week, and check_feature_skew could not
+    # see it — injuries are sparse, so a training null rate of 0.942 makes total
+    # absence look like a 0.058 change against a 0.35 threshold.
+    load_injuries(fwd)
 
     # Backstop: if the weekly feed ever lags play-by-play again, rebuild the
     # missing seasons from PBP rather than leaving player_* features null.

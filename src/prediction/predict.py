@@ -504,6 +504,71 @@ def check_feature_skew(week_df: pl.DataFrame, feature_cols: list[str],
     return [c for c, _, _ in degraded]
 
 
+# Statuses a player can be on and still take a snap this week. ACT is obvious;
+# DEV is the practice squad, which is kept deliberately — a team may elevate up
+# to two practice-squad players per game and pre-kickoff there is no way to know
+# which, so dropping them would remove players who do play. Everything else the
+# feed emits (CUT, RES, RET, EXE, INA, PUP, the TR* trade codes, the E** and W**
+# exempt/waiver codes) means unavailable for this game.
+_AVAILABLE_STATUSES = frozenset({"ACT", "DEV"})
+
+
+def _filter_unavailable(week_df: pl.DataFrame, season: int, week: int) -> pl.DataFrame:
+    """Drop players the roster says cannot play — for a live board only.
+
+    This is an availability rule, not a modelling one, and the distinction is
+    the reason it is here rather than in `_filter_low_activity`. That filter is
+    applied identically in training and at serve time because changing it on one
+    side only is train/serve skew. This one is applied to the board you would
+    bet and to nothing else: removing unavailable players from a *played* week
+    would strip true negatives out of every backtest denominator and quietly
+    move reported accuracy, so historical scoring runs keep the full pool.
+
+    Rows whose player_id does not appear in the roster feed are KEPT, not
+    dropped. Team DEF/ST candidates have no roster row by construction, and a
+    week whose rosters have not been ingested yet joins to null for everyone —
+    in both cases the safe reading of "no status" is "no evidence of absence".
+    An unavailable player scored is a bet you cannot place; a player wrongly
+    removed is a bet you never see.
+    """
+    from src.utils.paths import get_path
+
+    roster_path = get_path("raw") / "rosters.parquet"
+    if not roster_path.exists():
+        return week_df
+
+    status = (
+        pl.read_parquet(roster_path, columns=["player_id", "season", "week", "status"])
+        .filter((pl.col("season") == season) & (pl.col("week") == week))
+        .unique(subset=["player_id"], keep="last")
+        .select(["player_id", "status"])
+    )
+    if status.height == 0:
+        print(f"  !! No roster rows for {season} week {week} — availability "
+              f"unchecked. Run `make ingest` before betting this board.")
+        return week_df
+
+    before = week_df.height
+    joined = week_df.join(status, on="player_id", how="left")
+    dropped = joined.filter(
+        pl.col("status").is_not_null()
+        & ~pl.col("status").is_in(list(_AVAILABLE_STATUSES))
+    )
+    if dropped.height == 0:
+        return week_df
+
+    counts = (dropped.group_by("status").agg(pl.len())
+              .sort("len", descending=True))
+    summary = ", ".join(f"{r['status']} {r['len']}" for r in counts.to_dicts())
+    print(f"Filtered {before} -> {before - dropped.height} candidates "
+          f"(unavailable: {summary})")
+
+    return (joined.filter(
+        pl.col("status").is_null()
+        | pl.col("status").is_in(list(_AVAILABLE_STATUSES))
+    ).drop("status"))
+
+
 def predict(season: int, week: int, model_name: str = None,
             target_type: str = None, model_dir=None,
             persist: bool = True) -> pl.DataFrame | None:
@@ -547,6 +612,13 @@ def predict(season: int, week: int, model_name: str = None,
     if week_df.shape[0] < before:
         print(f"Filtered {before} -> {week_df.shape[0]} candidates (removed low-activity)")
 
+    # Availability, live boards only — see `_filter_unavailable`. Applied before
+    # the skew and shift checks below so those diagnostics describe the board
+    # actually served rather than a pool containing players who cannot play.
+    is_live = (season == cfg["seasons"].get("predict_season"))
+    if is_live:
+        week_df = _filter_unavailable(week_df, season, week)
+
     check_feature_skew(week_df, feature_cols, model_dir)
     # Training rows are already in memory from the read above, so comparing
     # against them costs nothing and cannot go stale the way a pickled summary
@@ -561,7 +633,7 @@ def predict(season: int, week: int, model_name: str = None,
         prior = df.filter(pl.col("season") < season)
     check_distribution_shift(
         week_df, prior, feature_cols,
-        is_live=(season == cfg["seasons"].get("predict_season")),
+        is_live=is_live,
     )
 
     X, _ = prepare_data(week_df, feature_cols)

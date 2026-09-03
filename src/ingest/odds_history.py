@@ -346,7 +346,12 @@ def append_book_quotes(rows: list[dict], season: int, week: int,
         return None
 
     captured = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    snap = pl.DataFrame(rows).with_columns([
+    # infer_schema_length=None: scan every row, not the first 100. `point` is
+    # null for the TD markets and only carries a number on lines that have one,
+    # so a fetch whose first 100 rows are all anytime/first TD types the column
+    # Null and then fails on the first 6.5 that arrives — losing the whole
+    # book-level archive for that week while the consensus snapshot succeeds.
+    snap = pl.DataFrame(rows, infer_schema_length=None).with_columns([
         pl.lit(captured).alias("captured_at"),
         pl.lit(season, dtype=pl.Int64).alias("season"),
         pl.lit(week, dtype=pl.Int64).alias("week"),

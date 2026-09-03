@@ -40,6 +40,11 @@ from src.features.weather_features import build_weather_features
 from src.features.weather_features import build_weather_interactions
 
 
+#: Reference level for the position one-hot. WR, because that is what both
+#: production models were trained against — changing it silently invalidates
+#: every persisted feature_cols.pkl.
+_POSITION_REFERENCE = "position_WR"
+
 def _build_game_context_features(schedules: pl.DataFrame) -> pl.DataFrame:
     """Extract game context features from schedules.
 
@@ -726,9 +731,20 @@ def assemble_features() -> pl.DataFrame:
     if "position" in df.columns:
         # Save position before dummifying for WR derivation
         df = df.with_columns(pl.col("position").alias("_position_raw"))
-        df = df.with_columns(pl.col("position").cast(pl.Categorical))
-        df = df.to_dummies(columns=["position"], drop_first=True)
-        # Derive _is_wr from original position (drop_first drops DEFST, not WR)
+        # The reference level is pinned by name, not left to `drop_first`.
+        # `drop_first` drops whichever level polars sees first, and with the
+        # column cast to Categorical that is decided by row order — so the same
+        # code produced position_WR for one market and position_TE for another
+        # from an identical candidate pool. Both served models were fitted with
+        # WR as the reference; a rebuild that flipped it left `position_TE`
+        # absent from the matrix while the model still asked for it, and
+        # `prepare_data` filled it with 0.0 — scoring every tight end as though
+        # it were not one. `check_feature_skew` cannot see that: it skips any
+        # feature missing from the frame rather than reporting it.
+        df = df.to_dummies(columns=["position"])
+        if _POSITION_REFERENCE in df.columns:
+            df = df.drop(_POSITION_REFERENCE)
+        # Derive _is_wr from original position (WR is the dropped reference)
         df = df.with_columns(
             (pl.col("_position_raw") == "WR").cast(pl.Int8).alias("_is_wr")
         )
