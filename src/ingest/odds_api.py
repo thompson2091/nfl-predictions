@@ -15,6 +15,34 @@ API_BASE = "https://api.the-odds-api.com/v4"
 SPORT = "americanfootball_nfl"
 CACHE_DIR = get_path("raw") / "odds_cache"
 
+#: (connect, read) seconds for every call to the API. Not a tuning knob — the
+#: absence of this argument cost the 2026 Week 1 opening capture.
+#:
+#: `requests` defaults to no timeout at all, so a socket that dies without an
+#: RST blocks the process forever. That is the normal outcome when a laptop
+#: sleeps mid-request, which is the normal outcome for a job launchd fires at
+#: noon on a Wednesday. On 2026-09-02 the unattended `open` capture established
+#: two connections to the API and sat on them for six days.
+#:
+#: The damage is not the one lost capture. `com.mthompson.nfl-odds-close` is a
+#: single launchd job carrying fifteen StartCalendarInterval entries, and
+#: launchd will not start a job whose previous instance has not exited — so one
+#: hung firing silently swallows every remaining close slot of the week, and
+#: closing prices cannot be re-bought at any price.
+#:
+#: Generous rather than tight: the asymmetry in this whole module is that a
+#: missed capture is unrecoverable while a slow one merely costs seconds. Worst
+#: case is one events call plus one per event, so ~17 x 40s ~= 11 minutes,
+#: which still lands inside the 30-minute lead before kickoff.
+HTTP_TIMEOUT = (10, 30)
+
+#: How many times a timed-out request is retried before the game is given up on.
+#: A timeout is usually transient, and the per-event call is the one that
+#: carries the actual prices — letting a single slow response drop a game would
+#: swap a hang for a silent hole in the archive, which is the harder failure to
+#: notice.
+HTTP_RETRIES = 2
+
 
 @dataclass(frozen=True)
 class MarketSpec:
@@ -221,6 +249,32 @@ def _get_api_key() -> str:
     return key
 
 
+def _get(url: str, params: dict, what: str) -> requests.Response:
+    """GET with a timeout and a bounded retry. Never returns without an answer.
+
+    Every request in this module goes through here, because the one that did
+    not is the one that hung — see HTTP_TIMEOUT. Timeouts and connection drops
+    are retried; an HTTP error status is not, since the API answering "no" is
+    an answer and retrying it just spends another credit.
+    """
+    last: Exception | None = None
+    for attempt in range(HTTP_RETRIES + 1):
+        try:
+            resp = requests.get(url, params=params, timeout=HTTP_TIMEOUT)
+            resp.raise_for_status()
+            return resp
+        except (requests.Timeout, requests.ConnectionError) as e:
+            last = e
+            if attempt < HTTP_RETRIES:
+                # Say so on the way past: an unattended capture that quietly
+                # retried twice and then succeeded looks identical in the
+                # archive to one that went straight through, and the
+                # difference is worth seeing in the log before a Sunday.
+                print(f"  {what}: {type(e).__name__} on attempt "
+                      f"{attempt + 1}/{HTTP_RETRIES + 1}, retrying")
+    raise last  # type: ignore[misc]
+
+
 def _american_to_implied(price: int) -> float:
     """Convert American odds to implied probability."""
     if price > 0:
@@ -320,11 +374,11 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False,
         return {}
 
     # Step 1: Get events
-    resp = requests.get(
+    resp = _get(
         f"{API_BASE}/sports/{SPORT}/events",
-        params={"apiKey": api_key},
+        {"apiKey": api_key},
+        "events",
     )
-    resp.raise_for_status()
     events = resp.json()
 
     if not events:
@@ -362,16 +416,16 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False,
         game_key = f"{away} @ {home}"
 
         try:
-            resp = requests.get(
+            resp = _get(
                 f"{API_BASE}/sports/{SPORT}/events/{event_id}/odds",
-                params={
+                {
                     "apiKey": api_key,
                     "regions": regions,
                     "markets": ",".join(sp.key for sp in specs),
                     "oddsFormat": "american",
                 },
+                game_key,
             )
-            resp.raise_for_status()
             data = resp.json()
         except Exception as e:
             print(f"  Error fetching {game_key}: {e}")

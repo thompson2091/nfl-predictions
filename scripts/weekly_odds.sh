@@ -91,13 +91,62 @@ PYEOF
     fi
 fi
 
+# A hard ceiling on one capture, in wall-clock seconds.
+#
+# The belt to HTTP_TIMEOUT's braces, and it exists because the braces were
+# missing once and the cost was not the capture that hung. Both odds jobs are
+# single launchd jobs carrying many StartCalendarInterval entries, and launchd
+# refuses to start a job whose previous instance is still alive — so a firing
+# that never exits does not lose one snapshot, it loses every remaining
+# snapshot of the week. On 2026-09-02 an `open` firing held its slot for six
+# days on two dead sockets.
+#
+# So this guards the slot, not the request: whatever wedges the capture —  a
+# timeout that does not fire, a DNS resolver that never returns, a filesystem
+# stall on the archive write — the job is dead before the next slot needs it.
+# 900s clears the ~11-minute worst case of a maximally slow fetch and still
+# lands inside the shortest lead before kickoff (30 minutes).
+#
+# macOS ships no timeout(1), hence the watchdog.
+CAPTURE_CAP_SECONDS="${CAPTURE_CAP_SECONDS:-900}"
+
+run_capped() {
+    # Job control, purely so each background job becomes a process-group leader
+    # and can be signalled as a group. Killing a bare pid is not enough here:
+    # a surviving child still holds the inherited stdout, `tee` waits on that
+    # pipe, and the job stays alive in launchd's eyes — which is the thing this
+    # function exists to prevent. That applies to the watchdog's own `sleep`
+    # exactly as much as it does to the capture.
+    set -m
+    "$@" &
+    capture_pid=$!
+    (
+        sleep "$CAPTURE_CAP_SECONDS"
+        kill -0 "$capture_pid" 2>/dev/null || exit 0
+        echo "  capture still alive after ${CAPTURE_CAP_SECONDS}s — killing" \
+             "process group $capture_pid so the next slot can run"
+        # Negative pid: the group. TERM first so Python can unwind, then KILL
+        # for whatever ignored it.
+        kill -TERM -"$capture_pid" 2>/dev/null || kill -TERM "$capture_pid" 2>/dev/null
+        sleep 10
+        kill -KILL -"$capture_pid" 2>/dev/null || kill -KILL "$capture_pid" 2>/dev/null
+    ) &
+    watchdog_pid=$!
+    set +m
+    wait "$capture_pid"
+    capture_rc=$?
+    kill -TERM -"$watchdog_pid" 2>/dev/null || kill -TERM "$watchdog_pid" 2>/dev/null
+    wait "$watchdog_pid" 2>/dev/null
+    return "$capture_rc"
+}
+
 {
     echo "=== $(date -u +%FT%TZ)  week=$WEEK  snapshot=$SNAPSHOT ==="
     if [ -z "${ODDS_API_KEY:-}" ]; then
         echo "ODDS_API_KEY is not set — is .env present and readable by cron?"
         exit 1
     fi
-    "$PY" scripts/07_odds.py --week "$WEEK" --snapshot "$SNAPSHOT" ${FORCE:+--force-refresh}
+    run_capped "$PY" scripts/07_odds.py --week "$WEEK" --snapshot "$SNAPSHOT" ${FORCE:+--force-refresh}
 } 2>&1 | tee -a "$LOG"
 
 STATUS=${PIPESTATUS[0]}

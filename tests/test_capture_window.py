@@ -103,3 +103,101 @@ def test_the_window_covers_the_generated_lead_time(lead_minutes):
     s = schedule(("2026-09-13", "13:00"))
     now = datetime(2026, 9, 13, 13, 0) - timedelta(minutes=lead_minutes)
     assert should_capture("close", now, s, CFG)[0] is True
+
+
+# ── The request itself ────────────────────────────────────────────────────
+# The guard above decides whether to call the API. These decide that the call
+# comes back. On 2026-09-02 the unattended `open` firing reached the API with
+# no timeout set, established two connections and held them for six days —
+# which cost far more than the one snapshot, because both odds jobs are single
+# launchd jobs carrying many StartCalendarInterval entries and launchd will not
+# start a job whose previous instance has not exited. One hung firing silently
+# swallows every remaining slot of the week.
+
+def test_every_request_in_the_odds_client_passes_a_timeout():
+    """No bare `requests.get` may reach the API.
+
+    An AST check rather than a mock, because the failure is a missing keyword
+    argument at a call site — a new call added later is exactly the thing that
+    would reintroduce it, and a mock of the existing path would not see it.
+    """
+    import ast
+    import inspect
+
+    from src.ingest import odds_api
+
+    tree = ast.parse(inspect.getsource(odds_api))
+    offenders = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        f = node.func
+        if not (isinstance(f, ast.Attribute) and f.attr in {"get", "post"}
+                and isinstance(f.value, ast.Name) and f.value.id == "requests"):
+            continue
+        if not any(k.arg == "timeout" for k in node.keywords):
+            offenders.append(node.lineno)
+
+    assert not offenders, (
+        f"requests call without a timeout at odds_api.py line(s) {offenders}. "
+        "`requests` defaults to waiting forever, and a socket that dies without "
+        "an RST — a laptop sleeping mid-request — then holds the launchd slot "
+        "for every remaining capture of the week. Route it through `_get`."
+    )
+
+
+def test_a_timeout_is_retried_rather_than_dropping_the_game():
+    """A transient timeout must not silently cost a game's prices.
+
+    The per-event call carries the actual prices and its caller catches and
+    continues, so without a retry one slow response becomes a hole in the
+    archive that nothing reports.
+    """
+    import requests
+
+    from src.ingest.odds_api import HTTP_RETRIES, _get
+
+    calls = {"n": 0}
+
+    class Resp:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+    def flaky(url, params=None, timeout=None):
+        calls["n"] += 1
+        assert timeout is not None, "timeout must be passed through"
+        if calls["n"] <= HTTP_RETRIES:
+            raise requests.Timeout("stalled")
+        return Resp()
+
+    real = requests.get
+    requests.get = flaky
+    try:
+        assert _get("https://example.invalid", {}, "test").status_code == 200
+    finally:
+        requests.get = real
+    assert calls["n"] == HTTP_RETRIES + 1
+
+
+def test_a_persistent_timeout_raises_rather_than_hanging():
+    """When retries are exhausted the capture fails loudly and the job exits."""
+    import requests
+
+    from src.ingest.odds_api import HTTP_RETRIES, _get
+
+    calls = {"n": 0}
+
+    def always_timeout(url, params=None, timeout=None):
+        calls["n"] += 1
+        raise requests.Timeout("stalled")
+
+    real = requests.get
+    requests.get = always_timeout
+    try:
+        with pytest.raises(requests.Timeout):
+            _get("https://example.invalid", {}, "test")
+    finally:
+        requests.get = real
+    assert calls["n"] == HTTP_RETRIES + 1
