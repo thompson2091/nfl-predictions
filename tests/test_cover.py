@@ -14,7 +14,8 @@ import pytest
 
 from src.prediction.cover import (ASSUMED_FROM_TOP, CURVE_MIN_POINTS,
                                   MAX_PLAYERS, assumed_decimal, assumed_price,
-                                  portfolio, price_curve, slip_counts, slips)
+                                  portfolio, price_curve, sizes_for,
+                                  slip_counts, slips)
 
 
 def _flat(n, p, odds=None, decimal=2.0):
@@ -618,3 +619,135 @@ def test_a_legs_own_stand_in_beats_the_flat_one_and_is_not_called_priced():
     assert cov["legs"][0]["decimal"] == pytest.approx(1.8), "the leg's own price"
     assert cov["legs"][0]["priced"] is False
     assert cov["all_priced"] is False
+
+
+# ── The round robin: which slips are actually staked ────────────────────────
+# A book sells these by leg-count. Backing every combination is one structure
+# among several, and for a while it was the only one this module could price.
+
+
+def test_a_round_robin_stakes_only_the_leg_counts_it_was_sold():
+    """FanDuel's "By 2's" on six players is 15 doubles for $15, not 63 for $63."""
+    out = portfolio(_flat(6, 0.5, odds=100), stake=1.0, sizes=[2])
+    assert out["bets"] == 15 == comb(6, 2)
+    assert out["staked"] == pytest.approx(15.0)
+    assert out["sizes"] == [2]
+    assert out["full_cover"] is False
+    assert [r["combinations"] for r in out["counts"]] == [15]
+
+    both = portfolio(_flat(6, 0.5, odds=100), stake=1.0, sizes=[2, 3])
+    assert both["bets"] == comb(6, 2) + comb(6, 3) == 35
+
+
+def test_the_default_is_the_full_cover_it_always_was():
+    """The argument is additive: a caller that never passes it is untouched.
+
+    This is the back-compatibility guard. Everything else in this file was
+    written against a function that had no `sizes`, and all of it still runs
+    unchanged above — this says so explicitly rather than leaving it implied.
+    """
+    for n in range(1, 7):
+        legs = _flat(n, 0.4, odds=150)
+        implied = portfolio(legs, stake=2.0)
+        spelled = portfolio(legs, stake=2.0, sizes=list(range(1, n + 1)))
+        assert implied["bets"] == spelled["bets"] == 2 ** n - 1
+        assert implied["full_cover"] is True
+        assert implied["rows"] == spelled["rows"]
+        assert implied["expected_net"] == pytest.approx(spelled["expected_net"])
+
+
+def test_winning_bets_under_a_structure_is_the_binomial_not_the_power_set():
+    """With k of n scoring, a By-2's book wins C(k, 2) of its slips.
+
+    The full cover's 2^k - 1 counts every subset of the scorers; a structure
+    counts only the subsets whose size it bought. On six players that is
+    0, 0, 1, 3, 6, 10, 15 — the shape a reader recognises from the book's own
+    slip, and the reason the count cannot be left keyed to the power set.
+    """
+    out = portfolio(_flat(6, 0.5, odds=100), stake=1.0, sizes=[2])
+    assert [r["winning_bets"] for r in out["rows"]] == [0, 0, 1, 3, 6, 10, 15]
+    assert [r["winning_bets"] for r in out["rows"]] == [comb(k, 2)
+                                                        for k in range(7)]
+
+    both = portfolio(_flat(6, 0.5, odds=100), stake=1.0, sizes=[2, 3])
+    assert [r["winning_bets"] for r in both["rows"]] == [
+        comb(k, 2) + comb(k, 3) for k in range(7)]
+
+
+def test_a_structure_still_prices_every_slip_off_its_own_legs():
+    """The trap a structure creates: reporting C(k, s) and calling it a return.
+
+    Three legs at decimal 2, 3 and 4, By 2's, $1 a slip. The three doubles pay
+    6, 8 and 12, so which two score matters as much as how many — and the row
+    for "2 of 3" has to carry that spread rather than an average standing in
+    for it. Hand-checkable, which is the point.
+    """
+    legs = [{"name": "A", "team": "AAA", "prob": 0.5, "odds": 100},    # 2.0
+            {"name": "B", "team": "AAA", "prob": 0.5, "odds": 200},    # 3.0
+            {"name": "C", "team": "AAA", "prob": 0.5, "odds": 300}]    # 4.0
+    out = portfolio(legs, stake=1.0, sizes=[2])
+    assert out["bets"] == 3
+
+    two = out["rows"][2]
+    assert two["winning_bets"] == 1
+    assert two["returned_min"] == pytest.approx(6.0)     # A+B
+    assert two["returned_max"] == pytest.approx(12.0)    # B+C
+    # Equal probabilities, so the three patterns are equally likely and the
+    # weighted figure is their mean -- not any one of them.
+    assert two["returned"] == pytest.approx((6.0 + 8.0 + 12.0) / 3)
+
+    # All three scoring wins all three doubles.
+    assert out["rows"][3]["returned"] == pytest.approx(26.0)
+    assert out["rows"][3]["winning_bets"] == 3
+
+
+def test_the_singles_null_is_rebased_on_what_the_structure_risks():
+    """A comparison at unequal money is not a comparison.
+
+    A By-2's on six risks $15. The honest null is $15 spread over the six
+    singles, not the $63 a full cover would have staked — which is what the
+    line under the table claims when it says "for the same money".
+    """
+    for sizes in (None, [2], [2, 3], [1], [6]):
+        out = portfolio(_flat(6, 0.45, odds=140), stake=1.0, sizes=sizes)
+        assert out["singles_only"]["staked"] == pytest.approx(out["staked"])
+        assert out["singles_only"]["bets"] == 6
+
+
+def test_a_size_the_pool_cannot_fill_is_an_empty_stratum_not_an_error():
+    """C(3, 4) is zero, not a mistake — and trimming a player is ordinary.
+
+    The UI keeps a selection across reruns, so a reader who picks "By 4's" and
+    then removes a player must get a table, not an exception.
+    """
+    assert sizes_for(3, [2, 4]) == [2]
+    assert portfolio(_flat(3, 0.5, odds=100), sizes=[2, 4])["sizes"] == [2]
+    assert sizes_for(4, None) == [1, 2, 3, 4]
+    # Deduplicated and ordered, however it arrives.
+    assert sizes_for(5, [3, 2, 2]) == [2, 3]
+
+
+def test_a_structure_that_stakes_nothing_is_refused():
+    """Staking no money is not a portfolio, and every ratio divides by it."""
+    with pytest.raises(ValueError, match="nothing would be staked"):
+        sizes_for(3, [4, 5])
+    with pytest.raises(ValueError, match="at least one leg"):
+        sizes_for(5, [0, 2])
+    with pytest.raises(ValueError, match="at least one slip size"):
+        sizes_for(5, [])
+
+
+def test_a_structure_is_named_the_way_a_book_sells_it():
+    """"By 2's and 3's" — the "by" is said once over the list, not per size."""
+    from src.presentation.board import cover_structure
+
+    def name(n, sizes):
+        return cover_structure(portfolio(_flat(n, 0.5, odds=100), sizes=sizes))
+
+    assert name(6, None) == "every combination"
+    assert name(6, [2]) == "by 2s"
+    assert name(6, [2, 3]) == "by 2s and 3s"
+    assert name(6, [2, 3, 4]) == "by 2s, 3s and 4s"
+    assert name(6, [1]) == "singles only"
+    assert name(6, [1, 2]) == "singles and by 2s"
+    assert name(6, [6]) == "the 6-leg only"

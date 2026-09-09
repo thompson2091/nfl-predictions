@@ -599,6 +599,33 @@ def blend_moves_the_number(frame, tol: float = 0.005) -> bool:
     return bool(diff.max() > tol)
 
 
+def cover_structure(cov: dict) -> str:
+    """What to call the structure a cover staked, in a reader's words.
+
+    A book sells these by name — "By 2's" — and the leg-count table underneath
+    is the same fact in arithmetic. Naming it is what stops the page reading as
+    though it priced every combination when it priced fifteen of them.
+    """
+    n, sizes = cov["n"], list(cov.get("sizes") or range(1, cov["n"] + 1))
+    if sizes == list(range(1, n + 1)):
+        return "every combination"
+    if sizes == [1]:
+        return "singles only"
+    if sizes == [n] and n > 1:
+        return f"the {n}-leg only"
+    def series(items: list[str]) -> str:
+        if len(items) == 1:
+            return items[0]
+        return ", ".join(items[:-1]) + " and " + items[-1]
+
+    # "by" is said once over the whole list, not once per size: a book offers
+    # "By 2's and 3's", never "by 2s and by 3s".
+    parts = ["singles"] if 1 in sizes else []
+    if rest := [k for k in sizes if k > 1]:
+        parts.append("by " + series([f"{k}s" for k in rest]))
+    return " and ".join(parts)
+
+
 def cover_headline(cov: dict, money) -> str:
     """The line above a cover's table: how many slips, on how many players.
 
@@ -619,8 +646,9 @@ def cover_headline(cov: dict, money) -> str:
     parts = [f"**{pl(cov['bets'], 'slip', 'slips')}** on "
              f"{pl(n, 'player', 'players')}"]
     if n > 1:
-        parts.append(" — " + " · ".join(f"{c['combinations']}×{c['legs']}-leg"
-                                        for c in cov["counts"]))
+        parts.append(f" — {cover_structure(cov)}: "
+                     + " · ".join(f"{c['combinations']}×{c['legs']}-leg"
+                                  for c in cov["counts"]))
     parts.append(f" — at {money(cov['stake'])} each, "
                  f"**{money(staked)}** staked. ")
     if priced == n:

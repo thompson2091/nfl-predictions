@@ -887,3 +887,104 @@ def test_the_lay_ceiling_is_the_same_number_on_both_surfaces():
                      f["scored_pct"] / f["priced_pct"], 0.05)["lay_yes_max_dec"]
             for f in fades]
     assert json.loads(out.stdout) == pytest.approx(want, rel=1e-9)
+
+
+def test_the_round_robin_buys_the_same_slips_in_both_languages():
+    """The page reimplements `cover.portfolio`; a structure must not diverge.
+
+    Two surfaces backing different slips off one control is two different bets
+    wearing one screenshot — and the failure is quiet, because both tables look
+    entirely reasonable on their own. So the structure is checked where it can
+    actually disagree: heterogeneous prices, several selections, and the
+    counts, the outlay and every priced row compared number for number.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available to run the page's own portfolio")
+
+    from src.export import dashboard
+    from src.prediction.cover import portfolio
+
+    # Decimals chosen to be exact in both languages, and deliberately unequal:
+    # a structure that silently collapsed to counting slips would still pass on
+    # a flat board.
+    legs = [{"name": "A", "team": "AAA", "prob": 0.62, "dec": 2.0,  "odds": 100},
+            {"name": "B", "team": "AAA", "prob": 0.48, "dec": 3.0,  "odds": 200},
+            {"name": "C", "team": "BBB", "prob": 0.35, "dec": 4.0,  "odds": 300},
+            {"name": "D", "team": "CCC", "prob": 0.28, "dec": 1.5,  "odds": -200},
+            {"name": "E", "team": "CCC", "prob": 0.21, "dec": 6.0,  "odds": 500}]
+    cases = [None, [2], [3], [2, 3], [1, 2], [5], [2, 4]]
+
+    js_legs = [{k: v for k, v in leg.items() if k != "odds"} for leg in legs]
+    driver = (
+        dashboard.JS + dashboard.JS_TEAMS +
+        "\nconst L = " + json.dumps(js_legs) + ";" +
+        "\nconst out = " + json.dumps(cases) +
+        ".map(s => coverPortfolio(L, 1.0, 0.0, 2.0, s));" +
+        "\nconsole.log(JSON.stringify(out.map(v => ({"
+        "bets: v.bets, staked: v.staked, sizes: v.sizes, "
+        "counts: v.counts, "
+        "wins: v.rows.map(r => r.winning_bets), "
+        "ret: v.rows.map(r => r.returned), "
+        "net: v.rows.map(r => r.net)}))));")
+    out = subprocess.run([node, "-e", driver], capture_output=True, text=True,
+                         check=True)
+    got = json.loads(out.stdout)
+
+    for sizes, js in zip(cases, got, strict=True):
+        py = portfolio([{k: v for k, v in leg.items() if k != "dec"}
+                        for leg in legs], stake=1.0, rho=0.0, sizes=sizes)
+        assert js["bets"] == py["bets"], sizes
+        assert js["sizes"] == py["sizes"], sizes
+        assert js["staked"] == pytest.approx(py["staked"]), sizes
+        assert ([c["combinations"] for c in js["counts"]]
+                == [c["combinations"] for c in py["counts"]]), sizes
+        assert js["wins"] == [r["winning_bets"] for r in py["rows"]], sizes
+        assert js["ret"] == pytest.approx(
+            [r["returned"] for r in py["rows"]], rel=1e-9), sizes
+        assert js["net"] == pytest.approx(
+            [r["net"] for r in py["rows"]], rel=1e-9), sizes
+
+
+def test_the_pages_structure_name_reads_the_way_the_python_one_does():
+    """One control, one vocabulary — "by 2s and 3s" on both surfaces."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available to run the page's own naming")
+
+    from src.export import dashboard
+    from src.prediction.cover import portfolio
+    from src.presentation.board import cover_structure
+
+    cases = [None, [2], [2, 3], [2, 3, 4], [1], [1, 2], [6]]
+    driver = (dashboard.JS + dashboard.JS_TEAMS +
+              "\nconsole.log(JSON.stringify(" + json.dumps(cases) +
+              ".map(s => coverStructure(6, s))));")
+    out = subprocess.run([node, "-e", driver], capture_output=True, text=True,
+                         check=True)
+    legs = [{"name": f"P{i}", "team": "AAA", "prob": 0.5, "odds": 100}
+            for i in range(6)]
+    assert json.loads(out.stdout) == [
+        cover_structure(portfolio(legs, sizes=s)) for s in cases]
+
+
+def test_the_pane_actually_hands_its_round_robin_to_the_portfolio():
+    """The gap the parity tests cannot see.
+
+    They call `coverPortfolio` directly with a structure, so dropping the
+    argument at the pane's own call site would revert the page to a full cover
+    with every one of them still green — and the table would look completely
+    reasonable while charging $63 for a wager the control says costs $15.
+    """
+    js = _js_cover()
+    pane = js.split("function paneCover()", 1)[1].split("\nfunction ", 1)[0]
+    assert "S.cover.sizes.length ? S.cover.sizes : null" in pane, (
+        "paneCover no longer passes its selection to coverPortfolio")
+    assert "multi('Round robin'" in pane, (
+        "paneCover no longer offers the round-robin control")
+    # An empty selection is the full cover, which is what the leading "All"
+    # chip produces -- so the default has to be empty, not every size. The
+    # state lives in the shared blob rather than the cover pane's own.
+    from src.export import dashboard
+    assert "sizes: []" in dashboard.JS, (
+        "the pane no longer defaults to a full cover")

@@ -452,8 +452,12 @@ const S = {
   // probabilities do, so +100 assumed on both markets makes an anytime cover
   // look ordinary and a first-TD cover look catastrophic for no reason a
   // reader can see.
+  // `sizes` is the round robin: the slip sizes actually backed. Empty is
+  // every combination, which is the full cover and what this pane did before
+  // the control existed -- so an empty default changes nothing for a reader
+  // who never touches it.
   cover: { picked: null, stake: 1, stakeRaw: '1.00', dec: 2.0, decRaw: '+100',
-           decMarket: null, q: '', game: '',
+           decMarket: null, q: '', game: '', sizes: [],
            pricedOnly: false, open: true },
   // `priced` mirrors the master table's control and defaults the same way:
   // the whole slate. A priced-only default answered "what can I bet on"
@@ -1090,7 +1094,47 @@ function standInRange(ds) {
   return lo === hi ? lo : lo + ' to ' + hi;
 }
 
-function coverPortfolio(legs, stake, rho, assumedDec) {
+// The leg-counts a structure stakes, ascending. Mirrors `cover.sizes_for`:
+// a size above n is an empty stratum rather than an error, because trimming a
+// player is ordinary; a size below 1 is not a bet, and a selection leaving
+// nothing staked has no outlay to divide by.
+function coverSizes(n, sizes) {
+  if (!sizes) return Array.from({ length: n }, (_, i) => i + 1);
+  const want = Array.from(new Set(sizes.map(Number))).sort((a, b) => a - b);
+  const kept = want.filter(k => k >= 1 && k <= n);
+  return kept.length ? kept : Array.from({ length: n }, (_, i) => i + 1);
+}
+
+function nCk(n, k) {
+  if (k < 0 || k > n) return 0;
+  let r = 1;
+  for (let i = 1; i <= k; i++) r = r * (n - k + i) / i;
+  return Math.round(r);
+}
+
+// How many slips a structure buys on n players. Mirrors the sum the pane's
+// headline and the picker's running count both need.
+function coverBets(n, sizes) {
+  return coverSizes(n, sizes).reduce((a, k) => a + nCk(n, k), 0);
+}
+
+// What to call the structure, in a reader's words -- a book says "By 2's",
+// never "by 2s and by 3s", so the "by" is said once over the whole list.
+// Mirrors `board.cover_structure`.
+function coverStructure(n, sizes) {
+  const want = coverSizes(n, sizes);
+  if (want.length === n) return 'every combination';
+  if (want.length === 1 && want[0] === 1) return 'singles only';
+  if (want.length === 1 && want[0] === n && n > 1) return 'the ' + n + '-leg only';
+  const series = xs => xs.length === 1 ? xs[0]
+    : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
+  const parts = want.indexOf(1) >= 0 ? ['singles'] : [];
+  const rest = want.filter(k => k > 1);
+  if (rest.length) parts.push('by ' + series(rest.map(k => k + 's')));
+  return parts.join(' and ');
+}
+
+function coverPortfolio(legs, stake, rho, assumedDec, sizes) {
   const n = legs.length, N = 1 << n;
   const p = legs.map(l => l.prob);
   // A leg's own stand-in first, then the flat override. `priced` below still
@@ -1120,12 +1164,21 @@ function coverPortfolio(legs, stake, rho, assumedDec) {
     for (let m = 0; m < N; m++) prob[m] /= tot;
   }
 
-  // Every non-empty subset is a slip; it pays when all its legs are in the
-  // pattern.
+  // The slips the round robin buys; each pays when all its legs are in the
+  // pattern. Restricting which sizes are staked changes what is bought and
+  // nothing about how it is priced -- the payout below is still the product of
+  // that slip's own legs, at each leg's own price.
+  const want = coverSizes(n, sizes);
+  const staked_sizes = new Set(want);
   const ret = new Array(N).fill(0), wins = new Array(N).fill(0);
+  const counts = {};
   let slips = 0;
   for (let mask = 1; mask < N; mask++) {
+    let legsOn = 0;
+    for (let i = 0; i < n; i++) if ((mask >> i) & 1) legsOn++;
+    if (!staked_sizes.has(legsOn)) continue;
     slips++;
+    counts[legsOn] = (counts[legsOn] || 0) + 1;
     let payout = stake;
     for (let i = 0; i < n; i++) if ((mask >> i) & 1) payout *= dec[i];
     for (let m = 0; m < N; m++) if ((m & mask) === mask) { ret[m] += payout; wins[m]++; }
@@ -1154,6 +1207,8 @@ function coverPortfolio(legs, stake, rho, assumedDec) {
   const be = rows.find(r => r.net > 0);
   return {
     n: n, stake: stake, bets: slips, staked: staked, rho: rho, rows: rows,
+    sizes: want, full_cover: want.length === n,
+    counts: want.map(k => ({ legs: k, combinations: counts[k] || 0 })),
     all_priced: legs.every(l => has(l.dec)), assumed_decimal: assumedDec,
     // What each unpriced leg was actually charged, so the note under the table
     // can name the prices the answer rests on rather than one that may not
@@ -1226,7 +1281,9 @@ function coverPicker(pool, blended, extra) {
     el('div', { class: 'picked-h', html:
       '<b>' + f.picked.length + '</b> selected' +
       (f.picked.length >= 2
-        ? ' — <b>' + (Math.pow(2, f.picked.length) - 1).toLocaleString() +
+        ? ' — <b>' +
+          coverBets(f.picked.length,
+                    (f.sizes && f.sizes.length) ? f.sizes : null).toLocaleString() +
           '</b> slips'
         : '') }),
     el('div', { class: 'chips' },
@@ -1367,14 +1424,32 @@ function paneCover() {
           + 'stand-in from and this opens at +100. Every payout below rests on that number '
           + 'rather than on a market.'),
   ];
+  // A book sells a round robin by leg-count -- "By 2's" is the doubles and
+  // nothing else -- so the full cover is one structure among several rather
+  // than the only thing this pane can price. Below two players there is only
+  // one structure and the control would be a field with one answer.
+  //
+  // Sizes the pool no longer has are dropped rather than kept pressed: trim a
+  // player and a chip for a size that cannot exist would still read as chosen.
+  S.cover.sizes = (S.cover.sizes || []).filter(k => k <= chosen.length);
+  if (chosen.length > 1) {
+    money2.push(multi('Round robin', S.cover.sizes,
+      Array.from({ length: chosen.length }, (_, i) => i + 1).map(k =>
+        [k, k === 1 ? 'Singles' : k === chosen.length ? k + '-leg' : 'By ' + k + 's']),
+      v => { S.cover.sizes = v.slice().sort((a, b) => a - b); },
+      'Every combination',
+      'Which slip sizes to back. Every combination is the full cover; By 2s ' +
+      'on six players is the 15 doubles for $15 rather than 63 slips for ' +
+      '$63. It changes what is bought, never how a slip is priced.'));
+  }
   const boxes = coverPicker(pool, m.topk && m.topk.blended, money2);
 
   const kids = [
     el('p', { class: 'muted', html:
-      'Pick players and back <b>every combination</b> of them \u2014 a full ' +
-      'cover, not one slip. <b>n</b> players is <b>2\u207f \u2212 1</b> slips, ' +
-      'so one is a single bet and five is 31. The table is what each number of ' +
-      'scorers returns.' }),
+      'Pick players, then choose the <b>round robin</b> \u2014 which slip ' +
+      'sizes to back. Every combination is the full cover, <b>2\u207f \u2212 1</b> ' +
+      'slips; <b>By 2s</b> on six is the 15 doubles, the way a book sells it. ' +
+      'The table is what each number of scorers returns.' }),
   ];
 
   // Whether there is any basis for preferring these numbers to the price, put
@@ -1448,8 +1523,10 @@ function paneCover() {
   if (chosen.length > (cov.max_players || 12)) {
     kids.push(el('div', { class: 'warn-box bad-box', html:
       '<b>' + chosen.length + ' players is ' +
-      (Math.pow(2, chosen.length) - 1).toLocaleString() + ' slips.</b> ' +
-      (cov.max_players || 12) + ' is the most this will enumerate.' }));
+      Math.pow(2, chosen.length).toLocaleString() + ' outcome patterns.</b> ' +
+      (cov.max_players || 12) + ' is the most this will enumerate, and that ' +
+      'ceiling does not move with the round robin \u2014 every pattern is ' +
+      'priced whichever slips you back.' }));
     return card('Parlay', '', kids);
   }
 
@@ -1468,12 +1545,17 @@ function paneCover() {
     assumed: flat ? null : curveDecimal(cov.price_curve, r.ours),
   }));
   const v = coverPortfolio(legs, S.cover.stake, cov.rho || 0,
-                           flat || S.cover.dec);
+                           flat || S.cover.dec,
+                           S.cover.sizes.length ? S.cover.sizes : null);
 
   const plural = (k, one, many) => k + ' ' + (k === 1 ? one : many);
   kids.push(el('p', { class: 'muted', html:
     '<b>' + plural(v.bets, 'slip', 'slips') + '</b> on ' +
-    plural(v.n, 'player', 'players') + ' at $' + cents(v.stake) +
+    plural(v.n, 'player', 'players') +
+    (v.n > 1 ? ' \u2014 ' + coverStructure(v.n, v.sizes) + ': ' +
+       v.counts.map(c => c.combinations + '\u00d7' + c.legs + '-leg').join(' \u00b7 ')
+     : '') +
+    ' at $' + cents(v.stake) +
     ' each, <b>' + usd(v.staked) + '</b> staked. ' +
     (v.all_priced
       ? (v.n === 1 ? 'Priced by the book.'

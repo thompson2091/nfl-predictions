@@ -7,6 +7,23 @@ stake on each, and show what has to happen to come out ahead.
     N = 5  ->  2^5 - 1 = 31 slips:  5 singles, 10 doubles, 10 trebles,
                                      5 four-folds, 1 five-fold
 
+**Which slips are staked is a choice, and books only sell some of them.** The
+full cover above is one structure among several. A sportsbook's round robin is
+sold by leg-count — FanDuel's "By 2's" on six players is the 15 doubles and
+nothing else — so a table that only ever prices the full cover is pricing a
+wager the reader cannot actually place. `sizes` selects the leg-counts staked;
+`None` keeps every one of them, which is the full cover and the default.
+
+    sizes=None    6 players -> 63 slips   the full cover
+    sizes=[2]     6 players -> 15 slips   FanDuel "By 2's"
+    sizes=[2, 3]  6 players -> 35 slips   "By 2's and 3's"
+
+It restricts *which slips are staked* and nothing else. Every outcome pattern
+is still enumerated and priced leg by leg, the correlation term is untouched,
+and the per-count rows are still a weighted summary rather than a count. The
+temptation a structure creates is to report C(k, s) winning bets and call that
+a return, which is the same error the next paragraph exists to forbid.
+
 **Two things this must not get wrong.**
 
 *Which* k score, not just how many. A "3 of 5 returns $15.38" table is only
@@ -53,6 +70,7 @@ either.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from itertools import combinations
 from math import comb
 
@@ -63,19 +81,51 @@ import numpy as np
 MAX_PLAYERS = 12
 
 
-def slips(n: int) -> list[tuple[int, ...]]:
-    """Every non-empty subset of `range(n)`, shortest first."""
+def sizes_for(n: int, sizes: Iterable[int] | None = None) -> list[int]:
+    """The leg-counts a structure actually stakes on `n` players, ascending.
+
+    A size above `n` is dropped rather than refused: C(n, k) is zero there, so
+    "By 4's" on three players is an empty stratum, not a mistake, and a reader
+    who trims a player from the board should not get an exception for it. Zero
+    and negative are refused, because a slip with no legs is not a bet. So is a
+    selection that leaves nothing at all — staking no money is not a portfolio,
+    and every ratio below it divides by the outlay.
+    """
+    if sizes is None:
+        return list(range(1, n + 1))
+    want = sorted({int(s) for s in sizes})
+    if not want:
+        raise ValueError("a structure must stake at least one slip size")
+    if want[0] < 1:
+        raise ValueError(f"a slip needs at least one leg, got {want[0]}")
+    kept = [s for s in want if s <= n]
+    if not kept:
+        raise ValueError(
+            f"no slip of size {want} exists on {n} player(s) — nothing would "
+            f"be staked")
+    return kept
+
+
+def slips(n: int, sizes: Iterable[int] | None = None) -> list[tuple[int, ...]]:
+    """The slips a structure stakes, shortest first.
+
+    `sizes` is the leg-counts backed — `[2]` is a book's "By 2's", `[2, 3]` its
+    "By 2's and 3's". `None` is every non-empty subset of `range(n)`: the full
+    cover, and the default, so a caller that has never heard of the argument
+    gets exactly what it always got.
+    """
     if not 1 <= n <= MAX_PLAYERS:
         raise ValueError(f"n must be between 1 and {MAX_PLAYERS}, got {n}")
     out: list[tuple[int, ...]] = []
-    for size in range(1, n + 1):
+    for size in sizes_for(n, sizes):
         out.extend(combinations(range(n), size))
     return out
 
 
-def slip_counts(n: int) -> list[dict]:
+def slip_counts(n: int, sizes: Iterable[int] | None = None) -> list[dict]:
     """The bet-count table: how many slips of each size, and what they cost."""
-    return [{"legs": k, "combinations": comb(n, k)} for k in range(1, n + 1)]
+    return [{"legs": k, "combinations": comb(n, k)}
+            for k in sizes_for(n, sizes)]
 
 
 def _pattern_probs(p: np.ndarray, rho: float = 0.0,
@@ -239,14 +289,21 @@ def assumed_decimal(curve: dict | None, prob: float) -> float | None:
 
 
 def portfolio(players: list[dict], *, stake: float = 1.0,
-              rho: float = 0.0, assumed_decimal: float | None = None) -> dict:
-    """Price a full cover of `players` and enumerate every outcome.
+              rho: float = 0.0, assumed_decimal: float | None = None,
+              sizes: Iterable[int] | None = None) -> dict:
+    """Price a cover of `players` and enumerate every outcome.
 
     `players` need `prob`; `odds` (American) is used when present. Where a
     player has no price, its own `assumed` (decimal) stands in, and failing
     that the flat `assumed_decimal` — that is what makes the table answerable
     on an unpriced board, and every row that used it is flagged so the number
     is never mistaken for a quote.
+
+    `sizes` picks the round-robin structure: the leg-counts staked, `None` for
+    every one of them. It changes which slips are bought and therefore the
+    outlay; it changes nothing about how any of them is priced. `singles_only`
+    stays the null to beat and is re-based on whatever this structure actually
+    risks, so the two sides of that comparison are always the same money.
 
     Per leg rather than one price for all of them, because the legs differ: see
     `price_curve`. `priced` still counts only the legs a book actually quoted,
@@ -271,7 +328,8 @@ def portfolio(players: list[dict], *, stake: float = 1.0,
             "one; a return cannot be computed without a payout")
     dec = np.array(dec, dtype=float)
 
-    all_slips = slips(n)
+    staked_sizes = sizes_for(n, sizes)
+    all_slips = slips(n, staked_sizes)
     n_slips = len(all_slips)
     total_staked = stake * n_slips
     pattern = _pattern_probs(p, rho, [x.get("team") for x in players])
@@ -315,21 +373,31 @@ def portfolio(players: list[dict], *, stake: float = 1.0,
         "legs": [{"name": x.get("name"), "team": x.get("team"), "prob": float(x["prob"]),
                   "odds": x.get("odds"), "decimal": float(d), "priced": bool(pr)}
                  for x, d, pr in zip(players, dec, priced)],
-        "counts": slip_counts(n),
+        "counts": slip_counts(n, staked_sizes),
+        # The structure, and whether it is the full cover. Both are read by the
+        # headline and by the export, which must not have to re-derive from
+        # `counts` what the caller asked for.
+        "sizes": staked_sizes,
+        "full_cover": staked_sizes == list(range(1, n + 1)),
         "rows": rows,
         "expected_net": ev,
         "expected_roi": ev / total_staked if total_staked else 0.0,
         "breakeven_scored": next((r["scored"] for r in rows if r["net"] > 0), None),
         "p_breakeven": float(sum(r["probability"] for r in rows if r["net"] > 0)),
         # The comparison that matters: the same money on the singles alone.
-        "singles_only": _singles(p, dec, stake, pattern, k_of_n),
+        "singles_only": _singles(p, dec, total_staked, pattern, k_of_n),
     }
 
 
-def _singles(p, dec, stake, pattern, k_of_n) -> dict:
-    """Backing the N singles for the same total outlay, as the null to beat."""
+def _singles(p, dec, total, pattern, k_of_n) -> dict:
+    """Backing the N singles for the same total outlay, as the null to beat.
+
+    `total` is the structure's own outlay rather than a full cover's, because
+    the comparison only means anything at equal money: a By 2's on six players
+    risks $15, and the honest null is $15 spread over the six singles, not the
+    $63 a full cover would have staked.
+    """
     n = len(p)
-    total = stake * len(slips(n))
     per = total / n
     ev = float(sum(per * (d * pi - 1.0) for d, pi in zip(dec, p)))
     return {"bets": n, "stake_each": per, "staked": total,

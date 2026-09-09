@@ -399,11 +399,17 @@ def render_cover_selection(tt: str) -> None:
 
 
 def render_cover(cov: dict, tt: str) -> None:
-    """What every combination of the selected players returns, by how many score.
+    """What the backed slips return, by how many of the selected players score.
 
-    One table, because there is only one question: back all 2^n - 1 slips, and
-    what happens at each number of scorers. The legs are not re-listed — they
-    are the names just chosen, and the board above already describes them.
+    One table, because there is only one question: back the slips the round
+    robin buys — every combination, or the leg-counts chosen above — and what
+    happens at each number of scorers. The legs are not re-listed — they are
+    the names just chosen, and the board above already describes them.
+
+    The structure changes the outlay, so every figure keyed to it moves with
+    it: the net column, the breakeven row, and the singles comparison, which
+    is re-based on what this structure actually risks rather than on what a
+    full cover would have. What it never changes is how a slip is priced.
 
     Three things it is careful about, each a way this could read as a
     recommendation it has not earned:
@@ -4255,6 +4261,44 @@ if tab_board.open:
                 # The flat fallback for a leg the curve cannot price at all.
                 _cov_price = float(_assumed or 2.0)
 
+            # ── Which slips actually get backed ───────────────────────
+            # A book sells a round robin by leg-count: FanDuel's "By 2's" on
+            # six players is the fifteen doubles and nothing else. Backing
+            # every combination is one structure among several, and it was the
+            # only one this page could price — which meant the table answered
+            # for a wager that cannot be placed at a window.
+            #
+            # This changes which slips are bought and nothing about how any of
+            # them is priced: every outcome pattern below is still enumerated
+            # and charged leg by leg, at each leg's own price.
+            _size_opts = list(range(1, len(_picked) + 1))
+            # A selection left pointing at a size the pool no longer has is a
+            # rerun crash rather than a stale number, and removing a player is
+            # the most ordinary thing a reader does here.
+            if "cover_sizes" in st.session_state:
+                st.session_state["cover_sizes"] = [
+                    k for k in st.session_state["cover_sizes"]
+                    if k in _size_opts]
+            _cov_sizes = None
+            if len(_picked) > 1:
+                _n_pick = len(_picked)
+                _cov_sizes = st.multiselect(
+                    "Round robin", _size_opts, default=_size_opts,
+                    key="cover_sizes",
+                    format_func=lambda k: ("Singles" if k == 1 else
+                                           f"{k}-leg" if k == _n_pick else
+                                           f"By {k}s"),
+                    help="Which slip sizes to back, the way a book sells a "
+                         "round robin. All of them is the full cover. `By 2s` "
+                         "on six players is the 15 doubles for $15 rather "
+                         "than 63 slips for $63 — fewer ways to win, and far "
+                         "less staked to find out. The comparison against the "
+                         "same money on singles moves with it.")
+                if not _cov_sizes:
+                    st.caption(":material/info: No slip size chosen — pricing "
+                               "every combination.")
+                    _cov_sizes = None
+
             # One player is allowed: 2^1 - 1 is one slip, and the table still
             # says what it returns. Refusing it made the reader add a second
             # player they did not want in order to see the first one's numbers.
@@ -4262,10 +4306,11 @@ if tab_board.open:
                 st.info("Pick at least one player.", icon=":material/info:")
             elif len(_picked) > _cover.MAX_PLAYERS:
                 st.warning(
-                    f"{len(_picked)} players is {2 ** len(_picked) - 1:,} "
-                    f"slips. {_cover.MAX_PLAYERS} is the most this will "
-                    f"enumerate — past there the table stops being readable "
-                    f"long before it stops being computable.",
+                    f"{len(_picked)} players is {2 ** len(_picked):,} outcome "
+                    f"patterns to price. {_cover.MAX_PLAYERS} is the most this "
+                    f"will enumerate — and that ceiling does not move with the "
+                    f"round robin, because every pattern is priced whichever "
+                    f"slips you back.",
                     icon=":material/warning:")
             else:
                 from src.prediction.cover import assumed_decimal
@@ -4288,7 +4333,8 @@ if tab_board.open:
                     })
                 _cov = _cover.portfolio(_legs_in, stake=float(_cov_stake),
                                         rho=float(_rho),
-                                        assumed_decimal=float(_cov_price))
+                                        assumed_decimal=float(_cov_price),
+                                        sizes=_cov_sizes)
                 render_cover(_cov, target_type)
 
             # ── By team ───────────────────────────────────────────────────
