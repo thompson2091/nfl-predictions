@@ -201,3 +201,76 @@ def test_a_persistent_timeout_raises_rather_than_hanging():
     finally:
         requests.get = real
     assert calls["n"] == HTTP_RETRIES + 1
+
+
+# A 502 from the gateway killed the 2026-09-09 open capture outright, because
+# the first cut of `_get` retried timeouts but not HTTP statuses — "an HTTP
+# status is an answer". A 5xx is the opposite of an answer, and the same code
+# runs the close capture, where the price cannot be re-bought.
+
+def _fake_get(codes, key="SECRET"):
+    """A requests.get that returns `codes` in order, last one repeating."""
+    import requests
+    calls = {"n": 0}
+
+    class R:
+        def __init__(self, code):
+            self.status_code = code
+            self.reason = "Bad Gateway"
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(
+                    f"{self.status_code} Error for url: "
+                    f"https://api/x?apiKey={key}", response=self)
+
+    def fake(url, params=None, timeout=None):
+        i = calls["n"]
+        calls["n"] += 1
+        return R(codes[min(i, len(codes) - 1)])
+
+    return fake, calls
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+def test_a_transient_server_status_is_retried(status, monkeypatch):
+    import requests
+
+    from src.ingest import odds_api
+
+    monkeypatch.setattr(odds_api, "RETRY_BACKOFF", (0.0, 0.0, 0.0))
+    fake, calls = _fake_get([status, status, 200])
+    monkeypatch.setattr(requests, "get", fake)
+    assert odds_api._get("https://api/x", {}, "t").status_code == 200
+    assert calls["n"] == 3
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 422])
+def test_a_client_error_is_a_real_answer_and_is_not_retried(status, monkeypatch):
+    """401 means the key is wrong. Retrying it burns clock before a kickoff."""
+    import requests
+
+    from src.ingest import odds_api
+
+    monkeypatch.setattr(odds_api, "RETRY_BACKOFF", (0.0, 0.0, 0.0))
+    fake, calls = _fake_get([status])
+    monkeypatch.setattr(requests, "get", fake)
+    with pytest.raises(requests.HTTPError):
+        odds_api._get("https://api/x", {}, "t")
+    assert calls["n"] == 1, "a 4xx must not be retried"
+
+
+def test_the_api_key_never_reaches_a_log_or_an_exception(monkeypatch):
+    """`raise_for_status` puts the query string in the message, key included."""
+    import requests
+
+    from src.ingest import odds_api
+
+    monkeypatch.setattr(odds_api, "RETRY_BACKOFF", (0.0, 0.0, 0.0))
+    monkeypatch.setattr(odds_api, "_get_api_key", lambda: "SUPERSECRETKEY")
+    fake, _ = _fake_get([502], key="SUPERSECRETKEY")
+    monkeypatch.setattr(requests, "get", fake)
+    with pytest.raises(requests.HTTPError) as e:
+        odds_api._get("https://api/x", {}, "t")
+    assert "SUPERSECRETKEY" not in str(e.value)
+    assert "***" in str(e.value)

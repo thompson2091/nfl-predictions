@@ -249,30 +249,62 @@ def _get_api_key() -> str:
     return key
 
 
+#: HTTP statuses worth trying again. A 5xx or a 429 is the API failing to
+#: answer, not answering — the first cut of this retried neither, on the
+#: reasoning that "an HTTP status is an answer", and a single transient 502
+#: from the gateway then killed the 2026-09-09 open capture outright. A 4xx is
+#: a real answer (401 a bad key, 404 no such event) and retrying it only burns
+#: the clock before a kickoff.
+RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+
+#: Seconds to wait before each retry. Backing off matters for a 502: a gateway
+#: that just failed is likelier to fail again immediately than a second later.
+RETRY_BACKOFF = (1.0, 3.0, 6.0)
+
+
+def _redact(text: str) -> str:
+    """Strip the API key out of anything on its way to a log.
+
+    `raise_for_status` puts the full request URL in the message, query string
+    included, so an unattended failure wrote the key into logs/ in plain text.
+    """
+    key = _get_api_key()
+    return text.replace(key, "***") if key else text
+
+
 def _get(url: str, params: dict, what: str) -> requests.Response:
     """GET with a timeout and a bounded retry. Never returns without an answer.
 
     Every request in this module goes through here, because the one that did
-    not is the one that hung — see HTTP_TIMEOUT. Timeouts and connection drops
-    are retried; an HTTP error status is not, since the API answering "no" is
-    an answer and retrying it just spends another credit.
+    not is the one that hung — see HTTP_TIMEOUT.
     """
     last: Exception | None = None
     for attempt in range(HTTP_RETRIES + 1):
         try:
             resp = requests.get(url, params=params, timeout=HTTP_TIMEOUT)
+            if (resp.status_code in RETRY_STATUSES
+                    and attempt < HTTP_RETRIES):
+                raise requests.HTTPError(
+                    f"{resp.status_code} {resp.reason}", response=resp)
             resp.raise_for_status()
             return resp
-        except (requests.Timeout, requests.ConnectionError) as e:
+        except (requests.Timeout, requests.ConnectionError,
+                requests.HTTPError) as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            # A real answer: stop, and let the caller see why.
+            if status is not None and status not in RETRY_STATUSES:
+                raise type(e)(_redact(str(e)), response=e.response) from None
             last = e
             if attempt < HTTP_RETRIES:
                 # Say so on the way past: an unattended capture that quietly
                 # retried twice and then succeeded looks identical in the
                 # archive to one that went straight through, and the
                 # difference is worth seeing in the log before a Sunday.
-                print(f"  {what}: {type(e).__name__} on attempt "
-                      f"{attempt + 1}/{HTTP_RETRIES + 1}, retrying")
-    raise last  # type: ignore[misc]
+                wait = RETRY_BACKOFF[min(attempt, len(RETRY_BACKOFF) - 1)]
+                print(f"  {what}: {_redact(str(e))[:80]} on attempt "
+                      f"{attempt + 1}/{HTTP_RETRIES + 1}, retrying in {wait:g}s")
+                time.sleep(wait)
+    raise type(last)(_redact(str(last)))  # type: ignore[misc]
 
 
 def _american_to_implied(price: int) -> float:
