@@ -988,3 +988,56 @@ def test_the_pane_actually_hands_its_round_robin_to_the_portfolio():
     from src.export import dashboard
     assert "sizes: []" in dashboard.JS, (
         "the pane no longer defaults to a full cover")
+
+
+# ── The week the page points at ───────────────────────────────────────────
+#
+# `latest_slate` took `min(week)` of the newest season, which is right exactly
+# once: before kickoff, the earliest week in the matrix is the upcoming one.
+# The matrix carries every scheduled week — DEF/ST rows come from the schedule,
+# not the roster — so it stayed at 1 all season. On 2026-09-15, week 1 played
+# and week 2 built and priced, the export published a week-1 page with NO
+# PLAYERS on it: the odds cache had rolled to week 2, so a week-1 board matched
+# no price at all. 1.2MB of board became 150KB of furniture, exit code 0.
+
+def test_the_slate_the_dashboard_picks_has_a_real_candidate_pool(mod):
+    """32 rows is one DEF/ST per team. A board of those is an empty board."""
+    import polars as pl
+
+    from src.evaluation import harness
+
+    season, week = mod.latest_slate("anytime_td")
+    if season is None:
+        pytest.skip("no feature matrix on disk")
+
+    n = (harness._features("anytime_td")
+         .filter((pl.col("season") == season) & (pl.col("week") == week))
+         .height)
+    assert n > mod._DEFST_ONLY_ROWS, (
+        f"dashboard would publish {season} week {week}, which has {n} candidate "
+        "rows — that is DEF/ST alone and renders a page with no players")
+
+
+def test_the_slate_the_dashboard_picks_can_actually_be_priced(mod):
+    """The failure that shipped: a week whose prices are no longer cached.
+
+    Asserted against the same cache the board reads, so it fails for the reason
+    the page would be empty rather than for a proxy.
+    """
+    from src.ingest.odds_api import CACHE_DIR
+    from src.prediction.predict import _market_from_cache
+
+    season, week = mod.latest_slate("anytime_td")
+    if season is None:
+        pytest.skip("no feature matrix on disk")
+    if not any(CACHE_DIR.glob("td_props_*.json")):
+        pytest.skip("no odds cache on disk at all — nothing to be wrong about")
+
+    market = _market_from_cache(season, week, "anytime_td")
+    # None, not empty, is what the real failure returns: the cache holds a
+    # different week's games and none of them key to this week's game_ids. An
+    # earlier version of this test skipped on None and therefore passed against
+    # the exact bug it was written for.
+    assert market is not None and market.height > 0, (
+        f"dashboard would publish {season} week {week}, for which the odds "
+        "cache holds no prices — the board renders with no players on it")

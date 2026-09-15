@@ -1271,7 +1271,22 @@ with st.sidebar:
         )
         season = st.selectbox("Season", _sidebar_seasons, key="sidebar_season")
         _sidebar_weeks = get_available_weeks(_sidebar_df, season)
-        week = st.selectbox("Week", _sidebar_weeks, key="sidebar_week") if _sidebar_weeks else None
+        # Default to the live slate, not to week 1. The matrix carries every
+        # scheduled week, so index 0 is always week 1 — which from week 2 on is
+        # a finished week whose prices are no longer in the odds cache, and the
+        # board renders with nobody on it. Same predicate the dashboard uses,
+        # from src/evaluation/slate.py, so the two cannot disagree.
+        _default_wk = 0
+        if _sidebar_weeks:
+            from src.evaluation.slate import pick_week
+            try:
+                _wk = pick_week(_sidebar_df.filter(pl.col("season") == season),
+                                season)
+                _default_wk = _sidebar_weeks.index(_wk)
+            except (ValueError, Exception):
+                _default_wk = 0
+        week = (st.selectbox("Week", _sidebar_weeks, index=_default_wk,
+                             key="sidebar_week") if _sidebar_weeks else None)
     else:
         season = None
         week = None

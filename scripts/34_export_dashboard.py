@@ -98,16 +98,18 @@ def served(target_type: str) -> dict:
 
 
 def latest_slate(target_type: str) -> tuple[int | None, int | None]:
-    """The newest season and week the feature matrix carries."""
-    from src.evaluation import harness
-    try:
-        df = harness._features(target_type)
-    except FileNotFoundError:
-        return None, None
-    season = int(df.select(pl.col("season").max()).item())
-    week = int(df.filter(pl.col("season") == season)
-                 .select(pl.col("week").min()).item())
-    return season, week
+    """The season and week the board should be showing, on any day of the week.
+
+    Defined in `src/evaluation/slate.py` so the app and this exporter cannot
+    drift apart — they used to disagree, and the disagreement was invisible
+    because both rendered something.
+    """
+    from src.evaluation.slate import current_slate
+    return current_slate(target_type)
+
+
+#: Re-exported for the tests that assert what an empty board looks like.
+from src.evaluation.slate import DEFST_ONLY_ROWS as _DEFST_ONLY_ROWS  # noqa: E402
 
 
 # ── Accuracy, measured ────────────────────────────────────────────────────
