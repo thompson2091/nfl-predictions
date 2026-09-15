@@ -10,6 +10,7 @@ test here that involves doubt asserts the guard captures.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import polars as pl
 import pytest
@@ -274,3 +275,105 @@ def test_the_api_key_never_reaches_a_log_or_an_exception(monkeypatch):
         odds_api._get("https://api/x", {}, "t")
     assert "SUPERSECRETKEY" not in str(e.value)
     assert "***" in str(e.value)
+
+
+# The close capture's other silent failure: not a crash, a cache hit.
+#
+# The TTL was a flat 6 hours for every snapshot, keyed only on the UTC date, so
+# Sunday 2026-09-13 would have run 9:00 fresh -> 12:30 HIT -> 15:35 fresh ->
+# 19:50 HIT. The close for the 1pm wave would have been the 9:00 price and the
+# close for SNF the 15:35 price, each stamped with the time it was asked for and
+# each taken before inactives. The archive would look complete either way, which
+# is why this needs a test rather than an eye on a log.
+
+def _seed_cache(odds_api, tmp_path, monkeypatch, age_hours: float):
+    """A cache file for 2026-09-13, aged `age_hours` by its mtime."""
+    import json
+    import os
+    import time
+
+    monkeypatch.setattr(odds_api, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(odds_api, "_get_api_key", lambda: "TESTKEY")
+    path = odds_api._cache_path("2026-09-13")
+    path.write_text(json.dumps({"cached": {"home_team": "Seattle Seahawks"}}))
+    stamp = time.time() - age_hours * 3600
+    os.utime(path, (stamp, stamp))
+    return path
+
+
+def _count_fetches(odds_api, monkeypatch):
+    """Stop at the first API call and say whether one was made."""
+    calls = {"n": 0}
+
+    def counted(*a, **k):
+        calls["n"] += 1
+        raise RuntimeError("reached the API")
+
+    monkeypatch.setattr(odds_api, "_get", counted)
+    return calls
+
+
+def test_an_open_capture_may_be_served_from_a_fresh_cache(tmp_path, monkeypatch):
+    """The TTL still does its job where it was right: a re-run of the open."""
+    from src.ingest import odds_api
+
+    _seed_cache(odds_api, tmp_path, monkeypatch, age_hours=3.5)
+    calls = _count_fetches(odds_api, monkeypatch)
+    got = odds_api.fetch_week_td_props(week_start="2026-09-13", snapshot="open")
+    assert got == {"cached": {"home_team": "Seattle Seahawks"}}
+    assert calls["n"] == 0, "a fresh open should not spend a credit"
+
+
+def test_an_open_capture_past_the_ttl_goes_to_the_api(tmp_path, monkeypatch):
+    from src.ingest import odds_api
+
+    _seed_cache(odds_api, tmp_path, monkeypatch, age_hours=6.5)
+    calls = _count_fetches(odds_api, monkeypatch)
+    with pytest.raises(RuntimeError):
+        odds_api.fetch_week_td_props(week_start="2026-09-13", snapshot="open")
+    assert calls["n"] == 1
+
+
+@pytest.mark.parametrize("age_hours", [0.1, 3.5, 4.25, 5.9])
+def test_a_close_capture_never_reads_the_cache(age_hours, tmp_path, monkeypatch):
+    """3.5h is Sunday's 12:30 slot; 4.25h is the 19:50 one. Both must fetch."""
+    from src.ingest import odds_api
+
+    _seed_cache(odds_api, tmp_path, monkeypatch, age_hours)
+    calls = _count_fetches(odds_api, monkeypatch)
+    with pytest.raises(RuntimeError):
+        odds_api.fetch_week_td_props(week_start="2026-09-13", snapshot="close")
+    assert calls["n"] == 1, (
+        f"a close {age_hours}h after the last fetch was served from cache — "
+        "that archives the older price under a fresh captured_at")
+
+
+def test_a_caller_that_forgets_the_snapshot_spends_a_credit(tmp_path, monkeypatch):
+    """The default leans the safe way: a wasted credit, not a falsified close."""
+    from src.ingest import odds_api
+
+    _seed_cache(odds_api, tmp_path, monkeypatch, age_hours=1.0)
+    calls = _count_fetches(odds_api, monkeypatch)
+    with pytest.raises(RuntimeError):
+        odds_api.fetch_week_td_props(week_start="2026-09-13")
+    assert calls["n"] == 1
+
+
+def test_a_close_still_writes_the_cache_it_will_not_read():
+    """`load_cached_book_quotes` reads that file; the open path reads it too."""
+    import inspect
+
+    from src.ingest import odds_api
+
+    src = inspect.getsource(odds_api.fetch_week_td_props)
+    body = src.split("ttl = CACHE_TTL_HOURS", 1)[1]
+    assert "json.dump" in body or "write_text" in body, \
+        "a close that neither reads nor writes the cache strands the book quotes"
+
+
+def test_the_odds_script_passes_the_snapshot_to_the_fetch():
+    """Recording the snapshot is not enough — it has to govern the cache."""
+    src = Path("scripts/07_odds.py").read_text()
+    call = src.split("fetch_week_td_props(", 1)[1].split(")", 1)[0]
+    assert "snapshot=args.snapshot" in call, \
+        "07_odds.py archives a snapshot label it did not fetch under"

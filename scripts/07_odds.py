@@ -76,8 +76,12 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     markets = tuple(args.markets)
+    # `snapshot` is passed, not just recorded: it decides whether the cache may
+    # answer. A close asked for at 19:50 has to be the 19:50 market, not the
+    # 15:35 one wearing its timestamp.
     odds = fetch_week_td_props(force_refresh=args.force_refresh,
-                               markets=markets, regions=args.regions)
+                               markets=markets, regions=args.regions,
+                               snapshot=args.snapshot)
     if not odds:
         print("No odds returned. Is ODDS_API_KEY set in .env?")
         sys.exit(1)

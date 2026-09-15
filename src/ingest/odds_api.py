@@ -344,6 +344,28 @@ def _median(values: list[float]) -> float:
     return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2.0
 
 
+#: How long a cached payload may still be served, per snapshot. Zero means
+#: never — always go to the API.
+#:
+#: An `open` capture is "the price when the week's board went up". Re-running it
+#: inside the same afternoon is a retry or a dev loop, and serving the cache is
+#: exactly right: it costs nothing and archives the same number. (The Makefile's
+#: `open-line` passes --force-refresh anyway, so in practice this only ever
+#: caught a hand-run repeat.)
+#:
+#: A `close` capture is "the price right now, this close to kickoff", and the
+#: slots are deliberately spaced at different distances from it. A cache hit
+#: there does not save a redundant fetch — it archives an earlier fetch under a
+#: fresh `captured_at`. With a flat 6-hour TTL and a key that is only the UTC
+#: date, Sunday ran 9:00 fresh -> 12:30 HIT -> 15:35 fresh -> 19:50 HIT: the
+#: close for the 1pm wave was the 9:00 price and the close for SNF was the
+#: 15:35 price, both stamped with the time they were asked for, both taken
+#: before inactives were announced. Nothing errors and the archive looks
+#: complete, which is the whole problem. So a close reads no cache; it still
+#: writes one, for the open path and for `load_cached_book_quotes`.
+CACHE_TTL_HOURS = {"open": 6.0, "close": 0.0}
+
+
 def _cache_path(week_start: str, markets: Sequence[str] = DEFAULT_MARKETS,
                 regions: str = DEFAULT_REGIONS) -> Path:
     """Cache file for a given week (by start date), market set and region set.
@@ -368,13 +390,18 @@ def _cache_path(week_start: str, markets: Sequence[str] = DEFAULT_MARKETS,
 
 def fetch_week_td_props(week_start: str = None, force_refresh: bool = False,
                         markets: Sequence[str] = DEFAULT_MARKETS,
-                        regions: str = DEFAULT_REGIONS) -> dict:
+                        regions: str = DEFAULT_REGIONS,
+                        snapshot: str = "close") -> dict:
     """Fetch first TD and anytime TD props for upcoming NFL games.
 
     Args:
         week_start: Date string (YYYY-MM-DD) to identify the week for caching.
                     If None, uses today's date.
         force_refresh: If True, bypass cache.
+        snapshot: Which end of the market this fetch is. Governs the cache TTL
+                  via CACHE_TTL_HOURS — a close never reads one. Defaults to
+                  "close" so a caller that forgets spends a credit rather than
+                  archiving an older price under a fresh timestamp.
 
     Returns:
         Dict keyed by (home_team, away_team) with player odds:
@@ -393,10 +420,10 @@ def fetch_week_td_props(week_start: str = None, force_refresh: bool = False,
 
     specs = specs_for(markets)
     cache = _cache_path(week_start, markets, regions)
-    if not force_refresh and cache.exists():
-        # Use cache if less than 6 hours old
+    ttl = CACHE_TTL_HOURS.get(snapshot, CACHE_TTL_HOURS["open"])
+    if not force_refresh and ttl and cache.exists():
         age_hours = (time.time() - cache.stat().st_mtime) / 3600
-        if age_hours < 6:
+        if age_hours < ttl:
             with open(cache) as f:
                 return json.load(f)
 
