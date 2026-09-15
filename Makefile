@@ -3,7 +3,8 @@
 	docker-pipeline docker-prod docker-prod-down docker-build-amd64 \
 	backtest walkforward longshot economics clusters evaluate wager wager-report \
 	odds-open odds-close odds-schedule odds-schedule-on odds-schedule-off \
-	odds-schedule-status \
+	odds-schedule-status rollover rollover-force rollover-on \
+	rollover-off rollover-status \
 	decay shop site combos publish dashboard \
 	lock versions version-show promote rollback version-diff version-verify \
 	champion screen gate settle noise-floor experiments diagnose version-prune \
@@ -426,6 +427,40 @@ odds-schedule-off:
 odds-schedule-status:
 	@launchctl list | grep nfl-odds || echo "not loaded"
 	@launchctl print-disabled "gui/$$UID" 2>/dev/null | grep nfl-odds || true
+
+# Build next week's board as soon as nflverse publishes its weekly roster.
+#
+# The candidate pool inner-joins the schedule to the weekly roster, so until
+# that roster exists the upcoming week has 32 rows — one DEF/ST per team — and
+# no players. Nothing errors, so the only signal is a board with nobody on it.
+# This job watches for the roster and builds when it lands; it has to win the
+# race against the opening odds capture, which records the tracked rules at the
+# opening price.
+#
+# Guarded and idempotent — exits in seconds when there is nothing to do.
+rollover:
+	./scripts/week_rollover.sh
+
+rollover-force:
+	FORCE_ROLLOVER=1 ./scripts/week_rollover.sh
+
+rollover-on:
+	@cp config/launchd/com.mthompson.nfl-week-rollover.plist \
+		$$HOME/Library/LaunchAgents/
+	@launchctl bootout "gui/$$UID/com.mthompson.nfl-week-rollover" 2>/dev/null; \
+		launchctl enable "gui/$$UID/com.mthompson.nfl-week-rollover"; \
+		launchctl bootstrap "gui/$$UID" \
+			"$$HOME/Library/LaunchAgents/com.mthompson.nfl-week-rollover.plist" \
+		&& echo "loaded com.mthompson.nfl-week-rollover"
+
+rollover-off:
+	@launchctl bootout "gui/$$UID/com.mthompson.nfl-week-rollover" 2>/dev/null; \
+		launchctl disable "gui/$$UID/com.mthompson.nfl-week-rollover"; \
+		echo "disabled com.mthompson.nfl-week-rollover"
+
+rollover-status:
+	@launchctl list | grep nfl-week-rollover || echo "not loaded"
+	@ls -1t logs/rollover_*.log 2>/dev/null | head -1 | xargs -r tail -20
 
 test:
 	$(PYTHON) -m pytest tests/ -q

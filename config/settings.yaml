@@ -622,10 +622,25 @@ odds_capture:
   # earliest of them. Sunday's 16:05 and 16:25 waves do not need separate
   # requests; without merging, each distinct kickoff time would cost its own.
   merge_minutes: 45
-  # The opening snapshot: one fixed weekly slot, early enough to precede every
-  # kickoff in the season and late enough that books have posted player props.
-  open_weekday: Wednesday
-  open_time: "12:00"
+  # The opening snapshots. Closing-line value is measured against the open, and
+  # the earliest capture is the one that counts (`clv.line_movement` keeps the
+  # first captured_at per player-game), so a single Wednesday-noon slot made
+  # "the open" a price taken 32 hours before Thursday's kickoff and days after
+  # the book first posted it.
+  #
+  # Tuesday is as early as this can safely go. `weekly_odds.sh` derives the week
+  # from the nearest kickoff ahead *by date*, so every hour of Monday — after
+  # Monday night's game has finished included — still resolves to the week that
+  # is ending. A Monday slot would file next week's opening prices under this
+  # week's number, and neither week would be right afterwards.
+  #
+  # Wednesday stays as the backstop: the 2026-09-09 open died on a gateway 502,
+  # and a second slot is what turns that from a lost week into a late one.
+  open_slots:
+    - weekday: Tuesday
+      time: "12:00"
+    - weekday: Wednesday
+      time: "12:00"
   # A firing that finds no kickoff inside its window exits before calling the
   # API. Flex scheduling moves games between windows all season, so the
   # generated slots are deliberately generous and this guard — not the plist —

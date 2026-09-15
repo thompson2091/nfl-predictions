@@ -377,3 +377,64 @@ def test_the_odds_script_passes_the_snapshot_to_the_fetch():
     call = src.split("fetch_week_td_props(", 1)[1].split(")", 1)[0]
     assert "snapshot=args.snapshot" in call, \
         "07_odds.py archives a snapshot label it did not fetch under"
+
+
+# The opening capture decides what closing-line value is measured *from*.
+# `clv.line_movement` keeps the first captured_at per player-game, so the
+# earliest open slot is the one every CLV figure is built on. A single
+# Wednesday-noon slot made that a price taken 32 hours before Thursday's
+# kickoff.
+
+def _schedule_module():
+    """`scripts/25_odds_schedule.py` is a script, not a package module."""
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "25_odds_schedule.py"
+    spec = importlib.util.spec_from_file_location("odds_schedule", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_open_is_captured_before_the_backstop():
+    mod = _schedule_module()
+    slots = mod.open_slots()
+    assert len(slots) >= 2, (
+        "one open slot means one gateway 502 loses the week's opening line — "
+        "which is what happened on 2026-09-09")
+    assert slots == sorted(
+        slots, key=lambda pr: (mod.WEEKDAYS[pr[0]], mod._minutes(pr[1]))), \
+        "open slots must be earliest-first; the first one is the measured open"
+
+
+def test_no_open_slot_falls_on_a_day_that_still_resolves_to_the_old_week():
+    """Monday is unusable, and not because of when books post.
+
+    `weekly_odds.sh` derives the week from the nearest kickoff ahead *by date*,
+    so every hour of Monday — 23:30, after Monday night's game has finished,
+    included — still returns the week that is ending. A Monday open would file
+    next week's prices under this week's number and leave next week with none.
+    """
+    mod = _schedule_module()
+    bad = [s for s in mod.open_slots() if mod.WEEKDAYS[s[0]] in (0, 1, 6)]
+    assert not bad, (
+        f"open slots {bad} fall on a day carrying live games or resolving to "
+        "the outgoing week")
+
+
+def test_open_slots_falls_back_to_the_single_slot_config():
+    """An older settings.yaml must still generate a schedule."""
+    mod = _schedule_module()
+    got = mod.open_slots({"open_weekday": "Wednesday", "open_time": "12:00"})
+    assert got == [("Wednesday", "12:00")]
+
+
+def test_every_open_slot_precedes_the_season_s_earliest_kickoff_weekday():
+    """An open taken after a week's first game has started is not an open."""
+    mod = _schedule_module()
+    waves = mod.kickoff_waves()
+    earliest_game_day = min(mod.WEEKDAYS[d] for d in waves
+                            if mod.WEEKDAYS[d] not in (0, 1))
+    for day, _t in mod.open_slots():
+        assert mod.WEEKDAYS[day] <= earliest_game_day, (
+            f"open slot on {day} lands after the week's first kickoff wave")

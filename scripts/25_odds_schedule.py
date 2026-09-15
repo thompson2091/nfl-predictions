@@ -133,14 +133,39 @@ def plist(label: str, snapshot: str, slots: list[tuple[str, str]]) -> str:
 """
 
 
+def open_slots(cfg: dict | None = None) -> list[tuple[str, str]]:
+    """The weekly opening captures, earliest first.
+
+    More than one, because the open is what closing-line value is measured
+    against and the earliest capture is the one that counts —
+    `clv.line_movement` keeps the first `captured_at` per player-game. A single
+    Wednesday-noon slot made "the open" a price taken 32 hours before
+    Thursday's kickoff, days after the book first posted it, so every CLV
+    figure was measured from a line that had already moved.
+
+    Tuesday is as early as this can safely go, and the reason is not about
+    books. `weekly_odds.sh` derives the week from the nearest kickoff ahead
+    *by date*, so every hour of Monday resolves to the week that is ending —
+    Monday 23:30, after Monday night's game has finished, still returns the old
+    week. A Monday slot would file next week's opening prices under this week's
+    number, which costs both weeks rather than one.
+    """
+    cfg = get_config().get("odds_capture", {}) if cfg is None else cfg
+    slots = cfg.get("open_slots")
+    if not slots:
+        # Pre-`open_slots` config, kept so an old settings.yaml still generates.
+        return [(str(cfg.get("open_weekday", "Wednesday")),
+                 str(cfg.get("open_time", "12:00")))]
+    pairs = [(str(sl["weekday"]), str(sl["time"])) for sl in slots]
+    return sorted(pairs, key=lambda pr: (WEEKDAYS[pr[0]], _minutes(pr[1])))
+
+
 def build(season: int | None = None) -> dict[str, list[tuple[str, str]]]:
     """The slots for each snapshot kind, as (weekday, HH:MM) pairs."""
     cfg = get_config().get("odds_capture", {})
     waves = kickoff_waves(season)
     close = [(day, t) for day, times in waves.items() for t in times]
-    open_slots = [(str(cfg.get("open_weekday", "Wednesday")),
-                   str(cfg.get("open_time", "12:00")))]
-    return {"open": open_slots, "close": close}
+    return {"open": open_slots(cfg), "close": close}
 
 
 def main() -> int:
@@ -159,9 +184,12 @@ def main() -> int:
     print("Closing captures, derived from kickoffs:")
     for day, times in waves.items():
         print(f"  {day:10s} {'  '.join(times)}")
-    print(f"\nOpening capture: {slots['open'][0][0]} {slots['open'][0][1]}")
-    print(f"\n{len(slots['close'])} close slots + 1 open slot per week. "
-          "Slots with no kickoff in range exit before calling the API.")
+    print("\nOpening captures:")
+    for day, t in slots["open"]:
+        print(f"  {day:10s} {t}")
+    print(f"\n{len(slots['close'])} close slots + {len(slots['open'])} open "
+          "slots per week. Slots with no kickoff in range exit before calling "
+          "the API.")
 
     if not a.write:
         print("\nDry run. Re-run with --write to install, --write --load to "

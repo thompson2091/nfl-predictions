@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.mthompson.nfl-week-rollover</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/mthompson/projects/personal/nfl-predictions/scripts/week_rollover.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions</string>
+  <!-- Build next week's board as soon as nflverse publishes its weekly roster.
+       Tuesday through Thursday, because the roster lands somewhere in there and
+       nobody knows which hour. The script is the guard, not this schedule: it
+       exits in seconds when the board is already built or the roster is not up,
+       so a firing that finds nothing to do costs a small download.
+
+       The deadline these are aimed at is the opening odds capture — Tuesday
+       12:00, Wednesday 12:00 — which records the tracked rules at the opening
+       price. A board that does not exist by then gets its picks recorded later,
+       at a worse number. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>13</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>13</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <!-- If the Mac is asleep at the scheduled time, launchd runs the job as soon
+       as it wakes. -->
+  <key>StandardOutPath</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions/logs/launchd_rollover.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions/logs/launchd_rollover.err</string>
+</dict>
+</plist>
