@@ -2719,6 +2719,7 @@ def test_an_unplayed_game_is_not_a_game_where_nobody_scored():
     """
     import polars as pl
     from src.utils.config import get_config
+    from src.utils.paths import get_path
 
     predict_season = get_config()["seasons"]["predict_season"]
     df = _features()
@@ -2729,8 +2730,29 @@ def test_an_unplayed_game_is_not_a_game_where_nobody_scored():
     assert upcoming["target"].null_count() == 0, (
         "if unplayed rows ever become null, delete this test and the workaround "
         "it documents")
-    assert upcoming["target"].sum() == 0, (
-        "an unplayed season cannot contain a scorer")
+
+    # Per week, not per season. This used to assert the predict season held no
+    # scorer at all, which was true only while the season had not started — on
+    # 2026-09-15, week 1 having been played and extracted, it failed on 73
+    # perfectly correct anytime-TD scorers. A played week in the predict season
+    # is supposed to have them; that is what makes the week gradeable.
+    pbp_weeks = (pl.scan_parquet(get_path("raw") / "pbp.parquet")
+                 .filter(pl.col("season") == predict_season)
+                 .select("week").unique().collect()["week"].to_list())
+    played = sorted(int(w) for w in pbp_weeks)
+
+    unplayed = upcoming.filter(~pl.col("week").is_in(played))
+    assert unplayed["target"].sum() == 0, (
+        "an unplayed week cannot contain a scorer")
+
+    # The other half of the same invariant, and the one that would have caught
+    # 02_targets.py extracting only the configured market: a week whose
+    # play-by-play is on disk must have produced labels from it.
+    for wk in played:
+        scorers = upcoming.filter(pl.col("week") == wk)["target"].sum()
+        assert scorers > 0, (
+            f"{predict_season} week {wk} has play-by-play but no scorer in the "
+            "candidate matrix — targets were not extracted for this market")
 
     # The correct test for "played" is the season, not the target.
     played = df.filter(pl.col("season") < predict_season)
@@ -3361,3 +3383,71 @@ def test_retraining_today_would_produce_the_feature_set_that_is_served():
         assert not vanished, (
             f"{market}: retraining would drop {len(vanished)} features the "
             f"served model uses: {vanished[:8]}")
+
+
+# The predict season needs play-by-play, and the week it breaks is not week 1.
+#
+# `ingest_all` fed `load_pbp` and `load_weekly_stats` the training range while
+# rosters, schedules, depth charts and injuries got `fwd`. Week 1 looked
+# perfect, because carry_forward fills the team features from the previous
+# season. Week 2 is where it landed: the season-to-date average now wants a
+# week-1 observation that was never ingested, so every `*_szn_avg` team and
+# opponent feature went 100% null and then 0.0 — measured 2026-09-15 at 954/954
+# non-null in week 1 against 0/805 in week 2, with team_plays_per_game_szn_avg
+# scored 29 SDs from where it was fitted.
+
+def test_ingest_gives_play_by_play_the_predict_season_too():
+    """The wiring, asserted where it is written rather than inferred later."""
+    import inspect
+
+    from src.ingest import loader
+
+    src = inspect.getsource(loader.ingest_all)
+    for feed in ("load_pbp", "load_weekly_stats"):
+        assert f"{feed}(fwd)" in src, (
+            f"{feed} is not given the predict season. The labels for a finished "
+            "week and every team season-to-date aggregate both come from "
+            "play-by-play, so the training range alone fails twice — silently "
+            "in week 1, loudly in week 2.")
+
+
+def test_team_season_averages_are_populated_for_every_built_predict_week():
+    """A week with a real candidate pool must have real team features.
+
+    The failure this catches does not raise and does not change a row count —
+    the board renders, the names look plausible, and the model simply scores
+    every team as though it had played no football. Nullness is the only
+    evidence, so nullness is what gets asserted.
+    """
+    import polars as pl
+
+    from src.utils.config import get_config
+    from src.utils.paths import get_path
+
+    predict_season = get_config()["seasons"]["predict_season"]
+    feats = get_path("processed", "anytime_td") / "features.parquet"
+    if not feats.exists():
+        pytest.skip("no feature matrix on disk")
+
+    lf = pl.scan_parquet(feats)
+    cols = [c for c in lf.collect_schema().names()
+            if c.startswith(("team_", "opp_")) and c.endswith("_szn_avg")]
+    assert cols, "no team season-average features found — has the matrix moved?"
+
+    weeks = (lf.filter(pl.col("season") == predict_season)
+             .group_by("week").agg(pl.len().alias("n"))
+             .filter(pl.col("n") > 200)          # 32 rows is DEF/ST alone
+             .collect())
+    if weeks.height == 0:
+        pytest.skip(f"no {predict_season} week is built yet")
+
+    for row in weeks.sort("week").iter_rows(named=True):
+        wk = row["week"]
+        d = (lf.filter((pl.col("season") == predict_season)
+                       & (pl.col("week") == wk))
+             .select(cols).collect())
+        empty = [c for c in cols if d[c].drop_nulls().len() == 0]
+        assert not empty, (
+            f"{predict_season} week {wk}: {len(empty)} of {len(cols)} team "
+            f"season-average features are 100% null and will be filled with "
+            f"0.0 at score time — e.g. {empty[:3]}")

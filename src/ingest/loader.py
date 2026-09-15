@@ -81,9 +81,23 @@ def load_pbp(seasons: list[int]) -> pl.DataFrame:
 
     # Participation only exists from 2016; asking for earlier seasons errors out
     # and would silently cost us three feature families.
-    part_seasons = [s for s in seasons if s >= 2016]
-    part = (_load("participation", nfl.load_participation, part_seasons, required=False)
-            if part_seasons else pl.DataFrame())
+    #
+    # Season by season, and for the same reason `load_injuries` is: `_load`
+    # passes the whole list in ONE call, so a range containing a single
+    # unavailable season returns an empty frame for all of them. Participation
+    # lags play-by-play by a season, so the moment the predict season was added
+    # to this range the call started failing with "Season must be between 2016
+    # and 2025" and coverage, personnel and box features went empty for
+    # 2016-2025 too — a feature loss three families wide, reported as one
+    # warning about the season that was never going to have data anyway.
+    part_frames = []
+    for s in (y for y in seasons if y >= 2016):
+        part_s = _load(f"participation {s}", nfl.load_participation, [s],
+                       required=False)
+        if part_s.height:
+            part_frames.append(part_s)
+    part = (pl.concat(part_frames, how="diagonal_relaxed")
+            if part_frames else pl.DataFrame())
     if part.height:
         keep = ["nflverse_game_id", "play_id"] + [c for c in _PARTICIPATION_COLS if c in part.columns]
         part = part.select(keep).rename({"nflverse_game_id": "game_id"})
@@ -281,15 +295,34 @@ def ingest_all(test_mode: bool = False):
     else:
         seasons = list(range(start, end + 1))
 
-    load_pbp(seasons)
-    load_weekly_stats(seasons)
-
-    # Schedules, rosters and depth charts must also cover the season we predict.
+    # Everything that has to cover the season being predicted, not just the
+    # training range.
     fwd = seasons + ([predict_season] if predict_season and predict_season not in seasons else [])
+
+    # `fwd`, not `seasons`. Play-by-play is the source of the target labels AND
+    # of every team/opponent season-to-date aggregate, so a predict season with
+    # no play-by-play is two separate failures that only show up a week apart.
+    #
+    # Week 1 hides it: carry_forward fills the team features from the previous
+    # season, so the board looks right. Week 2 is where it lands — the season
+    # average now needs a week-1 observation that was never ingested, and every
+    # `*_szn_avg` team and opponent feature goes 100% null and then 0.0.
+    # Measured on 2026-09-15: week 1 had 954/954 non-null, week 2 had 0/805,
+    # and `team_plays_per_game_szn_avg` scored at 29 SDs from where it was
+    # fitted (84.3 -> 0.0). The skew check does fire here, loudly, into a log
+    # nobody reads while the pipeline carries on and records picks.
+    #
+    # The same omission also left `02_targets.py` extracting zero rows for the
+    # predict season, so a finished week could not be graded.
+    load_pbp(fwd)
+    load_weekly_stats(fwd)
 
     load_rosters(fwd)
     load_schedules(fwd)
-    load_snap_counts(seasons)
+    # `fwd`: snap counts publish weekly in season, and `snap_pct` plus the two
+    # ix_snap_* interactions are in the served matrix. On the training range
+    # alone they were 100% null for week 2 against a 0.39 training rate.
+    load_snap_counts(fwd)
     load_depth_charts(fwd)
 
     ngs_seasons = [s for s in seasons if s >= 2016]   # NGS starts in 2016

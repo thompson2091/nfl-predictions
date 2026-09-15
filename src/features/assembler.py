@@ -81,7 +81,8 @@ def _build_game_context_features(schedules: pl.DataFrame) -> pl.DataFrame:
 
 
 def _carry_forward(feats: pl.DataFrame, key_col: str,
-                   predict_season: int) -> pl.DataFrame:
+                   predict_season: int,
+                   within_season: bool = True) -> pl.DataFrame:
     """Give week 1 of *every* season the prior season's last known state.
 
     Carry-forward used to run for the predict season only, which made week 1
@@ -163,9 +164,75 @@ def _carry_forward(feats: pl.DataFrame, key_col: str,
 
     # Whole rows the projection adds that were not there at all.
     missing = proj.join(feats.select(keys), on=keys, how="anti")
+    if missing.height:
+        filled = pl.concat([filled, missing], how="diagonal_relaxed")
+
+    return (_carry_within_season(filled, key_col, predict_season)
+            if within_season else filled)
+
+
+#: Weeks a predict season could hold, postseason included. Extras are harmless:
+#: candidates only exist for scheduled weeks, so surplus rows anti-join away.
+_SEASON_WEEKS = 22
+
+
+def _carry_within_season(feats: pl.DataFrame, key_col: str,
+                         predict_season: int | None) -> pl.DataFrame:
+    """Carry the predict season's latest state into its later unplayed weeks.
+
+    The season-rollover projection above stamps week 1 and only week 1, which
+    was enough while week 1 was the only unplayed week anyone scored. It is not
+    enough from week 2 on: these frames are aggregated from played games, so an
+    upcoming week has no row for any team, and every season-to-date feature
+    joins to null and is filled with 0.0 at score time.
+
+    Measured on 2026-09-15, the first time this repo scored a week 2: 26 of 31
+    team and opponent `*_szn_avg` features were 100% null across all 805
+    candidates, against 0 of 31 in week 1. `team_plays_per_game_szn_avg` went
+    to the model at 84.3 -> 0.0, twenty-nine training standard deviations out.
+    The board still rendered, and its largest "edges" were fullbacks and
+    third-string tight ends at +1000 and longer.
+
+    This is the team-side equivalent of what `carry_forward._project` already
+    does for players with lag=0 — the state a key carries into its next,
+    unplayed game.
+
+    No leakage: a row is only ever projected into a week strictly later than
+    the one it was measured in, so week N's state scores week N+1 and beyond,
+    never itself. Real rows win, and the projection dissolves as games are
+    played.
+    """
+    if predict_season is None or feats.height == 0:
+        return feats
+    if "season" not in feats.columns or "week" not in feats.columns:
+        return feats
+
+    in_season = feats.filter(pl.col("season") == predict_season)
+    if in_season.height == 0:
+        return feats
+
+    week_dtype = feats["week"].dtype
+    latest = (in_season.sort([key_col, "week"]).group_by(key_col).last()
+              .rename({"week": "_last_week"}))
+    weeks = pl.DataFrame({"_w": list(range(1, _SEASON_WEEKS + 1))}).with_columns(
+        pl.col("_w").cast(week_dtype))
+
+    proj = (latest.join(weeks, how="cross")
+            .filter(pl.col("_w") > pl.col("_last_week"))
+            .drop("_last_week")
+            .rename({"_w": "week"}))
+    if proj.height == 0:
+        return feats
+    if "game_id" in proj.columns:
+        # Belongs to the week it was measured in; must not travel forward.
+        proj = proj.drop("game_id")
+
+    keys = [key_col, "season", "week"]
+    proj = proj.select([c for c in feats.columns if c in proj.columns])
+    missing = proj.join(feats.select(keys), on=keys, how="anti")
     if missing.height == 0:
-        return filled
-    return pl.concat([filled, missing], how="diagonal_relaxed")
+        return feats
+    return pl.concat([feats, missing], how="diagonal_relaxed")
 
 
 def _carry_forward_player(player_feats: pl.DataFrame, predict_season: int) -> pl.DataFrame:
@@ -173,8 +240,17 @@ def _carry_forward_player(player_feats: pl.DataFrame, predict_season: int) -> pl
 
 
 def _carry_forward_team(team_feats: pl.DataFrame, predict_season: int,
-                        team_col: str) -> pl.DataFrame:
-    return _carry_forward(team_feats, team_col, predict_season)
+                        team_col: str, within_season: bool = True) -> pl.DataFrame:
+    """`within_season=False` opts a frame out of the intra-season projection.
+
+    For frames that are sparse by construction — opening-drive stats have a row
+    only for the team that received — filling every team in an upcoming week
+    puts a real value where a played week carries a zero. Measured on 2026 week
+    2 the opt-out was worse in both directions, so nothing uses it today; it
+    exists because the next sparse family added here may not be.
+    """
+    return _carry_forward(team_feats, team_col, predict_season,
+                          within_season=within_season)
 
 
 def _load_optional_parquet(name: str) -> pl.DataFrame:
@@ -425,6 +501,14 @@ def assemble_features() -> pl.DataFrame:
         team_ftd_feats = _carry_forward_team(team_ftd_feats, predict_season, "team")
         team_rz_feats = _carry_forward_team(team_rz_feats, predict_season, "team")
         opp_pos_feats = _carry_forward_team(opp_pos_feats, predict_season, "opponent")
+        # Projected, despite the family being sparse by construction — measured
+        # both ways on 2026 week 2. Opting out leaves all 32 teams at 1.00 null
+        # against a 0.47 training rate, which tells the model no team has ever
+        # scored on an opening drive: 7 skew warnings and a 1.0 SD shift toward
+        # zero. Projecting gives every team a real rate — 1 skew warning and a
+        # 1.2 SD shift the other way. Neither matches training, because who
+        # receives is a coin toss and cannot be known before kickoff; this is
+        # the less wrong of the two.
         od_team_feats = _carry_forward_team(od_team_feats, predict_season, "team")
         qb_feats = _carry_forward_team(qb_feats, predict_season, "team")
 
