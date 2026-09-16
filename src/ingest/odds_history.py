@@ -254,6 +254,92 @@ def append_snapshot(odds: pl.DataFrame, season: int, week: int,
     return HISTORY_PATH
 
 
+def resolve_game_ids(df: pl.DataFrame) -> pl.DataFrame:
+    """Map live-capture game ids onto the schedule's, leaving resolved ones be.
+
+    `scripts/07_odds.py` writes `AWAY_HOME`, because the team pair is all the
+    odds payload carries, with a note saying it "is resolved against schedules
+    downstream". Nothing downstream ever did it.
+
+    So the archive holds two formats at once: backfilled seasons carry the
+    nflverse id (`2023_01_HOU_BAL`) and every live capture carries the pair
+    (`DEN_KC`). Any join keyed on game_id therefore matches the backfilled
+    seasons and silently drops the live ones — measured 2026-09-16, closing-line
+    value reported 2023, 2024 and 2025 over 30,062 pairs while 2026's 534 pairs
+    fell out of the join with no error and no empty result to notice. Left
+    alone it would have swallowed every season from here on, since every season
+    from here on is captured live.
+
+    Resolved on read rather than rewritten in place: the archive is append-only
+    on purpose, and a read-side fix repairs the rows already in it as well as
+    the ones still to come.
+    """
+    if df.height == 0 or "game_id" not in df.columns:
+        return df
+    needs = df.filter(~pl.col("game_id").str.contains(r"^\d{4}_"))
+    if needs.height == 0:
+        return df
+
+    sched = pl.read_parquet(get_path("raw") / "schedules.parquet")
+    key = (sched.select(["season", "week", "away_team", "home_team",
+                         pl.col("game_id").alias("_resolved")])
+           .with_columns([pl.col("season").cast(pl.Int64),
+                          pl.col("week").cast(pl.Int64)])
+           .unique(subset=["season", "week", "away_team", "home_team"],
+                   keep="first"))
+
+    out = (df.with_columns([
+               pl.col("season").cast(pl.Int64),
+               pl.col("week").cast(pl.Int64),
+               pl.col("game_id").str.split("_").list.get(0, null_on_oob=True)
+                 .alias("_away"),
+               pl.col("game_id").str.split("_").list.get(1, null_on_oob=True)
+                 .alias("_home")])
+           .join(key, left_on=["season", "week", "_away", "_home"],
+                 right_on=["season", "week", "away_team", "home_team"],
+                 how="left"))
+    # Second pass, for rows whose week is wrong rather than whose pair is.
+    #
+    # The Odds API serves whatever is upcoming, and `weekly_odds.sh` stamps the
+    # whole payload with one derived week — so a Monday capture, with that
+    # week's games all but over, files next week's fixtures under this week's
+    # number. 415 rows of the 2026 archive are that: CAR @ ATL recorded as week
+    # 1 when the fixture is week 2.
+    #
+    # Those resolve on the pair alone, but only where the pair is unique within
+    # its season. It usually is — two teams meet at most once at a given venue
+    # in a regular season — and across 2015-2026 there are 46 pairs where it is
+    # not. Guessing on those would put a price on the wrong fixture, which is
+    # worse than leaving it unjoinable, so they are left alone.
+    #
+    # The week is taken from the fixture too. A row whose id says week 2 and
+    # whose week column says 1 is a row that answers two questions differently.
+    unique_pairs = (key.group_by(["season", "away_team", "home_team"])
+                    .agg(pl.len().alias("_n"),
+                         pl.col("_resolved").first().alias("_pair_id"),
+                         pl.col("week").first().alias("_pair_week"))
+                    .filter(pl.col("_n") == 1)
+                    .drop("_n"))
+    out = out.join(unique_pairs, left_on=["season", "_away", "_home"],
+                   right_on=["season", "away_team", "home_team"], how="left")
+
+    # A pair that matches no fixture keeps what it had. Blanking it would turn
+    # a joinable-but-unknown row into an unjoinable one.
+    already = pl.col("game_id").str.contains(r"^\d{4}_")
+    return (out.with_columns([
+                pl.when(already).then(pl.col("game_id"))
+                  .otherwise(pl.coalesce([pl.col("_resolved"),
+                                          pl.col("_pair_id"),
+                                          pl.col("game_id")]))
+                  .alias("game_id"),
+                pl.when(already | pl.col("_resolved").is_not_null()
+                        | pl.col("_pair_week").is_null())
+                  .then(pl.col("week"))
+                  .otherwise(pl.col("_pair_week"))
+                  .alias("week")])
+            .drop(["_away", "_home", "_resolved", "_pair_id", "_pair_week"]))
+
+
 def load_graded_history(target_type: str = "anytime_td") -> pl.DataFrame | None:
     """Return archived prices joined to actual outcomes, one row per player-game.
 

@@ -967,3 +967,120 @@ def test_a_new_model_that_loses_reports_rejected_not_no_change():
 
     # With no new model at all, an untouched market is still NO_CHANGE.
     assert mod._overall_verdict([rows[0]], ("anytime_td",)) == "NO_CHANGE"
+
+
+# ── Two game-id formats in one archive ────────────────────────────────────
+#
+# `scripts/07_odds.py` writes `AWAY_HOME`, because the team pair is all the
+# odds payload carries, with a note saying it "is resolved against schedules
+# downstream". Nothing downstream did. Backfilled seasons hold the nflverse id
+# and live captures hold the pair, so every join keyed on game_id matched the
+# backfilled seasons and dropped the live ones — closing-line value reported
+# 2023, 2024 and 2025 over 30,062 pairs while 2026's fell out with no error and
+# no empty result to notice. Every season from here on is captured live.
+
+def _sched(rows):
+    import polars as pl
+    return pl.DataFrame(
+        rows, schema={"season": pl.Int64, "week": pl.Int64,
+                      "away_team": pl.Utf8, "home_team": pl.Utf8,
+                      "game_id": pl.Utf8}, orient="row")
+
+
+def _resolve(monkeypatch, tmp_path, hist_rows, sched_rows):
+    import polars as pl
+
+    from src.ingest import odds_history
+
+    raw = tmp_path / "raw"
+    raw.mkdir(parents=True, exist_ok=True)
+    _sched(sched_rows).write_parquet(raw / "schedules.parquet")
+    monkeypatch.setattr(odds_history, "get_path",
+                        lambda kind, *a, **k: raw)
+    hist = pl.DataFrame(
+        hist_rows, schema={"season": pl.Int64, "week": pl.Int64,
+                           "game_id": pl.Utf8}, orient="row")
+    return odds_history.resolve_game_ids(hist)
+
+
+def test_a_live_capture_id_is_resolved_against_the_schedule(monkeypatch, tmp_path):
+    out = _resolve(monkeypatch, tmp_path,
+                   [(2026, 1, "DEN_KC")],
+                   [(2026, 1, "DEN", "KC", "2026_01_DEN_KC")])
+    assert out["game_id"].to_list() == ["2026_01_DEN_KC"]
+
+
+def test_an_already_resolved_id_is_left_exactly_as_it_is(monkeypatch, tmp_path):
+    out = _resolve(monkeypatch, tmp_path,
+                   [(2023, 1, "2023_01_HOU_BAL")],
+                   [(2023, 1, "HOU", "BAL", "2023_01_HOU_BAL")])
+    assert out["game_id"].to_list() == ["2023_01_HOU_BAL"]
+
+
+def test_a_fixture_filed_under_the_wrong_week_still_resolves(monkeypatch, tmp_path):
+    """A Monday capture stamps next week's games with this week's number.
+
+    The Odds API serves whatever is upcoming and the capture labels the whole
+    payload with one derived week, so with Monday night's game all but over the
+    payload is mostly next week. 415 rows of the 2026 archive are that.
+    """
+    out = _resolve(monkeypatch, tmp_path,
+                   [(2026, 1, "CAR_ATL")],
+                   [(2026, 2, "CAR", "ATL", "2026_02_CAR_ATL")])
+    assert out["game_id"].to_list() == ["2026_02_CAR_ATL"]
+    assert out["week"].to_list() == [2], (
+        "the week has to follow the fixture; a row whose id says week 2 and "
+        "whose week column says 1 answers two questions differently")
+
+
+def test_an_ambiguous_pair_is_left_unresolved_rather_than_guessed(monkeypatch, tmp_path):
+    """46 season-pairs across 2015-2026 appear twice.
+
+    Putting a price on the wrong fixture is worse than leaving it unjoinable,
+    so the pair-only fallback only fires where the pair is unique in its season.
+    """
+    out = _resolve(monkeypatch, tmp_path,
+                   [(2026, 9, "AAA_BBB")],
+                   [(2026, 3, "AAA", "BBB", "2026_03_AAA_BBB"),
+                    (2026, 7, "AAA", "BBB", "2026_07_AAA_BBB")])
+    assert out["game_id"].to_list() == ["AAA_BBB"]
+
+
+def test_a_pair_with_no_fixture_keeps_what_it_had(monkeypatch, tmp_path):
+    out = _resolve(monkeypatch, tmp_path,
+                   [(2026, 1, "XXX_YYY")],
+                   [(2026, 1, "DEN", "KC", "2026_01_DEN_KC")])
+    assert out["game_id"].to_list() == ["XXX_YYY"]
+
+
+def test_closing_line_value_sees_the_seasons_captured_live():
+    """The symptom, asserted where it actually showed.
+
+    Not in `line_movement`: both sides of that join come from the archive, so
+    the live seasons pair with each other perfectly and 2026 was present there
+    all along. The drop is one join later, where `hit_rows` matches those pairs
+    to published predictions — which carry the nflverse id. That is the join
+    that silently returned nothing for every live season, and the graded
+    headline that read "seasons [2023, 2024, 2025]" was the only trace.
+    """
+    import polars as pl
+
+    from src.evaluation.clv import hit_rows, line_movement, published_predictions
+    from src.ingest.odds_history import HISTORY_PATH
+    from src.utils.config import get_config
+
+    predict_season = get_config()["seasons"]["predict_season"]
+    hist = pl.read_parquet(HISTORY_PATH)
+    if not (hist["season"] == predict_season).any():
+        pytest.skip(f"nothing archived for {predict_season} yet")
+    if line_movement("anytime_td") is None:
+        pytest.skip("no open/close pairs archived")
+    preds = published_predictions("anytime_td")
+    if preds is None or predict_season not in preds["season"].to_list():
+        pytest.skip(f"no published predictions for {predict_season}")
+
+    rows = hit_rows(preds, "anytime_td")
+    assert rows is not None, "no scored player-games at all"
+    assert predict_season in rows["season"].to_list(), (
+        f"{predict_season} is archived and predicted but scores no rows — its "
+        "captured game ids are not matching the ids the predictions carry")

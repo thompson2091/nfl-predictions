@@ -59,6 +59,12 @@ def line_movement(target_type: str = "anytime_td") -> pl.DataFrame | None:
     if "snapshot" not in hist.columns:
         return None
     hist = _conform(hist, SCHEMA)
+    # Live captures write `AWAY_HOME`; backfilled seasons hold the nflverse id.
+    # Every join below is keyed on game_id, so without this the backfilled
+    # seasons match and every live one is dropped without a word — which is how
+    # this reported three seasons all through 2026. See `resolve_game_ids`.
+    from src.ingest.odds_history import resolve_game_ids
+    hist = resolve_game_ids(hist)
 
     hist = hist.filter(pl.col("market") == market_for_target(target_type))
 
