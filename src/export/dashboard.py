@@ -2598,6 +2598,119 @@ function paneLadder() {
 }
 """
 
+JS_SERVED = r"""
+// ── Pane: the model being served ────────────────────────────────────────
+//
+// What is actually scoring this week's board: which model, which promoted
+// version, what it was fitted on, and how it did on seasons it never saw.
+//
+// Two panes that answered "how good is the model" were deleted from this page
+// once, and deliberately — they opened it on the model's report card when a
+// reader arriving here wants this week. This is not those. It is provenance:
+// the recipe behind the numbers on every other tab, which is a different
+// question from whether the recipe is any good. It sits last for the same
+// reason they were removed, and the page still opens on the shortlist.
+//
+// Everything here is read off artifacts — the registry's CURRENT.json, the
+// market's own feature_cols.pkl, its walk-forward file. Nothing is recomputed
+// for display, because a page that recomputes its own provenance can agree
+// with itself while disagreeing with what is being served.
+function paneServed() {
+  const m = M(), w = m.served || {}, r = m.recipe, out = el('div');
+
+  out.appendChild(card(null, null, [tiles([
+    { k: 'Market', v: m.label, d: 'season ' + m.season + ', week ' + m.week },
+    { k: 'Model', v: (w.model || '—').toUpperCase(),
+      d: 'chosen per market, not globally',
+      help: 'Set by production_by_target in config/settings.yaml, with the walk-forward numbers behind the choice written beside it.' },
+    { k: 'Version', v: w.version || '—',
+      d: w.created ? w.created.slice(0, 10) + ' promoted' : ' ',
+      help: 'The promoted version from the registry — what `make promote` wrote and what the app serves.' },
+    { k: 'Features', v: r ? r.n_features.toLocaleString() : '—',
+      d: r ? r.n_families + ' families' + (r.unattributed.length
+             ? ' + ' + r.unattributed.length + ' loose' : '') : ' ',
+      help: r ? 'Read from ' + r.source + ' — the list the scorer asks the matrix for, so it is what the model is fitted on by definition rather than by description.' : '' },
+  ])]));
+
+  if (w.dirty) out.appendChild(el('div', { class: 'warn-box', html:
+    '<b>The working tree has moved since this version was promoted.</b> ' +
+    'What is scoring the board is still the promoted artifacts, but the code ' +
+    'around them is not what was measured. Re-promote to make the two agree.' }));
+
+  (w.problems || []).forEach(p => out.appendChild(
+    el('div', { class: 'warn-box bad-box', text: String(p) })));
+
+  if (w.note) out.appendChild(card('Why this version', null, [
+    el('p', { class: 'muted', text: w.note }),
+    w.verdict ? el('p', { class: 'fine', html:
+      'Verdict: <b>' + esc(w.verdict) + '</b>' +
+      (w.git ? ' · commit <code>' + esc(String(w.git).slice(0, 10)) + '</code>' : '') })
+      : null,
+  ]));
+
+  // ── How it scored, season by season ────────────────────────────────────
+  if (r && r.seasons && r.seasons.length) {
+    const rec = w.recorded || {};
+    const cols = [
+      { k: 'season', label: 'Test season', t: 1 },
+      { k: 'games', label: 'Games' },
+      { k: 'top1', label: 'Top 1', fmt: v => pct(v, 1), bar: v => v,
+        title: 'How often the player we rank first in a game scored.' },
+      { k: 'top3', label: 'Top 3', fmt: v => pct(v, 1),
+        title: 'How often at least one of our top three scored.' },
+      { k: 'top5', label: 'Top 5', fmt: v => pct(v, 1) },
+      { k: 'auc', label: 'AUC', fmt: v => has(v) ? v.toFixed(4) : '',
+        title: 'How well the ordering separates scorers from non-scorers across the whole board, not just at the top.' },
+      { k: 'brier', label: 'Brier', fmt: v => has(v) ? v.toFixed(4) : '',
+        title: 'Squared error on the probabilities themselves. Lower is better, and it punishes confident misses.' },
+    ];
+    out.appendChild(card('Measured on seasons it never trained on', null, [
+      table('wf', cols, r.seasons, { nosort: true }),
+      has(rec.top1) ? el('p', { class: 'rowcount', html:
+        'Pooled over ' + (rec.games || 0).toLocaleString() + ' games: <b>' +
+        pct(rec.top1, 1) + '</b> Top 1, ' + pct(rec.top3, 1) + ' Top 3, ' +
+        pct(rec.top5, 1) + ' Top 5' +
+        (has(rec.top1_se) ? ' — the standard error on Top 1 is ' +
+           pp(rec.top1_se * 100, 1) + ' points, so a difference smaller than ' +
+           'that is not a difference.' : '.') }) : null,
+    ]));
+  }
+
+  // ── What it was fitted on ──────────────────────────────────────────────
+  if (r) {
+    const fcols = [
+      { k: 'name', label: 'Family', t: 1,
+        fmt: v => '<code>' + esc(v) + '</code>' },
+      { k: 'n', label: 'Columns', bar: (v, row) => v / r.n_features * 4 },
+      { k: 'cols', label: 'What they are', t: 1,
+        fmt: v => '<span class="dim">' + esc(v.join(', ')) + '</span>' },
+    ];
+    out.appendChild(card('The ' + r.n_features + ' features it was fitted on', null, [
+      table('fams', fcols, r.families, { wrap: true }),
+      el('p', { class: 'rowcount', text:
+        r.n_families + ' families, grouped by the builder that produced each ' +
+        'column. Dropping one column tells you nothing when its neighbours ' +
+        'carry the same signal — the family is the unit that gets measured.' }),
+    ]));
+
+    if (r.unattributed.length) out.appendChild(el('div', { class: 'warn-box', html:
+      '<b>' + r.unattributed.length + ' columns reach the model with no ' +
+      'recorded builder.</b> They are real features and they are being used; ' +
+      'what is missing is their provenance, because the family map is written ' +
+      'from one run of the assembler and does not cover everything derived ' +
+      'afterwards. Listed rather than folded into a family, because a feature ' +
+      'nobody can attribute is the one worth knowing about: ' +
+      '<span class="dim">' + esc(r.unattributed.join(', ')) + '</span>' }));
+  } else {
+    out.appendChild(el('div', { class: 'warn-box', text:
+      'No feature list on disk for this market — models/' + m.key +
+      '/feature_cols.pkl is missing, which means nothing here has been trained.' }));
+  }
+
+  return out;
+}
+"""
+
 JS_SHELL = r"""
 // ── Shell ───────────────────────────────────────────────────────────────
 const TABS = [
@@ -2607,6 +2720,7 @@ const TABS = [
   ['players', 'Players', paneMPlayers],
   ['combos', 'Combinations', paneCombos],
   ['teams', 'Teams', paneTeams],
+  ['served', 'Model', paneServed],
   ['ladder', 'Ladder', paneLadder],
 ];
 function paneMPlayers() { return panePlayers(); }
@@ -2719,7 +2833,7 @@ def render(payload: dict) -> str:
     data = (json.dumps(payload, separators=(",", ":"), allow_nan=False)
             .replace("</", "<\\/"))
     js = "\n".join([JS, JS_PLAYERS, JS_COMBOS, JS_TEAMS, JS_SHORTLIST,
-                    JS_LIKED, JS_LADDER, JS_SHELL])
+                    JS_LIKED, JS_LADDER, JS_SERVED, JS_SHELL])
     labels = " and ".join(m["label"] for m in payload["markets"]) or "NFL"
     return (SHELL
             .replace("__TITLE__", html.escape(f"{labels} — model dashboard"))

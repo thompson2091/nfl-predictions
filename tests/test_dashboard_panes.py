@@ -1,4 +1,4 @@
-"""The "Guys I like" pane, exercised in node against a stub DOM.
+"""The dashboard's JavaScript panes, exercised in node against a stub DOM.
 
 This pane is JavaScript inside a generated file, so the rest of this suite
 cannot see it at all. What it does — a list kept per season/week/market, a
@@ -57,6 +57,30 @@ def _market(key, label, players):
                   "price_curve": None},
         "min_edge": 3,
         "longshot": None,
+        "served": {
+            "version": "2026.01.01-test", "model": "xgb",
+            "note": "A test version.", "created": "2026-01-01T00:00:00+00:00",
+            "verdict": "PROMOTED", "git": "abcdef1234567890",
+            "recorded": {"top1": 0.5, "top3": 0.8, "top5": 0.9,
+                         "games": 1000, "top1_se": 0.015},
+            "problems": [], "dirty": False,
+        },
+        "recipe": {
+            "n_features": 5, "n_families": 2,
+            "families": [
+                {"name": "build_alpha_features", "n": 3,
+                 "cols": ["a_one", "a_two", "a_three"]},
+                {"name": "build_beta_features", "n": 1, "cols": ["b_one"]},
+            ],
+            "unattributed": ["loose_one"],
+            "seasons": [
+                {"season": 2024, "games": 280, "top1": 0.48, "top3": 0.79,
+                 "top5": 0.90, "auc": 0.79, "brier": 0.095},
+                {"season": 2025, "games": 285, "top1": 0.51, "top3": 0.83,
+                 "top5": 0.92, "auc": 0.80, "brier": 0.093},
+            ],
+            "source": "models/x/feature_cols.pkl",
+        },
     }
 
 
@@ -86,7 +110,7 @@ def page_js(tmp_path_factory) -> Path:
 
     js = "\n".join([d.JS, d.JS_PLAYERS, d.JS_COMBOS, d.JS_TEAMS,
                     d.JS_SHORTLIST, d.JS_LIKED, d.JS_LADDER,
-                    d.JS_SHELL])
+                    d.JS_SERVED, d.JS_SHELL])
     p = tmp_path_factory.mktemp("liked") / "page.js"
     p.write_text(js)
     return p
@@ -111,6 +135,14 @@ def _run(script: str, page_js: Path, tmp_path: Path):
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 def test_guys_i_like(page_js, tmp_path):
     r = _run("liked_list.js", page_js, tmp_path)
+    assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_served(page_js, tmp_path):
+    """The Model tab is provenance, and provenance that is wrong is worse than
+    absent — it is the page vouching for something it did not check."""
+    r = _run("served.js", page_js, tmp_path)
     assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")
 
 

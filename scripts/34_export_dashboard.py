@@ -97,6 +97,84 @@ def served(target_type: str) -> dict:
     }
 
 
+def _recipe(target_type: str, model: str) -> dict | None:
+    """What the served model was actually fitted on, and how it scored.
+
+    Both halves come from artifacts rather than from this file. The column list
+    is `feature_cols.pkl` in the market's own model directory — the list the
+    scorer asks the matrix for, so it is what the model is fitted on by
+    definition rather than by description. The family for each column is read
+    off `diagnostics/feature_families.json`, which records which builder
+    produced it.
+
+    Those two do not have to agree, and where they disagree the columns are
+    reported as unattributed rather than dropped. The families map is written
+    from one run of the assembler and a market with a wider matrix will carry
+    columns it never saw; saying so is the point, because a feature reaching
+    the model with no recorded provenance is exactly the thing worth seeing.
+    """
+    import pickle
+
+    cols_path = get_path("models", target_type) / "feature_cols.pkl"
+    if not cols_path.exists():
+        return None
+    try:
+        with open(cols_path, "rb") as fh:
+            cols = list(pickle.load(fh))
+    except Exception:                                        # noqa: BLE001
+        return None
+
+    fam_path = Path(__file__).resolve().parents[1] / "diagnostics" / "feature_families.json"
+    owner: dict[str, str] = {}
+    if fam_path.exists():
+        try:
+            fams = json.loads(fam_path.read_text()).get("families") or {}
+            for name, members in fams.items():
+                for c in members:
+                    owner[c] = name
+        except Exception:                                    # noqa: BLE001
+            owner = {}
+
+    grouped: dict[str, list[str]] = {}
+    orphans: list[str] = []
+    for c in cols:
+        fam = owner.get(c)
+        if fam is None:
+            orphans.append(c)
+        else:
+            grouped.setdefault(fam, []).append(c)
+
+    families = sorted(
+        ({"name": k, "n": len(v), "cols": sorted(v)} for k, v in grouped.items()),
+        key=lambda f: (-f["n"], f["name"]))
+
+    # Per-season accuracy for the model actually served, not for whichever the
+    # walk-forward happened to write last.
+    wf_path = get_path("output", target_type) / "walkforward.json"
+    seasons = []
+    if wf_path.exists():
+        try:
+            wf = json.loads(wf_path.read_text())
+            rows = [r for r in (wf.get("rows") or []) if r.get("model") == model]
+            seasons = [{
+                "season": r.get("test_season"), "games": r.get("games"),
+                "top1": r.get("top1"), "top3": r.get("top3"),
+                "top5": r.get("top5"), "auc": r.get("auc"),
+                "brier": r.get("brier"),
+            } for r in rows]
+        except Exception:                                    # noqa: BLE001
+            seasons = []
+
+    return {
+        "n_features": len(cols),
+        "n_families": len(families),
+        "families": families,
+        "unattributed": sorted(orphans),
+        "seasons": seasons,
+        "source": str(cols_path.relative_to(Path(__file__).resolve().parents[1])),
+    }
+
+
 def latest_slate(target_type: str) -> tuple[int | None, int | None]:
     """The season and week the board should be showing, on any day of the week.
 
@@ -565,6 +643,10 @@ def market(target_type: str, label: str, season: int | None,
     return {
         "key": target_type, "label": label, "season": season, "week": week,
         "served": who, "model": model,
+        # What the served model was fitted on, and how it scored season by
+        # season. Read from the model's own artifacts, so it describes what is
+        # being served rather than what this file believes about it.
+        "recipe": _recipe(target_type, model),
         # Still read by the master table and by Combinations, which both show
         # the blended Top-K ladder beside a pick's rank.
         "topk": topk_ladder(df),
