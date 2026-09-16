@@ -2632,10 +2632,19 @@ function paneServed() {
       help: r ? 'Read from ' + r.source + ' — the list the scorer asks the matrix for, so it is what the model is fitted on by definition rather than by description.' : '' },
   ])]));
 
+  // What `dirty` records, precisely: the tree had uncommitted changes at the
+  // moment this version was locked. It is a fact about then, not a live check
+  // of the tree now — a clean checkout today does not clear it, and the only
+  // thing that does is locking a new version from a clean tree. The first
+  // version of this box said "the working tree has moved since this version
+  // was promoted", which describes drift since and is a different claim.
   if (w.dirty) out.appendChild(el('div', { class: 'warn-box', html:
-    '<b>The working tree has moved since this version was promoted.</b> ' +
-    'What is scoring the board is still the promoted artifacts, but the code ' +
-    'around them is not what was measured. Re-promote to make the two agree.' }));
+    '<b>This version was locked from a tree with uncommitted changes.</b> ' +
+    'The artifacts scoring the board are the promoted ones and are fine; what ' +
+    'is incomplete is their provenance — the commit recorded beside them ' +
+    (w.git ? '(<code>' + esc(w.git) + '</code>) ' : '') +
+    'does not fully describe the code that produced them. Cleaning the tree ' +
+    'now does not change this. Locking a new version from a clean one does.' }));
 
   (w.problems || []).forEach(p => out.appendChild(
     el('div', { class: 'warn-box bad-box', text: String(p) })));

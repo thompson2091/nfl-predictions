@@ -57,6 +57,15 @@ KS = tuple(range(1, 11))
 
 # ── Which model, which week ───────────────────────────────────────────────
 
+#: Where a manifest keeps the commit it was built from, most specific first.
+#: `git_state` in src/models/versioning.py writes these; this read used to ask
+#: for "commit", which no manifest has ever contained, so the Model tab's
+#: commit reference was None from the day it was written. Pinned against the
+#: writer by a test, because a key name is exactly the kind of thing two files
+#: drift on silently.
+GIT_SHA_KEYS = ("short_sha", "sha")
+
+
 def served(target_type: str) -> dict:
     """The promoted version for a market, and the model its config resolves to.
 
@@ -88,7 +97,7 @@ def served(target_type: str) -> dict:
         "note": manifest.get("note"),
         "created": manifest.get("created"),
         "verdict": manifest.get("verdict"),
-        "git": (manifest.get("git") or {}).get("commit"),
+        "git": next((g[k] for k in GIT_SHA_KEYS if (g := manifest.get("git") or {}).get(k)), None),
         "n_features": features.get("n_columns") or features.get("n_features"),
         "n_families": features.get("n_families"),
         "recorded": metrics,

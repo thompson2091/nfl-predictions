@@ -60,7 +60,7 @@ def _market(key, label, players):
         "served": {
             "version": "2026.01.01-test", "model": "xgb",
             "note": "A test version.", "created": "2026-01-01T00:00:00+00:00",
-            "verdict": "PROMOTED", "git": "abcdef1234567890",
+            "verdict": "PROMOTED", "git": "8a49943",
             "recorded": {"top1": 0.5, "top3": 0.8, "top5": 0.9,
                          "games": 1000, "top1_se": 0.015},
             "problems": [], "dirty": False,

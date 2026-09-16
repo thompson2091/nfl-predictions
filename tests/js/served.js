@@ -48,10 +48,18 @@ ok('the pooled figure is shown', txt.includes((w.recorded.games).toLocaleString(
 ok('the standard error is shown beside it', /standard error/.test(txt));
 
 // ── The states that must not render as normal ────────────────────────────
-const dirtyBefore = /working tree has moved/.test(txt);
-ok('a clean tree says nothing about being dirty', !dirtyBefore);
+// `dirty` records the tree's state when the version was LOCKED, not now. The
+// notice has to say that: a reader told the tree "has moved since" goes and
+// cleans a tree that was never the problem.
+ok('a clean lock says nothing about uncommitted changes',
+   !/uncommitted changes/.test(txt));
 w.dirty = true;
-ok('a dirty tree is called out', /working tree has moved/.test(paneText()));
+const dirtyTxt = paneText();
+ok('a version locked from a dirty tree is called out',
+   /locked from a tree with uncommitted changes/.test(dirtyTxt));
+ok('and the notice says cleaning the tree now will not fix it',
+   /Cleaning the tree/.test(dirtyTxt) && /Locking a new version/.test(dirtyTxt));
+ok('the recorded commit is shown beside it', dirtyTxt.includes(w.git));
 w.dirty = false;
 
 w.problems = ['walkforward.json predates the served model'];

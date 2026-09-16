@@ -1048,3 +1048,46 @@ def test_the_slate_the_dashboard_picks_can_actually_be_priced(mod):
     assert market is not None and market.height > 0, (
         f"dashboard would publish {season} week {week}, for which the odds "
         "cache holds no prices — the board renders with no players on it")
+
+
+def test_the_dashboard_reads_a_git_key_the_manifest_actually_writes():
+    """A key name is what two files drift on without either one erroring.
+
+    `served` asked a manifest for `git.commit`. `git_state` writes `sha`,
+    `short_sha`, `branch` and `dirty`, and has never written `commit` — so the
+    Model tab's commit reference was None from the day it was added, and the
+    pane rendered perfectly without it. Nothing could have caught that except
+    checking the reader against the writer.
+    """
+    from src.models.versioning import git_state
+
+    written = set(git_state())
+    mod = importlib.util.module_from_spec(
+        importlib.util.spec_from_file_location("export_dashboard", SCRIPT))
+    mod.__spec__.loader.exec_module(mod)
+
+    assert mod.GIT_SHA_KEYS, "the reader must name the keys it accepts"
+    assert set(mod.GIT_SHA_KEYS) <= written, (
+        f"served() looks for {mod.GIT_SHA_KEYS} and git_state() writes "
+        f"{sorted(written)} — the commit will silently be None")
+
+
+def test_the_dirty_notice_describes_lock_time_not_drift_since():
+    """`dirty` is a fact recorded when a version was locked.
+
+    It is not a live check of the working tree, so a clean checkout does not
+    clear it and telling a reader the tree "has moved since" sends them to fix
+    something that was never the problem.
+    """
+    from src.export import dashboard
+
+    # Comments stripped first: the one above this notice quotes the wording it
+    # replaced, which is worth keeping and is not what a reader sees.
+    js = dashboard.JS_SERVED
+    code = "\n".join(l for l in js.splitlines()
+                     if not l.lstrip().startswith("//"))
+    assert "w.dirty" in code, "the notice has to be gated on the flag"
+    assert "has moved since" not in code, (
+        "that phrasing describes drift after promotion; the flag records the "
+        "state of the tree at lock time")
+    assert "locked from a tree with uncommitted changes" in code
