@@ -367,8 +367,14 @@ site:
 # has no widget for: Top-1 through Top-10, unpriced players beside priced ones
 # in one table, and a combination search that runs in the browser.
 # Usage: make dashboard  ·  make dashboard WEEK=2  ·  make dashboard OPEN=--open
+#
+# SEASON is forwarded only when you pass it on the command line. The `SEASON ?=
+# 2025` default at the top of this file is the backtest's test season, and
+# forwarding it unconditionally pinned the published page to 2025 while the
+# exporter's own `current_slate` was sitting there ready to find the live one —
+# so `make dashboard` quietly published last season and said nothing.
 dashboard:
-	$(PYTHON) scripts/34_export_dashboard.py $(if $(WEEK),--week $(WEEK)) $(if $(SEASON),--season $(SEASON)) $(OPEN)
+	$(PYTHON) scripts/34_export_dashboard.py $(if $(WEEK),--week $(WEEK)) $(if $(filter command line,$(origin SEASON)),--season $(SEASON)) $(OPEN)
 
 # Both pages, in one go. WHEN to run this, in order of how wrong the page is
 # if you do not:
