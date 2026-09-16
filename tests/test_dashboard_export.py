@@ -532,7 +532,10 @@ def test_the_page_opens_on_the_thing_being_built_not_on_its_own_report_card():
     tabs = dashboard.JS_SHELL[dashboard.JS_SHELL.index("const TABS = ["):]
     tabs = tabs[:tabs.index("];")]
     order = re.findall(r"\['(\w+)'", tabs)
-    assert order == ["shortlist", "cover", "players", "combos", "teams"], order
+    # `liked` sits next to `cover` because it is the same builder over a chosen
+    # subset, and a reader who has just priced a slip is the one who wants it.
+    assert order == ["shortlist", "cover", "liked", "players", "combos",
+                     "teams"], order
     assert "tab: 'shortlist'," in dashboard.JS, "the default tab must be a real tab"
 
     js = "".join(v for k, v in vars(dashboard).items() if k.startswith("JS"))
@@ -690,10 +693,10 @@ def test_a_half_typed_price_does_not_change_the_table_or_fight_the_caret():
     assert "decRaw: '+100'" in dashboard.JS, (
         "the default has to be expressible in the notation the box advertises")
     pane = dashboard.JS_TEAMS
-    body = pane[pane.index("function paneCover()"):]
-    assert "S.cover.decRaw = v;" in body and "if (d) S.cover.dec = d;" in body, (
+    body = pane[pane.index("function paneCover(opts)"):]
+    assert "st.decRaw = v;" in body and "if (d) st.dec = d;" in body, (
         "an unparseable keystroke must leave the price alone")
-    assert "S.cover.stakeRaw = v;" in body and "if (x) S.cover.stake = x;" in body
+    assert "st.stakeRaw = v;" in body and "if (x) st.stake = x;" in body
     assert "is not a price" in body, "and the page must say it is being ignored"
     assert "is not an amount" in body
 
@@ -722,8 +725,8 @@ def test_the_picker_shows_the_three_numbers_only_where_three_exist():
         "row; anywhere else it is `ours` under another name")
     assert "if (has(r.book)) det.push" in body
 
-    pane = js[js.index("function paneCover()"):]
-    assert "coverPicker(pool, m.topk && m.topk.blended, money2)" in pane, (
+    pane = js[js.index("function paneCover(opts)"):]
+    assert "coverPicker(pool, m.topk && m.topk.blended, money2, st)" in pane, (
         "whether the market blends is measured, not assumed — the picker has "
         "to be told rather than deciding for itself")
 
@@ -756,7 +759,7 @@ def test_the_selection_experiment_reaches_the_page_with_its_control():
     from src.export import dashboard
 
     pane = dashboard.JS_TEAMS
-    pane = pane[pane.index("function paneCover()"):]
+    pane = pane[pane.index("function paneCover(opts)"):]
     assert "Would a different rule have helped" in pane
     assert "control_best_roi" in pane, (
         "the random control must appear beside the finding, not only in the "
@@ -782,7 +785,7 @@ def test_one_player_is_a_selection_and_not_an_error():
     from src.export import dashboard
 
     pane = dashboard.JS_TEAMS
-    pane = pane[pane.index("function paneCover()"):]
+    pane = pane[pane.index("function paneCover(opts)"):]
     assert "if (chosen.length < 1)" in pane, "one player must be allowed"
     assert "Pick at least one player" in pane
     assert "if (v.n === 1)" in pane and "the price needs" in pane, (
@@ -811,7 +814,7 @@ def test_the_graded_verdict_survives_the_table_being_dropped():
     from src.export import dashboard
 
     js = dashboard.JS_TEAMS
-    pane = js[js.index("function paneCover()"):]
+    pane = js[js.index("function paneCover(opts)"):]
     assert "cover-record" not in pane, "the record table is meant to be gone"
     assert "roi_beats_zero" in pane, (
         "profitable must be the artifact's own verdict — the interval clearing "
@@ -835,7 +838,7 @@ def test_the_cover_shows_both_halves_of_the_disagreement_and_never_the_blend():
     from src.export import dashboard
 
     js = dashboard.JS_TEAMS
-    pane = js[js.index("function paneCover()"):]
+    pane = js[js.index("function paneCover(opts)"):]
     assert "disagree_higher_pct" in pane and "disagree_lower_pct" in pane
     assert "overall_better_pct" not in pane, (
         "the blended figure is the one that misleads here — it is not shipped "
@@ -977,8 +980,8 @@ def test_the_pane_actually_hands_its_round_robin_to_the_portfolio():
     reasonable while charging $63 for a wager the control says costs $15.
     """
     js = _js_cover()
-    pane = js.split("function paneCover()", 1)[1].split("\nfunction ", 1)[0]
-    assert "S.cover.sizes.length ? S.cover.sizes : null" in pane, (
+    pane = js.split("function paneCover(opts)", 1)[1].split("\nfunction ", 1)[0]
+    assert "st.sizes.length ? st.sizes : null" in pane, (
         "paneCover no longer passes its selection to coverPortfolio")
     assert "multi('Round robin'" in pane, (
         "paneCover no longer offers the round-robin control")

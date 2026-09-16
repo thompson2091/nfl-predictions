@@ -322,6 +322,18 @@ td.wrapcell { white-space: normal; max-width: 46ch; }
 .chip.warn { border-color: var(--warn); color: var(--warn); }
 .chip.fade { border-color: var(--bad); color: var(--bad); }
 .chip.un { border-color: var(--rule); }
+/* A control that lives inside a table cell. Distinct from `.iconbtn`, which is
+   a toolbar-sized button: at that padding every row here grows taller than its
+   own text. */
+.cellbtn { font: inherit; font-size: 13px; line-height: 1; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink-2);
+  border-radius: 5px; padding: 2px 6px; min-width: 24px; }
+.cellbtn:hover { border-color: var(--accent); color: var(--ink); }
+.cellbtn.on { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.cellbtn.star.on { color: var(--warn); border-color: var(--warn); }
+/* A saved player the current board no longer carries. Dimmed rather than
+   dropped: a row vanishing is indistinguishable from never having added it. */
+tr.stale td { opacity: 0.55; }
 .rowcount { font-size: 12px; color: var(--muted); margin-top: 8px; }
 
 /* A cell that carries a bar behind its number: the same value twice, so the
@@ -472,6 +484,22 @@ const S = {
   // the question it provokes, and a single-game dropdown could only ask it
   // one game at a time. Empty is the whole slate.
   c: { legs: 2, per: 4, metric: 'likely', show: 25, games: [], priced: 'all' },
+  // "Guys I like": a list built by clicking players on the Players and
+  // Shortlist tables. Scoped to one season/week/market and held in
+  // localStorage, so it survives this page being rebuilt — which happens
+  // several times a week and would otherwise discard it every time.
+  //
+  // `liked` and `likedFav` are caches keyed the same way as storage; reading
+  // localStorage on every render would be a synchronous disk hit per row.
+  // `likedFav` is a starred subset that sorts to the top and is marked. It
+  // deliberately does NOT narrow what the parlay or the combinations table
+  // draw from — a star is a note to yourself, not a filter, and a star that
+  // silently changed the pool would make two tools disagree with the list
+  // above them.
+  liked: {}, likedFav: {}, likedBroken: false,
+  likedCover: { picked: null, stake: 1, stakeRaw: '1.00', dec: 2.0, decRaw: '+100',
+                decMarket: null, q: '', game: '', sizes: [],
+                pricedOnly: false, open: true },
   t: { game: '' },
   sort: {},
 };
@@ -495,12 +523,13 @@ function table(id, cols, rows, opts) {
   }
   const thead = el('tr');
   cols.forEach(c => {
+    const nosort = opts.nosort || c.nosort;
     const th = el('th', {
-      class: (c.t ? 't ' : '') + (opts.nosort ? 'nosort' : ''),
+      class: (c.t ? 't ' : '') + (nosort ? 'nosort' : ''),
       title: c.title || null, text: c.label,
     });
     if (st && st.k === c.k) th.setAttribute('aria-sort', st.dir > 0 ? 'ascending' : 'descending');
-    if (!opts.nosort) th.onclick = () => {
+    if (!nosort) th.onclick = () => {
       S.sort[id] = (st && st.k === c.k) ? { k: c.k, dir: -st.dir } : { k: c.k, dir: -1 };
       render();
     };
@@ -508,11 +537,17 @@ function table(id, cols, rows, opts) {
   });
   const tb = el('tbody');
   data.forEach(r => {
-    const tr = el('tr');
+    const rc = opts.rowClass ? opts.rowClass(r) : null;
+    const tr = el('tr', rc ? { class: rc } : {});
     cols.forEach(c => {
       const v = r[c.k];
       const td = el('td', { class: (c.t ? 't' : 'num') + (c.cls ? ' ' + c.cls(v, r) : '') });
-      if (c.bar && has(v)) {
+      if (c.cell) {
+        // The column owns the cell. `fmt` writes a string into innerHTML,
+        // which cannot carry a listener without an inline onclick and a global
+        // to hang it on; a control column needs a real node.
+        c.cell(td, v, r);
+      } else if (c.bar && has(v)) {
         td.classList.add('barcell');
         const w = Math.max(0, Math.min(1, c.bar(v, r)));
         td.innerHTML = `<i style="left:2px;width:${(w * 100).toFixed(1)}%"></i>` +
@@ -639,42 +674,16 @@ function filteredPlayers() {
   return rows;
 }
 
-function panePlayers() {
-  const m = M(), f = S.p, out = el('div');
-  const games = Array.from(new Set(m.players.map(p => p.game).filter(Boolean))).sort();
+// The Players table's columns, defined once. "Guys I like" is the same table
+// over a chosen subset, and a second copy of this list would drift from it the
+// first time a column was added to either — the failure this file has already
+// had twice, with the head-to-head tiles and with the slate predicate.
+function playerCols(m) {
   const anyBest = m.players.some(p => p.best);
   const anyStatus = m.players.some(p => p.status);
   const anyBacking = m.players.some(p => p.backing);
   const blended = m.topk && m.topk.blended;
-
-  out.appendChild(bar([
-    select('Game', f.game, [['', 'All games']].concat(games.map(g => [g, g])), v => f.game = v),
-    text('Search player', f.q, v => f.q = v, 'e.g. Barkley'),
-    select('Show per game', f.depth, [[0, 'Everyone'], [10, 'Top 10'], [5, 'Top 5'], [3, 'Top 3'], [1, 'Top 1']],
-      v => f.depth = +v, 'Ranked by # — our estimate within the game, over everyone listed.'),
-    select('Prices', f.priced, [['all', 'Priced and unpriced'], ['yes', 'Priced only'], ['no', 'Unpriced only']],
-      v => f.priced = v),
-    check('Only where we differ', f.differ, v => f.differ = v, false,
-      'Hide players we price within ' + m.min_edge + ' points of the bookmaker, measured on Bet edge — our own number, before the blend.'),
-    // The gap is measured and moves, so the copy branches on it rather than
-    // asserting an edge. On the 24-family model it fell to +0.019 with a 95%
-    // interval of (-0.011, +0.049) — it no longer clears zero, and a filter
-    // that still promised an edge would be the app's own retired claim
-    // reappearing on a second surface.
-    check('Longshot standouts', f.longshot, v => f.longshot = v, !m.longshot,
-      !m.longshot ? 'Needs the longshot measurement — run scripts/12_longshot.py.'
-      : ('Players priced at +' + m.longshot.min_odds + ' or longer, ours-highest first. ' +
-         (has(m.longshot.auc_gap_lo) && m.longshot.auc_gap_lo <= 0
-           ? 'Our ordering of that band (AUC ' + m.longshot.auc_ours.toFixed(2) +
-             ') is not distinguishable from the price’s (' + m.longshot.auc_book.toFixed(2) +
-             ') — the interval on the gap includes zero. Read this as a way to see the band, not as an edge in it.'
-           : 'Inside that band our ordering sorts scorers better than the price does (AUC ' +
-             m.longshot.auc_ours.toFixed(2) + ' against ' + m.longshot.auc_book.toFixed(2) +
-             '). It says which longshots are live, not which are cheap.'))),
-  ]));
-
-  const rows = filteredPlayers();
-  const cols = [
+  return [
     { k: 'player', label: 'Player', t: 1, fmt: (v, r) => esc(v) + (r.blocked ? ' <span class="chip fade">out</span>' : '') },
     { k: 'team', label: 'Team', t: 1 },
     { k: 'game', label: 'Game', t: 1 },
@@ -710,6 +719,40 @@ function panePlayers() {
       fmt: v => v ? '<span class="chip ' + (v === 'Fade' ? 'fade' : 'strong') + '">' + esc(v) + '</span>' : '' } : null,
     anyStatus ? { k: 'status', label: 'Injury', t: 1, fmt: v => v ? '<span class="chip fade">' + esc(v) + '</span>' : '' } : null,
   ].filter(Boolean);
+}
+
+function panePlayers() {
+  const m = M(), f = S.p, out = el('div');
+  const games = Array.from(new Set(m.players.map(p => p.game).filter(Boolean))).sort();
+
+  out.appendChild(bar([
+    select('Game', f.game, [['', 'All games']].concat(games.map(g => [g, g])), v => f.game = v),
+    text('Search player', f.q, v => f.q = v, 'e.g. Barkley'),
+    select('Show per game', f.depth, [[0, 'Everyone'], [10, 'Top 10'], [5, 'Top 5'], [3, 'Top 3'], [1, 'Top 1']],
+      v => f.depth = +v, 'Ranked by # — our estimate within the game, over everyone listed.'),
+    select('Prices', f.priced, [['all', 'Priced and unpriced'], ['yes', 'Priced only'], ['no', 'Unpriced only']],
+      v => f.priced = v),
+    check('Only where we differ', f.differ, v => f.differ = v, false,
+      'Hide players we price within ' + m.min_edge + ' points of the bookmaker, measured on Bet edge — our own number, before the blend.'),
+    // The gap is measured and moves, so the copy branches on it rather than
+    // asserting an edge. On the 24-family model it fell to +0.019 with a 95%
+    // interval of (-0.011, +0.049) — it no longer clears zero, and a filter
+    // that still promised an edge would be the app's own retired claim
+    // reappearing on a second surface.
+    check('Longshot standouts', f.longshot, v => f.longshot = v, !m.longshot,
+      !m.longshot ? 'Needs the longshot measurement — run scripts/12_longshot.py.'
+      : ('Players priced at +' + m.longshot.min_odds + ' or longer, ours-highest first. ' +
+         (has(m.longshot.auc_gap_lo) && m.longshot.auc_gap_lo <= 0
+           ? 'Our ordering of that band (AUC ' + m.longshot.auc_ours.toFixed(2) +
+             ') is not distinguishable from the price’s (' + m.longshot.auc_book.toFixed(2) +
+             ') — the interval on the gap includes zero. Read this as a way to see the band, not as an edge in it.'
+           : 'Inside that band our ordering sorts scorers better than the price does (AUC ' +
+             m.longshot.auc_ours.toFixed(2) + ' against ' + m.longshot.auc_book.toFixed(2) +
+             '). It says which longshots are live, not which are cheap.'))),
+  ]));
+
+  const rows = filteredPlayers();
+  const cols = [likeCol()].concat(playerCols(m));
 
   const priced = rows.filter(p => p.priced).length;
   out.appendChild(card(null, null, [
@@ -1239,10 +1282,15 @@ function coverDefault(pool, n) {
   return out;
 }
 
-function coverToggle(name) {
-  const at = S.cover.picked.indexOf(name);
-  if (at >= 0) S.cover.picked.splice(at, 1);
-  else S.cover.picked.push(name);
+function coverToggle(name, st) {
+  // `st` is the state slot the picker belongs to. Two builders share this
+  // code — the Parlay tab and the one on "Guys I like" — and a hardcoded
+  // S.cover here meant clicking a chip on one moved the other's legs.
+  st = st || S.cover;
+  if (!st.picked) st.picked = [];
+  const at = st.picked.indexOf(name);
+  if (at >= 0) st.picked.splice(at, 1);
+  else st.picked.push(name);
   render(true);
 }
 
@@ -1250,8 +1298,8 @@ function coverToggle(name) {
 // be chosen. Forty checkboxes in a wrapped row made those three things one
 // thing — the reader had to re-scan the whole list to answer "who is in?",
 // and anyone outside the top forty could not be picked at all.
-function coverPicker(pool, blended, extra) {
-  const f = S.cover;
+function coverPicker(pool, blended, extra, st) {
+  const f = st || S.cover;
   const inSet = {};
   f.picked.forEach(n => { inSet[n] = 1; });
 
@@ -1261,7 +1309,7 @@ function coverPicker(pool, blended, extra) {
       title: 'Remove ' + name });
     b.innerHTML = esc(name) +
       (r ? ' <i>' + pct(r.ours, 0) + '</i>' : '') + ' <span>×</span>';
-    b.onclick = () => coverToggle(name);
+    b.onclick = () => coverToggle(name, f);
     return b;
   });
   const clear = el('button', { class: 'pchip ghost', type: 'button',
@@ -1353,7 +1401,7 @@ function coverPicker(pool, blended, extra) {
         (det.length ? det.join(' · ')
           : (has(r.estDec) ? 'no price · est ' + american(decToAm(r.estDec))
                            : 'no price')) + '</span></span>';
-    b.onclick = () => coverToggle(r.player);
+    b.onclick = () => coverToggle(r.player, f);
     return b;
   }));
 
@@ -1369,29 +1417,39 @@ function coverPicker(pool, blended, extra) {
   return out;
 }
 
-function paneCover() {
+function paneCover(opts) {
+  // Called bare by the Parlay tab, and with a state slot plus a pool filter by
+  // "Guys I like", which is this same builder over a chosen subset.
+  // Parameterised rather than copied: a second implementation of this pricing
+  // would drift from the first the week either was touched, which is the
+  // failure this file keeps having — the head-to-head tiles and the slate
+  // predicate both got here the same way.
+  opts = opts || {};
+  const st = opts.state || S.cover;
+  const inPool = opts.pool || (() => true);
   const m = M();
   const cov = m.cover || {};
-  if (S.cover.decMarket !== m.key) {
+  if (st.decMarket !== m.key) {
     // The flat median is the last resort for a leg the curve cannot price, and
     // the box itself opens blank: blank means "charge each leg what this
     // market charges players like it", which is the answer, and a number in
     // the box means the reader is asking a what-if instead.
-    S.cover.dec = has(cov.assumed_dec) ? cov.assumed_dec : 2.0;
-    S.cover.decRaw = '';
-    S.cover.decMarket = m.key;
+    st.dec = has(cov.assumed_dec) ? cov.assumed_dec : 2.0;
+    st.decRaw = '';
+    st.decMarket = m.key;
   }
   // `estDec` is what this market would plausibly post for a player nobody has
   // quoted, so the picker can say it on the card rather than leaving a reader
   // to discover the number only in the payout table.
   const pool = (m.players || [])
     .filter(r => has(r.ours))
+    .filter(inPool)
     .map(r => (r.priced && has(r.dec)) ? r
               : Object.assign({}, r, { estDec: curveDecimal(cov.price_curve, r.ours) }))
     .sort((a, b) => b.ours - a.ours);
 
-  if (!S.cover.picked) S.cover.picked = coverDefault(pool, 5);
-  const chosen = pool.filter(r => S.cover.picked.indexOf(r.player) >= 0);
+  if (!st.picked) st.picked = coverDefault(pool, 5);
+  const chosen = pool.filter(r => st.picked.indexOf(r.player) >= 0);
 
   // No `render()` in these callbacks: `text` re-renders for itself, with the
   // focus restore, and a second render nested inside the change handler tore
@@ -1401,18 +1459,18 @@ function paneCover() {
     // Raw text and parsed value kept apart, for the same reason the price
     // field does it: `2.` is a normal thing to be in the middle of typing and
     // rewriting it mid-keystroke makes a box that fights the person using it.
-    text('Stake per slip', S.cover.stakeRaw,
-      v => { S.cover.stakeRaw = v;
+    text('Stake per slip', st.stakeRaw,
+      v => { st.stakeRaw = v;
              const x = parseMoney(v);
-             if (x) S.cover.stake = x; },
+             if (x) st.stake = x; },
       '$2.50'),
     // What was typed is held as typed, and the parsed price beside it. Parsing
     // into the field's own value would rewrite `-2` to something else on the
     // keystroke before `-200`, which is a box that fights the person using it.
-    text('Price unpriced legs at', S.cover.decRaw,
-      v => { S.cover.decRaw = v;
+    text('Price unpriced legs at', st.decRaw,
+      v => { st.decRaw = v;
              const d = parsePrice(v);
-             if (d) S.cover.dec = d; },
+             if (d) st.dec = d; },
       has(cov.price_curve) ? 'this market\u2019s curve' : '+120 or 2.20',
       has(cov.assumed_dec)
         ? 'Leave it blank and each unpriced leg is charged what this market posts for a '
@@ -1431,18 +1489,18 @@ function paneCover() {
   //
   // Sizes the pool no longer has are dropped rather than kept pressed: trim a
   // player and a chip for a size that cannot exist would still read as chosen.
-  S.cover.sizes = (S.cover.sizes || []).filter(k => k <= chosen.length);
+  st.sizes = (st.sizes || []).filter(k => k <= chosen.length);
   if (chosen.length > 1) {
-    money2.push(multi('Round robin', S.cover.sizes,
+    money2.push(multi('Round robin', st.sizes,
       Array.from({ length: chosen.length }, (_, i) => i + 1).map(k =>
         [k, k === 1 ? 'Singles' : k === chosen.length ? k + '-leg' : 'By ' + k + 's']),
-      v => { S.cover.sizes = v.slice().sort((a, b) => a - b); },
+      v => { st.sizes = v.slice().sort((a, b) => a - b); },
       'Every combination',
       'Which slip sizes to back. Every combination is the full cover; By 2s ' +
       'on six players is the 15 doubles for $15 rather than 63 slips for ' +
       '$63. It changes what is bought, never how a slip is priced.'));
   }
-  const boxes = coverPicker(pool, m.topk && m.topk.blended, money2);
+  const boxes = coverPicker(pool, m.topk && m.topk.blended, money2, st);
 
   const kids = [
     el('p', { class: 'muted', html:
@@ -1496,19 +1554,19 @@ function paneCover() {
   // that appears on those shoves the picker down the page mid-keystroke. Only
   // the two shapes that can only ever be incomplete are silent; `+50` is a
   // finished thought that happens to be wrong, so it still gets told.
-  const midStake = /^\$?[0-9,]*\.?$/.test(S.cover.stakeRaw || '');
-  const midPrice = /^[+-]?[0-9]*\.?$/.test(S.cover.decRaw || '');
-  if (S.cover.stakeRaw && !midStake && !parseMoney(S.cover.stakeRaw)) {
+  const midStake = /^\$?[0-9,]*\.?$/.test(st.stakeRaw || '');
+  const midPrice = /^[+-]?[0-9]*\.?$/.test(st.decRaw || '');
+  if (st.stakeRaw && !midStake && !parseMoney(st.stakeRaw)) {
     kids.push(el('div', { class: 'warn-box', html:
-      '<b>' + esc(S.cover.stakeRaw) + '</b> is not an amount. Type dollars ' +
+      '<b>' + esc(st.stakeRaw) + '</b> is not an amount. Type dollars ' +
       '\u2014 <b>2.50</b>, <b>$2.50</b>, <b>1,000</b>. Still staking <b>' +
-      usd(S.cover.stake) + '</b> a slip.' }));
+      usd(st.stake) + '</b> a slip.' }));
   }
-  if (S.cover.decRaw && !midPrice && !parsePrice(S.cover.decRaw)) {
+  if (st.decRaw && !midPrice && !parsePrice(st.decRaw)) {
     kids.push(el('div', { class: 'warn-box', html:
-      '<b>' + esc(S.cover.decRaw) + '</b> is not a price. Type American \u2014 ' +
+      '<b>' + esc(st.decRaw) + '</b> is not a price. Type American \u2014 ' +
       '<b>+120</b>, <b>-200</b> \u2014 or decimal, <b>2.20</b>. Still using ' +
-      bothPrices(S.cover.dec) + '.' }));
+      bothPrices(st.dec) + '.' }));
   }
 
   // One player is allowed. A cover of one is a single bet — 2^1 - 1 is one
@@ -1517,8 +1575,8 @@ function paneCover() {
   // the reader pick a second player they did not want in order to see the
   // first one's numbers.
   if (chosen.length < 1) {
-    kids.push(el('div', { class: 'warn-box', text: 'Pick at least one player.' }));
-    return card('Parlay', '', kids);
+    kids.push(el('div', { class: 'warn-box', text: opts.empty || 'Pick at least one player.' }));
+    return card(opts.title || 'Parlay', '', kids);
   }
   if (chosen.length > (cov.max_players || 12)) {
     kids.push(el('div', { class: 'warn-box bad-box', html:
@@ -1527,10 +1585,10 @@ function paneCover() {
       (cov.max_players || 12) + ' is the most this will enumerate, and that ' +
       'ceiling does not move with the round robin \u2014 every pattern is ' +
       'priced whichever slips you back.' }));
-    return card('Parlay', '', kids);
+    return card(opts.title || 'Parlay', '', kids);
   }
 
-  const flat = parsePrice(S.cover.decRaw);
+  const flat = parsePrice(st.decRaw);
   const legs = chosen.map(r => ({
     name: r.player, team: r.team, prob: r.ours,
     dec: r.priced && has(r.dec) ? r.dec : null,
@@ -1544,9 +1602,9 @@ function paneCover() {
     // what-if and should get the what-if they asked for.
     assumed: flat ? null : curveDecimal(cov.price_curve, r.ours),
   }));
-  const v = coverPortfolio(legs, S.cover.stake, cov.rho || 0,
-                           flat || S.cover.dec,
-                           S.cover.sizes.length ? S.cover.sizes : null);
+  const v = coverPortfolio(legs, st.stake, cov.rho || 0,
+                           flat || st.dec,
+                           st.sizes.length ? st.sizes : null);
 
   const plural = (k, one, many) => k + ' ' + (k === 1 ? one : many);
   kids.push(el('p', { class: 'muted', html:
@@ -1722,7 +1780,7 @@ function paneCover() {
       'none has an interval clearing zero.' }));
   }
 
-  return card('Parlay', '', kids);
+  return card(opts.title || 'Parlay', '', kids);
 }
 
 function paneTeams() {
@@ -1874,7 +1932,7 @@ function paneShortlist() {
       cls: v => cls(v),
       title: 'What every bet at this price returned across the whole population, vetoed players included. Context for reading a row, never the reason it is on the list.' },
   ];
-  kids.push(table('shortlist', cols, sl.rows, {}));
+  kids.push(table('shortlist', [likeCol()].concat(cols), sl.rows, {}));
   kids.push(el('p', { class: 'note', html:
     'Nothing here is a claim that these are profitable. The strip above says ' +
     'the population they come from loses money; these are the rows the two ' +
@@ -2098,11 +2156,294 @@ function fadeCard(sl, rec) {
 }
 """
 
+JS_LIKED = r"""
+// ── Pane: guys I like ───────────────────────────────────────────────────
+//
+// A list the reader builds by clicking players on the Players and Shortlist
+// tables, then works over here. Three things live on it: the same table those
+// players came from, a parlay built from them, and every combination of them
+// priced out.
+//
+// Scoped to one season, week and market. "Guys I like this week" is the
+// question, and a list that carried across a rollover would answer a different
+// one — most of it would be players whose games have been played.
+//
+// Held in localStorage because this page is rebuilt several times a week and
+// has no server to keep anything in. That has one consequence worth being
+// honest about: the list lives in the browser that made it. It does not follow
+// the file if it is copied elsewhere, and a browser told to block site data
+// will refuse the write — `S.likedBroken` catches that and the pane says so
+// rather than letting a list quietly fail to save.
+const LIKED_NS = 'gil', LIKED_FAV_NS = 'gilfav';
+
+function likedKey(ns, m) {
+  return ns + ':' + m.season + ':' + m.week + ':' + m.key;
+}
+
+function likedRead(ns, m) {
+  try {
+    const raw = localStorage.getItem(likedKey(ns, m));
+    const v = raw ? JSON.parse(raw) : [];
+    return Array.isArray(v) ? v : [];
+  } catch (e) {
+    // Private windows, file:// under some settings, and "block site data" all
+    // land here. In-memory still works for the session.
+    S.likedBroken = true;
+    return [];
+  }
+}
+
+function likedWrite(ns, m, names) {
+  try {
+    localStorage.setItem(likedKey(ns, m), JSON.stringify(names));
+  } catch (e) {
+    S.likedBroken = true;
+  }
+}
+
+function likedCache(slot, ns, m) {
+  m = m || M();
+  const k = likedKey(ns, m);
+  if (!S[slot][k]) S[slot][k] = likedRead(ns, m);
+  return S[slot][k];
+}
+
+const likedList = m => likedCache('liked', LIKED_NS, m);
+const favList = m => likedCache('likedFav', LIKED_FAV_NS, m);
+const isLiked = (name, m) => likedList(m).indexOf(name) >= 0;
+const isFav = (name, m) => favList(m).indexOf(name) >= 0;
+
+function likedToggle(name) {
+  const m = M(), l = likedList(m), at = l.indexOf(name);
+  if (at >= 0) {
+    l.splice(at, 1);
+    // A player off the list cannot stay starred on it. Leaving the star behind
+    // makes re-adding them later arrive pre-starred for no reason the reader
+    // can trace.
+    const f = favList(m), fa = f.indexOf(name);
+    if (fa >= 0) { f.splice(fa, 1); likedWrite(LIKED_FAV_NS, m, f); }
+  } else {
+    l.push(name);
+  }
+  likedWrite(LIKED_NS, m, l);
+  render(true);
+}
+
+function favToggle(name) {
+  const m = M(), f = favList(m), at = f.indexOf(name);
+  if (at >= 0) f.splice(at, 1); else f.push(name);
+  likedWrite(LIKED_FAV_NS, m, f);
+  render(true);
+}
+
+function cellButton(label, on, title, cls, onclick) {
+  const b = el('button', {
+    class: 'cellbtn' + (cls ? ' ' + cls : '') + (on ? ' on' : ''),
+    title: title, type: 'button', 'aria-pressed': on ? 'true' : 'false',
+  });
+  b.textContent = label;
+  b.onclick = ev => { ev.stopPropagation(); onclick(); };
+  return b;
+}
+
+// The add/remove control, for the tables a player is picked FROM.
+function likeCol() {
+  return {
+    k: '_like', label: '', t: 1, nosort: true,
+    title: 'Add a player to "Guys I like" — your own list for this week, kept in this browser.',
+    cell: (td, v, r) => td.appendChild(cellButton(
+      isLiked(r.player) ? '✓' : '+', isLiked(r.player),
+      isLiked(r.player) ? 'On your list — click to remove'
+                        : 'Add to "Guys I like"',
+      null, () => likedToggle(r.player))),
+  };
+}
+
+// Every subset of the saved players, priced. The pool is small by
+// construction, so this enumerates rather than searching: 2^n - n - 1 slips of
+// two legs or more, which at the ceiling below is 4,083.
+//
+// The per-leg maths is the same as the Combinations tab's — probabilities and
+// decimal prices multiplied out, nothing refitted — and `singleWinner` carries
+// the same rule: on first TD two players in one game cannot both score first,
+// so those slips are impossible rather than merely correlated and are dropped.
+function likedSubsets(cand, singleWinner) {
+  const n = cand.length, out = [];
+  for (let mask = 1; mask < (1 << n); mask++) {
+    const idx = [];
+    for (let i = 0; i < n; i++) if (mask & (1 << i)) idx.push(i);
+    if (idx.length < 2) continue;
+
+    let same = false;
+    for (let a = 0; a < idx.length && !same; a++)
+      for (let b = a + 1; b < idx.length; b++)
+        if (cand[idx[a]].game && cand[idx[a]].game === cand[idx[b]].game) { same = true; break; }
+    if (singleWinner && same) continue;
+
+    let ours = 1, mo = 1, book = 1, dec = 1, priced = true;
+    for (const i of idx) {
+      const p = cand[i];
+      ours *= p.ours;
+      mo *= has(p.model_only) ? p.model_only : p.ours;
+      if (p.priced && has(p.book) && has(p.dec)) { book *= p.book; dec *= p.dec; }
+      else priced = false;
+    }
+    out.push({
+      ps: idx.map(i => cand[i]), legs: idx.length, ours: ours, mo: mo,
+      book: priced ? book : null, dec: priced ? dec : null,
+      ev: priced ? (mo * dec - 1) * 100 : null,
+      same: same, priced: priced,
+      names: idx.map(i => cand[i].player).join(' + '),
+    });
+  }
+  return out;
+}
+
+function paneLiked() {
+  const m = M(), out = el('div');
+  const names = likedList(m);
+  const byName = {};
+  (m.players || []).forEach(p => { byName[p.player] = p; });
+
+  if (S.likedBroken) out.appendChild(el('div', { class: 'warn-box', html:
+    '<b>This browser will not let the page save your list.</b> It still works ' +
+    'for as long as this tab is open, and it will be empty again on reload. ' +
+    'Private windows and "block site data" both do this; so does opening the ' +
+    'file directly in some browsers.' }));
+
+  if (!names.length) {
+    out.appendChild(card('Guys I like', null, [el('p', { class: 'muted', html:
+      'Nothing saved for <b>' + esc(m.label) + ', week ' + m.week + '</b> yet. ' +
+      'Add players with the <b>+</b> button on the <b>Players</b> or ' +
+      '<b>Shortlist</b> tab and they will appear here. ' +
+      'The list is per week and per market, and it is kept in this browser.' })]));
+    return out;
+  }
+
+  // Saved players the board no longer carries keep their row. A row that
+  // vanished would be indistinguishable from one never added, and the reason
+  // it went is usually the thing worth seeing.
+  const rows = names.map(n => byName[n]
+    ? Object.assign({}, byName[n], { _fav: isFav(n) })
+    : { player: n, stale: true, _fav: isFav(n) });
+  const live = rows.filter(r => !r.stale);
+  const stale = rows.length - live.length;
+
+  // Favourites first by default; a click on any heading takes over from there.
+  rows.sort((a, b) => (b._fav ? 1 : 0) - (a._fav ? 1 : 0)
+                   || (b.ours || 0) - (a.ours || 0));
+
+  const favCol = {
+    k: '_fav', label: '', t: 1, nosort: true,
+    title: 'Star a player. Stars sort to the top and mark the row — they do not change what the parlay or the combinations below draw from, which is the whole list.',
+    cell: (td, v, r) => td.appendChild(cellButton(
+      r._fav ? '★' : '☆', r._fav,
+      r._fav ? 'Starred' : 'Star this player', 'star',
+      () => favToggle(r.player))),
+  };
+  const dropCol = {
+    k: '_drop', label: '', t: 1, nosort: true,
+    cell: (td, v, r) => td.appendChild(cellButton(
+      '×', false, 'Remove from your list', null,
+      () => likedToggle(r.player))),
+  };
+  // The same columns the Players tab draws, so this is that table over a
+  // chosen subset rather than a second table that resembles it.
+  const cols = [favCol].concat(playerCols(m).map(c => c.k !== 'player' ? c
+    : Object.assign({}, c, {
+        fmt: (v, r) => r.stale
+          ? esc(v) + ' <span class="chip un">not on this week’s board</span>'
+          : c.fmt(v, r),
+      }))).concat([dropCol]);
+
+  out.appendChild(card('Guys I like', null, [
+    table('liked', cols, rows, { rowClass: r => r.stale ? 'stale' : null }),
+    el('p', { class: 'rowcount', text:
+      names.length + ' saved for ' + m.label + ', week ' + m.week +
+      (stale ? ' — ' + stale + ' no longer on this week’s board' : '') +
+      '. Stars sort to the top. Click a heading to sort by anything else.' }),
+  ]));
+
+  if (stale) out.appendChild(el('div', { class: 'warn-box', html:
+    '<b>' + stale + ' saved ' + (stale === 1 ? 'player is' : 'players are') +
+    ' not on this week’s board.</b> They are kept here, dimmed and with ' +
+    'their numbers blank, because a row disappearing looks exactly like one ' +
+    'that was never added. Nothing below uses them — there is no price to ' +
+    'use. Remove them with ×.' }));
+
+  // ── Parlay, from this list ─────────────────────────────────────────────
+  // The Parlay tab's own builder, pooled to the saved players. Same pricing,
+  // same round-robin structures, same ceiling on how many outcome patterns it
+  // will enumerate.
+  out.appendChild(paneCover({
+    state: S.likedCover,
+    pool: r => isLiked(r.player),
+    title: 'Parlay from your list',
+    empty: 'Pick at least one of your saved players.',
+  }));
+
+  // ── Every combination of them ──────────────────────────────────────────
+  const cap = (m.cover && m.cover.max_players) || 12;
+  const cand = live.filter(r => has(r.ours));
+  if (cand.length >= 2) {
+    const kids = [];
+    if (cand.length > cap) {
+      kids.push(el('div', { class: 'warn-box bad-box', html:
+        '<b>' + cand.length + ' players is ' +
+        Math.pow(2, cand.length).toLocaleString() + ' combinations.</b> ' +
+        cap + ' is the most this will enumerate. Star the ones you are ' +
+        'actually weighing and remove the rest, or read the parlay above, ' +
+        'which prices a structure rather than every subset.' }));
+      out.appendChild(card('Every combination', null, kids));
+      return out;
+    }
+    const singleWinner = m.key === 'first_td';
+    const subs = likedSubsets(cand, singleWinner);
+    subs.sort((a, b) => (b.ours || 0) - (a.ours || 0));
+
+    const ccols = [
+      { k: 'legs', label: 'Legs' },
+      { k: 'names', label: 'Players', t: 1 },
+      { k: 'ours', label: 'All score', fmt: v => pct(v, 1),
+        title: 'Our chance that every leg on the slip scores — the per-leg numbers multiplied. It assumes the legs are independent, which two players in one game are not.' },
+      { k: 'book', label: 'Bookmaker says', fmt: v => has(v) ? pct(v, 1) : '<span class="dim">—</span>',
+        title: 'The same product taken on the bookmaker’s own de-vigged numbers. Blank when any leg is unpriced.' },
+      { k: 'dec', label: 'Pays', t: 1, sortVal: r => r.dec,
+        fmt: v => has(v) ? american(decToAm(v)) : '<span class="dim">—</span>',
+        title: 'The combined price, decimal odds multiplied and shown American. Blank when any leg is unpriced — there is no price to multiply.' },
+      { k: 'ev', label: 'Expected on $100', fmt: v => has(v) ? money(v) : '', cls: v => cls(v),
+        title: 'On our pre-blend number at that combined price. The blend pulls our estimate toward the price it is being judged against, so the blended number cannot judge it.' },
+      { k: 'same', label: '', t: 1, nosort: true,
+        fmt: v => v ? '<span class="chip warn">same game</span>' : '' },
+    ];
+    kids.push(table('likedsubs', ccols, subs, {}));
+    kids.push(el('p', { class: 'rowcount', text:
+      subs.length.toLocaleString() + ' combinations of ' + cand.length +
+      ' players, two legs and up. Every one of them, not a ranked selection.' }));
+    out.appendChild(card('Every combination', null, kids));
+
+    if (singleWinner) out.appendChild(el('div', { class: 'warn-box', html:
+      '<b>Same-game slips are missing on purpose.</b> Only one player scores ' +
+      'first in a game, so a slip naming two from the same fixture cannot ' +
+      'land — it is impossible rather than merely correlated, and pricing ' +
+      'it would put a number on something that has no chance at all.' }));
+    else if (subs.some(x => x.same)) out.appendChild(el('div', { class: 'warn-box', html:
+      '<b>Slips marked "same game" are not independent.</b> <b>All score</b> ' +
+      'multiplies the legs as though they were, which overstates the tail on ' +
+      'players who share a fixture — they rise and fall with the same ' +
+      'game script. Read those rows as an upper bound.' }));
+  }
+
+  return out;
+}
+"""
+
 JS_SHELL = r"""
 // ── Shell ───────────────────────────────────────────────────────────────
 const TABS = [
   ['shortlist', 'Shortlist', paneShortlist],
   ['cover', 'Parlay', paneCover],
+  ['liked', 'Guys I like', paneLiked],
   ['players', 'Players', paneMPlayers],
   ['combos', 'Combinations', paneCombos],
   ['teams', 'Teams', paneTeams],
@@ -2217,7 +2558,7 @@ def render(payload: dict) -> str:
     data = (json.dumps(payload, separators=(",", ":"), allow_nan=False)
             .replace("</", "<\\/"))
     js = "\n".join([JS, JS_PLAYERS, JS_COMBOS, JS_TEAMS, JS_SHORTLIST,
-                    JS_SHELL])
+                    JS_LIKED, JS_SHELL])
     labels = " and ".join(m["label"] for m in payload["markets"]) or "NFL"
     return (SHELL
             .replace("__TITLE__", html.escape(f"{labels} — model dashboard"))
