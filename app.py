@@ -231,7 +231,7 @@ def receptions_projections(season: int, week: int):
     not depend on the market existing yet — expected catches, and the chance of
     clearing each standard line, from one fitted distribution.
     """
-    from src.models.count import XGBCountModel, prob_over
+    from src.models.count import XGBCountModel, design_matrix, prob_over
 
     model_path = get_path("models", "receptions") / "xgb_count.pkl"
     if not model_path.exists():
@@ -241,8 +241,12 @@ def receptions_projections(season: int, week: int):
     wk = feats.filter((pl.col("season") == season) & (pl.col("week") == week))
     if wk.height == 0:
         return None
-    fcols = [c for c in m.feature_names if c in wk.columns]
-    mu = m.predict_mu(wk.select(fcols).to_numpy())
+    # `design_matrix`, not a comprehension that quietly drops whatever the
+    # frame is missing: dropping a column the model was fitted on shifts every
+    # column after it by one, and the model has no way to notice. It also keeps
+    # nulls as NaN, which is the representation training used — 0.0 on a usage
+    # feature says "measured at zero", not "no history".
+    mu = m.predict_mu(design_matrix(wk, m.feature_names))
     out = wk.select(["game_id", "player_name", "team"]).with_columns(pl.Series("mu", mu))
     import numpy as _np
     for line in (0.5, 1.5, 2.5, 3.5, 4.5, 5.5):
@@ -256,8 +260,11 @@ def receptions_projections(season: int, week: int):
 @guarded
 def receptions_week_lines(season: int):
     """Posted lines for the predict season, scored by the count model."""
-    from src.ingest.odds_history import HISTORY_PATH, SCHEMA, _conform, _resolve_player_id
-    from src.models.count import XGBCountModel, fair_two_way, prob_over
+    from src.ingest.odds_history import (HISTORY_PATH, SCHEMA, _conform,
+                                         _resolve_player_id, drop_in_play,
+                                         resolve_game_ids)
+    from src.models.count import (XGBCountModel, design_matrix, fair_two_way,
+                                  prob_over)
 
     if not HISTORY_PATH.exists():
         return None
@@ -266,10 +273,19 @@ def receptions_week_lines(season: int):
         & pl.col("point").is_not_null())
     if h.height == 0:
         return None
-    h = (h.sort("captured_at").unique(
-            subset=["season", "week", "game_id", "player_name_norm", "point"],
-            keep="last")
-         .with_columns(_resolve_player_id(h)))
+    # Resolve the game id before dropping in-play rows — the id is what the
+    # kickoff is looked up by — and drop them before keeping the newest, or
+    # "newest" means "furthest into the fourth quarter". See `drop_in_play`.
+    h = drop_in_play(resolve_game_ids(h))
+    # `_resolve_player_id` materialises against the frame handed to it, so it
+    # has to be attached to that same frame. Resolving the pre-dedupe frame and
+    # attaching the result to the post-dedupe one raised ShapeError on every
+    # load — 1,594 values onto 476 rows — and `guarded` duly printed it where
+    # the table should have been, for as long as this page has existed.
+    h = h.with_columns(_resolve_player_id(h))
+    h = h.sort("captured_at").unique(
+        subset=["season", "week", "game_id", "player_name_norm", "point"],
+        keep="last")
 
     model_path = get_path("models", "receptions") / "xgb_count.pkl"
     if not model_path.exists():
@@ -279,8 +295,7 @@ def receptions_week_lines(season: int):
     wk = feats.filter(pl.col("season") == season)
     if wk.height == 0:
         return h.to_pandas()
-    fcols = [c for c in m.feature_names if c in wk.columns]
-    mu = m.predict_mu(wk.select(fcols).to_numpy())
+    mu = m.predict_mu(design_matrix(wk, m.feature_names))
     wk = wk.select(["season", "week", "player_id"]).with_columns(pl.Series("mu", mu))
     j = h.join(wk, on=["season", "week", "player_id"], how="left")
     has = j["mu"].is_not_null().to_numpy()

@@ -173,3 +173,34 @@ def test_a_backfill_written_months_later_is_not_in_play(tmp_path, monkeypatch):
     assert LIVE_LAG_HOURS < 24, (
         "the bound only separates a live capture from a backfill while it is "
         "shorter than the gap between a game and its ingestion")
+
+
+def test_resolving_a_player_id_binds_to_the_frame_it_was_built_from():
+    """`_resolve_player_id` is length-bound, and the app assumed it was not.
+
+    It looks like a `pl.Expr` and its signature says so, but it materialises
+    against the frame handed to it. `h.unique().with_columns(_resolve_player_id(h))`
+    therefore attaches a column as long as the *original* frame to a shorter
+    deduplicated one, which raised ShapeError on every single load of the
+    receptions "Posted lines" table — 1,594 values onto 476 rows. `guarded`
+    printed the exception where the table should have been, and because nobody
+    was watching that page it stayed broken.
+
+    Falsified by resolving before deduplicating, which is the fix: the lengths
+    then agree and the assertion below has to be inverted to fail.
+    """
+    from src.ingest.odds_history import _resolve_player_id
+
+    df = pl.DataFrame({
+        "season": [2026, 2026, 2026],
+        "player_name_norm": ["a b", "a b", "c d"],
+        "player_name_raw": ["A B", "A B", "C D"],
+    })
+    resolved = df.with_columns(_resolve_player_id(df))
+    assert resolved.height == df.height
+
+    shorter = df.unique(subset=["player_name_norm"], keep="last")
+    assert shorter.height < df.height
+    with pytest.raises(Exception):
+        # The shape of the bug: a mapping built over `df`, attached to `shorter`.
+        shorter.with_columns(_resolve_player_id(df))
