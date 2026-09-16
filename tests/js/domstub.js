@@ -32,6 +32,10 @@ function install() {
   };
   globalThis.document = {
     createElement: mkNode,
+    // SVG nodes go through a namespaced constructor and are otherwise the
+    // same shape as anything else here. Without this an icon throws and takes
+    // the whole pane down, which is a stub gap reported as a page bug.
+    createElementNS: (ns, tag) => mkNode(tag),
     createTextNode: t => ({ _text: t, children: [] }),
     addEventListener() {},
     documentElement: {

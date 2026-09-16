@@ -167,7 +167,7 @@ case $? in
   *) say "  -> receptions_forward failed — see $LOG_DIR/receptions_forward_${DATE}.log" ;;
 esac
 
-run dashboard "$PY" scripts/34_export_dashboard.py || exit 1
+run board     "$PY" scripts/47_export_site.py       || exit 1
 run site      "$PY" scripts/20_export_html.py      || exit 1
 
 say "  week $WEEK board built."

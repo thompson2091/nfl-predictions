@@ -383,6 +383,15 @@ site:
 dashboard:
 	$(PYTHON) scripts/34_export_dashboard.py $(if $(WEEK),--week $(WEEK)) $(if $(filter command line,$(origin SEASON)),--season $(SEASON)) $(OPEN)
 
+# One self-contained site/site.html: the same data as `dashboard`, under the
+# design in design/, as four pages instead of nine tabs. This is what the
+# weekly rollover now builds. `dashboard` still works and is worth keeping
+# until this has been read on a few real slates — the two draw from one payload
+# builder, so they cannot disagree about the numbers, only about the shape.
+# Usage: make board  ·  make board WEEK=3  ·  make board OPEN=--open
+board:
+	$(PYTHON) scripts/47_export_site.py $(if $(WEEK),--week $(WEEK)) $(if $(filter command line,$(origin SEASON)),--season $(SEASON)) $(OPEN)
+
 # Both pages, in one go. WHEN to run this, in order of how wrong the page is
 # if you do not:
 #
