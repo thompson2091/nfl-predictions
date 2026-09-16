@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <script src="2dd037bf-16e4-47da-9de2-f9fe70ed8cb3"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style></style>
+  <style>
+    body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', sans-serif; background: #F5F3EE; color: #16181D; font-variant-numeric: tabular-nums; }
+    a { color: #16181D; } a:hover { color: #1F4FA3; }
+    button { font-family: inherit; }
+  </style>
+</helmet>
+<div style="width: 1440px; height: 1180px; box-sizing: border-box; background: #F5F3EE; display: flex; flex-direction: column;">
+  <header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; gap: 40px; border-bottom: 1px solid #E3DFD6; background: #FFFFFF;">
+    <div style="font-family: 'Newsreader', Georgia, serif; font-size: 22px; font-weight: 600;">SquaresPro</div>
+    <nav style="display: flex; gap: 8px; flex-grow: 1;">
+      <a href="Main.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">This week</a>
+      <a href="Shortlist.dc.html" aria-current="page" style="padding: 10px 14px; border-radius: 8px; background: #EFECE5; font-weight: 600; font-size: 15px; text-decoration: none;">Shortlist</a>
+      <a href="Saved.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Saved</a>
+      <a href="Ladder.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Ladder</a>
+      <a href="Live.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Model</a>
+    </nav>
+    <div style="font-size: 14px; color: #5E6168;">2026 · Week 2</div>
+  </header>
+
+  <div style="display: flex; flex-grow: 1; min-height: 0;">
+    <main style="flex-grow: 1; padding: 28px 40px 32px; display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+      <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+        <div>
+          <h1 style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 500; font-size: 40px; line-height: 1.1;">Shortlist</h1>
+          <p style="margin: 6px 0 0; font-size: 15px; color: #5E6168; max-width: 640px; line-height: 1.5;">Players we rate at least 10 points above the price, in the range where the market has tended to move our way.</p>
+        </div>
+        <div role="group" aria-label="Market" style="display: flex; background: #E9E5DC; border-radius: 10px; padding: 3px; flex-shrink: 0;">
+          <button type="button" sc-camel-on-click="{{setAny}}" aria-pressed="{{isAny}}" style="{{segA}}">Anytime TD</button>
+          <button type="button" sc-camel-on-click="{{setFirst}}" aria-pressed="{{isFirst}}" style="{{segF}}">First TD</button>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; color: #5E6168;">
+        <span style="padding: 6px 12px; border-radius: 999px; background: #FFFFFF; border: 1px solid #E3DFD6;">{{funnel1}}</span>
+        <svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="#8A8D93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>
+        <span style="padding: 6px 12px; border-radius: 999px; background: #FFFFFF; border: 1px solid #E3DFD6;">{{funnel2}}</span>
+        <svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="#8A8D93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>
+        <span style="padding: 6px 12px; border-radius: 999px; background: #16181D; color: #FFFFFF; font-weight: 600;">{{funnel3}}</span>
+        <span style="margin-left: auto;">Graded 2024–25: <strong style="color: #9E3624;">{{gradedRoi}}</strong> a bet on this rule</span>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 4px 20px;">
+        <sc-if value="{{hasRows}}" hint-placeholder-val="{{ true }}">
+          <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 150px 52px 52px 64px 100px 76px 44px; gap: 12px; align-items: center; height: 40px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: #6B6E75; border-bottom: 1px solid #ECE8E0;">
+            <div></div><div>Player</div>
+            <div style="display: flex; gap: 12px;"><span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #1F4FA3;"></span>Ours</span><span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 2px; height: 12px; background: #16181D;"></span>Book</span></div>
+            <div style="text-align: right;">Ours</div><div style="text-align: right;">Book</div><div style="text-align: right;">Edge</div><div style="text-align: right;">Price</div><div style="text-align: right;" title="What every bet at this price range returned, 2023–25">Band</div><div></div>
+          </div>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+            <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 150px 52px 52px 64px 100px 76px 44px; gap: 12px; align-items: center; height: 56px; border-bottom: 1px solid #F0EDE6;">
+              <button type="button" sc-camel-on-click="{{r.toggleFav}}" aria-pressed="{{r.fav}}" aria-label="{{r.starLabel}}" style="width: 44px; height: 44px; border: none; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">
+                <svg width="20" height="20" sc-camel-view-box="0 0 24 24" fill="{{r.starFill}}" stroke="{{r.starStroke}}" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"></path></svg>
+              </button>
+              <div style="min-width: 0;">
+                <div style="font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{r.player}}</div>
+                <div style="font-size: 12px; color: #6B6E75;">{{r.team}} · {{r.game}}</div>
+              </div>
+              <div style="position: relative; height: 8px; background: #EEEBE4; border-radius: 4px;">
+                <div style="{{r.fill}}"></div>
+                <div style="{{r.tick}}"></div>
+              </div>
+              <div style="text-align: right; font-size: 15px; font-weight: 700;">{{r.ours}}</div>
+              <div style="text-align: right; font-size: 14px; color: #6B6E75;">{{r.book}}</div>
+              <div style="text-align: right; font-size: 14px; font-weight: 600; color: #1C6B42;">{{r.edge}}</div>
+              <div style="text-align: right;">
+                <div style="font-size: 14px;">{{r.odds}}</div>
+                <div style="font-size: 12px; color: #1C6B42;">{{r.best}}</div>
+              </div>
+              <div style="text-align: right; font-size: 13px; color: #9E3624;">{{r.band}}</div>
+              <button type="button" sc-camel-on-click="{{r.toggle}}" aria-pressed="{{r.on}}" aria-label="{{r.addLabel}}" style="{{r.btn}}">{{r.icon}}</button>
+            </div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{noRows}}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 48px 20px; text-align: center;">
+            <div style="font-size: 18px; font-weight: 600;">Nothing survives every filter this week</div>
+            <div style="font-size: 15px; color: #5E6168; margin-top: 6px;">That’s an answer, not a gap: no First TD disagreement has held up against the closing line.</div>
+          </div>
+        </sc-if>
+      </div>
+
+      <section style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 20px 24px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 16px;">
+          <h2 style="margin: 0; font-size: 18px; font-weight: 600;">Leave these out</h2>
+          <span style="font-size: 13px; color: #6B6E75;">We rate them below the price. You can’t bet against them at a book, but they’re worth keeping off a parlay.</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px;">
+          <sc-for list="{{fades}}" as="f" hint-placeholder-count="5">
+            <div style="background: #F7F5F0; border-radius: 10px; padding: 12px;">
+              <div style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{f.player}}</div>
+              <div style="font-size: 12px; color: #6B6E75;">{{f.game}} · {{f.odds}}</div>
+              <div style="font-size: 13px; margin-top: 6px;"><strong>{{f.ours}}</strong> <span style="color: #6B6E75;">vs {{f.book}}</span> <span style="color: #9E3624; font-weight: 600;">{{f.edge}}</span></div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </main>
+
+    <aside style="width: 360px; flex-shrink: 0; box-sizing: border-box; border-left: 1px solid #E3DFD6; background: #FFFFFF; padding: 28px 24px 24px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline;">
+        <h2 style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 500; font-size: 28px;">Your slip</h2>
+        <span style="font-size: 14px; color: #6B6E75;">{{slipCount}}</span>
+      </div>
+      <sc-if value="{{noPicks}}" hint-placeholder-val="{{ false }}">
+        <div style="border: 1px dashed #D6D1C6; border-radius: 12px; padding: 24px 16px; text-align: center; color: #6B6E75; font-size: 15px; line-height: 1.5;">Add shortlisted players with +.</div>
+      </sc-if>
+      <sc-if value="{{hasPicks}}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <sc-for list="{{legs}}" as="l" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 4px 12px; background: #F7F5F0; border-radius: 10px;">
+              <div><div style="font-size: 14px; font-weight: 600;">{{l.player}}</div><div style="font-size: 12px; color: #6B6E75;">{{l.ours}} ours · {{l.odds}}</div></div>
+              <button type="button" sc-camel-on-click="{{l.toggle}}" aria-label="{{l.removeLabel}}" style="width: 44px; height: 44px; border: none; background: transparent; color: #6B6E75; cursor: pointer; font-size: 18px;">×</button>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+          <div style="background: #F7F5F0; border-radius: 10px; padding: 12px;"><div style="font-size: 12px; color: #6B6E75;">All hit · ours</div><div style="font-size: 22px; font-weight: 700;">{{allOurs}}</div></div>
+          <div style="background: #F7F5F0; border-radius: 10px; padding: 12px;"><div style="font-size: 12px; color: #6B6E75;">Parlay pays</div><div style="font-size: 22px; font-weight: 700;">{{pays}}</div></div>
+        </div>
+        <button type="button" sc-camel-on-click="{{save}}" style="{{saveBtn}}">{{saveLabel}}</button>
+        <sc-if value="{{saved}}" hint-placeholder-val="{{ false }}">
+          <a href="Saved.dc.html" style="font-size: 14px; color: #1F4FA3; min-height: 44px; display: inline-flex; align-items: center;">View saved parlays</a>
+        </sc-if>
+        <a href="Main.dc.html" style="font-size: 14px; min-height: 44px; display: inline-flex; align-items: center;">Round robin and breakdown</a>
+      </sc-if>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1180}}">
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const any = (st.market || 'any') === 'any';
+    const SL = [
+      ['Kyren Williams','LA','NYG @ LA',0.677,0.447,23.0,'−160',1.625,'','−9.9%'],
+      ['Cooper Kupp','SEA','SEA @ ARI',0.356,0.153,20.3,'+388',4.88,'+450 Fanatics','−27.9%'],
+      ['Amon-Ra St. Brown','DET','DET @ BUF',0.601,0.403,19.8,'−100',2.0,'+115 Fanatics','−9.9%'],
+      ['Jayden Reed','GB','GB @ NYJ',0.385,0.190,19.5,'+275',3.75,'','−12.7%'],
+      ['Deebo Samuel Sr.','SF','MIA @ SF',0.448,0.258,19.0,'+183',2.83,'+265 Fanatics','−12.7%'],
+      ['Josh Allen','BUF','DET @ BUF',0.631,0.452,17.9,'−127',1.787,'−105 Courtside','−9.9%'],
+      ["D'Andre Swift",'CHI','MIN @ CHI',0.623,0.454,16.9,'−150',1.667,'−145 DraftKings','−9.9%'],
+      ['Travis Kelce','KC','IND @ KC',0.444,0.279,16.5,'+175',2.75,'','−12.7%'],
+      ['Emmett Johnson','KC','IND @ KC',0.318,0.160,15.8,'+380',4.8,'','−27.9%'],
+      ['Mike Evans','SF','MIA @ SF',0.479,0.321,15.7,'+127',2.27,'+170 Fanatics','−12.7%']
+    ];
+    const FAVDEF = ['Amon-Ra St. Brown', 'Derrick Henry', 'Puka Nacua'];
+    const favs = st.favs || FAVDEF;
+    const picked = st.picked || ['Kyren Williams', 'Amon-Ra St. Brown'];
+    const pct = v => Math.round(v * 100) + '%';
+    const togglePick = p => () => { const c = (this.state || {}).picked || ['Kyren Williams', 'Amon-Ra St. Brown']; this.setState({ saved: false, picked: c.indexOf(p) >= 0 ? c.filter(x => x !== p) : c.concat([p]) }); };
+    const rows = (any ? SL : []).map(a => {
+      const on = picked.indexOf(a[0]) >= 0, fav = favs.indexOf(a[0]) >= 0;
+      return {
+        player: a[0], team: a[1], game: a[2], ours: pct(a[3]), book: pct(a[4]), edge: '+' + a[5].toFixed(0) + ' pts', odds: a[6], best: a[8] ? 'best ' + a[8] : '', band: a[9],
+        fill: 'position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: #1F4FA3; width: ' + (a[3] / 0.75 * 100).toFixed(1) + '%;',
+        tick: 'position: absolute; top: -4px; bottom: -4px; width: 2px; background: #16181D; left: ' + (a[4] / 0.75 * 100).toFixed(1) + '%;',
+        fav, starFill: fav ? '#D9A21B' : 'none', starStroke: fav ? '#B8860B' : '#8A8D93',
+        starLabel: (fav ? 'Remove ' : 'Mark ') + a[0] + (fav ? ' from favorites' : ' as a favorite'),
+        toggleFav: () => { const f = (this.state || {}).favs || FAVDEF; this.setState({ favs: f.indexOf(a[0]) >= 0 ? f.filter(x => x !== a[0]) : f.concat([a[0]]) }); },
+        on, icon: on ? '✓' : '+', addLabel: (on ? 'Remove ' : 'Add ') + a[0] + (on ? ' from slip' : ' to slip'), toggle: togglePick(a[0]),
+        btn: 'width: 44px; height: 44px; border-radius: 10px; cursor: pointer; font-size: 18px; font-weight: 600; ' + (on ? 'background: #1F4FA3; color: #FFFFFF; border: 1px solid #1F4FA3;' : 'background: #FFFFFF; color: #16181D; border: 1px solid #D6D1C6;')
+      };
+    });
+    const legs = SL.filter(a => picked.indexOf(a[0]) >= 0).map(a => ({ player: a[0], ours: pct(a[3]), odds: a[6], p: a[3], d: a[7], removeLabel: 'Remove ' + a[0], toggle: togglePick(a[0]) }));
+    let po = 1, pd = 1; legs.forEach(l => { po *= l.p; pd *= l.d; });
+    const pr = pd - 1;
+    const fadesA = [['Devontez Walker','NO @ BAL','+600',0.046,0.105],['Jacob Cowing','MIA @ SF','+900',0.020,0.073],['Travis Hunter','JAX @ DEN','+700',0.037,0.089],['Luke McCaffrey','WAS @ DAL','+1050',0.016,0.066],['Charlie Kolar','LV @ LAC','+574',0.053,0.102]];
+    const fadesF = [['Omarion Hampton','LV @ LAC','+375',0.084,0.211],['MarShawn Lloyd','GB @ NYJ','+550',0.003,0.105],['George Holani','SEA @ ARI','+850',0.014,0.089],['Christian McCaffrey','MIA @ SF','+260',0.125,0.192],['Jadarian Price','SEA @ ARI','+650',0.052,0.113]];
+    const f1 = v => (v * 100).toFixed(1) + '%';
+    const fades = (any ? fadesA : fadesF).map(f => ({ player: f[0], game: f[1], odds: f[2], ours: f1(f[3]), book: f1(f[4]), edge: '−' + ((f[4] - f[3]) * 100).toFixed(1) }));
+    const seg = on => 'height: 36px; padding: 0 16px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; ' + (on ? 'background: #FFFFFF; color: #16181D; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.08);' : 'background: transparent; color: #5E6168;');
+    const saved = !!st.saved;
+    return {
+      isAny: any, isFirst: !any, segA: seg(any), segF: seg(!any),
+      setAny: () => this.setState({ market: 'any' }), setFirst: () => this.setState({ market: 'first' }),
+      funnel1: any ? '399 priced' : '357 priced', funnel2: any ? '238 we rate higher' : '154 we rate higher', funnel3: any ? '36 shortlisted · top 10 shown' : '0 shortlisted',
+      gradedRoi: any ? '−19.6%' : '−21.7%',
+      rows, hasRows: rows.length > 0, noRows: rows.length === 0, fades,
+      legs, hasPicks: legs.length > 0, noPicks: legs.length === 0,
+      slipCount: legs.length === 1 ? '1 leg' : legs.length + ' legs',
+      allOurs: legs.length ? (po * 100 >= 10 ? (po * 100).toFixed(0) : (po * 100).toFixed(1)) + '%' : '',
+      pays: pr >= 1 ? '+' + Math.round(pr * 100).toLocaleString() : '−' + Math.round(100 / pr),
+      saved, saveLabel: saved ? '✓ Saved to Parlays' : 'Save this parlay',
+      save: () => this.setState({ saved: true }),
+      saveBtn: 'height: 48px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; ' + (saved ? 'background: #E3F0E8; color: #1C6B42; border: 1px solid #BFD9C8;' : 'background: #16181D; color: #FFFFFF; border: 1px solid #16181D;')
+    };
+  }
+}
+</script>
+
+
+</body></html>

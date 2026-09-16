@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <script src="5ae3b345-0c05-4105-9867-024650110ee0"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style></style>
+  <style>
+    body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', sans-serif; background: #F5F3EE; color: #16181D; font-variant-numeric: tabular-nums; }
+    a { color: #16181D; } a:hover { color: #1F4FA3; }
+    input { font-family: inherit; }
+    input:focus { outline: 2px solid #1F4FA3; outline-offset: 1px; }
+  </style>
+</helmet>
+<div style="width: 1440px; height: 1040px; box-sizing: border-box; background: #F5F3EE; display: flex; flex-direction: column;">
+  <header style="height: 64px; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; gap: 40px; border-bottom: 1px solid #E3DFD6; background: #FFFFFF;">
+    <div style="font-family: 'Newsreader', Georgia, serif; font-size: 22px; font-weight: 600;">SquaresPro</div>
+    <nav style="display: flex; gap: 8px; flex-grow: 1;">
+      <a href="Main.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">This week</a>
+      <a href="Shortlist.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Shortlist</a>
+      <a href="Saved.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Saved</a>
+      <a href="Ladder.dc.html" aria-current="page" style="padding: 10px 14px; border-radius: 8px; background: #EFECE5; font-weight: 600; font-size: 15px; text-decoration: none;">Ladder</a>
+      <a href="Live.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Model</a>
+    </nav>
+  </header>
+
+  <main style="padding: 32px 40px; display: flex; flex-direction: column; gap: 24px;">
+    <div>
+      <h1 style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 500; font-size: 40px;">Ladder</h1>
+      <p style="margin: 6px 0 0; font-size: 15px; color: #5E6168;">Roll the whole payout into the next bet and see where it ends up, and how often it gets there.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label for="l-start" style="font-size: 14px; font-weight: 500;">Starting bankroll</label>
+        <input id="l-start" value="{{startRaw}}" sc-camel-on-change="{{setStart}}" inputmode="decimal" style="height: 48px; box-sizing: border-box; border: 1px solid #D6D1C6; border-radius: 10px; padding: 0 14px; font-size: 16px; background: #FFFFFF; color: #16181D;">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label for="l-goal" style="font-size: 14px; font-weight: 500;">Target</label>
+        <input id="l-goal" value="{{goalRaw}}" sc-camel-on-change="{{setGoal}}" inputmode="decimal" style="height: 48px; box-sizing: border-box; border: 1px solid #D6D1C6; border-radius: 10px; padding: 0 14px; font-size: 16px; background: #FFFFFF; color: #16181D;">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label for="l-bets" style="font-size: 14px; font-weight: 500;">Bets (up to 12)</label>
+        <input id="l-bets" value="{{betsRaw}}" sc-camel-on-change="{{setBets}}" inputmode="numeric" style="height: 48px; box-sizing: border-box; border: 1px solid #D6D1C6; border-radius: 10px; padding: 0 14px; font-size: 16px; background: #FFFFFF; color: #16181D;">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label for="l-odds" style="font-size: 14px; font-weight: 500;">Price each bet</label>
+        <input id="l-odds" value="{{oddsRaw}}" sc-camel-on-change="{{setOdds}}" placeholder="-170 or 1.59" style="height: 48px; box-sizing: border-box; border: 1px solid #D6D1C6; border-radius: 10px; padding: 0 14px; font-size: 16px; background: #FFFFFF; color: #16181D;">
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;">
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 18px 20px;">
+        <div style="font-size: 14px; color: #5E6168;">Final payout</div>
+        <div style="font-size: 34px; font-weight: 700; margin-top: 2px;">{{final}}</div>
+        <div style="font-size: 13px; color: #6B6E75;">{{finalSub}}</div>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 18px 20px;">
+        <div style="font-size: 14px; color: #5E6168;">Net profit</div>
+        <div style="font-size: 34px; font-weight: 700; margin-top: 2px; color: #1C6B42;">{{net}}</div>
+        <div style="font-size: 13px; color: #6B6E75;">risking the whole {{startTxt}}</div>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 18px 20px;">
+        <div style="font-size: 14px; color: #5E6168;">Chance of running it</div>
+        <div style="font-size: 34px; font-weight: 700; margin-top: 2px; color: #9E3624;">{{chance}}</div>
+        <div style="font-size: 13px; color: #6B6E75;">{{perLeg}} a leg, margin included</div>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 18px 20px;">
+        <div style="font-size: 14px; color: #5E6168;">Bets to the target</div>
+        <div style="font-size: 34px; font-weight: 700; margin-top: 2px;">{{need}}</div>
+        <div style="font-size: 13px; color: #6B6E75;">{{needSub}}</div>
+      </div>
+    </div>
+
+    <section style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 4px 24px 12px;">
+      <div style="display: grid; grid-template-columns: 56px repeat(4, minmax(0, 1fr)) 260px; gap: 16px; align-items: center; height: 44px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: #6B6E75; border-bottom: 1px solid #ECE8E0;">
+        <div>Bet</div><div style="text-align: right;">Stake</div><div style="text-align: right;">Profit if it wins</div><div style="text-align: right;">Payout</div><div style="text-align: right;">Still alive</div><div>Toward target</div>
+      </div>
+      <sc-for list="{{rungs}}" as="r" hint-placeholder-count="10">
+        <div style="display: grid; grid-template-columns: 56px repeat(4, minmax(0, 1fr)) 260px; gap: 16px; align-items: center; height: 38px; border-bottom: 1px solid #F0EDE6; font-size: 15px;">
+          <div style="color: #6B6E75;">{{r.i}}</div>
+          <div style="text-align: right;">{{r.open}}</div>
+          <div style="text-align: right; color: #1C6B42;">{{r.profit}}</div>
+          <div style="text-align: right; font-weight: 700;">{{r.payout}}</div>
+          <div style="text-align: right; color: #5E6168;">{{r.alive}}</div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="flex-grow: 1; height: 8px; background: #EEEBE4; border-radius: 4px;"><div style="{{r.bar}}"></div></div>
+            <span style="width: 44px; text-align: right; font-size: 13px; color: #5E6168;">{{r.pct}}</span>
+          </div>
+        </div>
+      </sc-for>
+    </section>
+
+    <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #5E6168; max-width: 920px;">Every rung assumes the one before it won; the row where one loses ends the run at $0. The chance is read off the posted price, so it includes the bookmaker’s margin and is generous. This tool doesn’t use the model.</p>
+  </main>
+</div>
+</x-dc>
+<script data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1040}}">
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const startRaw = st.startRaw != null ? st.startRaw : '$100';
+    const goalRaw = st.goalRaw != null ? st.goalRaw : '$10,000';
+    const betsRaw = st.betsRaw != null ? st.betsRaw : '10';
+    const oddsRaw = st.oddsRaw != null ? st.oddsRaw : '-170';
+    const money = t => { const x = parseFloat(String(t).replace(/[$,\s]/g, '')); return x > 0 ? x : null; };
+    const price = t => {
+      const s = String(t).trim().replace(/[,\s$]/g, '');
+      if (!/^[+-]?[0-9]*\.?[0-9]+$/.test(s)) return null;
+      const x = parseFloat(s);
+      if (/^[+-]/.test(s) || Math.abs(x) >= 100) { if (Math.abs(x) < 100) return null; return x > 0 ? 1 + x / 100 : 1 + 100 / Math.abs(x); }
+      return x > 1 ? x : null;
+    };
+    const start = money(startRaw) || 100, goal = money(goalRaw) || 10000;
+    const nb = parseInt(String(betsRaw).replace(/[^0-9]/g, ''), 10);
+    const n = nb >= 1 ? Math.min(12, nb) : 10;
+    const d = price(oddsRaw) || (1 + 100 / 170);
+    const usd = v => '$' + v.toLocaleString('en-US', { maximumFractionDigits: v < 1000 ? 2 : 0, minimumFractionDigits: v < 1000 ? 2 : 0 });
+    const pc = v => { const x = v * 100; return (x >= 10 ? x.toFixed(0) : x >= 1 ? x.toFixed(1) : x.toFixed(2)) + '%'; };
+    const am = (() => { const p = d - 1; return p >= 1 ? '+' + Math.round(p * 100) : '−' + Math.round(100 / p); })();
+    const rungs = [];
+    let bal = start;
+    for (let i = 1; i <= n; i++) {
+      const pay = bal * d, prog = Math.min(1, pay / goal);
+      rungs.push({ i, open: usd(bal), profit: '+' + usd(pay - bal), payout: usd(pay), alive: pc(Math.pow(1 / d, i)), pct: Math.round(pay / goal * 100) + '%',
+        bar: 'height: 8px; border-radius: 4px; width: ' + (prog * 100).toFixed(1) + '%; background: ' + (pay >= goal ? '#1C6B42' : '#1F4FA3') + ';' });
+      bal = pay;
+    }
+    const need = goal > start ? Math.ceil(Math.log(goal / start) / Math.log(d)) : 0;
+    return {
+      startRaw, goalRaw, betsRaw, oddsRaw, rungs,
+      setStart: e => this.setState({ startRaw: e.target.value }),
+      setGoal: e => this.setState({ goalRaw: e.target.value }),
+      setBets: e => this.setState({ betsRaw: e.target.value }),
+      setOdds: e => this.setState({ oddsRaw: e.target.value }),
+      final: usd(bal), finalSub: n + ' wins at ' + am,
+      net: '+' + usd(bal - start), startTxt: usd(start),
+      chance: pc(Math.pow(1 / d, n)), perLeg: pc(1 / d),
+      need: need ? String(need) : '—', needSub: need ? 'at ' + am + ', about ' + pc(Math.pow(1 / d, need)) + ' to get there' : 'already there'
+    };
+  }
+}
+</script>
+
+
+</body></html>

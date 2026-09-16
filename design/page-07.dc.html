@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <script src="81c0563b-1e1d-45e8-99eb-42df319fb3b4"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style></style>
+  <style>
+    body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', sans-serif; background: #F5F3EE; color: #16181D; font-variant-numeric: tabular-nums; }
+    a { color: #16181D; } a:hover { color: #1F4FA3; }
+  </style>
+</helmet>
+<div style="width: 1440px; height: 1340px; box-sizing: border-box; background: #F5F3EE; display: flex; flex-direction: column;">
+  <header style="height: 64px; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; gap: 40px; border-bottom: 1px solid #E3DFD6; background: #FFFFFF;">
+    <div style="font-family: 'Newsreader', Georgia, serif; font-size: 22px; font-weight: 600;">SquaresPro</div>
+    <nav style="display: flex; gap: 8px; flex-grow: 1;">
+      <a href="Main.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">This week</a>
+      <a href="Shortlist.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Shortlist</a>
+      <a href="Saved.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Saved</a>
+      <a href="Ladder.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Ladder</a>
+      <a href="Live.dc.html" aria-current="page" style="padding: 10px 14px; border-radius: 8px; background: #EFECE5; font-weight: 600; font-size: 15px; text-decoration: none;">Model</a>
+    </nav>
+    <div style="font-size: 14px; color: #5E6168;">Anytime TD model</div>
+  </header>
+
+  <main style="padding: 36px 40px; display: flex; flex-direction: column; gap: 28px;">
+    <div>
+      <h1 style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 500; font-size: 44px;">How good is the model?</h1>
+      <p style="margin: 8px 0 0; font-size: 16px; color: #5E6168; max-width: 760px; line-height: 1.5;">Measured on 1,131 games from seasons it never trained on, each scored by a model fitted only on the seasons before it.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;">
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 20px;">
+        <div style="font-size: 14px; color: #5E6168;">Our top pick scored</div>
+        <div style="font-size: 40px; font-weight: 700; margin-top: 4px;">49.6%</div>
+        <div style="font-size: 13px; color: #6B6E75;">of games, ±1.5 pts</div>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 20px;">
+        <div style="font-size: 14px; color: #5E6168;">One of our top 3 scored</div>
+        <div style="font-size: 40px; font-weight: 700; margin-top: 4px;">82.2%</div>
+        <div style="font-size: 13px; color: #6B6E75;">top 5: 91.9%</div>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 20px;">
+        <div style="font-size: 14px; color: #5E6168;">Separates scorers (AUC)</div>
+        <div style="font-size: 40px; font-weight: 700; margin-top: 4px;">0.80</div>
+        <div style="font-size: 13px; color: #6B6E75;">0.5 is a coin flip</div>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 20px;">
+        <div style="font-size: 14px; color: #5E6168;">Features</div>
+        <div style="font-size: 40px; font-weight: 700; margin-top: 4px;">236</div>
+        <div style="font-size: 13px; color: #6B6E75;">in 24 families · XGBoost</div>
+      </div>
+    </div>
+
+    <section style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 24px;">
+      <h2 style="margin: 0 0 14px; font-size: 18px; font-weight: 600;">Top pick scored, by season</h2>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px;">
+        <sc-for list="{{seasons}}" as="s" hint-placeholder-count="4">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between;"><span style="color: #5E6168;">{{s.year}}</span><span style="font-weight: 700;">{{s.v}}</span></div>
+            <div style="height: 10px; background: #EEEBE4; border-radius: 5px;"><div style="{{s.bar}}"></div></div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 24px 28px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;">
+        <div>
+          <h2 style="margin: 0; font-size: 22px; font-weight: 600;">What the model uses, and what each part is worth</h2>
+          <p style="margin: 6px 0 0; font-size: 14px; color: #5E6168; max-width: 760px; line-height: 1.5;">Each family was removed and the model retrained on the same seasons. Impact is how many points of top-pick accuracy it lost without it, paired game by game.</p>
+        </div>
+        <div style="display: flex; gap: 16px; font-size: 13px; color: #5E6168; white-space: nowrap;">
+          <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 12px; height: 12px; border-radius: 3px; background: #1F4FA3;"></span>Clear (p &lt; 0.05)</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 12px; height: 12px; border-radius: 3px; background: #A9B9D9;"></span>Not clear</span>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 48px;">
+        <sc-for list="{{cols}}" as="col" hint-placeholder-count="2">
+          <div>
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) 44px 200px 64px; gap: 14px; height: 32px; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: #6B6E75; border-bottom: 1px solid #ECE8E0;">
+              <div>Family</div><div style="text-align: right;">Cols</div><div>Impact</div><div style="text-align: right;">p</div>
+            </div>
+            <sc-for list="{{col.rows}}" as="f" hint-placeholder-count="12">
+              <div style="display: grid; grid-template-columns: minmax(0, 1fr) 44px 200px 64px; gap: 14px; height: 52px; align-items: center; border-bottom: 1px solid #F0EDE6;">
+                <div style="min-width: 0;">
+                  <div style="font-size: 15px; font-weight: 600;">{{f.label}}</div>
+                  <div style="font-size: 12px; color: #6B6E75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{f.hint}}</div>
+                </div>
+                <div style="text-align: right; font-size: 14px; color: #5E6168;">{{f.n}}</div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="flex-grow: 1; height: 10px; background: #EEEBE4; border-radius: 5px;"><div style="{{f.bar}}"></div></div>
+                  <span style="width: 58px; text-align: right; font-size: 14px; font-weight: 700;">{{f.worth}}</span>
+                </div>
+                <div style="text-align: right; font-size: 14px; color: #5E6168;">{{f.p}}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: #6B6E75; line-height: 1.5;">13 more columns (usage flags, position, week) reach the model with no recorded family. Version 2026.08.19-lean-24-families · measured 2026-08-19 on this exact feature set.</p>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1340}}">
+class Component extends DCLogic {
+  renderVals() {
+    const fam = [
+      ['Target history', 'Past TD-target rate', 4, 3.45, 0.0004],
+      ['QB rushing', 'QB rush-TD and scramble rate', 4, 3.18, 0.0017],
+      ['Usage share', 'Target, rush and TD share', 18, 3.01, 0.0048],
+      ['Scores-first tendency', 'Favourite and home first-score rate', 4, 3.01, 0.0022],
+      ['Injuries', 'Out, questionable, teammate out', 4, 2.92, 0.0147],
+      ['Rolling player stats', 'Carries, targets, yards, TDs', 42, 2.83, 0.0081],
+      ['Receiver tracking', 'Separation, cushion, air yards', 18, 2.83, 0.0059],
+      ['Team target tendency', 'Who the team targets for TDs', 16, 2.83, 0.0022],
+      ['Red zone', 'Red-zone carries, targets, TDs', 11, 2.83, 0.0045],
+      ['Momentum', 'Usage trend over 3 games', 4, 2.83, 0.0055],
+      ['Team offense', 'EPA, points, run rate', 18, 2.74, 0.0070],
+      ['Matchup interactions', 'Snap share × defense vs position', 8, 2.65, 0.0120],
+      ['Moneyline', 'Implied win probability', 1, 2.65, 0.0089],
+      ['Goal line', 'Inside-5 and inside-10 touches', 18, 2.56, 0.0106],
+      ['Opening drive', 'Opening-drive touches and TD rate', 10, 2.56, 0.0100],
+      ['Defensive box', 'Light and stacked box rate', 6, 2.56, 0.0113],
+      ['Game context', 'Divisional, dome, turf', 3, 2.56, 0.0100],
+      ['Depth chart', 'Listed starter', 1, 2.56, 0.0081],
+      ['TD streaks', 'Hot, cold, weeks since last TD', 4, 2.48, 0.0175],
+      ['Personnel', '11, 12, 21 and heavy sets', 8, 2.12, 0.0353],
+      ['Home and primetime', 'Home game, primetime slot', 2, 2.03, 0.0560],
+      ['Snap share', 'Snap percentage', 1, 1.95, 0.0487],
+      ['Opponent defense', 'EPA and TDs allowed', 12, 1.86, 0.0802],
+      ['Pace', 'Plays, drives, seconds per play', 6, 1.86, 0.0687]
+    ];
+    const max = 3.5;
+    const rows = fam.map(f => ({
+      label: f[0], hint: f[1], n: f[2],
+      worth: '+' + f[3].toFixed(2),
+      p: f[4] < 0.001 ? '<0.001' : f[4].toFixed(3),
+      bar: 'height: 10px; border-radius: 5px; width: ' + (f[3] / max * 100).toFixed(1) + '%; background: ' + (f[4] < 0.05 ? '#1F4FA3' : '#A9B9D9') + ';'
+    }));
+    const s = [['2022', 0.457], ['2023', 0.479], ['2024', 0.551], ['2025', 0.496]];
+    return {
+      cols: [{ rows: rows.slice(0, 12) }, { rows: rows.slice(12) }],
+      seasons: s.map(x => ({ year: x[0], v: (x[1] * 100).toFixed(1) + '%', bar: 'height: 10px; border-radius: 5px; background: #1F4FA3; width: ' + (x[1] / 0.6 * 100).toFixed(1) + '%;' }))
+    };
+  }
+}
+</script>
+
+
+</body></html>

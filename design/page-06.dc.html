@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <script src="f748460f-bc14-4cbd-8872-dcc96ccc219c"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style></style>
+  <style>
+    body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', sans-serif; background: #F5F3EE; color: #16181D; font-variant-numeric: tabular-nums; }
+    a { color: #16181D; } a:hover { color: #1F4FA3; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #F5F3EE; display: flex; flex-direction: column; position: relative; overflow: hidden;">
+  <header style="padding: 16px 20px 0; display: flex; justify-content: space-between; align-items: center; height: 56px; box-sizing: border-box;">
+    <div style="font-family: 'Newsreader', Georgia, serif; font-size: 20px; font-weight: 600;">SquaresPro</div>
+    <a href="Live.dc.html" style="font-size: 14px; color: #5E6168; min-height: 44px; display: inline-flex; align-items: center;">Model</a>
+  </header>
+  <div style="padding: 12px 20px 0; display: flex; flex-direction: column; gap: 14px;">
+    <h1 style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 500; font-size: 30px;">Who scores · Wk 2</h1>
+    <div role="group" aria-label="Market" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); background: #E9E5DC; border-radius: 10px; padding: 3px;">
+      <button type="button" aria-pressed="true" style="height: 40px; border: none; border-radius: 8px; background: #FFFFFF; font-family: inherit; font-size: 14px; font-weight: 600; color: #16181D;">Anytime TD</button>
+      <button type="button" aria-pressed="false" style="height: 40px; border: none; border-radius: 8px; background: transparent; font-family: inherit; font-size: 14px; color: #5E6168;">First TD</button>
+    </div>
+    <div style="display: flex; gap: 8px; overflow: hidden;">
+      <button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #16181D; background: #16181D; color: #FFFFFF; font-family: inherit; font-size: 14px; white-space: nowrap;">All games</button>
+      <button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #D6D1C6; background: #FFFFFF; color: #16181D; font-family: inherit; font-size: 14px; white-space: nowrap;">DET @ BUF</button>
+      <button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #D6D1C6; background: #FFFFFF; color: #16181D; font-family: inherit; font-size: 14px; white-space: nowrap;">NO @ BAL</button>
+    </div>
+  </div>
+
+  <div style="margin: 14px 12px 0; background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 0 14px;">
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; gap: 10px; align-items: center; height: 64px; border-bottom: 1px solid #F0EDE6;">
+        <div style="min-width: 0;">
+          <div style="display: flex; justify-content: space-between; gap: 8px;">
+            <span style="font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{r.player}}</span>
+            <span style="font-size: 12px; color: #6B6E75; white-space: nowrap;">{{r.odds}}</span>
+          </div>
+          <div style="position: relative; height: 6px; background: #EEEBE4; border-radius: 3px; margin-top: 8px;">
+            <div style="{{r.fill}}"></div>
+            <div style="{{r.tick}}"></div>
+          </div>
+        </div>
+        <div style="text-align: right; font-size: 16px; font-weight: 700;">{{r.ours}}</div>
+        <button type="button" aria-label="{{r.label}}" style="{{r.btn}}">{{r.icon}}</button>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="position: absolute; left: 12px; right: 12px; bottom: 20px; background: #16181D; color: #FFFFFF; border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+    <div>
+      <div style="font-size: 13px; color: #C9CBD0;">2 on slip · all score 33%</div>
+      <div style="font-size: 18px; font-weight: 700;">Pays +225</div>
+    </div>
+    <button type="button" style="height: 44px; padding: 0 18px; border: none; border-radius: 10px; background: #FFFFFF; color: #16181D; font-family: inherit; font-size: 15px; font-weight: 600;">View slip</button>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:844}}">
+class Component extends DCLogic {
+  renderVals() {
+    const d = [['Jahmyr Gibbs',0.663,0.619,'-330'],['Derrick Henry',0.645,0.548,'-295'],['Bijan Robinson',0.609,0.510,'-200'],['Christian McCaffrey',0.608,0.515,'-240'],['Kyren Williams',0.602,0.447,'-160',1],['Josh Allen',0.587,0.452,'-127'],['Kenneth Walker III',0.583,0.528,'-220'],['Amon-Ra St. Brown',0.545,0.403,'-100',1]];
+    return { rows: d.map(x => ({
+      player: x[0], ours: Math.round(x[1] * 100) + '%', odds: x[3] + ' · book ' + Math.round(x[2] * 100) + '%',
+      fill: 'position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: #1F4FA3; width: ' + (x[1] / 0.75 * 100).toFixed(1) + '%;',
+      tick: 'position: absolute; top: -3px; bottom: -3px; width: 2px; background: #16181D; left: ' + (x[2] / 0.75 * 100).toFixed(1) + '%;',
+      label: (x[4] ? 'Remove ' : 'Add ') + x[0],
+      icon: x[4] ? '✓' : '+',
+      btn: 'width: 44px; height: 44px; border-radius: 10px; font-family: inherit; font-size: 18px; font-weight: 600; ' + (x[4] ? 'background: #1F4FA3; color: #FFFFFF; border: 1px solid #1F4FA3;' : 'background: #FFFFFF; color: #16181D; border: 1px solid #D6D1C6;')
+    })) };
+  }
+}
+</script>
+
+
+</body></html>

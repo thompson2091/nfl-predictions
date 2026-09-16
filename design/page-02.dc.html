@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <script src="9ef923f1-aa0e-4daf-9a25-a1832f3cc8fc"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style></style>
+  <style>
+    body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', sans-serif; background: #F5F3EE; color: #16181D; font-variant-numeric: tabular-nums; }
+    a { color: #16181D; } a:hover { color: #1F4FA3; }
+  </style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #F5F3EE; display: flex; flex-direction: column;">
+  <header style="height: 64px; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; gap: 40px; border-bottom: 1px solid #E3DFD6; background: #FFFFFF;">
+    <div style="font-family: 'Newsreader', Georgia, serif; font-size: 22px; font-weight: 600;">SquaresPro</div>
+    <nav style="display: flex; gap: 8px; flex-grow: 1;">
+      <a href="Main.dc.html" aria-current="page" style="padding: 10px 14px; border-radius: 8px; background: #EFECE5; font-weight: 600; font-size: 15px; text-decoration: none;">This week</a>
+      <a href="Shortlist.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Shortlist</a>
+      <a href="Saved.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Saved</a>
+      <a href="Ladder.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Ladder</a>
+      <a href="Live.dc.html" style="padding: 10px 14px; border-radius: 8px; font-size: 15px; text-decoration: none; color: #5E6168;">Model</a>
+    </nav>
+    <div style="font-size: 14px; color: #5E6168;">2026 · Week 2</div>
+  </header>
+
+  <main style="padding: 28px 40px; display: flex; flex-direction: column; gap: 24px;">
+    <a href="Main.dc.html" style="font-size: 14px; color: #5E6168; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px;">
+      <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>All games
+    </a>
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: -12px;">
+      <h1 style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 500; font-size: 44px;">Detroit at Buffalo</h1>
+      <div style="font-size: 15px; color: #5E6168;">Anytime TD</div>
+    </div>
+
+    <section style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 24px 28px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: #6B6E75;">
+        <span>Scores the first touchdown</span><span>Expected TDs: DET 2.78 · BUF 3.51</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: baseline;">
+        <div><span style="font-size: 36px; font-weight: 700;">40%</span> <span style="font-size: 16px; font-weight: 600; margin-left: 6px;">DET</span></div>
+        <div><span style="font-size: 16px; font-weight: 600; margin-right: 6px;">BUF</span> <span style="font-size: 36px; font-weight: 700;">60%</span></div>
+      </div>
+      <div style="position: relative; height: 14px; border-radius: 7px; overflow: hidden; display: flex;">
+        <div style="width: 40%; background: #1F4FA3;"></div>
+        <div style="width: 60%; background: #B9C8E6;"></div>
+      </div>
+      <div style="position: relative; height: 18px;">
+        <div style="position: absolute; left: 43%; top: -26px; width: 2px; height: 22px; background: #16181D;"></div>
+        <div style="position: absolute; left: 43%; transform: translateX(-50%); font-size: 12px; color: #5E6168; white-space: nowrap;">Book 43 / 57</div>
+      </div>
+    </section>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px;">
+      <sc-for list="{{teams}}" as="t" hint-placeholder-count="2">
+        <section style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 20px 24px;">
+          <h2 style="margin: 0 0 8px; font-size: 18px; font-weight: 600;">{{t.name}}</h2>
+          <sc-for list="{{t.players}}" as="p" hint-placeholder-count="4">
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) 180px 48px 48px 64px; gap: 14px; align-items: center; height: 52px; border-top: 1px solid #F0EDE6;">
+              <div style="font-size: 15px; font-weight: 600;">{{p.name}}</div>
+              <div style="position: relative; height: 8px; background: #EEEBE4; border-radius: 4px;">
+                <div style="{{p.fill}}"></div>
+                <div style="{{p.tick}}"></div>
+              </div>
+              <div style="text-align: right; font-weight: 700;">{{p.ours}}</div>
+              <div style="text-align: right; color: #6B6E75;">{{p.book}}</div>
+              <div style="text-align: right;">{{p.odds}}</div>
+            </div>
+          </sc-for>
+        </section>
+      </sc-for>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    const mk = (name, o, b, odds) => ({
+      name, ours: Math.round(o * 100) + '%', book: Math.round(b * 100) + '%', odds,
+      fill: 'position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: #1F4FA3; width: ' + (o / 0.75 * 100).toFixed(1) + '%;',
+      tick: 'position: absolute; top: -4px; bottom: -4px; width: 2px; background: #16181D; left: ' + (b / 0.75 * 100).toFixed(1) + '%;'
+    });
+    return {
+      teams: [
+        { name: 'Detroit', players: [mk('Jahmyr Gibbs', 0.663, 0.619, '-330'), mk('Amon-Ra St. Brown', 0.545, 0.403, '-100'), mk('Jameson Williams', 0.366, 0.273, '+195'), mk('Sam LaPorta', 0.328, 0.260, '+210')] },
+        { name: 'Buffalo', players: [mk('Josh Allen', 0.587, 0.452, '-127'), mk('James Cook', 0.559, 0.508, '-170'), mk('DJ Moore', 0.369, 0.329, '+145'), mk('Dalton Kincaid', 0.348, 0.288, '+180')] }
+      ]
+    };
+  }
+}
+</script>
+
+
+</body></html>
