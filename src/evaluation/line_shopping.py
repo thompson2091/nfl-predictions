@@ -43,9 +43,11 @@ def best_vs_consensus(season: int, week: int, market: str = "anytime_td",
     # The books archive names a game three different ways depending on when the
     # row was written; grouping on the raw value splits one player across two
     # ids. See `odds_history.resolve_game_ids`.
-    from src.ingest.odds_history import resolve_game_ids
+    from src.ingest.odds_history import drop_in_play, resolve_game_ids
 
-    df = resolve_game_ids(pl.read_parquet(BOOKS_PATH)).filter(
+    # `drop_in_play` first: an in-play quote is both the newest and the most
+    # extreme, so it wins the dedupe below and then wins "best price" too.
+    df = drop_in_play(resolve_game_ids(pl.read_parquet(BOOKS_PATH))).filter(
         (pl.col("season") == season) & (pl.col("week") == week)
         & (pl.col("market") == market) & (pl.col("side") == "yes")
         & (pl.col("snapshot") == snapshot)

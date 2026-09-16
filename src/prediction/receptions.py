@@ -13,26 +13,40 @@ first version of this model beat receptions by +17-22% ROI and that was the NGS
 existence leak; the edge was the bug. So this exists to be measured against the
 close and to be wrong in public, not to be bet.
 
-NOT WIRED IN, AND NOT YET TRUSTWORTHY. Nothing imports this: it is not in the
-weekly pipeline, not in MARKETS and not on the dashboard, and it must not be
-until the following is resolved.
+NOT WIRED IN YET. Nothing imports this: it is not in the weekly pipeline, not
+in MARKETS and not on the dashboard. The two bugs that held it there are fixed
+and both are worth knowing about, because neither failed loudly.
 
-The first board it produced carried +70 point edges, which in this project
-means a bug rather than an edge. It is the null-as-zero trap again, landing on
-a count model for the first time. Caleb Southampton-style rookies have no usage
-history at all — `player_targets_avg_3g` and `player_receptions_avg_3g` are
-null — and `prepare_data` fills a missing feature with 0.0. So the model reads
-"91% snap share, listed starter, second on the depth chart, zero targets, zero
-receptions" and predicts 8.52 receptions, above Amon-Ra St. Brown on 14 targets
-and 9.7 receptions a game.
+The first board this produced carried +70 point edges into a 7% hold market,
+which in this project means a bug rather than an edge, and it was two bugs.
 
-On the yes/no markets the same nulls move a probability by a few points and are
-absorbed by densifying and carry-forward. On a count model they move the mean
-itself, and the line maths then turns a wrong mean into a confident wrong
-probability at every line. Two things to check before this is believed: that
-the serving path applies `trainer._filter_low_activity`, which the TD predict
-path runs and this does not, and whether the fix belongs in the features rather
-than the filter — a player with no history is not a player with zero usage.
+One was representation. Serving went through `trainer.prepare_data`, which
+zero-fills nulls because the touchdown models want it there; training builds
+its matrix with a bare `to_numpy()`, which leaves them NaN. A rookie with no
+recorded target therefore reached the model as a 91%-snap listed starter who is
+never thrown to, and scored 8.52 expected receptions — above Amon-Ra St. Brown
+on 14 targets a game. Read with the nulls intact he makes 4.96 and the top of
+the board is Chase, Nacua and St. Brown. `src/models/count.py:design_matrix` is
+now the single definition all three call sites use.
+
+The other was time. Sunday's capture slots cannot all be pre-kickoff at once,
+so the archive holds genuinely in-play prices filed under `close`, and every
+dedupe in this project keeps the newest capture. Elic Ayomanor's Over 0.5 came
+back at +235 from one book in the fourth quarter, displacing a four-book -205
+from three hours earlier. `odds_history.drop_in_play` removes them, here and in
+grading, line shopping, CLV and the wager log, all of which had the same hole.
+
+Graded on 2026 week 1 with both fixed: 283 priced rows, model log loss 0.7030
+against the market's 0.6769, mean mu 3.03 against 2.82 actual. The market is
+better calibrated than we are, out of sample, which is the same answer 2025
+gave (0.689 against 0.644) and is what a 7% hold market looks like when you
+bring a model to it. The largest remaining disagreements are the model being
+overconfident at the tails, not the pipeline lying: on the rows where it
+claimed the market was 20 points too high, it said 23.0% and the market said
+49.5% against an outcome of 47.8%.
+
+So this is honest now, and it is still not an edge. It exists to be measured
+against the close and to be wrong in public, not to be bet.
 
 Features are the anytime-TD matrix. The candidate pool (who is on a roster this
 week) and the usage history are the same question whatever is being predicted;
@@ -80,7 +94,7 @@ def expected_counts(season: int, week: int, art: dict | None = None
     because it is the honest half: `mu` is what the model actually says, and
     everything downstream is that number pushed through a distribution.
     """
-    from src.models.trainer import prepare_data
+    from src.models.count import design_matrix
     from src.prediction.predict import _norm_name_expr
 
     art = art or load_model()
@@ -96,15 +110,12 @@ def expected_counts(season: int, week: int, art: dict | None = None
     if df.height == 0:
         return None
 
-    # `prepare_data` wants a target column and we are predicting, not scoring.
-    # Handing it a constant keeps one definition of how a matrix becomes a
-    # numpy array — including that a feature the model asks for and the matrix
-    # does not have is filled with 0.0, which is the behaviour that scored
-    # every tight end as though it were not one when a reference level moved.
-    if "target" not in df.columns:
-        df = df.with_columns(pl.lit(0).alias("target"))
-    X, _ = prepare_data(df, list(art["feature_names"]))
-    mu = np.clip(art["model"].predict(X), 1e-6, None)
+    # The same matrix builder the model was fitted through. It used to be
+    # `trainer.prepare_data`, which zero-fills nulls for the touchdown models
+    # and thereby told this one that a rookie with no recorded target is a
+    # starter who is never thrown to. See `design_matrix`.
+    mu = np.clip(art["model"].predict(design_matrix(df, list(art["feature_names"]))),
+                 1e-6, None)
 
     return df.select([
         "season", "week", "game_id", "player_id", "player_name", "team",
@@ -118,7 +129,8 @@ def board_for_week(season: int, week: int, snapshot: str = "close"
 
     Returns `(board, message)`; an empty board always carries a reason.
     """
-    from src.ingest.odds_history import HISTORY_PATH, resolve_game_ids
+    from src.ingest.odds_history import (HISTORY_PATH, drop_in_play,
+                                        resolve_game_ids)
     from src.models.count import fair_two_way, prob_over
 
     art = load_model()
@@ -133,7 +145,7 @@ def board_for_week(season: int, week: int, snapshot: str = "close"
 
     if not HISTORY_PATH.exists():
         return pl.DataFrame(), "no odds archive on disk"
-    lines = resolve_game_ids(pl.read_parquet(HISTORY_PATH)).filter(
+    lines = drop_in_play(resolve_game_ids(pl.read_parquet(HISTORY_PATH))).filter(
         (pl.col("season") == season) & (pl.col("week") == week)
         & (pl.col("market") == "receptions") & (pl.col("snapshot") == snapshot))
     if lines.height == 0:
@@ -142,8 +154,10 @@ def board_for_week(season: int, week: int, snapshot: str = "close"
             f"({snapshot}) — the market is captured, so this means the week "
             "has not been snapshotted rather than that books are not posting")
 
-    # Newest capture per player and line. A week holds several snapshots and
-    # pooling them prices one line against a number from three days ago.
+    # Newest pre-kickoff capture per player and line. A week holds several
+    # snapshots and pooling them prices one line against a number from three
+    # days ago; `drop_in_play` above is what makes "newest" mean "last one you
+    # could have bet" rather than "furthest into the fourth quarter".
     lines = (lines.sort("captured_at")
              .unique(subset=["player_name_norm", "point"], keep="last")
              .select(["player_name_norm", "point", "odds", "implied_prob",

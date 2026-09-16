@@ -169,7 +169,11 @@ def _attach_closing(graded: pl.DataFrame, target_type: str) -> pl.DataFrame:
     )
     if hist.height == 0:
         return graded.with_columns(pl.lit(None, dtype=pl.Int64).alias("closing_odds"))
-    close = (hist.sort("captured_at")
+    # The closing price a bet is graded against must be one that was still on
+    # offer at kickoff. See `odds_history.drop_in_play`.
+    from src.ingest.odds_history import drop_in_play
+
+    close = (drop_in_play(hist).sort("captured_at")
                  .group_by(["game_id", "player_name_norm"])
                  .agg(pl.col("odds").last().alias("closing_odds")))
     return graded.join(close, on=["game_id", "player_name_norm"], how="left")

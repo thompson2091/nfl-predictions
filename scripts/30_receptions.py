@@ -28,7 +28,8 @@ sys.path.insert(0, ".")
 import numpy as np
 import polars as pl
 
-from src.models.count import XGBCountModel, fair_two_way, prob_over
+from src.models.count import (XGBCountModel, design_matrix, fair_two_way,
+                             prob_over)
 from src.utils.config import get_config
 from src.utils.paths import get_path
 
@@ -60,7 +61,9 @@ def train(df: pl.DataFrame, fcols: list[str]) -> XGBCountModel:
     va = df.filter(pl.col("season") == cfg["splits"]["val_season"])
 
     def XY(d):
-        return d.select(fcols).to_numpy(), d["receptions"].to_numpy().astype(float)
+        # `design_matrix`, not a bare `to_numpy`, so training and the weekly
+        # board build the matrix from one definition. See src/models/count.py.
+        return design_matrix(d, fcols), d["receptions"].to_numpy().astype(float)
 
     Xtr, ytr = XY(tr)
     Xva, yva = XY(va)
@@ -102,7 +105,7 @@ def backtest(m: XGBCountModel, df: pl.DataFrame, fcols: list[str], season: int) 
         print(f"  {season}: no graded lines in the archive")
         return None
     te = df.filter(pl.col("season") == season)
-    mu = m.predict_mu(te.select(fcols).to_numpy())
+    mu = m.predict_mu(design_matrix(te, fcols))
     te = te.select(["season", "week", "player_id", "game_id"]).with_columns(
         pl.Series("mu", mu))
     j = lines.join(te, on=["season", "week", "player_id"], how="inner")

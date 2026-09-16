@@ -361,6 +361,87 @@ def resolve_game_ids(df: pl.DataFrame) -> pl.DataFrame:
             .drop(["_away", "_home", "_resolved", "_pair_id", "_pair_week"]))
 
 
+#: How long after kickoff a live capture can still land. The Sunday slots in
+#: `scripts/25_odds_schedule.py` are spaced across the day so that a late-window
+#: game is covered before it starts, which necessarily means an early-window
+#: game is already playing. Nothing fires more than this far past any kickoff,
+#: so a timestamp beyond it is a backfill's write time rather than a live price.
+LIVE_LAG_HOURS = 12.0
+
+
+def _kickoffs() -> "pl.DataFrame | None":
+    """game_id -> kickoff in UTC, from the schedule."""
+    path = get_path("raw") / "schedules.parquet"
+    if not Path(path).exists():
+        return None
+    s = pl.read_parquet(path).select(["game_id", "gameday", "gametime"])
+    return (s.with_columns(
+        (pl.col("gameday") + " " + pl.col("gametime"))
+        .str.to_datetime("%Y-%m-%d %H:%M", time_zone="America/New_York",
+                         strict=False)
+        .dt.convert_time_zone("UTC").alias("_kick"))
+        .select(["game_id", "_kick"])
+        .filter(pl.col("_kick").is_not_null()))
+
+
+def drop_in_play(df: pl.DataFrame) -> pl.DataFrame:
+    """Remove prices the book was quoting after the game had already started.
+
+    A "close" snapshot is supposed to be the last price you could have taken.
+    The Sunday capture slots cannot all be pre-kickoff at once — the 19:50 UTC
+    firing that catches the late window is two hours into the early one — so
+    the archive holds a tail of genuinely in-play quotes filed under `close`.
+    They are a small share and a large problem, because every consumer in this
+    project resolves a duplicate by keeping the newest capture, which is
+    precisely the rule that selects them.
+
+    Measured 2026-09-16 on week 1: Elic Ayomanor's Over 0.5 receptions came
+    back at +235 from one book, captured at 19:36 UTC against a 17:00 kickoff.
+    That is a fourth-quarter price on a receiver who had not yet caught a pass,
+    and it displaced a four-book consensus of -205 taken three hours earlier.
+    Priced against a model that does not know the game is in progress, it read
+    as a 68-point edge.
+
+    In-play is decided by `book_last_update` — when the book last moved this
+    market, which the API reports and which means the same thing for a live
+    capture and a backfilled one. Across 1,179,226 archived quotes that puts
+    every in-play row in 2026 (2,775 of them, 4.06% of the season's closes) and
+    none at all in 2023-2025, which is what the historical endpoint being asked
+    for a pre-kickoff instant should look like.
+
+    Frames without that column — the consensus archive predates it — fall back
+    to `captured_at`, bounded by `LIVE_LAG_HOURS`. The bound is what keeps a
+    backfill safe: its rows carry an August 2026 write time for a 2023 kickoff,
+    which is months past, not hours.
+    """
+    if df.height == 0 or "game_id" not in df.columns:
+        return df
+    kicks = _kickoffs()
+    if kicks is None or kicks.height == 0:
+        return df
+
+    if "book_last_update" in df.columns:
+        priced = (pl.col("book_last_update")
+                  .str.to_datetime("%Y-%m-%dT%H:%M:%SZ", strict=False)
+                  .dt.replace_time_zone("UTC"))
+        # Exact: the API's own market time, so no window is needed.
+        in_play = pl.col("_kick").is_not_null() & (priced > pl.col("_kick"))
+    elif "captured_at" in df.columns:
+        priced = (pl.col("captured_at")
+                  .str.to_datetime("%Y-%m-%dT%H:%M:%S%:z", strict=False)
+                  .dt.convert_time_zone("UTC"))
+        in_play = (pl.col("_kick").is_not_null() & (priced > pl.col("_kick"))
+                   & (priced < pl.col("_kick")
+                      + pl.duration(hours=LIVE_LAG_HOURS)))
+    else:
+        return df
+
+    cols = df.columns
+    return (df.join(kicks, on="game_id", how="left")
+              .filter(~in_play.fill_null(False))
+              .select(cols))
+
+
 def load_graded_history(target_type: str = "anytime_td") -> pl.DataFrame | None:
     """Return archived prices joined to actual outcomes, one row per player-game.
 
@@ -392,7 +473,9 @@ def load_graded_history(target_type: str = "anytime_td") -> pl.DataFrame | None:
         closing = hist.filter(pl.col("snapshot") == "close")
         if closing.height:
             hist = closing
-    hist = hist.sort("captured_at").unique(
+    # Before keeping the newest, discard the ones taken after kickoff: "newest"
+    # would otherwise mean "most in-play". See `drop_in_play`.
+    hist = drop_in_play(hist).sort("captured_at").unique(
         subset=["game_id", "player_name_norm"], keep="last"
     )
 
@@ -520,7 +603,7 @@ def best_prices(season: int, week: int, market: str = "anytime_td",
     # The same dedupe `line_shopping.best_vs_consensus` does, which is what the
     # app reads — so the two agreed on nothing while looking like the same
     # measurement.
-    df = (df.sort("captured_at")
+    df = (drop_in_play(df).sort("captured_at")
             .unique(subset=["game_id", "player_name_norm", "bookmaker"],
                     keep="last"))
 

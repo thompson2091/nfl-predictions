@@ -63,7 +63,7 @@ def line_movement(target_type: str = "anytime_td") -> pl.DataFrame | None:
     # Every join below is keyed on game_id, so without this the backfilled
     # seasons match and every live one is dropped without a word — which is how
     # this reported three seasons all through 2026. See `resolve_game_ids`.
-    from src.ingest.odds_history import resolve_game_ids
+    from src.ingest.odds_history import drop_in_play, resolve_game_ids
     hist = resolve_game_ids(hist)
 
     hist = hist.filter(pl.col("market") == market_for_target(target_type))
@@ -85,7 +85,10 @@ def line_movement(target_type: str = "anytime_td") -> pl.DataFrame | None:
                         pl.col("odds").alias("open_odds")])
     )
     closes = (
-        hist.filter(pl.col("snapshot") == "close")
+        # An in-play close is not a close. Leaving it in credits the model with
+        # movement the game itself caused, which is the opposite of what CLV
+        # claims to measure. See `odds_history.drop_in_play`.
+        drop_in_play(hist.filter(pl.col("snapshot") == "close"))
         .sort("captured_at").unique(subset=keys, keep="last")
         .select(keys + [pl.col("implied_prob").alias("close_prob"),
                         pl.col("odds").alias("close_odds")])

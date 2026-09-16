@@ -59,6 +59,44 @@ from scipy.optimize import minimize_scalar
 MAX_COUNT = 25
 
 
+def design_matrix(df, feature_names: list[str]) -> np.ndarray:
+    """The feature matrix this model is fitted on, and the only one it is scored on.
+
+    Missing stays missing. XGBoost has a native representation for an absent
+    value — at every split it learns which way to send a NaN — and that is what
+    training hands it, because `polars.to_numpy()` turns a null into a NaN.
+    Fill those nulls with 0.0 instead and the row stops being routed by that
+    default and starts being routed by where zero actually falls, which on a
+    usage feature is the pocket holding players who are measured and not used.
+
+    That is not a rounding difference on a count model. The serving path used
+    to route through `trainer.prepare_data`, which ends in
+    `np.nan_to_num(X, nan=0.0)` because the touchdown models want it there, and
+    the first receptions board it produced led with a rookie at 8.52 expected
+    receptions — above the best receiver in the league, from a player with no
+    recorded target. His usage features were null, they arrived as zeros, and
+    the model read a 91%-snap listed starter who is never thrown to, which is
+    not a player who exists. Scored with the nulls intact he makes 4.96 and the
+    top of the board is Chase, Nacua and St. Brown. The population mean moved
+    by 0.02; only the rows worth betting moved.
+
+    A player with no history is not a player with zero usage, and 0.0 is the
+    one value that says he is. So this function exists to be called by the
+    trainer, the backtest and the weekly board alike — three call sites that
+    previously agreed by coincidence and drifted the moment one of them reached
+    for a helper written for a different model.
+    """
+    import polars as pl
+
+    missing = [c for c in feature_names if c not in df.columns]
+    if missing:
+        # Null, not zero: a feature the matrix does not carry is unknown, and
+        # the model already knows what to do with unknown.
+        df = df.with_columns([pl.lit(None, dtype=pl.Float64).alias(c)
+                              for c in missing])
+    return df.select(feature_names).to_numpy().astype(np.float64)
+
+
 def fit_dispersion(mu: np.ndarray, y: np.ndarray) -> dict:
     """Fit the negative-binomial dispersion that turns mu into a distribution.
 
