@@ -209,6 +209,78 @@ def _implied(odds) -> float | None:
     return (100.0 / (o + 100.0)) if o > 0 else (abs(o) / (abs(o) + 100.0))
 
 
+def _played_weeks(season: int) -> set[int]:
+    """Weeks of `season` whose play-by-play is on disk.
+
+    The gate that decides whether grading is possible at all, and the one that
+    would be easy to leave out. A week that has not been played carries a
+    `target` of 0 on every candidate, so grading against it reads as every pick
+    losing — which is not a bad week, it is no week. Play-by-play is what the
+    labels are extracted from, so a week absent there cannot have an outcome.
+    """
+    from src.utils.paths import get_path
+
+    path = get_path("raw") / "pbp.parquet"
+    if not path.exists():
+        return set()
+    weeks = (pl.scan_parquet(path)
+             .filter(pl.col("season") == season)
+             .select("week").unique().collect())
+    return {int(w) for w in weeks["week"].to_list() if w is not None}
+
+
+def _outcomes(target_type: str) -> pl.DataFrame | None:
+    """Did each candidate score, by season, week and normalised name.
+
+    Read off the candidate matrix rather than re-derived from play-by-play:
+    `target` there is the same column the model is trained against, so a pick
+    is graded on exactly the event the model was asked to predict. Deriving a
+    second definition here is how a rule comes to be scored on something
+    adjacent to what it claimed.
+    """
+    from src.prediction.predict import _norm_name_expr
+    from src.utils.paths import get_path
+
+    path = get_path("processed", target_type) / "features.parquet"
+    if not path.exists():
+        return None
+    df = (pl.scan_parquet(path)
+          .select(["season", "week", "player_name", "target"])
+          .collect())
+    if df.height == 0:
+        return None
+    return (df.with_columns([
+                pl.col("season").cast(pl.Int64), pl.col("week").cast(pl.Int64),
+                _norm_name_expr("player_name").alias("player_name_norm"),
+                pl.col("target").cast(pl.Int64).alias("scored")])
+            .select(["season", "week", "player_name_norm", "scored"])
+            .unique(subset=["season", "week", "player_name_norm"], keep="last"))
+
+
+def _pnl(kind: str, took_prob: float, fair_prob: float | None,
+         scored: int) -> float | None:
+    """One pick's return, flat, in units of the thing staked.
+
+    A back is the ordinary case: the price you took pays `(1 - q) / q` when it
+    lands and costs the stake when it does not.
+
+    A lay is scored the other way up, and at the de-vigged price rather than
+    the posted one, because the posted price has no No side to take — the same
+    convention `shortlist_backtest.fade_side` uses, win `1` and lose
+    `p / (1 - p)` inverted. Two formulas for this would be two different claims
+    wearing one name, so this defers to that one rather than restating it.
+    """
+    if scored is None:
+        return None
+    if kind == "lay":
+        if fair_prob is None or not (0.0 < fair_prob < 1.0):
+            return None
+        return -(1.0 - fair_prob) / fair_prob if scored == 1 else 1.0
+    if took_prob is None or not (0.0 < took_prob < 1.0):
+        return None
+    return (1.0 - took_prob) / took_prob if scored == 1 else -1.0
+
+
 def score(target_type: str, path: Path | str = PICKS_PATH) -> dict | None:
     """What the tracked picks have done: closing-line value first, then results.
 
@@ -249,6 +321,35 @@ def score(target_type: str, path: Path | str = PICKS_PATH) -> dict | None:
                              "clv_pp": (close - took) * 100
                                        * sides.get(r["rule"], 1.0)})
 
+    # ── Results, where the week has actually been played ──────────────────
+    graded_rows = []
+    outcomes = _outcomes(target_type)
+    if outcomes is not None:
+        playable = {
+            int(sn): _played_weeks(int(sn))
+            for sn in rows["season"].unique().to_list() if sn is not None
+        }
+        g = rows.join(outcomes,
+                      on=["season", "week", "player_name_norm"], how="left")
+        kinds = {r["name"]: r.get("kind", "back") for r in RULES}
+        for r in g.iter_rows(named=True):
+            if int(r["week"]) not in playable.get(int(r["season"]), set()):
+                continue
+            if r.get("scored") is None:
+                continue
+            took = implied_odds(r["odds"])
+            fair = r.get("book")
+            v = _pnl(kinds.get(r["rule"], "back"), took,
+                     float(fair) if fair is not None else None,
+                     int(r["scored"]))
+            if v is None:
+                continue
+            right = (int(r["scored"]) == 0 if kinds.get(r["rule"]) == "lay"
+                     else int(r["scored"]) == 1)
+            graded_rows.append({"rule": r["rule"], "pnl": v, "right": right,
+                                "season": int(r["season"]),
+                                "week": int(r["week"])})
+
     out = {}
     for rule in sorted(set(rows["rule"].to_list())):
         mine = [c for c in clv_rows if c["rule"] == rule]
@@ -264,4 +365,15 @@ def score(target_type: str, path: Path | str = PICKS_PATH) -> dict | None:
             "beat_close_pct": (len([c for c in mine if c["clv_pp"] > 0]) / len(mine)
                                if mine else None),
         }
+        # `graded` stays absent until a week has been played, which is the
+        # honest shape: a rule with picks and no results yet is the normal
+        # state for a live week, and an empty block would read as a verdict.
+        done = [x for x in graded_rows if x["rule"] == rule]
+        if done:
+            out[rule]["graded"] = {
+                "picks": len(done),
+                "weeks": len({(x["season"], x["week"]) for x in done}),
+                "landed_pct": len([x for x in done if x["right"]]) / len(done),
+                "return_pct": 100.0 * sum(x["pnl"] for x in done) / len(done),
+            }
     return {"target_type": target_type, "rules": out}

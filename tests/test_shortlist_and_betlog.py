@@ -451,3 +451,80 @@ def test_the_records_can_be_moved_out_of_the_way(monkeypatch, tmp_path):
         importlib.reload(importlib.import_module(name))
     from src.evaluation.betlog import LOG_PATH as back
     assert back.parent.name == "data"
+
+
+# ── Grading the tracked rules on results ──────────────────────────────────
+#
+# `score` measured closing-line value and nothing else for as long as it
+# existed, while its own docstring promised "closing-line value first, then
+# results" and described a `graded` block that was never written. An empty
+# result therefore read as "the week has not finished yet" when it meant "this
+# never grades anything" — the same shape as the first-TD unpriced view, an
+# absence wearing the clothes of a pending state.
+
+def test_an_unplayed_week_is_not_graded_as_a_week_everyone_lost():
+    """The gate the whole thing rests on.
+
+    A week with no play-by-play carries `target = 0` on every candidate, so
+    grading it scores every back pick as a loss and every lay as a win. That is
+    not a bad week and not a good one; it is no week, and the only thing that
+    separates the two is whether the games were played.
+    """
+    from src.evaluation import tracked_rules
+
+    played = tracked_rules._played_weeks(2026)
+    assert played, "2026 has play-by-play on disk; the gate should see it"
+
+    import polars as pl
+    from src.utils.paths import get_path
+
+    feats = get_path("processed", "anytime_td") / "features.parquet"
+    if not feats.exists():
+        pytest.skip("no feature matrix on disk")
+    built = set((pl.scan_parquet(feats)
+                 .filter(pl.col("season") == 2026)
+                 .select("week").unique().collect())["week"].to_list())
+    unplayed = built - played
+    assert unplayed, "expected at least one built-but-unplayed week to guard"
+
+    res = tracked_rules.score("anytime_td")
+    if res is None:
+        pytest.skip("no tracked picks recorded")
+    for rule, r in res["rules"].items():
+        g = r.get("graded")
+        if g:
+            assert g["weeks"] <= len(played), (
+                f"{rule} graded {g['weeks']} weeks against {len(played)} played")
+
+
+def test_a_lay_is_scored_the_other_way_up():
+    """Right means the player did NOT score, and the return says so."""
+    from src.evaluation.tracked_rules import _pnl
+
+    # Laying a 10% player: he stays out and it pays 1, he scores and it costs
+    # nine — the de-vigged price, which is the only price a No side has.
+    assert _pnl("lay", took_prob=0.05, fair_prob=0.10, scored=0) == 1.0
+    assert _pnl("lay", 0.05, 0.10, 1) == pytest.approx(-9.0)
+    # Backing the same price is the ordinary way round.
+    assert _pnl("back", 0.10, 0.10, 1) == pytest.approx(9.0)
+    assert _pnl("back", 0.10, 0.10, 0) == -1.0
+
+
+def test_the_lay_return_is_the_one_the_fade_measurement_already_uses():
+    """Two formulas for this would be two claims wearing one name."""
+    import numpy as np
+
+    from src.evaluation.tracked_rules import _pnl
+
+    for p in (0.04, 0.07, 0.11, 0.25):
+        for scored in (0, 1):
+            theirs = float(np.where(scored == 1, -(1.0 - p) / p, 1.0))
+            assert _pnl("lay", None, p, scored) == pytest.approx(theirs), p
+
+
+def test_a_pick_with_no_outcome_is_left_out_rather_than_counted_as_a_loss():
+    from src.evaluation.tracked_rules import _pnl
+
+    assert _pnl("back", 0.10, 0.10, None) is None
+    assert _pnl("lay", 0.10, None, 0) is None, (
+        "a lay with no de-vigged price has no price to lay at")

@@ -2010,6 +2010,21 @@ function trackedCard(rule, record) {
               'were recorded. Readable in dozens, where profit needs hundreds.' },
       { k: 'Beat the close',
         v: has(r.beat_close_pct) ? pct(r.beat_close_pct, 0) : '\u2014', d: ' ' },
+      // Results only appear once a week has actually been played. A rule with
+      // picks and no grades is the normal state for a live week, so the two
+      // tiles are absent rather than dashed — an empty verdict reads as a
+      // verdict.
+      r.graded ? { k: 'Landed', v: pct(r.graded.landed_pct, 0),
+        d: r.graded.picks + ' graded, ' + r.graded.weeks +
+           (r.graded.weeks === 1 ? ' week' : ' weeks'),
+        help: rule.kind === 'lay'
+          ? 'How often the player did not score, which is what a lay needs.'
+          : 'How often the player scored.' } : null,
+      r.graded ? { k: 'Returned', v: spct(r.graded.return_pct / 100, 1),
+        d: 'flat, at the recorded price',
+        help: rule.kind === 'lay'
+          ? 'Laying at the de-vigged price — win one unit, lose p/(1-p) — the same convention the fade measurement quotes, and a price no book posts. Capped at +100% by that convention, so a clean week reads as exactly that.'
+          : 'Flat stakes at the price recorded when the pick was made, not at the close.' } : null,
     ]));
   }
 
