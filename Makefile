@@ -392,6 +392,26 @@ dashboard:
 board:
 	$(PYTHON) scripts/47_export_site.py $(if $(WEEK),--week $(WEEK)) $(if $(filter command line,$(origin SEASON)),--season $(SEASON)) $(OPEN)
 
+# The same page, written to public/index.html and nothing else.
+#
+# Serving site/ does NOT serve this board: that directory also holds
+# index.html, which is the Streamlit recording from `make site`, and a web
+# server hands out index.html by default. Upload public/ instead and the only
+# thing in it is the board, under the name every host looks for.
+#
+# `public/` is disposable and rebuilt each time. Nothing else should be put
+# there, because the point of the directory is that its contents are
+# unambiguous.
+BRAND ?= SquaresPro
+launch:
+	@rm -rf public && mkdir -p public
+	$(PYTHON) scripts/47_export_site.py --out public/index.html --brand "$(BRAND)" $(if $(WEEK),--week $(WEEK))
+	@echo
+	@echo "public/ is ready to upload. It holds one file:"
+	@ls -la public/
+	@echo
+	@echo "Open it locally with:  open public/index.html"
+
 # Both pages, in one go. WHEN to run this, in order of how wrong the page is
 # if you do not:
 #

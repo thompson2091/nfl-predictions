@@ -107,7 +107,9 @@ ok('and shows no net while it is pending',
    settle(mk(['any|Nobody At All'])).net === 0);
 
 // Force a settled case rather than depending on the week having been played.
-DATA.results = { 'any|A': 'hit', 'any|B': 'hit', 'any|C': 'miss' };
+// Keyed by week, because a player is a different bet in a different week and a
+// shared key would settle a live parlay from a result it never had.
+DATA.results = { '2|any|A': 'hit', '2|any|B': 'hit', '2|any|C': 'miss' };
 ok('every leg hitting wins a full cover', settle(mk(['any|A', 'any|B'])).status === 'Won');
 ok('one leg missing loses a full cover', settle(mk(['any|A', 'any|C'])).status === 'Lost');
 const rr = settle(mk(['any|A', 'any|B', 'any|C'], { size: 2, slips: 3, outlay: 30 }));
@@ -117,6 +119,11 @@ ok('and pays once per winning pair, not once overall',
 ok('an unknown leg keeps the whole slip pending rather than losing it',
    settle(mk(['any|A', 'any|Unknown Person'])).status === 'Pending',
    'a name that fails to join must not read as a loss');
+// The week is load-bearing in the key: the same parlay in another week must
+// not pick up this week's answers.
+ok('a result from one week does not settle a parlay from another',
+   settle(mk(['any|A', 'any|B'], { week: 3 })).status === 'Pending',
+   'week 3 has no results, so a week-3 slip cannot be Won');
 
 // ── Combinations ────────────────────────────────────────────────────────
 //
@@ -153,12 +160,39 @@ ok('it is marked as coming from combinations', sv.from === 'combinations');
 // The whole point of the shape matching: a combination has to settle through
 // exactly the same code a hand-built slip does.
 DATA.results = {};
-cpool.slice(0, 3).forEach(r => { DATA.results[r.id] = 'hit'; });
+cpool.slice(0, 3).forEach(r => { DATA.results[DATA.week + '|' + r.id] = 'hit'; });
 ok('a saved combination settles like any other parlay',
    settle(sv).status === 'Won', settle(sv).status);
-DATA.results[cpool[0].id] = 'miss';
+DATA.results[DATA.week + '|' + cpool[0].id] = 'miss';
 ok('and loses when a leg misses', settle(sv).status === 'Lost');
 DATA.results = {};
 S.parlays = [];
+
+// ── Every market, and every view of the board ───────────────────────────
+//
+// The harness rendered only the default market until a launch check found that
+// nothing had ever exercised First TD or Receptions. First TD has an empty
+// shortlist this week and Receptions has a different table shape, so both are
+// exactly where a render would break.
+['any', 'first', 'rec'].forEach(mk => {
+  S.market = mk;
+  [['week', pageWeek], ['combos', pageCombos]].forEach(([name, fn]) => {
+    let err = null, out = null;
+    try { out = fn(); } catch (e) { err = e; }
+    ok(name + ' renders for market ' + mk, !err, err && err.message);
+    if (out) ok('  ' + name + '/' + mk + ' is not blank', textOf(out).join(' ').length > 40);
+  });
+  if (mk !== 'rec') ['all', 'short', 'fade'].forEach(v => {
+    S.fw.view = v;
+    let err = null;
+    try { pageWeek(); } catch (e) { err = e; }
+    ok('week/' + mk + ' renders view "' + v + '"', !err, err && err.message);
+  });
+  S.fw.view = 'all';
+});
+S.market = 'first'; S.fw.view = 'short';
+ok('an empty shortlist says so rather than showing an empty card',
+   /Nothing survives every filter/.test(textOf(pageWeek()).join(' ')));
+S.fw.view = 'all'; S.market = 'any';
 
 done();

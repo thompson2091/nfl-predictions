@@ -457,6 +457,51 @@ function rowsFor(key, view) {
 // could not read a favourite is a worse page than one with no favourites.
 const WK = () => (DATA.season || 0) + ':' + (DATA.week || 0);
 const KEY = what => 'sp:' + WK() + ':' + what;
+const LASTKEY = what => 'sp:' + (DATA.season || 0) + ':' + ((DATA.week || 1) - 1) + ':' + what;
+
+// Two weeks of parlays, and exactly two.
+//
+// Saved parlays are the one thing that cannot live in a single week, and the
+// reason is a timing trap rather than a preference. The slate holds a finished
+// week until the next one's roster lands, and the rollover that builds the next
+// week is the same run that extracts the finished week's touchdowns — so the
+// only export that can settle week 2 is the one that has already become week 3.
+// Scoped to one week, every saved parlay would read Pending forever and the
+// status dots would be decoration.
+//
+// So last week's are read, shown as settled, and dropped the week after. That
+// keeps the bound — nothing accumulates across a season — while letting a slip
+// saved on Wednesday actually resolve.
+function loadParlays() {
+  const now = (load('parlays', []) || []).map(p => ({ ...p, last: false }));
+  let prev = [];
+  try {
+    const raw = localStorage.getItem(LASTKEY('parlays'));
+    if (raw) prev = (JSON.parse(raw) || []).map(p => ({ ...p, last: true }));
+  } catch (e) { prev = []; }
+  return now.concat(prev);
+}
+function saveParlays(all) {
+  // Only this week's are written back. Last week's are read-only history and
+  // are owned by the key they were written under.
+  save('parlays', all.filter(p => !p.last).map(p => {
+    const { last, ...rest } = p;
+    return rest;
+  }));
+}
+// Anything older than last week is dead and will never be read again. Left
+// alone it is a season of orphaned keys in a store nobody is looking at.
+function prune() {
+  try {
+    const keep = [KEY(''), LASTKEY('')];
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf('sp:') === 0 && !keep.some(pre => k.indexOf(pre) === 0)) {
+        localStorage.removeItem(k);
+      }
+    }
+  } catch (e) { /* a store that will not enumerate cannot be tidied */ }
+}
 function load(what, fallback) {
   try {
     const raw = localStorage.getItem(KEY(what));
@@ -510,8 +555,9 @@ const S = {
 };
 
 function boot() {
+  prune();
   S.favs = load('favs', []);
-  S.parlays = load('parlays', []);
+  S.parlays = loadParlays();
   const sl = load('slip', null);
   if (sl && sl.legs) S.slip = Object.assign(S.slip, sl);
   if (!served(S.slip.market)) S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };
@@ -976,7 +1022,7 @@ function saveSlip() {
     savedAt: new Date().toISOString(),
   };
   S.parlays = S.parlays.concat([p]);
-  save('parlays', S.parlays);
+  saveParlays(S.parlays);
   S.saved = { sig: slipSignature(), id: p.id };
   render();
 }
@@ -1552,7 +1598,7 @@ function saveCombo(key, s, pool) {
     from: 'combinations',
   };
   S.parlays = S.parlays.concat([p]);
-  save('parlays', S.parlays);
+  saveParlays(S.parlays);
   S.notice = 'Saved ' + p.name + ' to your parlays.';
   render();
 }
@@ -1582,8 +1628,8 @@ function pageSaved() {
   main.appendChild(el('div', { class: 'pagehead' }, [
     el('div', {}, [
       el('h1', { text: 'Saved parlays' }),
-      el('p', { class: 'lede', text: 'Slips you have kept this week. They settle on their own '
-        + 'as games finish, and clear when the week rolls over.' }),
+      el('p', { class: 'lede', text: 'Slips you have kept. They settle on their own as games '
+        + 'finish, and last week’s drop off once this one is over.' }),
     ]),
     el('div', { class: 'summary' }, [
       el('div', {}, [el('div', { text: 'Settled' }), el('b', { text: String(settled.length) })]),
@@ -1637,7 +1683,10 @@ function pageSaved() {
 // hour longer.
 function settle(p) {
   const res = DATA.results || {};
-  const legs = p.legs.map(l => ({ ...l, state: res[l.id] || 'pending' }));
+  // Keyed by week as well as market and player: `any|Derrick Henry` is a
+  // different bet in week 2 than in week 3, and a shared key would settle a
+  // live parlay from a result it never had.
+  const legs = p.legs.map(l => ({ ...l, state: res[p.week + '|' + l.id] || 'pending' }));
   const pending = legs.some(l => l.state === 'pending');
   const hits = legs.filter(l => l.state === 'hit').length;
   let status = 'Pending', net = 0;
@@ -1662,7 +1711,8 @@ function parlayCard(p) {
     el('div', { style: 'min-width:0' }, [
       el('h2', { text: p.name }),
       el('div', { class: 'note', text: p.marketLabel + ' · Week ' + p.week + ' · '
-        + money(p.stake) + (p.size ? ' each · by ' + p.size + 's' : ' · every leg') }),
+        + money(p.stake) + (p.size ? ' each · by ' + p.size + 's' : ' · every leg')
+        + (p.last ? ' · last week' : '') }),
     ]),
     el('span', { class: 'pill ' + cls, text: p.status }),
   ]));
@@ -1691,14 +1741,20 @@ function parlayCard(p) {
   act.appendChild(el('button', { class: 'btn solid', style: 'flex-grow:1',
     text: pend ? 'Load into slip' : 'Rebuild for this week',
     onclick: () => loadParlay(p) }));
-  const del = el('button', { class: 'btn', style: 'width:44px;padding:0',
-    'aria-label': 'Delete ' + p.name, onclick: () => {
-      S.parlays = S.parlays.filter(x => x.id !== p.id);
-      save('parlays', S.parlays);
-      render();
-    } });
-  del.appendChild(svg(BIN, { size: 18 }));
-  act.appendChild(del);
+  // Last week's cards are history and are owned by the key they were written
+  // under, so there is no delete on them — a button that appeared to work and
+  // silently did not would be worse than its absence. They go on their own
+  // when the week turns over again.
+  if (!p.last) {
+    const del = el('button', { class: 'btn', style: 'width:44px;padding:0',
+      'aria-label': 'Delete ' + p.name, onclick: () => {
+        S.parlays = S.parlays.filter(x => x.id !== p.id);
+        saveParlays(S.parlays);
+        render();
+      } });
+    del.appendChild(svg(BIN, { size: 18 }));
+    act.appendChild(del);
+  }
   a.appendChild(act);
   return a;
 }
@@ -2008,6 +2064,14 @@ SHELL = """<!doctype html>
 </head>
 <body>
 <header class="top" id="top"></header>
+<noscript>
+  <div style="max-width:640px;margin:48px auto;padding:0 24px;font:16px/1.5 Georgia,serif">
+    <h1 style="font-family:Georgia,serif;font-weight:500">This page needs JavaScript</h1>
+    <p style="color:#5E6168">Every number here is computed in your browser — the board,
+    the parlay maths and the combinations search — so there is nothing to show without it.
+    Nothing is sent anywhere; that is the same reason it works with no network.</p>
+  </div>
+</noscript>
 <div id="root"></div>
 <footer style="padding:24px 40px 40px;color:var(--mut2);font-size:13px;max-width:900px">
 __FOOTER__

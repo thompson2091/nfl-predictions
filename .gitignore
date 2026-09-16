@@ -27,3 +27,6 @@ __pycache__/
 # Unattended cron output from scripts/weekly_odds.sh.
 logs/
 .claude/skills/*/.streamlit/
+
+# Built by `make launch`; disposable, rebuilt every time.
+public/

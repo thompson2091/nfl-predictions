@@ -63,7 +63,20 @@ def positions(season: int, week: int) -> dict[str, str]:
 
 
 def results(season: int, week: int) -> dict[str, str]:
-    """Leg id -> "hit" or "miss", for a week that has been graded.
+    """`<week>|<market>|<player>` -> "hit" or "miss", for this week and last.
+
+    Two weeks, not one, and the reason is a timing trap rather than a
+    preference. The slate holds a finished week until the next one's roster
+    lands (`src/evaluation/slate.py`), and the rollover that builds the next
+    week is the *same run* that extracts the finished week's touchdowns. So
+    the only export that could settle week 2 is the one that has already
+    become week 3. Keyed to one week, a saved parlay would read Pending until
+    its storage key stopped being read, and the status dots, the Won/Lost
+    filters and the net figure would be furniture.
+
+    The week is in the key because the markets are not unique across weeks:
+    `any|Derrick Henry` is a different bet in week 2 than in week 3, and
+    collapsing them would settle a live parlay from a result it never had.
 
     Keyed by the id the page builds a leg from (`<market>|<player>`), so
     settling is a lookup rather than a name match performed twice in two
@@ -82,12 +95,20 @@ def results(season: int, week: int) -> dict[str, str]:
     feats = get_path("processed", "anytime_td") / "features.parquet"
     if not Path(feats).exists():
         return {}
-    pool = (pl.scan_parquet(feats)
-            .filter((pl.col("season") == season) & (pl.col("week") == week))
-            .select(["player_id", "player_name"]).collect().unique(subset=["player_id"]))
-    if pool.height == 0:
-        return {}
 
+    out: dict[str, str] = {}
+    for wk in (w for w in (week - 1, week) if w and w > 0):
+        pool = (pl.scan_parquet(feats)
+                .filter((pl.col("season") == season) & (pl.col("week") == wk))
+                .select(["player_id", "player_name"]).collect()
+                .unique(subset=["player_id"]))
+        if pool.height == 0:
+            continue
+        out.update(_week_results(season, wk, pool))
+    return out
+
+
+def _week_results(season: int, week: int, pool: pl.DataFrame) -> dict[str, str]:
     out: dict[str, str] = {}
     for key, target in (("any", "anytime_td"), ("first", "first_td")):
         path = get_path("processed", target) / f"tds_{target}.parquet"
@@ -104,7 +125,7 @@ def results(season: int, week: int) -> dict[str, str]:
             continue
         scorers = set(td["td_player_id"].drop_nulls().to_list())
         for pid, name in pool.iter_rows():
-            out[f"{key}|{name}"] = "hit" if pid in scorers else "miss"
+            out[f"{week}|{key}|{name}"] = "hit" if pid in scorers else "miss"
     return out
 
 

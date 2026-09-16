@@ -68,9 +68,9 @@ def test_settlement_joins_on_id_because_the_names_are_not_the_same(site, tmp_pat
                         lambda kind, target=None: proc / target if target else proc)
     out = site.results(2026, 1)
 
-    assert out["any|CeeDee Lamb"] == "hit", "the id joined even though the names differ"
-    assert out["any|Nobody Scored"] == "miss"
-    assert not any(k.startswith("first|") for k in out), (
+    assert out["1|any|CeeDee Lamb"] == "hit", "the id joined even though the names differ"
+    assert out["1|any|Nobody Scored"] == "miss"
+    assert not any("|first|" in k for k in out), (
         "a market with no targets file contributes nothing, rather than "
         "marking everyone a miss")
 
@@ -213,3 +213,84 @@ def test_the_page_carries_its_own_fonts():
     assert faces.count("@font-face") == 2, "both faces are variable; one file each"
     assert "data:font/woff2;base64," in faces
     assert "http" not in faces, "no font may be fetched over the network"
+
+
+def test_the_results_map_covers_last_week_as_well_as_this_one(site, tmp_path,
+                                                              monkeypatch):
+    """Otherwise a saved parlay can never settle, and the feature is furniture.
+
+    The slate holds a finished week until the next one's roster lands, and the
+    rollover that builds the next week is the same run that extracts the
+    finished week's touchdowns. So the only export able to settle week 2 is the
+    one that has already become week 3. Carrying one week means every saved
+    parlay reads Pending until its key stops being read.
+
+    Falsified by narrowing the loop back to `(week,)`: week 1 disappears from
+    the map and the assertion below fails while nothing else does.
+    """
+    proc = tmp_path / "processed"
+    (proc / "anytime_td").mkdir(parents=True)
+    pl.DataFrame({
+        "season": [2026, 2026], "week": [1, 2],
+        "player_id": ["00-1", "00-1"], "player_name": ["A B", "A B"],
+    }).write_parquet(proc / "anytime_td" / "features.parquet")
+    pl.DataFrame({
+        "season": [2026], "week": [1], "td_player_id": ["00-1"],
+    }).write_parquet(proc / "anytime_td" / "tds_anytime_td.parquet")
+
+    monkeypatch.setattr(site, "get_path",
+                        lambda kind, target=None: proc / target if target else proc)
+    out = site.results(2026, 2)
+
+    assert out["1|any|A B"] == "hit", "last week settles"
+    assert "2|any|A B" not in out, "this week has not been played, so it stays pending"
+
+
+def test_a_player_is_keyed_per_week_not_across_them(site, tmp_path, monkeypatch):
+    """`any|Derrick Henry` is a different bet in week 2 than in week 3.
+
+    Without the week in the key, a live parlay would settle from a result it
+    never had — and it would settle as a win as readily as a loss, which is the
+    kind of wrong that gets believed.
+    """
+    proc = tmp_path / "processed"
+    (proc / "anytime_td").mkdir(parents=True)
+    pl.DataFrame({
+        "season": [2026, 2026], "week": [1, 2],
+        "player_id": ["00-1", "00-1"], "player_name": ["A B", "A B"],
+    }).write_parquet(proc / "anytime_td" / "features.parquet")
+    # Scored in week 1, did not in week 2.
+    pl.DataFrame({
+        "season": [2026], "week": [1], "td_player_id": ["00-1"],
+    }).write_parquet(proc / "anytime_td" / "tds_anytime_td.parquet")
+
+    monkeypatch.setattr(site, "get_path",
+                        lambda kind, target=None: proc / target if target else proc)
+    out = site.results(2026, 1)
+
+    assert out["1|any|A B"] == "hit"
+    assert all(k.count("|") == 2 for k in out), "week, market, player — in that order"
+
+
+def test_launch_builds_one_file_under_a_name_a_server_will_serve():
+    """Serving site/ serves the Streamlit recording, not this board.
+
+    `site/` holds index.html from `make site`, and every web server hands out
+    index.html by default — so uploading that directory publishes the wrong
+    page, and it publishes something that looks plausible rather than erroring.
+    """
+    mk = (REPO / "Makefile").read_text()
+    assert "\nlaunch:" in mk
+    block = mk.split("\nlaunch:")[1].split("\n\n")[0]
+
+    # The `--out` flag specifically, not any mention of the path. The first
+    # version of this assertion looked for "public/index.html" anywhere in the
+    # recipe and was satisfied by the closing `@echo`, so it passed against a
+    # target that wrote public/board.html — a test agreeing with the file
+    # rather than with the behaviour.
+    out = [ln for ln in block.splitlines() if "--out" in ln]
+    assert out, "the launch target must name its output"
+    assert "--out public/index.html" in out[0], (
+        f"a served directory hands out index.html by default; got {out[0].strip()!r}")
+    assert "rm -rf public" in block, "the directory is disposable, so it is rebuilt clean"
+    assert "public/" in (REPO / ".gitignore").read_text()
