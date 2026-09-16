@@ -125,7 +125,11 @@ def main(a) -> int:
     print(f"LAY SHEET — {a.target} {a.season} week {a.week} ({model})")
     if not s.get("measured"):
         print(f"  {s['note']}")
-        return 1
+        # A measurement that came back empty is an answer and exits clean; only
+        # a missing artifact is a failure. first TD hit this path on every run
+        # since 2026-09-08 and returned 1 each time, which reads as the sheet
+        # being broken rather than as the market having no band.
+        return 1 if s.get("gap") else 0
 
     m = s["measured"]
     print(f"  rule: {s['rule']} — book between {s['band'][0]:.2f}% and "

@@ -288,13 +288,34 @@ def resolve_game_ids(df: pl.DataFrame) -> pl.DataFrame:
            .unique(subset=["season", "week", "away_team", "home_team"],
                    keep="first"))
 
+    # Three formats reach this function, not two. `append_snapshot` stores the
+    # abbreviated pair (`DEN_KC`) and `append_book_quotes` stores the API's own
+    # label (`Denver Broncos @ Kansas City Chiefs`), so the two archives that
+    # are supposed to describe the same games disagree about how to name one.
+    # Both reduce to a team pair; only the route differs.
+    from src.features.odds_features import TEAM_ABBREV
+
+    names = pl.DataFrame({"_full": list(TEAM_ABBREV), "_abbr": list(TEAM_ABBREV.values())})
+    pair = pl.col("game_id").str.split(" @ ")
     out = (df.with_columns([
                pl.col("season").cast(pl.Int64),
                pl.col("week").cast(pl.Int64),
-               pl.col("game_id").str.split("_").list.get(0, null_on_oob=True)
-                 .alias("_away"),
-               pl.col("game_id").str.split("_").list.get(1, null_on_oob=True)
-                 .alias("_home")])
+               pl.when(pl.col("game_id").str.contains(" @ "))
+                 .then(pair.list.get(0, null_on_oob=True))
+                 .otherwise(pl.col("game_id").str.split("_")
+                            .list.get(0, null_on_oob=True)).alias("_away"),
+               pl.when(pl.col("game_id").str.contains(" @ "))
+                 .then(pair.list.get(1, null_on_oob=True))
+                 .otherwise(pl.col("game_id").str.split("_")
+                            .list.get(1, null_on_oob=True)).alias("_home")])
+           .join(names.rename({"_full": "_away", "_abbr": "_away_abbr"}),
+                 on="_away", how="left")
+           .join(names.rename({"_full": "_home", "_abbr": "_home_abbr"}),
+                 on="_home", how="left")
+           .with_columns([
+               pl.coalesce([pl.col("_away_abbr"), pl.col("_away")]).alias("_away"),
+               pl.coalesce([pl.col("_home_abbr"), pl.col("_home")]).alias("_home")])
+           .drop(["_away_abbr", "_home_abbr"])
            .join(key, left_on=["season", "week", "_away", "_home"],
                  right_on=["season", "week", "away_team", "home_team"],
                  how="left"))
@@ -476,13 +497,33 @@ def best_prices(season: int, week: int, market: str = "anytime_td",
     """
     if not BOOKS_PATH.exists():
         return None
-    df = pl.read_parquet(BOOKS_PATH).filter(
+    # Resolved before the week filter, not after: resolution is what corrects a
+    # fixture filed under the wrong week, so filtering first would drop the
+    # rows it is meant to rescue and keep ones that belong to another week.
+    df = resolve_game_ids(pl.read_parquet(BOOKS_PATH)).filter(
         (pl.col("season") == season) & (pl.col("week") == week)
         & (pl.col("market") == market) & (pl.col("side") == "yes")
         & (pl.col("snapshot") == snapshot)
     )
     if df.height == 0:
         return None
+
+    # One row per book per player, keeping the newest capture of each.
+    #
+    # Without this the week's snapshots are pooled: a book that quoted on
+    # Wednesday and again on Sunday counts twice, `n_books` climbs with every
+    # firing rather than measuring the market, and the "best" price can be one
+    # from days ago that nobody can take. Measured 2026-09-15, Dareke Young
+    # came back at n_books=24 from 13 real books, with a best of +9000 that was
+    # Wednesday's against a Thursday consensus near +3500.
+    #
+    # The same dedupe `line_shopping.best_vs_consensus` does, which is what the
+    # app reads — so the two agreed on nothing while looking like the same
+    # measurement.
+    df = (df.sort("captured_at")
+            .unique(subset=["game_id", "player_name_norm", "bookmaker"],
+                    keep="last"))
+
     # Longest price wins: for a "Yes" bet, higher American odds pay more.
     return (df.sort("odds", descending=True)
               .group_by(["game_id", "player_name_norm"])

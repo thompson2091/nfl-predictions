@@ -40,7 +40,12 @@ def best_vs_consensus(season: int, week: int, market: str = "anytime_td",
 
     if not BOOKS_PATH.exists():
         return None
-    df = pl.read_parquet(BOOKS_PATH).filter(
+    # The books archive names a game three different ways depending on when the
+    # row was written; grouping on the raw value splits one player across two
+    # ids. See `odds_history.resolve_game_ids`.
+    from src.ingest.odds_history import resolve_game_ids
+
+    df = resolve_game_ids(pl.read_parquet(BOOKS_PATH)).filter(
         (pl.col("season") == season) & (pl.col("week") == week)
         & (pl.col("market") == market) & (pl.col("side") == "yes")
         & (pl.col("snapshot") == snapshot)

@@ -1084,3 +1084,54 @@ def test_closing_line_value_sees_the_seasons_captured_live():
     assert predict_season in rows["season"].to_list(), (
         f"{predict_season} is archived and predicted but scores no rows — its "
         "captured game ids are not matching the ids the predictions carry")
+
+
+def test_the_books_archive_names_a_game_a_third_way(monkeypatch, tmp_path):
+    """`append_book_quotes` stores the API's own label, not the team pair.
+
+    So the two archives that describe the same games disagree about how to name
+    one: odds_history holds `LV_LAC`, odds_books holds
+    `Las Vegas Raiders @ Los Angeles Chargers`. Both reduce to a pair; only the
+    route does.
+    """
+    out = _resolve(monkeypatch, tmp_path,
+                   [(2026, 1, "Denver Broncos @ Kansas City Chiefs")],
+                   [(2026, 1, "DEN", "KC", "2026_01_DEN_KC")])
+    assert out["game_id"].to_list() == ["2026_01_DEN_KC"]
+
+
+def test_the_best_price_is_one_moment_not_a_week_of_them():
+    """A book quoted twice in a week is one book, and its newest price.
+
+    Pooling the week's snapshots counts it once per firing: `n_books` climbs
+    with the schedule rather than measuring the market, and the "best" price can
+    be one from days ago that nobody can take. Measured 2026-09-15, one player
+    came back at n_books=24 from 13 real books.
+    """
+    import polars as pl
+
+    from src.ingest.odds_history import BOOKS_PATH, best_prices, resolve_game_ids
+    from src.utils.config import get_config
+
+    if not BOOKS_PATH.exists():
+        pytest.skip("no per-book archive yet")
+    season = get_config()["seasons"]["predict_season"]
+    books = resolve_game_ids(pl.read_parquet(BOOKS_PATH))
+    weeks = (books.filter(pl.col("season") == season)["week"]
+             .unique().sort().to_list())
+    if not weeks:
+        pytest.skip(f"nothing archived for {season}")
+
+    for week in weeks:
+        real = (books.filter((pl.col("season") == season)
+                             & (pl.col("week") == week)
+                             & (pl.col("market") == "anytime_td")
+                             & (pl.col("side") == "yes")
+                             & (pl.col("snapshot") == "close"))["bookmaker"]
+                .n_unique())
+        got = best_prices(season, week, "anytime_td", "close")
+        if got is None or not real:
+            continue
+        assert int(got["n_books"].max()) <= real, (
+            f"week {week}: a player is credited to more books than the week "
+            f"holds — the snapshots are being pooled")

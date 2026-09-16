@@ -202,9 +202,24 @@ def sheet(board, *, fade: dict | None, rule: dict | None = None,
         return {"rows": [], "note": "no lay rule is defined"}
     sh = shrink_from(fade, rule.get("max_ratio", 1.0))
     if sh is None:
-        return {"rows": [], "rule": rule["name"],
-                "note": "no measured fade band on disk — run "
-                        "`make shortlist-backtest` first"}
+        # Two different things, and the message used to call both of them the
+        # first. A missing artifact is a gap and running the backtest fixes it.
+        # An artifact with no ratio ladder is an answer: `fade_side` measured
+        # this market's band and found nothing to put in it, which is what
+        # first TD has returned since the band was derived — `fade_in_band` is
+        # null there and the unbanded block carries no `cuts`. Telling someone
+        # to re-run the command that produced that sends them to watch it
+        # produce it again.
+        if not fade:
+            return {"rows": [], "rule": rule["name"], "gap": True,
+                    "note": "no fade measurement on disk — run "
+                            "`make shortlist-backtest` first"}
+        return {"rows": [], "rule": rule["name"], "gap": False,
+                "note": "the fade measurement ran and found no band on this "
+                        "market to price a lay in. That is its answer, not a "
+                        "missing step: there is no ratio ladder to read a "
+                        "shrink off, so there is no honest number to put on a "
+                        "No side here."}
 
     rows = []
     for r in (picks(board, rule) if board is not None else []):

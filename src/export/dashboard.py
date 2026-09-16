@@ -1561,9 +1561,14 @@ function paneCover(opts) {
   // A finished entry that means nothing has to say so, or the table quietly
   // answers a different question from the one on screen. But `2.` and `-` are
   // not mistakes, they are the middle of `2.50` and `-200` — and a warning box
-  // that appears on those shoves the picker down the page mid-keystroke. Only
-  // the two shapes that can only ever be incomplete are silent; `+50` is a
-  // finished thought that happens to be wrong, so it still gets told.
+  // that appears on those shoves the picker down the page mid-keystroke.
+  //
+  // So anything that could still become a price is silent, and that includes
+  // `+50`: it is a finished thought that happens to be wrong, and it is also
+  // the first three characters of `+500`. This comment used to claim `+50`
+  // "still gets told", which the regex has never done — it matches the
+  // half-typed pattern like any other short number. Only a string no price
+  // begins with gets a warning. Same rule, and the same regex, as the ladder.
   const midStake = /^\$?[0-9,]*\.?$/.test(st.stakeRaw || '');
   const midPrice = /^[+-]?[0-9]*\.?$/.test(st.decRaw || '');
   if (st.stakeRaw && !midStake && !parseMoney(st.stakeRaw)) {
