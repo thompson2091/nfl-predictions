@@ -28,8 +28,8 @@ sys.path.insert(0, ".")
 import numpy as np
 import polars as pl
 
-from src.models.count import (XGBCountModel, design_matrix, fair_two_way,
-                             prob_over)
+from src.models.count import (XGBCountModel, blend_to_market, design_matrix,
+                             fair_two_way, fit_market_blend, prob_over)
 from src.utils.config import get_config
 from src.utils.paths import get_path
 
@@ -99,7 +99,48 @@ def graded_lines(season: int) -> pl.DataFrame | None:
         pl.col("receptions").is_not_null() & pl.col("fair_prob").is_not_null())
 
 
-def backtest(m: XGBCountModel, df: pl.DataFrame, fcols: list[str], season: int) -> dict | None:
+def fit_blend(m: XGBCountModel, df: pl.DataFrame, fcols: list[str],
+              season: int, model_dir) -> dict | None:
+    """Fit how far to shrink our number toward the book's, on one season.
+
+    Fitted on validation and never on test, for the same reason the dispersion
+    is: it is a claim about how much we add to a price, and fitting it where
+    the trees have already been is a claim about memorisation.
+
+    Nothing else in this script moved the model. Game context from the closing
+    spread and total, and a dispersion fitted per band of predicted mean, were
+    both measured and both made 2025 very slightly worse — see
+    `scripts/48_receptions_lab.py`. The blend is the only change that helped,
+    and it helped by using the market rather than by improving us.
+    """
+    lines = graded_lines(season)
+    if lines is None or lines.height == 0:
+        return None
+    te = df.filter(pl.col("season") == season)
+    mu = m.predict_mu(design_matrix(te, fcols))
+    te = te.select(["season", "week", "player_id"]).with_columns(pl.Series("mu", mu))
+    j = lines.join(te, on=["season", "week", "player_id"], how="inner")
+    if j.height == 0:
+        return None
+    over, push = prob_over(j["mu"].to_numpy(), j["point"].to_numpy(), m.dispersion)
+    p_model = fair_two_way(over, push)
+    y_raw, line = j["receptions"].to_numpy(), j["point"].to_numpy()
+    ok = y_raw != line
+    if ok.sum() < 200:
+        return None
+    blend = fit_market_blend(p_model[ok], j["fair_prob"].to_numpy()[ok],
+                             (y_raw > line).astype(float)[ok])
+    blend["fitted_on"] = season
+    path = model_dir / "market_blend.json"
+    path.write_text(json.dumps(blend, indent=1))
+    print(f"Market blend fitted on {season}: keep {blend['weight']:.0%} of our "
+          f"number, {1 - blend['weight']:.0%} of the book's "
+          f"({blend['n']:,} lines) -> {path}")
+    return blend
+
+
+def backtest(m: XGBCountModel, df: pl.DataFrame, fcols: list[str], season: int,
+             blend: dict | None = None) -> dict | None:
     lines = graded_lines(season)
     if lines is None or lines.height == 0:
         print(f"  {season}: no graded lines in the archive")
@@ -138,6 +179,11 @@ def backtest(m: XGBCountModel, df: pl.DataFrame, fcols: list[str], season: int) 
         "market": {"log_loss": ll(pk), "brier": float(np.mean((pk - y) ** 2)),
                    "mean_p": float(pk.mean())},
     }
+    if blend:
+        pbl = blend_to_market(pm, pk, blend["weight"])
+        res["blend"] = {"log_loss": ll(pbl), "brier": float(np.mean((pbl - y) ** 2)),
+                        "weight": blend["weight"], "fitted_on": blend.get("fitted_on")}
+        res["blend_beats_market"] = res["blend"]["log_loss"] < res["market"]["log_loss"]
     tag = "model better" if res["model"]["log_loss"] < res["market"]["log_loss"] \
         else "MARKET better"
     print(f"  {season}: n={len(y):,}  log loss model {res['model']['log_loss']:.5f} "
@@ -165,9 +211,11 @@ def main() -> int:
         m.save(model_path)
         print(f"Saved -> {model_path}")
 
+    blend = fit_blend(m, df, fcols, cfg["splits"]["val_season"], model_dir)
+
     results = []
     for season in (cfg["splits"]["val_season"], cfg["splits"]["test_season"]):
-        r = backtest(m, df, fcols, season)
+        r = backtest(m, df, fcols, season, blend)
         if r:
             results.append(r)
 
@@ -183,11 +231,18 @@ def main() -> int:
         # the NGS existence leak was found.
         "beats_market": bool(results) and all(
             r["model"]["log_loss"] < r["market"]["log_loss"] for r in results),
+        "blend": blend,
+        # The number that is actually served. On its own the model loses to
+        # this market; blended toward it, it wins by a little. Both are stated
+        # so no screen has to infer which claim is being made.
+        "blend_beats_market": bool(results) and all(
+            r.get("blend_beats_market") for r in results),
     }
     path = get_path("output", "receptions") / "summary.json"
     path.write_text(json.dumps(summary, indent=1))
     print(f"\nSummary -> {path}")
-    print(f"beats_market: {summary['beats_market']}")
+    print(f"beats_market: {summary['beats_market']}  "
+          f"blend_beats_market: {summary['blend_beats_market']}")
     return 0
 
 

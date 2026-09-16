@@ -493,7 +493,7 @@ function rowsFor(key, view) {
       player: r.player, team: r.team, game: r.game,
       ours: r.ours, book: r.book, edge: r.edge_pp,
       odds: r.odds, dec: has(r.odds) ? amToDec(r.odds) : null, priced: has(r.odds),
-      best: r.best_odds, bestBook: r.best_book,
+      best: r.best_odds, bestBook: r.best_book, modelOnly: r.model_only,
       band: r.band, bandRoi: r.band_roi, layable: r.layable,
       pos: r.pos, rank: r.rank,
     }));
@@ -521,6 +521,7 @@ function rowsFor(key, view) {
     ours: r.ours, book: r.book, edge: has(r.book) ? (r.ours - r.book) * 100 : null,
     odds: r.odds_num, dec: r.dec, priced: !!r.priced,
     best: r.best, bestBook: r.best_book, read: r.read, rank: r.rank,
+    modelOnly: r.model_only,
     status: r.status, blocked: r.blocked, pos: r.pos,
   }));
 }
@@ -870,7 +871,7 @@ function barCell(d, r, ceiling) {
 }
 function keyHead(d, ours, book) {
   const k = el('div', { class: 'key' });
-  k.appendChild(el('span', {}, [el('i'), el('span', { text: ours || 'Ours' })]));
+  k.appendChild(el('span', {}, [el('i'), el('span', { text: ours || 'Adj' })]));
   k.appendChild(el('span', {}, [el('u'), el('span', { text: book || 'Book' })]));
   d.appendChild(k);
 }
@@ -914,7 +915,7 @@ function legOf(row, side) {
     label: row.kind === 'ou'
       ? row.player + ' ' + (over ? 'over ' : 'under ') + row.line
       : row.player,
-    sub: (has(p) ? pct(p) + ' ours' : 'no number') + (has(row.odds) ? ' · ' + american(row.odds) : ''),
+    sub: (has(p) ? pct(p) + ' adj' : 'no number') + (has(row.odds) ? ' · ' + american(row.odds) : ''),
     p: p, dec: row.dec, odds: row.odds, game: row.game,
   };
 }
@@ -1077,7 +1078,7 @@ function slipPanel() {
   a.appendChild(list);
 
   a.appendChild(el('div', { class: 'two' }, [
-    el('div', { class: 'stat' }, [el('i', { text: 'All hit · ours' }),
+    el('div', { class: 'stat' }, [el('i', { text: 'All hit · adj' }),
       el('b', { text: chanceTxt(m.all) })]),
     el('div', { class: 'stat' }, [el('i', { text: m.k === m.legs.length ? 'Parlay pays' : 'Per slip' }),
       el('b', { text: m.priced ? american(decToAm(avgDec(m.slips))) : '—' })]),
@@ -1212,10 +1213,12 @@ function gradedNote(key) {
   if (key === 'rec') {
     const f = (DATA.receptions || {}).forward;
     if (!f) return 'receptions has not been graded against a close yet.';
-    return f.beats_market
-      ? 'the model is ahead of the market on receptions, which has meant a bug every previous time.'
-      : 'on ' + f.pooled.n.toLocaleString() + ' settled receptions lines the book has been better '
-        + 'calibrated than we are. This market is measured, not bet.';
+    if (f.raw_beats_market) return 'the raw receptions model is ahead of the market, '
+      + 'which has meant a leak every previous time. See the Model page.';
+    return 'receptions is served as 17% our number and 83% the book\u2019s, which beats '
+      + 'the book by ' + (f.pooled.market_log_loss - f.pooled.model_log_loss).toFixed(4)
+      + ' of log loss over ' + f.pooled.n.toLocaleString() + ' settled lines. Real, '
+      + 'small, and not a betting edge.';
   }
   const rec = ((marketOf(key).shortlist || {}).record || {});
   const arm = armOf(rec, 'shortlist') || armOf(rec, 'we rate higher');
@@ -1446,11 +1449,23 @@ function tdTable(rows, f, view) {
         w.appendChild(sub);
         d.appendChild(w);
       } },
-    { w: '170px', hide: 1, nosort: 1, head: d => keyHead(d), cell: (d, r) => barCell(d, r) },
-    { w: '56px', label: 'Ours', r: 1, sort: 'ours', cell: (d, r) =>
-        d.appendChild(el('span', { class: 'big', text: pct(r.ours) })) },
+    { w: '150px', hide: 1, nosort: 1, head: d => keyHead(d, 'Adj', 'Book'),
+      cell: (d, r) => barCell(d, r) },
+    // Three numbers, in the order they are made. `Model` is what the fitted
+    // model said on its own; `Book` is the de-vigged market price; `Adj` is
+    // ours after the market blend and the joint step, and is the one every
+    // other column is computed from. Showing only the last of those made the
+    // blend invisible — a row where we agree with the book because we were
+    // pulled there looked identical to one where we agreed on our own.
+    { w: '56px', label: 'Model', r: 1, sort: 'modelOnly', hide: 1,
+      title: 'The fitted model alone, before any market information.',
+      cell: (d, r) => d.appendChild(el('span', { class: 'dim',
+        text: has(r.modelOnly) ? pct(r.modelOnly) : '—' })) },
     { w: '56px', label: 'Book', r: 1, sort: 'book', cell: (d, r) =>
         d.appendChild(el('span', { class: 'dim', text: r.priced ? pct(r.book) : '—' })) },
+    { w: '56px', label: 'Adj', r: 1, sort: 'ours',
+      title: 'What we serve: the model after the market blend and the joint step.',
+      cell: (d, r) => d.appendChild(el('span', { class: 'big', text: pct(r.ours) })) },
     { w: '64px', label: 'Edge', r: 1, sort: 'edge',
       title: 'Ours minus the book’s, in probability points.',
       cell: (d, r) => d.appendChild(el('span', {

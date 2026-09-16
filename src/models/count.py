@@ -134,6 +134,81 @@ def fit_dispersion(mu: np.ndarray, y: np.ndarray) -> dict:
     }
 
 
+def fit_market_blend(p_model: np.ndarray, p_book: np.ndarray,
+                     y: np.ndarray) -> dict:
+    """How much of our own number to keep, against the book's.
+
+    The count model does not beat this market on its own and is not close:
+    0.690 against 0.673 on 2025. What it does have is information the price
+    does not fully contain, and the way to use that is to predict the residual
+    rather than the whole thing — shrink our probability toward the market's
+    and fit how far by log likelihood on a season we did not train on.
+
+    Measured on 2025, with the weight fitted on 2024: 0.66982 against the
+    market's 0.67274, a gain of 0.0029 with a 95% bootstrap interval over games
+    of [+0.0009, +0.0040] and P(gain > 0) = 1.000. That is a real improvement
+    in calibration and it is a small one. It is emphatically not a betting
+    edge: the same blend betting every over it rates above the posted price
+    returned +7.8% on 2025 across 219 bets, with a confidence interval of
+    [-5.9%, +21.7%], 99% of the profit in five fixtures, and -1.5% on 2024.
+
+    The blend is done in log-odds space so the result cannot leave [0, 1] and a
+    shrink toward the market is a straight line rather than a chord across a
+    curve.
+
+    A weight near zero is a real answer and is returned rather than floored: it
+    says the best mix of us and the market is all market, which is worth
+    knowing and is what every variant richer than this one produced.
+    """
+    a, b = _logit(p_model), _logit(p_book)
+    y = np.asarray(y, dtype=float)
+    grid = np.linspace(0.0, 1.0, 101)
+    best_w, best_ll = 0.0, None
+    for w in grid:
+        p = _expit(w * a + (1 - w) * b)
+        q = np.clip(p, 1e-9, 1 - 1e-9)
+        ll = float(-np.mean(y * np.log(q) + (1 - y) * np.log(1 - q)))
+        if best_ll is None or ll < best_ll:
+            best_ll, best_w = ll, float(w)
+
+    def loss(p):
+        q = np.clip(p, 1e-9, 1 - 1e-9)
+        return float(-np.mean(y * np.log(q) + (1 - y) * np.log(1 - q)))
+
+    return {
+        "kind": "receptions_market_blend",
+        "weight": best_w,
+        "n": int(len(y)),
+        "fit_log_loss": best_ll,
+        "model_log_loss": loss(p_model),
+        "market_log_loss": loss(p_book),
+        "fit_date": date.today().isoformat(),
+    }
+
+
+def blend_to_market(p_model: np.ndarray, p_book: np.ndarray,
+                    weight: float) -> np.ndarray:
+    """Our probability shrunk toward the book's, in log-odds space.
+
+    Where the book has not priced a line there is nothing to shrink toward, so
+    the model's own number is returned untouched — a missing price must not be
+    read as a market opinion of 50%.
+    """
+    p_model = np.asarray(p_model, dtype=float)
+    p_book = np.asarray(p_book, dtype=float)
+    out = _expit(weight * _logit(p_model) + (1 - weight) * _logit(p_book))
+    return np.where(np.isfinite(p_book), out, p_model)
+
+
+def _logit(p):
+    q = np.clip(np.asarray(p, dtype=float), 1e-6, 1 - 1e-6)
+    return np.log(q / (1 - q))
+
+
+def _expit(x):
+    return 1.0 / (1.0 + np.exp(-np.asarray(x, dtype=float)))
+
+
 def prob_over(mu: np.ndarray, line: np.ndarray, dispersion: float
               ) -> tuple[np.ndarray, np.ndarray]:
     """P(count > line) and P(count == line), given expected count and dispersion.

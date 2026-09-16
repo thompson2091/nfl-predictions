@@ -25,6 +25,8 @@ from src.evaluation import receptions_forward as F
 def _graded(rows: list[dict]) -> pl.DataFrame:
     """A settled frame in the shape `record` consumes."""
     df = pl.DataFrame(rows)
+    if "p_model_raw" not in df.columns:
+        df = df.with_columns(pl.col("p_model").alias("p_model_raw"))
     return df.with_columns([
         (pl.col("receptions") > pl.col("point")).cast(pl.Float64).alias("y_over"),
         (pl.col("receptions") == pl.col("point")).alias("push"),
@@ -130,3 +132,76 @@ def test_nothing_settled_is_a_state_and_not_a_zero(monkeypatch):
     monkeypatch.setattr(F, "graded", lambda season, snapshot="close": None)
     assert F.record(2026) is None
     assert "nothing settled" in F.report(2026).lower()
+
+
+def test_the_blend_keeps_nothing_when_the_model_adds_nothing():
+    """A weight near zero is an answer, not a failed fit.
+
+    Fed a model that is pure noise around the book, the right amount of it to
+    keep is none. Falsified by flooring the weight or seeding the search away
+    from zero — both make a useless model look like a contributor, which is
+    exactly the error this market punishes.
+    """
+    from src.models.count import fit_market_blend
+
+    rng = np.random.default_rng(0)
+    book = rng.uniform(0.2, 0.8, 4000)
+    noise = np.clip(book + rng.normal(0, 0.15, 4000), 0.01, 0.99)
+    y = (rng.uniform(size=4000) < book).astype(float)
+
+    out = fit_market_blend(noise, book, y)
+    assert out["weight"] < 0.10, f"kept {out['weight']:.2f} of a noise model"
+    assert out["fit_log_loss"] <= out["market_log_loss"] + 1e-9
+
+
+def test_a_model_that_knows_more_than_the_book_keeps_more_of_itself():
+    """The other direction, or the test above passes on a blend stuck at zero."""
+    from src.models.count import fit_market_blend
+
+    rng = np.random.default_rng(1)
+    truth = rng.uniform(0.15, 0.85, 4000)
+    y = (rng.uniform(size=4000) < truth).astype(float)
+    sharp = np.clip(truth + rng.normal(0, 0.03, 4000), 0.01, 0.99)
+    vague = np.clip(truth + rng.normal(0, 0.25, 4000), 0.01, 0.99)
+
+    assert fit_market_blend(sharp, vague, y)["weight"] > 0.7
+
+
+def test_a_line_the_book_never_priced_is_left_alone():
+    """There is nothing to shrink toward, and 50% is not the market's opinion.
+
+    Most of the receptions board is a projection with no posted line. Treating
+    a missing price as an implied coin flip would drag every one of those rows
+    to the middle and call it market information.
+    """
+    from src.models.count import blend_to_market
+
+    model = np.array([0.8, 0.3, 0.55])
+    book = np.array([0.5, np.nan, np.nan])
+    out = blend_to_market(model, book, 0.2)
+
+    assert out[1] == pytest.approx(0.3)
+    assert out[2] == pytest.approx(0.55)
+    assert out[0] != pytest.approx(0.8), "a priced row is shrunk"
+
+
+def test_the_alarm_fires_on_the_raw_model_not_on_what_is_served(monkeypatch):
+    """The blend is *supposed* to beat the book, so a flag on that cries wolf.
+
+    Falsified by pointing `raw_beats_market` back at the served number: the
+    warning then fires every week the blend does its job, and the one signal
+    that has meant a leak every previous time is buried under it.
+    """
+    rows = [
+        {"week": 1, "point": 3.5, "receptions": 5, "p_model": 0.60,
+         "p_model_raw": 0.40, "fair_prob": 0.55},
+        {"week": 1, "point": 3.5, "receptions": 1, "p_model": 0.40,
+         "p_model_raw": 0.60, "fair_prob": 0.45},
+    ]
+    monkeypatch.setattr(F, "graded", lambda season, snapshot="close": _graded(rows))
+    r = F.record(2026)
+
+    assert r["beats_market"] is True, "the served blend is ahead"
+    assert r["raw_beats_market"] is False, "the raw model is behind, and that is the alarm"
+    assert "leak" not in F.report(2026).lower(), (
+        "a blend doing its job must not read as a leak")

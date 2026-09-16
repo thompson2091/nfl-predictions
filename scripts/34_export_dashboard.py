@@ -927,7 +927,8 @@ def receptions(season: int | None, week: int | None) -> dict:
     out["problem"] = msg
     if board is not None and board.height:
         keep = ["player_name", "team", "game_id", "mu", "point", "odds",
-                "fair_prob", "ours", "edge_pp", "ev", "n_books", "thin"]
+                "fair_prob", "model_only", "ours", "edge_pp", "ev",
+                "n_books", "thin"]
         out["rows"] = board.select([c for c in keep if c in board.columns]
                                    ).to_dicts()
     try:

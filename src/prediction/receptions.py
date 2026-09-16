@@ -68,6 +68,26 @@ from src.utils.paths import get_path
 THIN_BOOKS = 3
 
 
+def load_blend(model_dir=None) -> float | None:
+    """How far to shrink our number toward the book's, or None if unfitted.
+
+    Fitted by `scripts/30_receptions.py` on the validation season and saved
+    beside the model. Absent, the board serves the raw model — which is the
+    behaviour before this existed and is worse, so its absence is reported by
+    `board_for_week` rather than passed over.
+    """
+    import json
+
+    path = (model_dir or get_path("models", "receptions")) / "market_blend.json"
+    if not path.exists():
+        return None
+    try:
+        w = float(json.loads(path.read_text())["weight"])
+    except Exception:                                            # noqa: BLE001
+        return None
+    return w if 0.0 <= w <= 1.0 else None
+
+
 def load_model(model_dir=None) -> dict | None:
     """The fitted count model, its feature list and its dispersion.
 
@@ -131,7 +151,7 @@ def board_for_week(season: int, week: int, snapshot: str = "close"
     """
     from src.ingest.odds_history import (HISTORY_PATH, drop_in_play,
                                         resolve_game_ids)
-    from src.models.count import fair_two_way, prob_over
+    from src.models.count import blend_to_market, fair_two_way, prob_over
 
     art = load_model()
     if art is None:
@@ -170,13 +190,26 @@ def board_for_week(season: int, week: int, snapshot: str = "close"
 
     over, push = prob_over(b["mu"].to_numpy(), b["point"].to_numpy(),
                            float(art["dispersion"]))
+    # Ours, before the market is consulted. The comparable number: a book's
+    # Over 5.0 price is a claim about the two outcomes that resolve, not all
+    # three, so the push mass comes out before ours is set beside theirs.
+    raw = fair_two_way(over, push)
+
+    # And ours after. The count model loses to this market on its own — 0.690
+    # against 0.673 on 2025 — and wins by a little once shrunk toward it, at a
+    # weight fitted on a season it did not train on. So what the board serves
+    # is the blend, with the raw number kept beside it because a row where we
+    # agree with the book because we were pulled there is not the same as one
+    # where we agreed on our own. See `count.fit_market_blend`.
+    w = load_blend()
+    blended = raw if w is None else blend_to_market(raw, b["fair_prob"].to_numpy(), w)
+
     b = b.with_columns([
         pl.Series("p_over_raw", over),
         pl.Series("p_push", push),
-        # The comparable number. A book's Over 5.0 price is a claim about the
-        # two outcomes that resolve, not all three, so the push mass has to
-        # come out before ours is set beside theirs.
-        pl.Series("ours", fair_two_way(over, push)),
+        pl.Series("model_only", raw),
+        pl.Series("ours", blended),
+        pl.lit(w).alias("blend_weight"),
     ])
 
     return b.with_columns([

@@ -43,8 +43,9 @@ def graded(season: int, snapshot: str = "close") -> pl.DataFrame | None:
     from src.ingest.odds_history import (HISTORY_PATH, SCHEMA, _conform,
                                          _resolve_player_id, drop_in_play,
                                          resolve_game_ids)
-    from src.prediction.receptions import expected_counts, load_model
-    from src.models.count import fair_two_way, prob_over
+    from src.prediction.receptions import (expected_counts, load_blend,
+                                           load_model)
+    from src.models.count import blend_to_market, fair_two_way, prob_over
 
     art = load_model()
     if art is None or not HISTORY_PATH.exists():
@@ -89,8 +90,15 @@ def graded(season: int, snapshot: str = "close") -> pl.DataFrame | None:
 
     over, push = prob_over(j["mu"].to_numpy(), j["point"].to_numpy(),
                            float(art["dispersion"]))
+    raw = fair_two_way(over, push)
+    # Graded on what the board serves, which is the blend. Grading the raw
+    # model would report a number nobody is shown and would keep saying the
+    # market is better after the change that made it not be.
+    w = load_blend()
+    served = raw if w is None else blend_to_market(raw, j["fair_prob"].to_numpy(), w)
     return j.with_columns([
-        pl.Series("p_model", fair_two_way(over, push)),
+        pl.Series("p_model_raw", raw),
+        pl.Series("p_model", served),
         (pl.col("receptions") > pl.col("point")).cast(pl.Float64).alias("y_over"),
         (pl.col("receptions") == pl.col("point")).alias("push"),
     ])
@@ -117,9 +125,11 @@ def record(season: int) -> dict | None:
     def block(d: pl.DataFrame) -> dict:
         y = d["y_over"].to_numpy()
         pm, pk = d["p_model"].to_numpy(), d["fair_prob"].to_numpy()
+        raw = d["p_model_raw"].to_numpy() if "p_model_raw" in d.columns else pm
         return {
             "n": int(d.height),
             "over_rate": float(y.mean()),
+            "raw_log_loss": _log_loss(raw, y),
             "model_log_loss": _log_loss(pm, y),
             "market_log_loss": _log_loss(pk, y),
             "model_brier": float(np.mean((pm - y) ** 2)),
@@ -141,6 +151,18 @@ def record(season: int) -> dict | None:
         "weeks": weeks,
         # The honest headline. It is expected to be False.
         "beats_market": pooled["model_log_loss"] < pooled["market_log_loss"],
+        # The alarm, and it is a different question from the one above.
+        #
+        # What we serve is the model shrunk toward the book, and it is
+        # *supposed* to beat the book — that is what the blend was fitted to
+        # do, measured out of sample on 2025 and again here. So "we are ahead"
+        # is no longer a warning sign and a flag that fired on it would cry
+        # wolf every week.
+        #
+        # The raw model beating the market is still a warning sign, because
+        # nothing has made that plausible: it loses by 0.017 on 2025 and 0.028
+        # here, and every previous time it appeared to win it was a leak.
+        "raw_beats_market": pooled["raw_log_loss"] < pooled["market_log_loss"],
         "note": (
             "Log loss, lower is better. The market is the de-vigged two-sided "
             "price. This is measured on the prices actually on offer before "
@@ -159,8 +181,9 @@ def report(season: int) -> str:
         f"RECEPTIONS FORWARD — {season}",
         f"  {p['n']:,} settled lines ({r['pushes']} pushes), "
         f"over rate {p['over_rate']:.1%}",
-        f"  log loss  model {p['model_log_loss']:.4f}  "
+        f"  log loss  served {p['model_log_loss']:.4f}  "
         f"market {p['market_log_loss']:.4f}  "
+        f"raw {p['raw_log_loss']:.4f}  "
         f"-> {'MODEL' if r['beats_market'] else 'market'} better",
     ]
     for w in r["weeks"]:
@@ -168,8 +191,14 @@ def report(season: int) -> str:
         lines.append(f"    week {w['week']:>2}  n={w['n']:>4}  "
                      f"model {w['model_log_loss']:.4f}  "
                      f"market {w['market_log_loss']:.4f}  ({tag})")
-    if r["beats_market"]:
-        lines.append("  The model is ahead of the market. On this market that "
-                     "has meant a leak every\n  previous time it has happened. "
-                     "Check before believing it.")
+    if r["raw_beats_market"]:
+        lines.append("  THE RAW MODEL IS AHEAD OF THE MARKET, which nothing "
+                     "makes plausible — it loses\n  by 0.017 on 2025 — and "
+                     "which has meant a leak every previous time. Check\n"
+                     "  before believing it.")
+    elif r["beats_market"]:
+        lines.append("  Ahead of the market, which is what the blend was "
+                     "fitted to do: 17% of our\n  number against 83% of the "
+                     "book's, fitted on a season it never trained on. The\n"
+                     "  gain is real and small; it is not a betting edge.")
     return "\n".join(lines)

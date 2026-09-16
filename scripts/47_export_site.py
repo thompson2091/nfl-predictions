@@ -192,6 +192,11 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
 
     pos = positions(s, w) if s and w else {}
     for m in mk:
+        # The raw model number, before the market blend and the joint step.
+        # The board shows it beside the adjusted one, so the shortlist rows
+        # need it too or the column is blank on two of the three views.
+        raw = {p.get("player"): p.get("model_only")
+               for p in m.get("players") or [] if p.get("model_only") is not None}
         for p in m.get("players") or []:
             if p.get("player") in pos:
                 p["pos"] = pos[p["player"]]
@@ -199,6 +204,8 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
             for r in (m.get("shortlist") or {}).get(bucket) or []:
                 if r.get("player") in pos:
                     r["pos"] = pos[r["player"]]
+                if r.get("player") in raw:
+                    r["model_only"] = raw[r["player"]]
 
     _receptions_projections(payload, s, w)
     payload["brand"] = brand

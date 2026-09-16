@@ -13,14 +13,17 @@ from captures that overlap, repeat, and keep quoting after kickoff.
 Exit codes are the point of running this on a schedule:
 
     0   the market is better calibrated than the model, as expected
-    2   THE MODEL IS AHEAD OF THE MARKET
+    2   THE RAW MODEL IS AHEAD OF THE MARKET
     3   nothing settled yet, which is the normal state early in a week
 
-2 is not success. Every previous time this model has beaten this market it was
-a leak — the first version returned +17-22% ROI and that was the NGS existence
-leak, where the model could see whether a player had a tracking record, which
-only exists for players who played. So the loud exit is on the good-looking
-result, because that is the one nobody investigates.
+2 is not success, and it is about the RAW model rather than what is served.
+What the board serves is the model shrunk toward the book, which is supposed to
+beat the book — that is what the blend was fitted to do. The raw model beating
+it is the warning sign, because every previous time that happened it was a leak:
+the first version returned +17-22% ROI and that was the NGS existence leak,
+where the model could see whether a player had a tracking record, which only
+exists for players who played. The loud exit is on the good-looking result,
+because that is the one nobody investigates.
 """
 from __future__ import annotations
 
@@ -56,7 +59,9 @@ def main() -> int:
     path = get_path("output", "receptions") / f"forward_{season}.json"
     path.write_text(json.dumps(r, indent=1))
     print(f"\nWrote {path}")
-    return 2 if r["beats_market"] else 0
+    # 2 fires on the RAW model beating the market, not the served blend —
+    # the blend is meant to win, so a flag on that would fire every week.
+    return 2 if r["raw_beats_market"] else 0
 
 
 if __name__ == "__main__":
