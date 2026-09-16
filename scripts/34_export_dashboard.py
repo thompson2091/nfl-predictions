@@ -106,6 +106,25 @@ def served(target_type: str) -> dict:
     }
 
 
+def read_ablation(a: dict | None, wf: dict | None) -> tuple[dict, dict | None]:
+    """(families, meta) from an ablation artifact, empty unless it is current.
+
+    Split out to be testable on its own, because the thing worth testing is a
+    refusal. `27_ablate.py` retrains without every family, which is roughly one
+    walk-forward each, so the artifact outlives the matrix easily — and a stale
+    one does not look stale. Its numbers are real, well-formed, and about a
+    model nobody is serving. The feature hash is the only thing separating
+    those two cases, so a missing hash on either side is a no.
+    """
+    if not a:
+        return {}, None
+    mine, theirs = a.get("feature_hash"), (wf or {}).get("feature_hash")
+    fresh = bool(mine and theirs and mine == theirs)
+    meta = {"measured": a.get("measured"), "model": a.get("model"),
+            "fresh": fresh}
+    return ((a.get("families") or {}) if fresh else {}), meta
+
+
 def _recipe(target_type: str, model: str) -> dict | None:
     """What the served model was actually fitted on, and how it scored.
 
@@ -160,7 +179,7 @@ def _recipe(target_type: str, model: str) -> dict | None:
     # Per-season accuracy for the model actually served, not for whichever the
     # walk-forward happened to write last.
     wf_path = get_path("output", target_type) / "walkforward.json"
-    seasons = []
+    seasons, wf = [], None
     if wf_path.exists():
         try:
             wf = json.loads(wf_path.read_text())
@@ -174,10 +193,43 @@ def _recipe(target_type: str, model: str) -> dict | None:
         except Exception:                                    # noqa: BLE001
             seasons = []
 
+    # What each family is worth, measured by retraining without it.
+    #
+    # Not an importance score. `scripts/27_ablate.py` opens by saying why:
+    # importance answers "which features does the model lean on", and a family
+    # it leans on heavily can still be replaceable, because retrained without
+    # it the correlated survivors take over. Only retraining measures that.
+    # Deltas are paired per game, because pooled Top-1 carries about 1.5 points
+    # and cannot resolve a family worth half of one.
+    #
+    # Attached only when the ablation was measured on the feature set being
+    # served — the hashes have to agree, or the numbers describe a different
+    # model and belong nowhere near this page.
+    abl_path = (Path(__file__).resolve().parents[1] / "diagnostics"
+                / f"ablation_{target_type}.json")
+    ablation, abl_meta = {}, None
+    if abl_path.exists():
+        try:
+            ablation, abl_meta = read_ablation(json.loads(abl_path.read_text()), wf)
+        except Exception:                                    # noqa: BLE001
+            ablation, abl_meta = {}, None
+
+    for f in families:
+        hit = ablation.get(f["name"])
+        if hit:
+            # Reported as what the family is worth, which is the negative of
+            # what removing it does. A reader asking which features move the
+            # needle is not asking what happens when they are taken away.
+            f["worth_top1"] = -float(hit["top1_delta"]) * 100
+            f["p_value"] = hit.get("p_value")
+            f["wins"] = hit.get("wins")
+            f["losses"] = hit.get("losses")
+
     return {
         "n_features": len(cols),
         "n_families": len(families),
         "families": families,
+        "ablation": abl_meta,
         "unattributed": sorted(orphans),
         "seasons": seasons,
         "source": str(cols_path.relative_to(Path(__file__).resolve().parents[1])),

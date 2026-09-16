@@ -1091,3 +1091,32 @@ def test_the_dirty_notice_describes_lock_time_not_drift_since():
         "that phrasing describes drift after promotion; the flag records the "
         "state of the tree at lock time")
     assert "locked from a tree with uncommitted changes" in code
+
+
+def test_an_ablation_for_a_different_feature_set_is_not_attached():
+    """Family worth is only meaningful about the model it was measured on.
+
+    `27_ablate.py` retrains without each family, roughly one walk-forward
+    apiece, so the artifact outlives the matrix easily — and a stale one does
+    not look stale: the numbers are real, well-formed, and about a model nobody
+    is serving. The feature hash is the only thing that separates them.
+    """
+    mod = importlib.util.module_from_spec(
+        importlib.util.spec_from_file_location("export_dashboard", SCRIPT))
+    mod.__spec__.loader.exec_module(mod)
+
+    fams = {"build_alpha_features": {"top1_delta": -0.05, "p_value": 0.001}}
+    art = {"feature_hash": "aaaa", "families": fams, "measured": "2026-01-01",
+           "model": "xgb"}
+
+    got, meta = mod.read_ablation(art, {"feature_hash": "aaaa"})
+    assert got == fams and meta["fresh"], "a matching hash is the current case"
+
+    got, meta = mod.read_ablation(art, {"feature_hash": "bbbb"})
+    assert got == {} and not meta["fresh"], "a different matrix must be refused"
+    assert meta["measured"], "the refusal still says when it was measured"
+
+    # A hash missing on either side is not a match, it is an unknown.
+    assert not mod.read_ablation(art, {})[1]["fresh"]
+    assert not mod.read_ablation({"families": fams}, {"feature_hash": "aaaa"})[1]["fresh"]
+    assert mod.read_ablation(None, {"feature_hash": "aaaa"}) == ({}, None)

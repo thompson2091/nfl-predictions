@@ -68,11 +68,17 @@ def _market(key, label, players):
         "recipe": {
             "n_features": 5, "n_families": 2,
             "families": [
+                # Beta is listed first and is worth less, so a table sorted
+                # by worth has to reorder them.
+                {"name": "build_beta_features", "n": 1, "cols": ["b_one"],
+                 "worth_top1": -0.4, "p_value": 0.62, "wins": 60, "losses": 55},
                 {"name": "build_alpha_features", "n": 3,
-                 "cols": ["a_one", "a_two", "a_three"]},
-                {"name": "build_beta_features", "n": 1, "cols": ["b_one"]},
+                 "cols": ["a_one", "a_two", "a_three"],
+                 "worth_top1": 2.5, "p_value": 0.0004, "wins": 40, "losses": 90},
             ],
             "unattributed": ["loose_one"],
+            "ablation": {"measured": "2026-01-01T00:00:00+00:00",
+                         "model": "xgb", "fresh": True},
             "seasons": [
                 {"season": 2024, "games": 280, "top1": 0.48, "top3": 0.79,
                  "top5": 0.90, "auc": 0.79, "brier": 0.095},

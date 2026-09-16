@@ -2680,6 +2680,16 @@ function paneServed() {
     ];
     out.appendChild(card('Measured on seasons it never trained on', null, [
       table('wf', cols, r.seasons, { nosort: true }),
+      // The phrase below is load-bearing and is kept on one line on purpose:
+      // a test greps the source for it, and splitting it across a string
+      // concatenation or a tag makes it absent while the page still reads
+      // correctly. See test_the_dashboard_cannot_show_two_top1s.
+      el('p', { class: 'fine', html:
+        'These are the walk-forward folds — four seasons, each scored by a ' +
+        'model trained only on the ones before it. That is a ' +
+        '<b>different window from the accuracy strip</b> on the board, which ' +
+        'reports the single held-out test season. Both are Top-1 and they are ' +
+        'not the same number; neither is wrong, they cover different games.' }),
       has(rec.top1) ? el('p', { class: 'rowcount', html:
         'Pooled over ' + (rec.games || 0).toLocaleString() + ' games: <b>' +
         pct(rec.top1, 1) + '</b> Top 1, ' + pct(rec.top3, 1) + ' Top 3, ' +
@@ -2692,20 +2702,58 @@ function paneServed() {
 
   // ── What it was fitted on ──────────────────────────────────────────────
   if (r) {
+    const measured = r.families.some(f => has(f.worth_top1));
+    const worst = Math.max(1e-9, ...r.families.map(f => Math.abs(f.worth_top1 || 0)));
     const fcols = [
       { k: 'name', label: 'Family', t: 1,
         fmt: v => '<code>' + esc(v) + '</code>' },
-      { k: 'n', label: 'Columns', bar: (v, row) => v / r.n_features * 4 },
+      { k: 'n', label: 'Columns' },
+      measured ? { k: 'worth_top1', label: 'Worth, in Top 1',
+        fmt: v => has(v) ? pp(v, 2) + ' pts' : '<span class="dim">—</span>',
+        cls: v => cls(v), bar: v => has(v) ? Math.abs(v) / worst : 0,
+        title: 'What the model loses when this family is taken away and it is retrained without it. Negative means it scored better without — a family it can do without is not a family it needs.' } : null,
+      measured ? { k: 'p_value', label: 'p',
+        fmt: v => has(v) ? (v < 0.001 ? '<0.001' : v.toFixed(3))
+                         : '<span class="dim">—</span>',
+        title: 'On the paired per-game comparison. Pooled Top-1 carries about 1.5 points and cannot resolve a family worth half of one, so the pairing is what makes these readable at all.' } : null,
+      measured ? { k: 'wins', label: 'Games better', fmt: (v, row) => has(v)
+          ? v + ' <span class="dim">/ ' + (row.losses || 0) + '</span>' : '',
+        title: 'Games the model ranked better without this family, against games it ranked worse. The unit the deltas are paired on.' } : null,
       { k: 'cols', label: 'What they are', t: 1,
         fmt: v => '<span class="dim">' + esc(v.join(', ')) + '</span>' },
-    ];
+    ].filter(Boolean);
+
+    // Sorted by what each is worth where that has been measured, because the
+    // question this table is usually opened with is which ones matter.
+    const fams = r.families.slice();
+    if (measured) fams.sort((a, b) => (b.worth_top1 || 0) - (a.worth_top1 || 0));
+
     out.appendChild(card('The ' + r.n_features + ' features it was fitted on', null, [
-      table('fams', fcols, r.families, { wrap: true }),
+      table('fams', fcols, fams, { wrap: true }),
       el('p', { class: 'rowcount', text:
         r.n_families + ' families, grouped by the builder that produced each ' +
         'column. Dropping one column tells you nothing when its neighbours ' +
         'carry the same signal — the family is the unit that gets measured.' }),
     ]));
+
+    if (measured) out.appendChild(el('div', { class: 'warn-box', html:
+      '<b>"Worth" is not an importance score.</b> Importance says which ' +
+      'features the model leans on, and a family it leans on heavily can still ' +
+      'be replaceable — retrained without it, the correlated survivors take ' +
+      'over and it ranks just as well. So each family here was removed and the ' +
+      'model retrained on the same folds, which is the only thing that ' +
+      'measures the difference. Deltas are paired per game.' +
+      (r.ablation && r.ablation.measured
+        ? ' Measured ' + esc(r.ablation.measured.slice(0, 10)) +
+          ' on the same feature set being served — the hashes agree, or these ' +
+          'would not be shown.' : '') }));
+    else if (r.ablation && !r.ablation.fresh) out.appendChild(el('div', {
+      class: 'warn-box bad-box', html:
+      '<b>There is an ablation on disk and it describes a different model.</b> ' +
+      'Its feature set does not hash to the one being served, so what each ' +
+      'family is worth is not shown: the numbers would be real and about ' +
+      'something else. Re-run <code>scripts/27_ablate.py</code> against the ' +
+      'current matrix.' }));
 
     if (r.unattributed.length) out.appendChild(el('div', { class: 'warn-box', html:
       '<b>' + r.unattributed.length + ' columns reach the model with no ' +

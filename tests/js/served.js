@@ -84,4 +84,43 @@ if (DATA.markets.length > 1) {
   S.market = 0;
 }
 
+
+// ── What each family is worth ────────────────────────────────────────────
+// Measured by retraining without it, not by an importance score. A family the
+// model leans on can still be replaceable, and only retraining tells them
+// apart — so the distinction has to survive onto the page, or the number gets
+// read as importance by anyone who knows the word.
+const withWorth = r.families.filter(f => typeof f.worth_top1 === 'number');
+if (withWorth.length) {
+  ok('what each family is worth is shown',
+     withWorth.every(f => txt.includes(f.worth_top1.toFixed(2))));
+  ok('the page says this is ablation and not importance',
+     /not an importance score/i.test(txt) && /retrained without it/.test(txt));
+  ok('the paired per-game comparison is shown',
+     withWorth.every(f => txt.includes(String(f.wins))));
+
+  // A family the model was better without is a real result, not a blank.
+  const negative = withWorth.filter(f => f.worth_top1 < 0);
+  if (negative.length) ok('a family worth nothing is shown as such, not hidden',
+     negative.every(f => txt.includes(f.worth_top1.toFixed(2))));
+
+  // Sorted by worth: the question this table gets opened with.
+  const order = withWorth.slice().sort((a, b) => b.worth_top1 - a.worth_top1);
+  const at = order.map(f => txt.indexOf(f.name));
+  ok('families are ordered by what they are worth',
+     at.every((v, i) => i === 0 || at[i - 1] < v), JSON.stringify(at));
+}
+
+// A stale ablation must not be shown at all — the numbers would be real and
+// about a different model.
+const keepAbl = r.ablation, keepFams = r.families;
+r.ablation = { measured: '2026-01-01T00:00:00+00:00', model: 'xgb', fresh: false };
+r.families = r.families.map(f => {
+  const c = Object.assign({}, f); delete c.worth_top1; return c;
+});
+const staleTxt = paneText();
+ok('an ablation measured on another feature set is refused, and says why',
+   /describes a different model/.test(staleTxt) && /hash/.test(staleTxt));
+r.ablation = keepAbl; r.families = keepFams;
+
 done();
