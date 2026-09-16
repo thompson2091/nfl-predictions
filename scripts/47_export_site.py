@@ -129,6 +129,54 @@ def _week_results(season: int, week: int, pool: pl.DataFrame) -> dict[str, str]:
     return out
 
 
+def _receptions_projections(payload: dict, season: int, week: int) -> None:
+    """Add a row for every candidate, not only the ones a book has quoted.
+
+    Books post receptions lines far later than touchdown props — in week 2 that
+    was seven players out of five hundred — so a board built from posted lines
+    alone is empty for most of the week and then mostly empty after that. The
+    model has a number for everyone on a roster the whole time, which is the
+    view the old app led with and the one worth carrying through.
+
+    An unpriced row keeps `mu` and drops `point`, `odds` and everything derived
+    from them. It is deliberately not given a line to be measured against: the
+    projection is what the model says, and inventing a 4.5 to score it against
+    would be the page making up the market it is missing.
+    """
+    rec = payload.get("receptions") or {}
+    if not rec.get("model") or not season or not week:
+        return
+    try:
+        from src.prediction.receptions import expected_counts, load_model
+        mus = expected_counts(season, week, load_model())
+    except Exception:                                            # noqa: BLE001
+        return
+    if mus is None or mus.height == 0:
+        return
+
+    # Held to the same population the touchdown board shows, which has already
+    # had the low-activity and availability filters applied. Without it this is
+    # the raw feature matrix: 811 rows including one DEF/ST per team, each
+    # carrying a projected reception count, which is noise wearing a number.
+    eligible = {p.get("player") for m in payload.get("markets") or []
+                for p in m.get("players") or []}
+    priced = {r.get("player_name") for r in rec.get("rows") or []}
+    extra = []
+    for row in mus.sort("mu", descending=True).iter_rows(named=True):
+        if row["player_name"] in priced:
+            continue
+        if eligible and row["player_name"] not in eligible:
+            continue
+        extra.append({
+            "player_name": row["player_name"], "team": row["team"],
+            "game_id": row.get("game_id"), "mu": row["mu"],
+            "point": None, "odds": None, "fair_prob": None, "ours": None,
+            "edge_pp": None, "n_books": 0, "thin": False,
+        })
+    rec["rows"] = (rec.get("rows") or []) + extra
+    rec["priced_rows"] = len(priced)
+
+
 def build(season: int | None, week: int | None, brand: str) -> dict:
     import importlib.util
 
@@ -152,6 +200,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
                 if r.get("player") in pos:
                     r["pos"] = pos[r["player"]]
 
+    _receptions_projections(payload, s, w)
     payload["brand"] = brand
     payload["season"] = s
     payload["week"] = w
@@ -164,8 +213,8 @@ def main() -> int:
     ap.add_argument("--out", default="site/site.html")
     ap.add_argument("--season", type=int, default=None)
     ap.add_argument("--week", type=int, default=None)
-    ap.add_argument("--brand", default="SquaresPro",
-                    help="What the header says. Placeholder from the design.")
+    ap.add_argument("--brand", default="Pick Six",
+                    help="What the header says.")
     ap.add_argument("--json", action="store_true",
                     help="write the payload as JSON beside --out and stop")
     ap.add_argument("--force", action="store_true",

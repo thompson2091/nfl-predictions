@@ -402,7 +402,7 @@ board:
 # `public/` is disposable and rebuilt each time. Nothing else should be put
 # there, because the point of the directory is that its contents are
 # unambiguous.
-BRAND ?= SquaresPro
+BRAND ?= Pick Six
 launch:
 	@rm -rf public && mkdir -p public
 	$(PYTHON) scripts/47_export_site.py --out public/index.html --brand "$(BRAND)" $(if $(WEEK),--week $(WEEK))

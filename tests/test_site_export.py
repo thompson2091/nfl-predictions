@@ -168,9 +168,23 @@ def payload() -> dict:
         "markets": [market, second],
         "receptions": {
             "season": 2026, "week": 2, "problem": "", "model": True,
+            # One quoted line and several projections, which is the real
+            # proportion: books post receptions far later than touchdown
+            # props, so most of this board has no line against it all week.
+            "priced_rows": 1,
             "rows": [{"player_name": "Alpha Back", "team": "AAA", "game_id": "AAA @ BBB",
                       "mu": 5.5, "point": 4.5, "odds": -105, "fair_prob": 0.48,
-                      "ours": 0.59, "edge_pp": 11.3, "n_books": 6, "thin": False}],
+                      "ours": 0.59, "edge_pp": 11.3, "n_books": 6, "thin": False}]
+                    + [{"player_name": n, "team": t, "game_id": g, "mu": mu,
+                        "point": None, "odds": None, "fair_prob": None,
+                        "ours": None, "edge_pp": None, "n_books": 0, "thin": False}
+                       for n, t, g, mu in [
+                           ("Bravo Wide", "BBB", "AAA @ BBB", 4.8),
+                           ("Charlie End", "CCC", "CCC @ DDD", 3.9),
+                           ("Delta Deep", "DDD", "CCC @ DDD", 2.2),
+                           ("Echo Slot", "AAA", "AAA @ BBB", 1.6),
+                           ("Foxtrot Back", "BBB", "AAA @ BBB", 1.1),
+                           ("Golf Tight", "CCC", "CCC @ DDD", 0.9)]],
             "forward": {"season": 2026, "pushes": 0, "beats_market": False,
                         "note": "Log loss, lower is better.",
                         "pooled": {"n": 283, "over_rate": 0.477,

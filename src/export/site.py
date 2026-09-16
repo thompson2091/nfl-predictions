@@ -121,11 +121,30 @@ h1,h2,h3{margin:0;font-weight:600}
 .nav a[aria-current=page]{background:var(--navon);color:var(--ink);font-weight:600}
 .when{font-size:14px;color:var(--mut);white-space:nowrap}
 .wrap{display:flex;align-items:flex-start;min-height:0}
+/* No max-width. The tables are the content and they are wide; a reading
+   measure would only push the numbers being compared further apart. */
 main{flex-grow:1;padding:28px 40px 40px;display:flex;flex-direction:column;gap:18px;min-width:0}
+/* The slip is not furniture. It takes 360px of the board's width, so it is
+   present only while it holds something or has been asked for, and can be put
+   away again without emptying it. */
 aside{
   width:360px;flex-shrink:0;border-left:1px solid var(--line);background:var(--card);
-  padding:28px 24px 32px;display:flex;flex-direction:column;gap:14px;
+  padding:24px 24px 32px;display:flex;flex-direction:column;gap:14px;
   position:sticky;top:64px;max-height:calc(100vh - 64px);overflow-y:auto;
+}
+.asidehead{display:flex;justify-content:space-between;align-items:center;gap:12px}
+/* The handle that brings it back. Fixed to the viewport rather than the page,
+   because the board is long and a control at the top of a 500-row table is a
+   control you have to scroll to find. */
+.sliptab{
+  position:fixed;right:20px;bottom:20px;z-index:25;height:48px;padding:0 20px;
+  border-radius:999px;border:1px solid var(--ink);background:var(--ink);color:#fff;
+  font-size:15px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;
+  gap:10px;box-shadow:0 6px 20px rgba(22,24,29,.22);
+}
+.sliptab .n{
+  background:#fff;color:var(--ink);border-radius:999px;min-width:22px;height:22px;
+  display:inline-flex;align-items:center;justify-content:center;font-size:13px;
 }
 .pagehead{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
 h1{font-family:var(--serif);font-weight:500;font-size:40px;line-height:1.1}
@@ -168,6 +187,11 @@ h2{font-size:18px}
 }
 .btn:hover{border-color:var(--mut3)}
 .btn.solid{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+.btn.solid:hover{background:#000;border-color:#000}
+/* The one primary action in the slip. Taller than a control, full width, and
+   separated from the text above it so it does not read as another paragraph. */
+.btn.primary{height:48px;font-size:15px;font-weight:600;border-radius:10px;width:100%}
+.btn.primary[disabled]{opacity:.5;cursor:default}
 .btn.done{background:var(--goodbg);color:var(--good);border-color:var(--goodline);font-weight:600}
 .btn.wide{width:100%}
 /* 44px is the floor for anything a finger has to find. It applies to the star
@@ -182,8 +206,20 @@ h2{font-size:18px}
   background:var(--card);color:var(--ink);border:1px solid var(--btnline);
 }
 .add[aria-pressed=true]{background:var(--ours);color:#fff;border-color:var(--ours)}
-.field{display:flex;flex-direction:column;gap:4px}
-.field label{font-size:12px;color:var(--mut2)}
+/* label / control / hint, always in that order and always the same height, so
+   a field carrying a hint does not push its neighbours out of line. The ladder
+   had three inputs at three different heights for exactly this reason. */
+.linkbtn{
+  border:none;background:transparent;color:var(--mut);font-size:13px;cursor:pointer;
+  padding:6px 8px;border-radius:8px;min-height:32px;
+}
+.linkbtn:hover{background:var(--badbg);color:var(--bad)}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font-size:12px;color:var(--mut2);line-height:16px}
+.field .hint{font-size:12px;color:var(--mut3);line-height:16px;min-height:16px}
+.fieldrow{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
+.fieldrow .field{flex:1 1 180px}
+.fieldrow .field input,.fieldrow .field select{width:100%}
 input[type=text],input[type=search],select{
   height:44px;padding:0 12px;border:1px solid var(--btnline);border-radius:10px;
   background:var(--card);
@@ -283,21 +319,51 @@ input[type=search]{-webkit-appearance:none}
 .summary b{display:block;font-size:22px;font-weight:700;color:var(--ink)}
 
 /* ── Responsive ──────────────────────────────────────────────────────── */
-/* The design is drawn at 1440. Below 1100 the slip stops being a column
-   beside the board and becomes a block under it, because a 360px aside on a
-   900px screen leaves the table too narrow to read. */
+/* The design is drawn at 1440 and the tables are the thing that has to
+   survive narrowing. Columns are dropped in order of how redundant they are:
+   the bar first (its information is also the two numbers beside it), then the
+   graded band, then the read. Nothing that can only be read in one place is
+   ever hidden. */
+@media (max-width:1240px){
+  main{padding:24px 24px 32px}
+  .top{padding:0 24px;gap:24px}
+}
 @media (max-width:1100px){
   .wrap{flex-direction:column}
   aside{width:auto;align-self:stretch;border-left:none;border-top:1px solid var(--line);
     position:static;max-height:none}
-  main{padding:20px 20px 24px}
-  .top{padding:0 20px;gap:20px;height:auto;min-height:64px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
   h1{font-size:32px}
 }
-@media (max-width:760px){
-  /* The bar column is the first thing to go: it is the one column whose
-     information is also present as two numbers beside it. */
+@media (max-width:900px){
+  .top{height:auto;min-height:64px;flex-wrap:wrap;gap:12px;padding:10px 20px}
+  .nav{order:3;width:100%;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .nav a{padding:8px 12px;font-size:14px}
+  .when{margin-left:auto}
+  main{padding:20px 16px 28px}
+  h1{font-size:28px}
+  .lede{font-size:14px}
+  .hidemd{display:none}
+  .cards{grid-template-columns:1fr}
+}
+@media (max-width:680px){
   .hidesm{display:none}
+  main{padding:16px 12px 24px}
+  .pagehead{align-items:flex-start}
+  h1{font-size:24px}
+  .seg{width:100%}
+  .seg button{flex:1 1 0;padding:0 8px;font-size:13px}
+  .chiprow{gap:6px}
+  .search{max-width:none!important;flex:1 1 100%!important}
+  .two,.three{grid-template-columns:1fr 1fr}
+  .sliptab{right:12px;bottom:12px}
+  /* A grid row on a phone is a stack, not a squeeze. Below this width the
+     columns stop being columns and each row becomes its own block, which is
+     the only honest way to keep nine fields legible on 360px. */
+  .rows{padding:4px 12px}
+  .hd{display:none}
+  .row{grid-template-columns:44px 1fr auto!important;row-gap:2px;padding:10px 0;min-height:0}
+  .row>div:empty{display:none}
+  .r{text-align:left}
 }
 @media print{
   .top,aside,.chiprow,.add,.icon{display:none}
@@ -315,6 +381,18 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = (v, d) => has(v) ? (v * 100).toFixed(d == null ? 0 : d) + '%' : '';
 const spp = v => has(v) ? (v > 0 ? '+' : '') + v.toFixed(0) : '';
+// A probability a person can read, at any scale. `toExponential` is correct
+// and useless: "9.8e-1%" was on the Ladder where "0.98%" belonged, and below a
+// tenth of a percent even that stops meaning anything, so it becomes odds
+// against — "1 in 1,200" is a sentence, 8.3e-4% is a typo.
+function chanceTxt(p) {
+  if (!has(p) || p <= 0) return '—';
+  if (p >= 0.995) return '~100%';
+  if (p >= 0.1) return (p * 100).toFixed(0) + '%';
+  if (p >= 0.01) return (p * 100).toFixed(1) + '%';
+  if (p >= 0.001) return (p * 100).toFixed(2) + '%';
+  return '1 in ' + Math.round(1 / p).toLocaleString();
+}
 const money = v => (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString(undefined,
   { maximumFractionDigits: 2 });
 
@@ -425,7 +503,12 @@ function rowsFor(key, view) {
       line: r.point, proj: r.mu,
       ours: r.ours, book: r.fair_prob, edge: r.edge_pp,
       odds: r.odds, dec: has(r.odds) ? amToDec(r.odds) : null,
-      thin: !!r.thin, nBooks: r.n_books, priced: true,
+      // Priced means a book has quoted this player, not that the row exists.
+      // Most of this board is a projection with no line against it — books
+      // post receptions far later than touchdown props — and calling those
+      // priced would let them through the priced-only filter with nothing to
+      // bet on them.
+      thin: !!r.thin, nBooks: r.n_books, priced: has(r.point),
     }));
   }
   return (m.players || []).map(r => ({
@@ -529,6 +612,10 @@ const S = {
   // slip still knows which market it belongs to and the conflict prompt can
   // name both sides.
   slip: { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' },
+  // The slip takes 360px off the board, so it is shown only while it holds
+  // something or has been asked for. Adding a leg opens it; closing it puts
+  // it away without emptying it, and the handle says how many are in there.
+  slipOpen: false,
   conflict: null,
   favs: [],
   parlays: [],
@@ -780,6 +867,7 @@ function toggleLeg(row, side) {
   }
   S.slip.market = row.key;
   S.slip.legs = S.slip.legs.concat([legOf(row, side)]);
+  S.slipOpen = true;
   persistSlip();
   render(true);
 }
@@ -801,7 +889,12 @@ function persistSlip() {
   save('slip', S.slip);
 }
 function clearSlip() {
-  S.slip = { market: S.market, legs: [], size: 0, stake: S.slip.stake, stakeRaw: S.slip.stakeRaw };
+  S.slip = { market: S.slip.market, legs: [], size: 0,
+             stake: S.slip.stake, stakeRaw: S.slip.stakeRaw };
+  S.conflict = null;
+  // An emptied slip has nothing to show, so it gets out of the board's way
+  // rather than sitting there as a dashed rectangle taking 360px.
+  S.slipOpen = false;
   persistSlip();
   render();
 }
@@ -889,9 +982,23 @@ function slipPanel(full) {
   const a = el('aside');
   const m = slipMath();
 
-  a.appendChild(el('div', { style: 'display:flex;justify-content:space-between;align-items:baseline' }, [
-    el('h2', { class: 'h2s', text: 'Your slip' }),
-    el('span', { class: 'note', text: m.legs.length === 1 ? '1 leg' : m.legs.length + ' legs' }),
+  // Two different actions that both look like "get rid of this", kept
+  // visually apart because they are not undoable in the same way. Collapsing
+  // keeps every leg; clearing throws them away. The chevron collapses, the
+  // word says what it does, and only one of them is destructive.
+  const close = el('button', { class: 'icon', 'aria-label': 'Collapse the slip',
+    title: 'Collapse — the legs stay where they are',
+    onclick: () => { S.slipOpen = false; render(); } });
+  close.appendChild(svg(CHEV, { size: 18 }));
+  const head = el('div', { style: 'display:flex;align-items:center;gap:4px' });
+  head.appendChild(el('span', { class: 'note',
+    text: m.legs.length === 1 ? '1 leg' : m.legs.length + ' legs' }));
+  if (m.legs.length) head.appendChild(el('button', { class: 'linkbtn',
+    text: 'Clear', 'aria-label': 'Remove all ' + m.legs.length + ' legs from the slip',
+    title: 'Remove every leg', onclick: () => clearSlip() }));
+  head.appendChild(close);
+  a.appendChild(el('div', { class: 'asidehead' }, [
+    el('h2', { class: 'h2s', text: 'Your slip' }), head,
   ]));
 
   if (S.conflict) {
@@ -933,7 +1040,7 @@ function slipPanel(full) {
 
   a.appendChild(el('div', { class: 'two' }, [
     el('div', { class: 'stat' }, [el('i', { text: 'All hit · ours' }),
-      el('b', { text: m.all >= 0.1 ? pct(m.all) : pct(m.all, 1) })]),
+      el('b', { text: chanceTxt(m.all) })]),
     el('div', { class: 'stat' }, [el('i', { text: m.k === m.legs.length ? 'Parlay pays' : 'Per slip' }),
       el('b', { text: m.priced ? american(decToAm(avgDec(m.slips))) : '—' })]),
   ]));
@@ -963,8 +1070,11 @@ function slipPanel(full) {
       ['If this many hit', 'Chance', 'Net'].forEach((h, i) =>
         brk.appendChild(el('div', { class: 'h' + (i ? ' r' : ''), text: h })));
       m.rows.forEach(r => {
-        brk.appendChild(el('div', { text: r.hit === m.legs.length ? 'All ' + r.hit : r.hit + ' of ' + m.legs.length }));
-        brk.appendChild(el('div', { class: 'r', text: r.chance >= 0.1 ? pct(r.chance) : pct(r.chance, 1) }));
+        brk.appendChild(el('div', { text:
+          m.legs.length === 1 ? 'It hits'
+          : r.hit === m.legs.length ? 'All ' + r.hit
+          : r.hit + ' of ' + m.legs.length }));
+        brk.appendChild(el('div', { class: 'r', text: chanceTxt(r.chance) }));
         brk.appendChild(el('div', { class: 'r ' + (r.net >= 0 ? 'pos' : 'neg'), text: money(r.net) }));
       });
       a.appendChild(el('div', { class: 'panel' }, [brk]));
@@ -980,10 +1090,29 @@ function slipPanel(full) {
     }
   }
 
-  a.appendChild(saveButton());
+  a.appendChild(el('div', { style: 'margin-top:4px' }, [saveButton()]));
   const graded = gradedNote(S.slip.market);
   if (graded) a.appendChild(el('p', { class: 'fine', html: '<b>Graded:</b> ' + esc(graded) }));
   return a;
+}
+
+// What actually goes beside the board.
+//
+// Three states, and the middle one is the point: a slip with legs that has
+// been put away is not an empty slip. It comes back with everything in it, and
+// until it does the board has the full width of the window.
+function slipSlot(full) {
+  if (S.slipOpen || S.conflict) return slipPanel(full);
+  return null;
+}
+function slipHandle() {
+  const n = S.slip.legs.length;
+  if (S.slipOpen || !n) return null;
+  const b = el('button', { class: 'sliptab', 'aria-label': 'Open your slip, ' + n
+    + (n === 1 ? ' leg' : ' legs'), onclick: () => { S.slipOpen = true; render(); } });
+  b.appendChild(el('span', { text: 'Your slip' }));
+  b.appendChild(el('span', { class: 'n', text: String(n) }));
+  return b;
 }
 
 // Saving is a snapshot, not a pointer: the legs, the round robin and the
@@ -997,7 +1126,7 @@ function slipSignature() {
 function saveButton() {
   const sig = slipSignature();
   const on = S.saved.sig === sig;
-  const b = el('button', { class: 'btn wide ' + (on ? 'done' : 'solid'),
+  const b = el('button', { class: 'btn primary ' + (on ? 'done' : 'solid'),
     text: on ? '✓ Saved to parlays' : 'Save this parlay',
     onclick: () => { saveSlip(); } });
   if (!on) return b;
@@ -1091,9 +1220,6 @@ function pageWeek() {
   if (kind !== 'ou') main.appendChild(viewSeg(f, m));
   if (view === 'short') main.appendChild(funnelStrip(m, key, rows.length));
 
-  if (key === 'rec') main.appendChild(el('div', { class: 'warnbox', html:
-    '<b>The book prices this market better than we do.</b> It is here to be '
-    + 'measured against the close in public, not to be bet. See the Model page.' }));
   (m.problems || []).forEach(p => main.appendChild(el('div', { class: 'badbox', text: String(p) })));
 
   // ── Filters ──────────────────────────────────────────────────────────
@@ -1515,7 +1641,7 @@ function pageCombos() {
     { w: '90px', label: 'All hit', r: 1,
       title: 'The chance every leg lands, treating them as independent.',
       cell: (d, s) => d.appendChild(el('span', { class: 'big',
-        text: s.p >= 0.1 ? pct(s.p) : pct(s.p, 1) })) },
+        text: chanceTxt(s.p) })) },
     { w: '96px', label: 'Pays', r: 1, cell: (d, s) => d.appendChild(el('span', {
         text: s.dec ? american(decToAm(s.dec)) : '—' })) },
     { w: '100px', label: 'EV on $' + Math.round(stake), r: 1,
@@ -1528,11 +1654,15 @@ function pageCombos() {
         g.appendChild(el('button', { class: 'chip', text: 'Load',
           'aria-label': 'Load ' + s.ix.map(i => pool[i].player).join(', ') + ' into the slip',
           onclick: () => {
+            // Stay put. The slip is beside this table, so navigating away to
+            // show what just landed in it takes the reader off the page they
+            // were working on to prove something they can already see.
             S.slip.market = key;
             S.slip.legs = s.ix.map(i => legOf(pool[i]));
             S.slip.size = 0;
             persistSlip();
-            go('week');
+            S.slipOpen = true;
+            render();
           } }));
         const savedAlready = comboSaved(key, s, pool);
         g.appendChild(el('button', { class: 'chip', 'aria-pressed': savedAlready ? 'true' : 'false',
@@ -1564,7 +1694,8 @@ function pageCombos() {
     + 'above and also likelier to lose outright.' }));
 
   out.appendChild(main);
-  out.appendChild(slipPanel(false));
+  const slip = slipSlot(false);
+  if (slip) out.appendChild(slip);
   return out;
 }
 
@@ -1730,7 +1861,7 @@ function parlayCard(p) {
     el('div', {}, [el('i', { class: 'note', style: 'font-style:normal;display:block;font-size:12px', text: 'Pays' }),
       el('b', { style: 'font-size:16px', text: p.priced ? american(decToAm(p.dec)) : '—' })]),
     el('div', {}, [el('i', { class: 'note', style: 'font-style:normal;display:block;font-size:12px', text: 'All hit' }),
-      el('b', { style: 'font-size:16px', text: p.chance >= 0.1 ? pct(p.chance) : pct(p.chance, 1) })]),
+      el('b', { style: 'font-size:16px', text: chanceTxt(p.chance) })]),
     el('div', {}, [el('i', { class: 'note', style: 'font-style:normal;display:block;font-size:12px',
         text: pend ? 'Legs in' : 'Result' }),
       el('b', { class: pend ? '' : (p.net >= 0 ? 'pos' : 'neg'), style: 'font-size:16px',
@@ -1816,17 +1947,20 @@ function pageLadder() {
   ])]));
 
   const money2 = v => '$' + Math.round(v).toLocaleString();
+  // label / input / hint, every field the same three rows whether or not it
+  // has a hint. The hint used to be optional, so the field carrying one was
+  // taller than its neighbours and the row sat at three different heights.
   const num = (label, raw, onset, hint) => {
     const i = el('input', { type: 'text', inputmode: 'decimal', value: raw, 'aria-label': label });
     i.oninput = () => { onset(i.value); render(true); };
-    return el('div', { class: 'field', style: 'min-width:150px' },
-      [el('label', { text: label }), i, hint ? el('span', { class: 'fine', text: hint }) : null]);
+    return el('div', { class: 'field' },
+      [el('label', { text: label }), i, el('span', { class: 'hint', text: hint || '' })]);
   };
-  const bar = el('div', { class: 'chiprow', style: 'align-items:flex-end' });
-  bar.appendChild(num('Starting bankroll ($)', L.startRaw, v => {
+  const bar = el('div', { class: 'fieldrow', style: 'max-width:640px' });
+  bar.appendChild(num('Starting bankroll', L.startRaw, v => {
     L.startRaw = v; const x = parseFloat(v.replace(/[^0-9.]/g, ''));
     if (isFinite(x) && x > 0) L.start = x;
-  }));
+  }, 'Dollars'));
   bar.appendChild(num('Price each rung', L.oddsRaw, v => {
     L.oddsRaw = v;
     const t = v.replace(/[−–]/g, '-').trim();
@@ -1837,7 +1971,7 @@ function pageLadder() {
   bar.appendChild(num('Rungs', L.betsRaw, v => {
     L.betsRaw = v; const n = parseInt(v.replace(/[^0-9]/g, ''), 10);
     if (isFinite(n) && n > 0) L.bets = Math.min(LADDER_MAX, n);
-  }));
+  }, 'Up to ' + LADDER_MAX));
   main.appendChild(bar);
 
   const rows = [];
@@ -1848,11 +1982,13 @@ function pageLadder() {
   }
   const last = rows[rows.length - 1];
 
-  main.appendChild(el('div', { class: 'two', style: 'max-width:520px' }, [
+  main.appendChild(el('div', { class: 'three', style: 'max-width:640px' }, [
     el('div', { class: 'stat' }, [el('i', { text: 'If every rung wins' }),
       el('b', { text: last ? money2(last.bal) : '—' })]),
     el('div', { class: 'stat' }, [el('i', { text: 'Chance of the run' }),
-      el('b', { text: last ? (last.p >= 0.01 ? pct(last.p, 1) : (last.p * 100).toExponential(1) + '%') : '—' })]),
+      el('b', { text: last ? chanceTxt(last.p) : '—' })]),
+    el('div', { class: 'stat' }, [el('i', { text: 'At risk' }),
+      el('b', { text: money2(L.start) })]),
   ]));
 
   const cols = [
@@ -1862,7 +1998,7 @@ function pageLadder() {
     { w: 'minmax(0,1fr)', label: 'Profit so far', r: 1, cell: (d, r) =>
         d.appendChild(el('span', { class: 'pos', text: money2(r.won) })) },
     { w: 'minmax(0,1fr)', label: 'Chance of getting here', r: 1, cell: (d, r) =>
-        d.appendChild(el('span', { text: r.p >= 0.001 ? pct(r.p, 1) : (r.p * 100).toExponential(1) + '%' })) },
+        d.appendChild(el('span', { text: chanceTxt(r.p) })) },
   ];
   main.appendChild(table(cols, rows, null, {}));
   main.appendChild(el('p', { class: 'fine', style: 'max-width:640px', text:
@@ -2022,7 +2158,7 @@ function render(keepFocus) {
   const sel = active && active.selectionStart;
 
   $('#top').innerHTML = '';
-  $('#top').appendChild(el('div', { class: 'brand', text: DATA.brand || 'SquaresPro' }));
+  $('#top').appendChild(el('div', { class: 'brand', text: DATA.brand || 'Pick Six' }));
   const nav = el('nav', { class: 'nav' });
   PAGES.forEach(([id, text]) => nav.appendChild(el('a', {
     href: '#' + id, text: text, 'aria-current': S.route === id ? 'page' : null })));
@@ -2040,6 +2176,8 @@ function render(keepFocus) {
     text: 'This browser will not let the page save anything, so favorites, the slip and '
         + 'saved parlays will not survive a reload. Private browsing usually does this.' }));
   root.appendChild((VIEWS[S.route] || pageWeek)());
+  const handle = slipHandle();
+  if (handle) root.appendChild(handle);
 
   if (label) {
     const again = root.querySelector('[aria-label="' + label.replace(/"/g, '\\"') + '"]');
@@ -2101,7 +2239,7 @@ def render(payload: dict) -> str:
     # is ever named in a way that produces one.
     data = (json.dumps(payload, separators=(",", ":"), allow_nan=False)
             .replace("</", "<\\/"))
-    brand = payload.get("brand") or "SquaresPro"
+    brand = payload.get("brand") or "Pick Six"
     return (SHELL
             .replace("__TITLE__", html.escape(
                 f"{brand} — {payload.get('season', '')} week {payload.get('week', '')}"))

@@ -12,9 +12,11 @@ const { loadPage, textOf, reporter } = require('./domstub.js');
 const { ok, done } = reporter();
 const x = loadPage(process.argv[2], process.argv[3],
   ['S', 'rowsFor', 'applyFilters', 'slipMath', 'choose', 'settle', 'legOf', 'PAGES', 'has',
-   'combosOf', 'saveCombo', 'comboSaved', 'COMBO_POOL_MAX']);
+   'combosOf', 'saveCombo', 'comboSaved', 'COMBO_POOL_MAX',
+   'chanceTxt', 'slipSlot', 'slipHandle', 'clearSlip']);
 const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
-        combosOf, saveCombo, comboSaved, COMBO_POOL_MAX } = x;
+        combosOf, saveCombo, comboSaved, COMBO_POOL_MAX,
+        chanceTxt, slipSlot, slipHandle, clearSlip } = x;
 
 const txt = n => textOf(n).join(' ');
 
@@ -194,5 +196,67 @@ S.market = 'first'; S.fw.view = 'short';
 ok('an empty shortlist says so rather than showing an empty card',
    /Nothing survives every filter/.test(textOf(pageWeek()).join(' ')));
 S.fw.view = 'all'; S.market = 'any';
+
+// ── Readable probabilities at every scale ───────────────────────────────
+ok('a coin flip reads as a percentage', chanceTxt(0.59) === '59%', chanceTxt(0.59));
+ok('a one-percent chance keeps a decimal', chanceTxt(0.0098) === '0.98%', chanceTxt(0.0098));
+ok('no scientific notation anywhere', !/e[-+]\d/.test(
+  [0.5, 0.0098, 0.0004, 1e-7, 1e-12].map(chanceTxt).join(' ')),
+  [0.5, 0.0098, 0.0004, 1e-7, 1e-12].map(chanceTxt).join(' '));
+ok('a very long shot becomes odds against', /^1 in /.test(chanceTxt(0.0004)), chanceTxt(0.0004));
+ok('zero and nonsense do not print NaN', chanceTxt(0) === '—' && chanceTxt(null) === '—');
+
+// ── The slip is absent until it holds something ─────────────────────────
+S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };
+S.slipOpen = false; S.conflict = null;
+ok('an empty, closed slip takes no width from the board', slipSlot(true) === null);
+ok('and offers no handle when there is nothing in it', slipHandle() === null);
+
+const rows = rowsFor('any', 'all').filter(r => r.priced).slice(0, 2);
+S.slip.legs = rows.map(r => legOf(r));
+ok('a closed slip with legs still yields the board its width', slipSlot(true) === null);
+const h = slipHandle();
+ok('but offers a handle saying how many are in it', h !== null && /2/.test(txt(h)), h && txt(h));
+S.slipOpen = true;
+ok('opening it brings the panel back', slipSlot(true) !== null);
+ok('with the legs still in it', txt(slipSlot(true)).indexOf(rows[0].player) >= 0);
+
+// A conflict has to be visible even with the slip put away, or the prompt is
+// posted to a panel nobody can see.
+S.slipOpen = false;
+S.conflict = { row: rowsFor('first', 'all')[0], side: null };
+ok('a market conflict forces the panel open', slipSlot(true) !== null);
+S.conflict = null;
+
+// ── The receptions board is everyone, not only the quoted ───────────────
+S.market = 'rec';
+const rec = rowsFor('rec', 'all');
+const quoted = rec.filter(r => has(r.line));
+ok('receptions shows far more than the book has quoted',
+   rec.length > quoted.length * 5, rec.length + ' rows, ' + quoted.length + ' quoted');
+ok('an unquoted row still carries a projection',
+   rec.filter(r => !has(r.line)).every(r => has(r.proj)));
+ok('and is not given a line it was never offered',
+   rec.filter(r => !has(r.line)).every(r => !has(r.ours) && !has(r.book) && !r.priced));
+S.market = 'any';
+
+// ── The board is no longer warned over ──────────────────────────────────
+S.market = 'rec';
+ok('the receptions board carries no lecture',
+   !/It is here to be measured against the close/.test(txt(pageWeek())));
+S.market = 'any';
+
+// ── Emptying the slip in one go ─────────────────────────────────────────
+S.slip = { market: 'any', legs: rowsFor('any','all').slice(0,3).map(r => legOf(r)),
+           size: 2, stake: 10, stakeRaw: '10' };
+S.slipOpen = true;
+ok('the panel offers one control that empties the whole slip',
+   /Clear/.test(textOf(slipSlot(true)).join(' ')));
+clearSlip();
+ok('clearing removes every leg at once', S.slip.legs.length === 0);
+ok('and resets the round robin with them', S.slip.size === 0);
+ok('and keeps the stake, which is a preference not a pick', S.slip.stake === 10);
+ok('an emptied slip stops taking the board\'s width', S.slipOpen === false && slipSlot(true) === null);
+ok('and offers no handle, because there is nothing to come back to', slipHandle() === null);
 
 done();
