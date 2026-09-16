@@ -79,23 +79,45 @@ const priced = all.filter(r => r.priced && has(r.dec)).slice(0, 3);
 S.slip.legs = priced.map(r => legOf(r));
 S.slip.market = 'any';
 let m = slipMath();
-ok('the full cover is one slip', m.slips.length === 1 && m.k === 3);
+
+// A slip is the full cover: every combination of its legs, which is what a
+// book sells as a round robin. Three legs is seven slips — three singles,
+// three doubles and the treble — not one.
+ok('the full cover is every combination', m.slips === 7, String(m.slips));
+ok('and risks a stake on each of them', Math.abs(m.outlay - 70) < 1e-9, String(m.outlay));
 ok('all-hit is the product of the legs',
-   Math.abs(m.all - priced.reduce((a, r) => a * r.ours, 1)) < 1e-9);
-S.slip.size = 2;
-m = slipMath();
-ok('by-2s over three legs is three slips', m.slips.length === 3, String(m.slips.length));
-ok('and risks three stakes', Math.abs(m.outlay - 30) < 1e-9, String(m.outlay));
+   Math.abs(m.all - priced.reduce((a, r) => a * r.ours, 1)) < 1e-6);
+
 ok('the breakdown covers every outcome, not only the paying ones',
    m.rows.length === 4 && m.rows[0].hit === 3 && m.rows[3].hit === 0,
    m.rows.map(r => r.hit).join(','));
+// With k legs in, the slips that pay are every non-empty subset of those k.
 ok('and says how many slips each outcome pays',
-   m.rows[0].slipsWon === 3 && m.rows[1].slipsWon === 1 && m.rows[3].slipsWon === 0,
+   m.rows.map(r => r.slipsWon).join(',') === '7,3,1,0',
    m.rows.map(r => r.slipsWon).join(','));
-ok('the losing rows are losses', m.rows[3].net < 0);
 ok('the chances in the breakdown are probabilities',
    m.rows.every(r => r.chance >= 0 && r.chance <= 1));
-S.slip.size = 0;
+ok('and sum to one, so no outcome is missing',
+   Math.abs(m.rows.reduce((a, r) => a + r.chance, 0) - 1) < 1e-6);
+ok('losing everything is a loss of the whole outlay',
+   Math.abs(m.rows[3].net + 70) < 1e-9, String(m.rows[3].net));
+
+// The bug this replaced: each slip pays the product of ITS OWN legs' prices.
+// Averaging the decimal across slips reports a payout no slip pays, and is
+// out by more the further apart the prices are.
+const decs = priced.map(r => r.dec);
+const treble = 10 * decs[0] * decs[1] * decs[2];
+const doubles = [[0,1],[0,2],[1,2]].map(([i, j]) => 10 * decs[i] * decs[j]);
+const singles = decs.map(d => 10 * d);
+const allWin = treble + doubles.reduce((a, b) => a + b, 0) + singles.reduce((a, b) => a + b, 0);
+ok('every slip is priced on its own legs, not on an average',
+   Math.abs(m.rows[0].net - (allWin - 70)) < 1e-6,
+   'expected ' + (allWin - 70).toFixed(2) + ', got ' + m.rows[0].net.toFixed(2));
+
+// Which legs landed changes what came back, so a k-of-n row is a range.
+ok('a partial outcome reports the spread it can pay',
+   m.rows[1].netLo < m.rows[1].net && m.rows[1].net < m.rows[1].netHi,
+   [m.rows[1].netLo, m.rows[1].net, m.rows[1].netHi].map(v => v.toFixed(2)).join(' / '));
 
 // ── choose(), which decides what a round robin pays ─────────────────────
 ok('choose is the binomial coefficient',
@@ -118,11 +140,26 @@ ok('and shows no net while it is pending',
 // shared key would settle a live parlay from a result it never had.
 DATA.results = { '2|any|A': 'hit', '2|any|B': 'hit', '2|any|C': 'miss' };
 ok('every leg hitting wins a full cover', settle(mk(['any|A', 'any|B'])).status === 'Won');
-ok('one leg missing loses a full cover', settle(mk(['any|A', 'any|C'])).status === 'Lost');
-const rr = settle(mk(['any|A', 'any|B', 'any|C'], { size: 2, slips: 3, outlay: 30 }));
-ok('a by-2s with two hits still wins', rr.status === 'Won', rr.status);
-ok('and pays once per winning pair, not once overall',
-   Math.abs(rr.net - (10 * 3 * 1 - 30)) < 1e-9, String(rr.net));
+ok('one leg missing loses a single slip', settle(mk(['any|A', 'any|C'])).status === 'Lost');
+
+// A saved cover settles from the curve it was saved with, not from one price.
+// Three slips pay when two of three land; the curve says so and the old
+// single-price arithmetic could not.
+const cover = mk(['any|A', 'any|B', 'any|C'], {
+  slips: 7, outlay: 70,
+  rows: [{ hit: 3, slipsWon: 7, chance: 0.02, net: 400 },
+         { hit: 2, slipsWon: 3, chance: 0.16, net: 50 },
+         { hit: 1, slipsWon: 1, chance: 0.43, net: -40 },
+         { hit: 0, slipsWon: 0, chance: 0.39, net: -70 }],
+});
+const rr = settle(cover);
+ok('a cover with two of three landing still wins', rr.status === 'Won', rr.status);
+ok('and pays what its curve says, not a re-derived single price',
+   rr.net === 50, String(rr.net));
+ok('a parlay saved before curves existed still settles',
+   settle(mk(['any|A', 'any|C'])).status === 'Lost',
+   'the fallback treats it as the single slip it was');
+
 ok('an unknown leg keeps the whole slip pending rather than losing it',
    settle(mk(['any|A', 'any|Unknown Person'])).status === 'Pending',
    'a name that fails to join must not read as a loss');
@@ -162,6 +199,10 @@ ok('it names the market it belongs to', sv.market === 'any' && !!sv.marketLabel)
 ok('it records the week, so it clears with the week', sv.week === DATA.week);
 ok('it stores the structure, not a pointer',
    sv.size === 0 && sv.stake === 10 && has(sv.dec) && has(sv.chance));
+ok('and carries a payout curve like everything else in the list',
+   Array.isArray(sv.rows) && sv.rows.length === sv.legs.length + 1
+   && sv.rows[0].hit === sv.legs.length && sv.rows[0].slipsWon === 1,
+   'a combination is one slip, so only the top row pays');
 ok('it is marked as coming from combinations', sv.from === 'combinations');
 
 // The whole point of the shape matching: a combination has to settle through

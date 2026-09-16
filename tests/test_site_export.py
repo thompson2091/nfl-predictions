@@ -308,3 +308,47 @@ def test_launch_builds_one_file_under_a_name_a_server_will_serve():
         f"a served directory hands out index.html by default; got {out[0].strip()!r}")
     assert "rm -rf public" in block, "the directory is disposable, so it is rebuilt clean"
     assert "public/" in (REPO / ".gitignore").read_text()
+
+
+def test_narrow_screens_get_labelled_rows_rather_than_a_squeezed_grid():
+    """Nine columns on a 360px screen is four characters each.
+
+    The first attempt kept the grid and dropped columns, which leaves a row of
+    unlabelled numbers once the header is gone. Each cell now carries its
+    column's label and prints it, so a stacked row names its own values.
+
+    Falsified by removing the `data-label` attribute: the CSS then has nothing
+    to put in `content: attr(data-label)` and every row is a bare column of
+    figures with no way to tell the model's number from the book's.
+    """
+    from src.export import site as d
+
+    assert "'data-label': c.label || null" in d.JS_SHARED, (
+        "every body cell must carry its column label")
+    narrow = d.CSS[d.CSS.index("@media (max-width:680px)"):]
+    assert "content:attr(data-label)" in narrow.replace(" ", "")
+    assert ".hd{display:none}" in narrow.replace(" ", "")
+    # The three cells that are furniture keep their places on the first line.
+    for cls in ("mob-lead", "mob-title", "mob-act"):
+        assert cls in narrow, f"{cls} has no narrow-screen placement"
+
+
+def test_the_slip_is_a_sheet_on_narrow_screens_not_a_block_below_the_board():
+    """Stacked in the flow it lands under five hundred rows.
+
+    That is not "below the board", it is unreachable — and the handle that
+    opens it would scroll you there rather than show it. Falsified by putting
+    the panel back in the document flow: the assertions below fail and the
+    control becomes a link to the bottom of a very long page.
+    """
+    from src.export import site as d
+
+    block = d.CSS[d.CSS.index("@media (max-width:1100px)"):
+                  d.CSS.index("@media (max-width:900px)")]
+    flat = block.replace(" ", "").replace("\n", "")
+    assert "position:fixed" in flat, "the sheet is fixed to the viewport"
+    assert "bottom:0" in flat
+    assert "max-height:82vh" in flat, "it must not cover the whole screen"
+    assert "padding-bottom:180px" in flat, (
+        "the board needs room to scroll clear of the sheet, or its last rows "
+        "sit underneath it with no way to reach them")

@@ -333,9 +333,31 @@ input[type=search]{-webkit-appearance:none}
 }
 @media (max-width:1100px){
   .wrap{flex-direction:column}
-  aside{width:auto;align-self:stretch;border-left:none;border-top:1px solid var(--line);
-    position:static;height:auto}
   h1{font-size:32px}
+  /* The slip becomes a sheet.
+     Stacked in the flow it lands underneath a five-hundred-row table, which
+     is not "below the board" so much as unreachable — and the handle that
+     opens it would scroll you there rather than show it. Fixed to the bottom
+     of the viewport, it opens over the board wherever you happen to be. */
+  aside{
+    position:fixed;left:0;right:0;bottom:0;top:auto;z-index:40;
+    width:auto;height:auto;max-height:82vh;
+    border-left:none;border-top:1px solid var(--line);
+    border-radius:16px 16px 0 0;
+    box-shadow:0 -10px 40px rgba(22,24,29,.24);
+    overflow-y:auto;
+    padding:16px 20px calc(24px + env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling:touch;
+  }
+  /* A grab bar, so the sheet reads as something that came up and can go back
+     down rather than as content that appeared. */
+  aside::before{
+    content:'';position:sticky;top:0;display:block;width:40px;height:4px;
+    margin:-6px auto 10px;border-radius:2px;background:var(--btnline);
+  }
+  /* The board keeps scrolling under it, so the last rows are not left beneath
+     the sheet with no way to reach them. */
+  main{padding-bottom:180px}
 }
 @media (max-width:900px){
   .top{height:auto;min-height:64px;flex-wrap:wrap;gap:12px;padding:10px 20px}
@@ -357,16 +379,49 @@ input[type=search]{-webkit-appearance:none}
   .seg button{flex:1 1 0;padding:0 8px;font-size:13px}
   .chiprow{gap:6px}
   .search{max-width:none!important;flex:1 1 100%!important}
-  .two,.three{grid-template-columns:1fr 1fr}
+  .two,.three{grid-template-columns:1fr}
   .sliptab{right:12px;bottom:12px}
-  /* A grid row on a phone is a stack, not a squeeze. Below this width the
-     columns stop being columns and each row becomes its own block, which is
-     the only honest way to keep nine fields legible on 360px. */
-  .rows{padding:4px 12px}
+  .fieldrow .field{flex:1 1 100%}
+
+  /* A table becomes one card per row.
+     The grid columns are dropped entirely — nine of them on a 360px screen is
+     four characters each — and every cell prints its own label instead, which
+     is what `data-label` is for. The header has nothing left to head, so it
+     goes.
+     Three cells are furniture rather than data and keep their places on the
+     first line: the star leads, the player names the row, and the action sits
+     on the right. Everything else stacks under them as label/value pairs. */
+  .rows{padding:0}
   .hd{display:none}
-  .row{grid-template-columns:44px 1fr auto!important;row-gap:2px;padding:10px 0;min-height:0}
+  .row{
+    display:grid!important;
+    grid-template-columns:44px minmax(0,1fr) auto;
+    gap:2px 10px;
+    padding:12px 12px 14px;
+    align-items:center;
+    min-height:0;
+  }
+  .row>div{
+    grid-column:2 / -1;
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    text-align:right;min-height:26px;
+  }
+  .row>div::before{
+    content:attr(data-label);
+    color:var(--mut2);font-size:12px;font-weight:600;
+    letter-spacing:.4px;text-transform:uppercase;text-align:left;flex:0 0 auto;
+  }
+  .row>div:not([data-label])::before,.row>div[data-label=""]::before{content:none}
   .row>div:empty{display:none}
-  .r{text-align:left}
+  .row .mob-lead{grid-column:1;grid-row:1;justify-content:center;min-height:44px}
+  .row .mob-title{grid-column:2;grid-row:1;justify-content:flex-start;text-align:left}
+  .row .mob-act{grid-column:3;grid-row:1;justify-content:flex-end}
+  .row .mob-title .who b{white-space:normal}
+  /* A row with no lead or action cell — Model, Ladder — has nothing to sit in
+     the first column, so its cells use the full width. */
+  .row>div:first-child:not(.mob-lead){grid-column:1 / -1}
+  .brk{grid-template-columns:1fr 64px 76px}
+  .cards article{padding:14px 16px}
 }
 @media print{
   .top,aside,.chiprow,.add,.icon{display:none}
@@ -845,7 +900,13 @@ function table(cols, rows, f, opts) {
   rows.forEach(r => {
     const tr = el('div', { class: 'row', style: 'grid-template-columns:' + tpl });
     cols.forEach(c => {
-      const d = el('div', { class: (c.r ? 'r ' : '') + (c.hide ? 'hidesm' : '') });
+      // `data-label` is what the narrow layout prints beside the value. The
+      // header is gone below 680px, so without it a stacked row is a column of
+      // unlabelled numbers — which is what the first mobile attempt was.
+      const d = el('div', {
+        class: (c.r ? 'r ' : '') + (c.hide ? 'hidesm ' : '') + (c.mob ? 'mob-' + c.mob : ''),
+        'data-label': c.label || null,
+      });
       c.cell(d, r);
       tr.appendChild(d);
     });
@@ -934,9 +995,110 @@ function clearSlip() {
   render();
 }
 
-// Round robin: every combination of `size` legs out of the slip. size 0 means
-// the single full-cover parlay, which is what a slip is before anyone asks
-// for anything else.
+// The round robin, priced exactly.
+//
+// A slip is always the full cover here — every combination of the legs, which
+// is what a book sells as a round robin and what the old Parlay pane showed.
+// There is no "how to back it" control: the breakdown below covers every size
+// at once, so choosing one in advance only hid the rest.
+//
+// The arithmetic is an enumeration over all 2^n outcome patterns rather than a
+// shortcut, because the shortcut is wrong. Each slip pays the product of *its
+// own* legs' prices, and those differ: over three legs the three doubles are
+// three different numbers. Averaging the decimal across slips — which is what
+// this did before — reports a single payout that no individual slip pays, and
+// it is out by more the further apart the prices are.
+//
+// Ported from `paneCover` in the previous dashboard, which had it right.
+const COVER_MAX_LEGS = 12;
+
+function portfolio(legs, stake, rho) {
+  const n = legs.length, N = 1 << n;
+  const p = legs.map(l => has(l.p) ? l.p : 0);
+  const dec = legs.map(l => has(l.dec) ? l.dec : null);
+  const allPriced = dec.every(has);
+
+  // Every pattern of who scores, and what it is worth.
+  const bits = [], prob = new Array(N);
+  for (let m = 0; m < N; m++) {
+    const b = [];
+    let q = 1;
+    for (let i = 0; i < n; i++) { const on = (m >> i) & 1; b.push(on); q *= on ? p[i] : 1 - p[i]; }
+    bits.push(b); prob[m] = q;
+  }
+  // Teammates only. The measured correlation is a team-game effect — one
+  // offence stalls and neither of its players scores — and applying it across
+  // fixtures would inflate the tail for legs that have nothing to do with
+  // each other.
+  if (rho) {
+    let tot = 0;
+    for (let m = 0; m < N; m++) {
+      const z = bits[m].map((on, i) => (on - p[i]) / Math.sqrt(Math.max(p[i] * (1 - p[i]), 1e-9)));
+      let pair = 0;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++)
+        if (legs[i].team && legs[i].team === legs[j].team) pair += z[i] * z[j];
+      prob[m] *= Math.exp(rho * pair); tot += prob[m];
+    }
+    for (let m = 0; m < N; m++) prob[m] /= tot;
+  }
+
+  const ret = new Array(N).fill(0), wins = new Array(N).fill(0);
+  let slips = 0;
+  for (let mask = 1; mask < N; mask++) {
+    slips++;
+    let payout = stake, priced = true;
+    for (let i = 0; i < n; i++) if ((mask >> i) & 1) {
+      if (dec[i] === null) priced = false; else payout *= dec[i];
+    }
+    if (!priced) payout = 0;
+    for (let m = 0; m < N; m++) if ((m & mask) === mask) { ret[m] += payout; wins[m]++; }
+  }
+  const staked = stake * slips;
+
+  const kOf = m => bits[m].reduce((a, b) => a + b, 0);
+  const rows = [];
+  for (let k = n; k >= 0; k--) {
+    let w = 0, r = 0, lo = Infinity, hi = -Infinity, nb = 0;
+    for (let m = 0; m < N; m++) if (kOf(m) === k) {
+      w += prob[m]; r += ret[m] * prob[m];
+      lo = Math.min(lo, ret[m]); hi = Math.max(hi, ret[m]); nb = wins[m];
+    }
+    const avg = w > 0 ? r / w : lo;
+    // `lo` and `hi` are not decoration. With k of n scoring, *which* k they
+    // were decides what came back, and on spread-out prices those two numbers
+    // are far apart — an average alone would read as a certainty.
+    rows.push({ hit: k, slipsWon: nb, chance: w, net: avg - staked,
+                netLo: lo - staked, netHi: hi - staked });
+  }
+  let ev = 0;
+  for (let m = 0; m < N; m++) ev += (ret[m] - staked) * prob[m];
+
+  return { n: n, slips: slips, stake: stake, outlay: staked, rows: rows,
+           ev: ev, roi: staked ? ev / staked : 0, priced: allPriced,
+           all: prob[N - 1] };
+}
+
+function slipMath() {
+  const legs = S.slip.legs.slice(0, COVER_MAX_LEGS);
+  const stake = S.slip.stake || 0;
+  const rho = ((M0() || {}).cover || {}).rho || 0;
+  if (!legs.length) {
+    return { legs: legs, slips: 0, outlay: 0, rows: [], ev: 0, all: 1,
+             priced: true, over: 0 };
+  }
+  const f = portfolio(legs, stake, rho);
+  f.legs = legs;
+  f.over = S.slip.legs.length - legs.length;
+  return f;
+}
+// The market payload carrying `cover`, whichever market the slip belongs to.
+function M0() {
+  return S.slip.market === 'rec' ? {} : marketOf(S.slip.market);
+}
+
+// Every k-subset of n, as index lists. Used by the Combinations page, which
+// enumerates slips rather than pricing one; the slip's own maths enumerates
+// outcome patterns instead and does not go through this.
 function combosOf(n, k) {
   const out = [];
   (function walk(start, acc) {
@@ -945,67 +1107,14 @@ function combosOf(n, k) {
   })(0, []);
   return out;
 }
-function slipMath() {
-  const legs = S.slip.legs;
-  const k = S.slip.size && S.slip.size < legs.length ? S.slip.size : legs.length;
-  const sets = legs.length ? combosOf(legs.length, k) : [];
-  const stake = S.slip.stake || 0;
-  const priced = legs.every(l => has(l.dec));
-  let all = 1;
-  legs.forEach(l => { all *= has(l.p) ? l.p : 0; });
 
-  // Per-slip price, and the distribution over how many of the legs land. The
-  // second is what makes a round robin legible: the full cover's headline
-  // number is the chance everything hits, and the money mostly comes from the
-  // cases where it does not.
-  const slips = sets.map(ix => {
-    let d = 1, p = 1;
-    ix.forEach(i => { d *= has(legs[i].dec) ? legs[i].dec : 1; p *= has(legs[i].p) ? legs[i].p : 0; });
-    return { ix: ix, dec: d, p: p };
-  });
-  const outlay = stake * slips.length;
-
-  // Exact distribution of "how many legs hit", by convolution. Independence is
-  // assumed and it is wrong — teammates score together — which is why the
-  // parlay panes elsewhere carry a correlation note. It is stated below the
-  // table rather than folded silently into the number.
-  let dist = [1];
-  legs.forEach(l => {
-    const p = has(l.p) ? l.p : 0, next = new Array(dist.length + 1).fill(0);
-    dist.forEach((v, i) => { next[i] += v * (1 - p); next[i + 1] += v * p; });
-    dist = next;
-  });
-
-  // Every outcome, from all of them landing down to none — not only the ones
-  // that pay. A breakdown that starts at the first winning row shows the half
-  // of the distribution where the money comes back and hides the half where it
-  // does not, which on a round robin is most of it.
-  const rows = [];
-  let ev = 0;
-  for (let hit = legs.length; hit >= 0; hit--) {
-    // A slip wins when every one of its legs is among the hits. With `hit` of
-    // `n` landing, the number of winning k-subsets is C(hit, k).
-    const winning = choose(hit, k);
-    const ret = slips.length ? stake * avgDec(slips) * winning : 0;
-    rows.push({ hit: hit, chance: dist[hit] || 0, net: ret - outlay,
-                slipsWon: winning });
-  }
-  dist.forEach((pr, hit) => {
-    ev += pr * (stake * avgDec(slips) * choose(hit, k) - outlay);
-  });
-  return { legs: legs, k: k, slips: slips, outlay: outlay, all: all, priced: priced,
-           rows: rows, ev: ev, dist: dist };
-}
 function choose(n, k) {
   if (k > n || k < 0) return 0;
   let r = 1;
   for (let i = 1; i <= k; i++) r = r * (n - k + i) / i;
   return Math.round(r);
 }
-function avgDec(slips) {
-  if (!slips.length) return 0;
-  return slips.reduce((a, s) => a + s.dec, 0) / slips.length;
-}
+
 """
 
 
@@ -1078,21 +1187,21 @@ function slipPanel() {
   a.appendChild(list);
 
   a.appendChild(el('div', { class: 'two' }, [
-    el('div', { class: 'stat' }, [el('i', { text: 'All hit · adj' }),
+    el('div', { class: 'stat' }, [el('i', { text: 'All hit' }),
       el('b', { text: chanceTxt(m.all) })]),
-    el('div', { class: 'stat' }, [el('i', { text: m.k === m.legs.length ? 'Parlay pays' : 'Per slip' }),
-      el('b', { text: m.priced ? american(decToAm(avgDec(m.slips))) : '—' })]),
+    el('div', { class: 'stat' }, [el('i', { text: 'Slips' }),
+      el('b', { text: String(m.slips) })]),
   ]));
+  if (m.over) a.appendChild(el('div', { class: 'warnbox', text:
+    m.over + ' leg' + (m.over === 1 ? ' is' : 's are') + ' not priced below: a full '
+    + 'cover of more than ' + COVER_MAX_LEGS + ' legs is ' + (Math.pow(2, COVER_MAX_LEGS) - 1)
+    + ' slips, which is past the point of being a thing anyone places.' }));
 
   if (full) {
-    // Round robin. 0 is the full cover and the default, so a reader who never
-    // touches this control gets what a slip has always meant.
-    const sizes = [[0, 'Every leg (one slip)']];
-    for (let k = 2; k < m.legs.length; k++) sizes.push([k, 'By ' + k + 's · ' + choose(m.legs.length, k) + ' slips']);
-    a.appendChild(el('div', { class: 'field' }, [
-      el('label', { text: 'How to back it' }),
-      pickerFor('Round robin', S.slip.size, sizes, v => { S.slip.size = +v; persistSlip(); }),
-    ]));
+    // No "how to back it" control. The slip is the full cover — every
+    // combination of the legs, which is how a book sells a round robin — and
+    // the table below breaks out every size at once. Choosing one in advance
+    // only hid the rest of the answer.
     const si = el('input', { type: 'text', inputmode: 'decimal', value: S.slip.stakeRaw,
       'aria-label': 'Stake per slip' });
     si.oninput = () => {
@@ -1102,35 +1211,43 @@ function slipPanel() {
     };
     a.appendChild(el('div', { class: 'field' }, [el('label', { text: 'Stake per slip ($)' }), si]));
     a.appendChild(el('p', { class: 'fine',
-      text: m.slips.length + (m.slips.length === 1 ? ' slip · ' : ' slips · ') + money(m.outlay) + ' at risk' }));
+      text: m.slips + (m.slips === 1 ? ' slip · ' : ' slips · ') + money(m.outlay)
+          + ' at risk · every combination of ' + m.legs.length
+          + (m.legs.length === 1 ? ' leg' : ' legs') }));
 
     if (m.priced) {
       const brk = el('div', { class: 'brk' });
       ['Legs in', 'Chance', 'Net'].forEach((h, i) =>
         brk.appendChild(el('div', { class: 'h' + (i ? ' r' : ''), text: h })));
       m.rows.forEach(r => {
-        const label = r.hit + ' of ' + m.legs.length;
         brk.appendChild(el('div', {
-          // How many of the slips that outcome actually pays, which is the
-          // whole point of a round robin and is invisible from the net alone.
-          title: r.slipsWon
-            ? r.slipsWon + ' of ' + m.slips.length + ' slips pay'
-            : 'no slip pays',
-          text: label + (m.slips.length > 1 && r.slipsWon
-            ? ' · ' + r.slipsWon + '/' + m.slips.length : '') }));
+          title: r.slipsWon ? r.slipsWon + ' of ' + m.slips + ' slips pay' : 'no slip pays',
+          text: r.hit + ' of ' + m.legs.length
+              + (r.slipsWon ? ' · ' + r.slipsWon + '/' + m.slips : '') }));
         brk.appendChild(el('div', { class: 'r', text: chanceTxt(r.chance) }));
-        brk.appendChild(el('div', { class: 'r ' + (r.net >= 0 ? 'pos' : 'neg'), text: money(r.net) }));
+        // A range where there is one. With k of n scoring, *which* k they were
+        // decides what came back, and on spread-out prices the best and worst
+        // cases are far apart — an average alone would read as a certainty.
+        const spread = Math.abs(r.netHi - r.netLo) > 0.005;
+        brk.appendChild(el('div', {
+          class: 'r ' + (r.net >= 0 ? 'pos' : 'neg'),
+          title: spread ? 'between ' + money(r.netLo) + ' and ' + money(r.netHi)
+                        + ', depending which legs landed' : null,
+          text: money(r.net) + (spread ? '*' : '') }));
       });
       a.appendChild(el('div', { class: 'panel' }, [brk]));
+      const anySpread = m.rows.some(r => Math.abs(r.netHi - r.netLo) > 0.005);
       a.appendChild(el('p', { class: 'fine', html:
-        'Expected <b class="' + (m.ev >= 0 ? 'pos' : 'neg') + '">' + esc(money(m.ev)) + '</b> per run, '
-        + 'at our numbers and the posted prices. Legs are treated as independent, '
-        + 'which they are not — two players in the same game move together, so a '
-        + 'same-game slip is riskier than this says in both directions.' }));
+        'Expected <b class="' + (m.ev >= 0 ? 'pos' : 'neg') + '">' + esc(money(m.ev)) + '</b> per run ('
+        + (m.roi >= 0 ? '+' : '') + (m.roi * 100).toFixed(1) + '% on ' + esc(money(m.outlay))
+        + '), at our numbers and each leg\u2019s own price.'
+        + (anySpread ? ' A starred net is an average: which legs landed changes what came back.' : '')
+        + ' Teammates are treated as correlated \u2014 one offence stalling takes '
+        + 'its players down together \u2014 and legs in different games as independent.' }));
     } else {
       a.appendChild(el('p', { class: 'fine',
         text: 'One of these legs has no posted price, so there is nothing to multiply. '
-            + 'The chance above still holds; the payout does not exist yet.' }));
+            + 'The chances above still hold; the payout does not exist yet.' }));
     }
   }
 
@@ -1174,7 +1291,7 @@ function slipHandle() {
 // has moved underneath it. Editing anything unsaves, which is what makes the
 // green state trustworthy.
 function slipSignature() {
-  return JSON.stringify([S.slip.market, S.slip.size, S.slip.stake,
+  return JSON.stringify([S.slip.market, S.slip.stake,
                          S.slip.legs.map(l => l.id).sort()]);
 }
 function saveButton() {
@@ -1197,9 +1314,14 @@ function saveSlip() {
     name: m.legs.length + '-leg ' + marketLabel(S.slip.market),
     market: S.slip.market, marketLabel: marketLabel(S.slip.market),
     week: DATA.week, season: DATA.season,
-    size: S.slip.size, stake: S.slip.stake,
-    slips: m.slips.length, outlay: m.outlay,
-    chance: m.all, dec: avgDec(m.slips), priced: m.priced,
+    size: 0, stake: S.slip.stake,
+    slips: m.slips, outlay: m.outlay,
+    chance: m.all, priced: m.priced,
+    // The whole payout curve, so a saved slip reproduces its breakdown rather
+    // than being re-derived from a single averaged price that no slip pays.
+    rows: m.rows.map(r => ({ hit: r.hit, slipsWon: r.slipsWon,
+                             chance: r.chance, net: r.net })),
+    ev: m.ev,
     legs: m.legs.map(l => ({ id: l.id, key: l.key, player: l.player, side: l.side,
                              label: l.label, odds: l.odds, dec: l.dec, p: l.p, game: l.game })),
     savedAt: new Date().toISOString(),
@@ -1436,8 +1558,8 @@ function gameCard(game, rows) {
 // ── The two board shapes ─────────────────────────────────────────────────
 function tdTable(rows, f, view) {
   const cols = [
-    { w: '44px', label: '', nosort: 1, cell: (d, r) => d.appendChild(starBtn(r)) },
-    { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', cell: (d, r) => {
+    { w: '44px', label: '', nosort: 1, mob: 'lead', cell: (d, r) => d.appendChild(starBtn(r)) },
+    { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', mob: 'title', cell: (d, r) => {
         const w = el('div', { class: 'who' });
         w.appendChild(el('b', { text: r.player }));
         const sub = el('span');
@@ -1478,7 +1600,7 @@ function tdTable(rows, f, view) {
       } },
     { w: '92px', label: 'Read', sort: 'read', cell: (d, r) => r.read && d.appendChild(
         el('span', { class: 'pill ' + readClass(r.read), text: r.read })) },
-    { w: '44px', label: '', nosort: 1, cell: (d, r) => d.appendChild(addBtn(r)) },
+    { w: '44px', label: '', nosort: 1, mob: 'act', cell: (d, r) => d.appendChild(addBtn(r)) },
   ];
   if (view === 'short') {
     // What every bet at this price range actually returned, which is the one
@@ -1511,8 +1633,8 @@ function tdTable(rows, f, view) {
 
 function ouTable(rows, f) {
   const cols = [
-    { w: '44px', label: '', nosort: 1, cell: (d, r) => d.appendChild(starBtn(r)) },
-    { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', cell: (d, r) => {
+    { w: '44px', label: '', nosort: 1, mob: 'lead', cell: (d, r) => d.appendChild(starBtn(r)) },
+    { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', mob: 'title', cell: (d, r) => {
         d.appendChild(el('div', { class: 'who' }, [
           el('b', { text: r.player }),
           el('span', { text: (r.team || '') + (r.thin ? ' · ' + r.nBooks + ' book' + (r.nBooks === 1 ? '' : 's') : '') }),
@@ -1539,7 +1661,7 @@ function ouTable(rows, f) {
       title: 'Ours minus the book’s. A disagreement, not an edge — on this market the book has been the better estimate.',
       cell: (d, r) => d.appendChild(el('span', {
         class: has(r.edge) ? (r.edge > 0 ? 'pos' : 'neg') : '', text: has(r.edge) ? spp(r.edge) : '' })) },
-    { w: '132px', label: 'Bet', nosort: 1, cell: (d, r) => {
+    { w: '132px', label: 'Bet', nosort: 1, mob: 'act', cell: (d, r) => {
         const g = el('div', { style: 'display:flex;gap:6px' });
         ['over', 'under'].forEach(side => {
           const on = legIn(r.id + '|' + side);
@@ -1692,7 +1814,8 @@ function pageCombos() {
 
   // ── Results ──────────────────────────────────────────────────────────
   const cols = [
-    { w: 'minmax(0,2fr)', label: 'Slip', sortVal: s => s.ix.map(i => pool[i].player).join(' '),
+    { w: 'minmax(0,2fr)', label: 'Slip', mob: 'title',
+      sortVal: s => s.ix.map(i => pool[i].player).join(' '),
       cell: (d, s) => {
         const names = s.ix.map(i => pool[i].player);
         const w = el('div', { class: 'who' });
@@ -1720,7 +1843,7 @@ function pageCombos() {
       cell: (d, s) => d.appendChild(el('span', {
         class: s.ev === null ? 'note' : (s.ev >= 0 ? 'pos' : 'neg'),
         text: s.ev === null ? 'unpriced' : money(s.ev) })) },
-    { w: '150px', label: '', nosort: 1, cell: (d, s) => {
+    { w: '150px', label: '', nosort: 1, mob: 'act', cell: (d, s) => {
         const g = el('div', { style: 'display:flex;gap:6px;justify-content:flex-end' });
         g.appendChild(el('button', { class: 'chip', text: 'Load',
           'aria-label': 'Load ' + s.ix.map(i => pool[i].player).join(', ') + ' into the slip',
@@ -1794,6 +1917,14 @@ function saveCombo(key, s, pool) {
     week: DATA.week, season: DATA.season,
     size: 0, stake: stake, slips: 1, outlay: stake,
     chance: s.p, dec: s.dec || 1, priced: !!s.dec,
+    // One slip, not a cover: you picked this combination, so it pays only
+    // when every leg lands. Stored as the same curve shape as anything else
+    // in the list, so the Saved page settles one kind of card rather than two.
+    rows: legs.map((_, i) => i).concat([legs.length]).reverse().map(hit => ({
+      hit: hit, slipsWon: hit === legs.length ? 1 : 0,
+      chance: hit === legs.length ? s.p : null,
+      net: hit === legs.length ? (s.dec ? stake * s.dec - stake : 0) : -stake,
+    })),
     legs: legs.map(l => ({ id: l.id, key: l.key, player: l.player, side: l.side,
                            label: l.label, odds: l.odds, dec: l.dec, p: l.p, game: l.game })),
     savedAt: new Date().toISOString(),
@@ -1893,13 +2024,22 @@ function settle(p) {
   const hits = legs.filter(l => l.state === 'hit').length;
   let status = 'Pending', net = 0;
   if (!pending) {
-    // The round robin decides what "won" means. A full-cover slip needs every
-    // leg; a by-2s needs any two, and pays once per winning pair.
-    const k = p.size && p.size < legs.length ? p.size : legs.length;
-    const winning = choose(hits, k);
-    const ret = p.priced ? p.stake * p.dec * winning : 0;
-    net = ret - (p.outlay || p.stake * (p.slips || 1));
-    status = winning > 0 ? 'Won' : 'Lost';
+    // Read the payout curve the slip was saved with, rather than re-deriving
+    // it from a single price. A full cover pays every sub-slip whose legs all
+    // landed, and those slips have different prices — there is no one number
+    // to multiply, which is why the curve is stored.
+    const row = (p.rows || []).find(r => r.hit === hits);
+    if (row) {
+      net = row.net;
+      status = row.slipsWon > 0 ? 'Won' : 'Lost';
+    } else {
+      // A parlay saved before the curve existed. Treated as the single slip
+      // it was: every leg or nothing.
+      const won = hits === legs.length;
+      const ret = p.priced && won ? p.stake * (p.dec || 1) : 0;
+      net = ret - (p.outlay || p.stake * (p.slips || 1));
+      status = won ? 'Won' : 'Lost';
+    }
   }
   return { ...p, legs: legs, status: status, net: net, hits: hits };
 }
