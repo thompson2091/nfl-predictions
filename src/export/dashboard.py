@@ -484,7 +484,7 @@ const S = {
   // the question it provokes, and a single-game dropdown could only ask it
   // one game at a time. Empty is the whole slate.
   c: { legs: 2, per: 4, metric: 'likely', show: 25, games: [], priced: 'all' },
-  // "Guys I like": a list built by clicking players on the Players and
+  // Favorites: a list built by clicking players on the Players and
   // Shortlist tables. Scoped to one season/week/market and held in
   // localStorage, so it survives this page being rebuilt — which happens
   // several times a week and would otherwise discard it every time.
@@ -684,7 +684,7 @@ function filteredPlayers() {
   return rows;
 }
 
-// The Players table's columns, defined once. "Guys I like" is the same table
+// The Players table's columns, defined once. Favorites is the same table
 // over a chosen subset, and a second copy of this list would drift from it the
 // first time a column was added to either — the failure this file has already
 // had twice, with the head-to-head tiles and with the slate predicate.
@@ -1294,7 +1294,7 @@ function coverDefault(pool, n) {
 
 function coverToggle(name, st) {
   // `st` is the state slot the picker belongs to. Two builders share this
-  // code — the Parlay tab and the one on "Guys I like" — and a hardcoded
+  // code — the Parlay tab and the one on Favorites — and a hardcoded
   // S.cover here meant clicking a chip on one moved the other's legs.
   st = st || S.cover;
   if (!st.picked) st.picked = [];
@@ -1429,7 +1429,7 @@ function coverPicker(pool, blended, extra, st) {
 
 function paneCover(opts) {
   // Called bare by the Parlay tab, and with a state slot plus a pool filter by
-  // "Guys I like", which is this same builder over a chosen subset.
+  // Favorites, which is this same builder over a chosen subset.
   // Parameterised rather than copied: a second implementation of this pricing
   // would drift from the first the week either was touched, which is the
   // failure this file keeps having — the head-to-head tiles and the slate
@@ -2187,14 +2187,14 @@ function fadeCard(sl, rec) {
 """
 
 JS_LIKED = r"""
-// ── Pane: guys I like ───────────────────────────────────────────────────
+// ── Pane: favorites ─────────────────────────────────────────────────────
 //
 // A list the reader builds by clicking players on the Players and Shortlist
 // tables, then works over here. Three things live on it: the same table those
 // players came from, a parlay built from them, and every combination of them
 // priced out.
 //
-// Scoped to one season, week and market. "Guys I like this week" is the
+// Scoped to one season, week and market. "my favorites this week" is the
 // question, and a list that carried across a rollover would answer a different
 // one — most of it would be players whose games have been played.
 //
@@ -2280,11 +2280,11 @@ function cellButton(label, on, title, cls, onclick) {
 function likeCol() {
   return {
     k: '_like', label: '', t: 1, nosort: true,
-    title: 'Add a player to "Guys I like" — your own list for this week, kept in this browser.',
+    title: 'Add a player to Favorites — your own list for this week, kept in this browser.',
     cell: (td, v, r) => td.appendChild(cellButton(
       isLiked(r.player) ? '✓' : '+', isLiked(r.player),
-      isLiked(r.player) ? 'On your list — click to remove'
-                        : 'Add to "Guys I like"',
+      isLiked(r.player) ? 'A favorite — click to remove'
+                        : 'Add to Favorites',
       null, () => likedToggle(r.player))),
   };
 }
@@ -2341,12 +2341,35 @@ function paneLiked() {
     'Private windows and "block site data" both do this; so does opening the ' +
     'file directly in some browsers.' }));
 
+  // When the list is empty, say why it might be — a list saved under another
+  // week or market is the difference between "you never added anyone" and
+  // "you added them somewhere else", and an empty pane cannot tell them apart.
+  // The storage key is on the page for the same reason: if favorites go
+  // missing again this is the thing that says whether the key moved.
+  const elsewhere = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || k.indexOf(LIKED_NS + ':') !== 0 || k === likedKey(LIKED_NS, m)) continue;
+      const n = (JSON.parse(localStorage.getItem(k)) || []).length;
+      if (n) elsewhere.push({ key: k, n: n });
+    }
+  } catch (e) { /* storage unreadable; the box below already says so */ }
+
+  const whereNote = () => el('p', { class: 'fine', html:
+    'Saved in this browser under <code>' + esc(likedKey(LIKED_NS, m)) + '</code>' +
+    ' — one list per week and market, so a new week starts empty on purpose.' +
+    (elsewhere.length
+      ? ' You also have ' + elsewhere.map(e => '<b>' + e.n + '</b> under <code>' +
+        esc(e.key) + '</code>').join(', ') + '.' : '') });
+
   if (!names.length) {
-    out.appendChild(card('Guys I like', null, [el('p', { class: 'muted', html:
+    out.appendChild(card('Favorites', null, [el('p', { class: 'muted', html:
       'Nothing saved for <b>' + esc(m.label) + ', week ' + m.week + '</b> yet. ' +
       'Add players with the <b>+</b> button on the <b>Players</b> or ' +
       '<b>Shortlist</b> tab and they will appear here. ' +
-      'The list is per week and per market, and it is kept in this browser.' })]));
+      'The list is per week and per market, and it is kept in this browser.' }),
+      whereNote()]));
     return out;
   }
 
@@ -2365,7 +2388,7 @@ function paneLiked() {
 
   const favCol = {
     k: '_fav', label: '', t: 1, nosort: true,
-    title: 'Star a player. Stars sort to the top and mark the row — they do not change what the parlay or the combinations below draw from, which is the whole list.',
+    title: 'Star a favorite. Stars sort to the top and mark the row — they do not change what the parlay or the combinations below draw from, which is the whole list.',
     cell: (td, v, r) => td.appendChild(cellButton(
       r._fav ? '★' : '☆', r._fav,
       r._fav ? 'Starred' : 'Star this player', 'star',
@@ -2386,12 +2409,13 @@ function paneLiked() {
           : c.fmt(v, r),
       }))).concat([dropCol]);
 
-  out.appendChild(card('Guys I like', null, [
+  out.appendChild(card('Favorites', null, [
     table('liked', cols, rows, { rowClass: r => r.stale ? 'stale' : null }),
     el('p', { class: 'rowcount', text:
       names.length + ' saved for ' + m.label + ', week ' + m.week +
       (stale ? ' — ' + stale + ' no longer on this week’s board' : '') +
       '. Stars sort to the top. Click a heading to sort by anything else.' }),
+    whereNote(),
   ]));
 
   if (stale) out.appendChild(el('div', { class: 'warn-box', html:
@@ -2408,8 +2432,8 @@ function paneLiked() {
   out.appendChild(paneCover({
     state: S.likedCover,
     pool: r => isLiked(r.player),
-    title: 'Parlay from your list',
-    empty: 'Pick at least one of your saved players.',
+    title: 'Parlay from your favorites',
+    empty: 'Pick at least one of your favorites.',
   }));
 
   // ── Every combination of them ──────────────────────────────────────────
@@ -2778,7 +2802,7 @@ JS_SHELL = r"""
 const TABS = [
   ['shortlist', 'Shortlist', paneShortlist],
   ['cover', 'Parlay', paneCover],
-  ['liked', 'Guys I like', paneLiked],
+  ['liked', 'Favorites', paneLiked],
   ['players', 'Players', paneMPlayers],
   ['combos', 'Combinations', paneCombos],
   ['teams', 'Teams', paneTeams],

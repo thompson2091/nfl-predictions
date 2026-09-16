@@ -84,6 +84,44 @@ if (pair.length === 2) {
      likedSubsets(pair, false).length === 1 && likedSubsets(pair, false)[0].same);
 }
 
+// ── A reload, which is the thing that was reported ───────────────────────
+// Every assertion above adds and reads inside one page lifetime, which is not
+// what anyone does. The list has to survive the script being re-run against
+// the same storage — and survive it against a *rebuilt* payload, since the
+// page is regenerated several times a week.
+{
+  const before = likedList(m).slice();
+  const key = likedKey(LIKED_NS, m);
+  const raw = localStorage.getItem(key);
+  ok('what is on screen is what is in storage',
+     JSON.stringify(before) === raw, raw);
+
+  // A reload is a fresh S over the same storage.
+  S.liked = {}; S.likedFav = {};
+  ok('the list survives a reload',
+     JSON.stringify(likedList(M())) === JSON.stringify(before),
+     JSON.stringify(likedList(M())));
+
+  // A rebuild changes the payload but not the week, so not the key either.
+  const dropped = M().players.pop();
+  S.liked = {}; S.likedFav = {};
+  ok('the list survives a rebuild that drops a saved player',
+     JSON.stringify(likedList(M())) === JSON.stringify(before));
+  ok('and the dropped player is still shown, labelled',
+     !before.includes(dropped.player) || /not on this week/.test(paneText()));
+  M().players.push(dropped);
+
+  // The key is what a new week changes, and nothing else should.
+  const wk = M().week;
+  M().week = wk + 1;
+  S.liked = {}; S.likedFav = {};
+  ok('a new week starts empty', likedList(M()).length === 0);
+  M().week = wk;
+  S.liked = {}; S.likedFav = {};
+  ok('and going back to the old week finds it again',
+     JSON.stringify(likedList(M())) === JSON.stringify(before));
+}
+
 // ── The two parlay builders are separate ─────────────────────────────────
 // This failed when it was written: both pickers reached for S.cover.
 S.cover.picked = null; S.likedCover.picked = null;
