@@ -130,7 +130,10 @@ main{flex-grow:1;padding:28px 40px 40px;display:flex;flex-direction:column;gap:1
 aside{
   width:360px;flex-shrink:0;border-left:1px solid var(--line);background:var(--card);
   padding:24px 24px 32px;display:flex;flex-direction:column;gap:14px;
-  position:sticky;top:64px;max-height:calc(100vh - 64px);overflow-y:auto;
+  /* The full height of the window under the header, not just as tall as its
+     contents. A panel that stops halfway down leaves a seam of page
+     background beside the board and reads as something that failed to load. */
+  position:sticky;top:64px;height:calc(100vh - 64px);overflow-y:auto;
 }
 .asidehead{display:flex;justify-content:space-between;align-items:center;gap:12px}
 /* The handle that brings it back. Fixed to the viewport rather than the page,
@@ -331,7 +334,7 @@ input[type=search]{-webkit-appearance:none}
 @media (max-width:1100px){
   .wrap{flex-direction:column}
   aside{width:auto;align-self:stretch;border-left:none;border-top:1px solid var(--line);
-    position:static;max-height:none}
+    position:static;height:auto}
   h1{font-size:32px}
 }
 @media (max-width:900px){
@@ -617,6 +620,9 @@ const S = {
   // it away without emptying it, and the handle says how many are in there.
   slipOpen: false,
   conflict: null,
+  // Per-table sort, keyed by the table's id. Lives on S rather than in
+  // the table, because the table is rebuilt on every render.
+  sort: {},
   favs: [],
   parlays: [],
   saved: {},
@@ -731,16 +737,9 @@ function applyFilters(rows, f) {
   if (f.favOnly) out = out.filter(r => isFav(r.id));
   if (f.priced === 'priced') out = out.filter(r => r.priced);
   else if (f.priced === 'unpriced') out = out.filter(r => !r.priced);
-  if (f.sort) {
-    const k = f.sort;
-    out = out.slice().sort((a, b) => {
-      const x = a[k], y = b[k];
-      if (!has(x) && !has(y)) return 0;
-      if (!has(x)) return 1;
-      if (!has(y)) return -1;
-      return typeof x === 'string' ? f.dir * x.localeCompare(y) : f.dir * (x - y);
-    });
-  }
+  // Sorting is deliberately not done here. `table` owns it, so a column
+  // header and the row order cannot disagree, and every table gets it whether
+  // or not the page has filter state to hang it on.
   return out;
 }
 
@@ -789,20 +788,55 @@ function countLine(shown, total, noun) {
 // after "10%" as text and the column becomes a lie.
 function table(cols, rows, f, opts) {
   opts = opts || {};
+  // Every table sorts, on every column that has a value to sort by.
+  //
+  // Sorting used to hang off the page's filter state, so the two board tables
+  // sorted and the four on Model, Ladder and Combinations did not — a
+  // difference nobody could see until they clicked a heading and nothing
+  // happened. A table without its own filter state gets one here, keyed by
+  // `opts.id`, and the state lives on S so it survives a re-render.
+  const st = (f && 'sort' in f) ? f
+    : (S.sort[opts.id || 'x'] = S.sort[opts.id || 'x'] || { sort: '', dir: -1 });
+  const sortable = c => !c.nosort && (c.sort || c.sortVal);
+  const keyOf = c => c.sort || c.label;
+  const valOf = (c, r) => c.sortVal ? c.sortVal(r) : r[c.sort];
+
+  if (st.sort) {
+    const c = cols.find(c => sortable(c) && keyOf(c) === st.sort);
+    if (c) rows = rows.slice().sort((a, b) => {
+      const x = valOf(c, a), y = valOf(c, b);
+      if (!has(x) && !has(y)) return 0;
+      // Missing always sorts last, whichever way the column is pointing. A
+      // blank that floats to the top on one click is a row you have to
+      // re-sort past to read the answer.
+      if (!has(x)) return 1;
+      if (!has(y)) return -1;
+      return typeof x === 'string' ? st.dir * String(x).localeCompare(String(y))
+                                   : st.dir * (x - y);
+    });
+  }
+
   const tpl = cols.map(c => c.w).join(' ');
   const wrap = el('div', { class: 'card rows' });
   const hd = el('div', { class: 'hd', style: 'grid-template-columns:' + tpl });
   cols.forEach(c => {
-    const d = el('div', { class: (c.r ? 'r ' : '') + (c.hide ? 'hidesm ' : '') + (c.sort ? 's' : ''),
-      title: c.title || null });
+    const on = sortable(c);
+    const d = el('div', { class: (c.r ? 'r ' : '') + (c.hide ? 'hidesm ' : '') + (on ? 's' : ''),
+      title: c.title || null, role: on ? 'button' : null, tabindex: on ? '0' : null });
     if (c.head) c.head(d); else d.textContent = c.label || '';
-    if (c.sort && f) {
-      d.onclick = () => {
-        f.dir = f.sort === c.sort ? -f.dir : -1;
-        f.sort = c.sort;
+    if (on) {
+      const k = keyOf(c);
+      const flip = () => {
+        st.dir = st.sort === k ? -st.dir : -1;
+        st.sort = k;
         render();
       };
-      if (f.sort === c.sort) d.setAttribute('aria-sort', f.dir > 0 ? 'ascending' : 'descending');
+      d.onclick = flip;
+      d.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } };
+      if (st.sort === k) {
+        d.setAttribute('aria-sort', st.dir > 0 ? 'ascending' : 'descending');
+        d.appendChild(document.createTextNode(st.dir > 0 ? ' \u2191' : ' \u2193'));
+      }
     }
     hd.appendChild(d);
   });
@@ -941,18 +975,22 @@ function slipMath() {
     dist = next;
   });
 
+  // Every outcome, from all of them landing down to none — not only the ones
+  // that pay. A breakdown that starts at the first winning row shows the half
+  // of the distribution where the money comes back and hides the half where it
+  // does not, which on a round robin is most of it.
   const rows = [];
   let ev = 0;
-  for (let hit = legs.length; hit >= Math.min(k, legs.length); hit--) {
+  for (let hit = legs.length; hit >= 0; hit--) {
     // A slip wins when every one of its legs is among the hits. With `hit` of
     // `n` landing, the number of winning k-subsets is C(hit, k).
-    const winning = slips.filter(s => s.ix.length <= hit).length && choose(hit, k);
+    const winning = choose(hit, k);
     const ret = slips.length ? stake * avgDec(slips) * winning : 0;
-    rows.push({ hit: hit, chance: dist[hit] || 0, net: ret - outlay });
+    rows.push({ hit: hit, chance: dist[hit] || 0, net: ret - outlay,
+                slipsWon: winning });
   }
   dist.forEach((pr, hit) => {
-    const winning = hit >= k ? choose(hit, k) : 0;
-    ev += pr * (stake * avgDec(slips) * winning - outlay);
+    ev += pr * (stake * avgDec(slips) * choose(hit, k) - outlay);
   });
   return { legs: legs, k: k, slips: slips, outlay: outlay, all: all, priced: priced,
            rows: rows, ev: ev, dist: dist };
@@ -978,7 +1016,8 @@ JS_SLIPVIEW = r"""
 // are deciding how to back something. The Shortlist gets legs, chance, price
 // and a save button, and a link to the other page for the rest — the feedback
 // on the prototype was that a second full builder there was noise.
-function slipPanel(full) {
+function slipPanel() {
+  const full = true;
   const a = el('aside');
   const m = slipMath();
 
@@ -1020,9 +1059,8 @@ function slipPanel(full) {
   }
 
   if (!m.legs.length) {
-    a.appendChild(el('div', { class: 'dash', text:
-      full ? 'Add players from the list to price them together.'
-           : 'Add shortlisted players with +.' }));
+    a.appendChild(el('div', { class: 'dash',
+      text: 'Add players from the list to price them together.' }));
     return a;
   }
 
@@ -1067,13 +1105,18 @@ function slipPanel(full) {
 
     if (m.priced) {
       const brk = el('div', { class: 'brk' });
-      ['If this many hit', 'Chance', 'Net'].forEach((h, i) =>
+      ['Legs in', 'Chance', 'Net'].forEach((h, i) =>
         brk.appendChild(el('div', { class: 'h' + (i ? ' r' : ''), text: h })));
       m.rows.forEach(r => {
-        brk.appendChild(el('div', { text:
-          m.legs.length === 1 ? 'It hits'
-          : r.hit === m.legs.length ? 'All ' + r.hit
-          : r.hit + ' of ' + m.legs.length }));
+        const label = r.hit + ' of ' + m.legs.length;
+        brk.appendChild(el('div', {
+          // How many of the slips that outcome actually pays, which is the
+          // whole point of a round robin and is invisible from the net alone.
+          title: r.slipsWon
+            ? r.slipsWon + ' of ' + m.slips.length + ' slips pay'
+            : 'no slip pays',
+          text: label + (m.slips.length > 1 && r.slipsWon
+            ? ' · ' + r.slipsWon + '/' + m.slips.length : '') }));
         brk.appendChild(el('div', { class: 'r', text: chanceTxt(r.chance) }));
         brk.appendChild(el('div', { class: 'r ' + (r.net >= 0 ? 'pos' : 'neg'), text: money(r.net) }));
       });
@@ -1101,9 +1144,19 @@ function slipPanel(full) {
 // Three states, and the middle one is the point: a slip with legs that has
 // been put away is not an empty slip. It comes back with everything in it, and
 // until it does the board has the full width of the window.
-function slipSlot(full) {
-  if (S.slipOpen || S.conflict) return slipPanel(full);
-  return null;
+// One component, everywhere. The Combinations page used to get a cut-down
+// version without the round robin or the breakdown, on the reasoning that a
+// second full builder there was noise — but it is the same slip, and a control
+// that exists on one page and not another for the same object is a control you
+// have to remember the location of.
+function slipSlot() {
+  // A conflict has to be answered, so it opens the panel whatever else is
+  // true. Otherwise: nothing in it, nothing to show. An empty slip used to
+  // render a dashed rectangle saying "add players from the list", which is an
+  // instruction taking 360px away from the list it refers to.
+  if (S.conflict) return slipPanel();
+  if (!S.slipOpen || !S.slip.legs.length) return null;
+  return slipPanel();
 }
 function slipHandle() {
   const n = S.slip.legs.length;
@@ -1255,7 +1308,8 @@ function pageWeek() {
   ]));
 
   out.appendChild(main);
-  out.appendChild(slipPanel(true));
+  const slip = slipSlot();
+  if (slip) out.appendChild(slip);
   return out;
 }
 
@@ -1379,7 +1433,7 @@ function gameCard(game, rows) {
 // ── The two board shapes ─────────────────────────────────────────────────
 function tdTable(rows, f, view) {
   const cols = [
-    { w: '44px', label: '', cell: (d, r) => d.appendChild(starBtn(r)) },
+    { w: '44px', label: '', nosort: 1, cell: (d, r) => d.appendChild(starBtn(r)) },
     { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', cell: (d, r) => {
         const w = el('div', { class: 'who' });
         w.appendChild(el('b', { text: r.player }));
@@ -1392,7 +1446,7 @@ function tdTable(rows, f, view) {
         w.appendChild(sub);
         d.appendChild(w);
       } },
-    { w: '170px', hide: 1, head: d => keyHead(d), cell: (d, r) => barCell(d, r) },
+    { w: '170px', hide: 1, nosort: 1, head: d => keyHead(d), cell: (d, r) => barCell(d, r) },
     { w: '56px', label: 'Ours', r: 1, sort: 'ours', cell: (d, r) =>
         d.appendChild(el('span', { class: 'big', text: pct(r.ours) })) },
     { w: '56px', label: 'Book', r: 1, sort: 'book', cell: (d, r) =>
@@ -1407,9 +1461,9 @@ function tdTable(rows, f, view) {
         if (r.best) d.appendChild(el('div', { class: 'pos', style: 'font-size:12px',
           text: 'best ' + american(r.best) + (r.bestBook ? ' ' + r.bestBook : '') }));
       } },
-    { w: '92px', label: 'Read', cell: (d, r) => r.read && d.appendChild(
+    { w: '92px', label: 'Read', sort: 'read', cell: (d, r) => r.read && d.appendChild(
         el('span', { class: 'pill ' + readClass(r.read), text: r.read })) },
-    { w: '44px', label: '', cell: (d, r) => d.appendChild(addBtn(r)) },
+    { w: '44px', label: '', nosort: 1, cell: (d, r) => d.appendChild(addBtn(r)) },
   ];
   if (view === 'short') {
     // What every bet at this price range actually returned, which is the one
@@ -1437,19 +1491,19 @@ function tdTable(rows, f, view) {
                  + 'up against the closing line.' }
     : { emptyTitle: 'No players match',
         emptyBody: 'Clear a filter, or search for a different name.' };
-  return table(cols, rows, f, empty);
+  return table(cols, rows, f, Object.assign({ id: 'td' }, empty));
 }
 
 function ouTable(rows, f) {
   const cols = [
-    { w: '44px', label: '', cell: (d, r) => d.appendChild(starBtn(r)) },
+    { w: '44px', label: '', nosort: 1, cell: (d, r) => d.appendChild(starBtn(r)) },
     { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', cell: (d, r) => {
         d.appendChild(el('div', { class: 'who' }, [
           el('b', { text: r.player }),
           el('span', { text: (r.team || '') + (r.thin ? ' · ' + r.nBooks + ' book' + (r.nBooks === 1 ? '' : 's') : '') }),
         ]));
       } },
-    { w: '120px', hide: 1, head: d => keyHead(d, 'Proj', 'Line'), cell: (d, r) => {
+    { w: '120px', hide: 1, nosort: 1, head: d => keyHead(d, 'Proj', 'Line'), cell: (d, r) => {
         // Projection against the line, both scaled to the same ceiling, so the
         // bar says "how far clear of the number do we have him".
         const top = Math.max(10, r.line * 1.6);
@@ -1470,7 +1524,7 @@ function ouTable(rows, f) {
       title: 'Ours minus the book’s. A disagreement, not an edge — on this market the book has been the better estimate.',
       cell: (d, r) => d.appendChild(el('span', {
         class: has(r.edge) ? (r.edge > 0 ? 'pos' : 'neg') : '', text: has(r.edge) ? spp(r.edge) : '' })) },
-    { w: '132px', label: 'Bet', cell: (d, r) => {
+    { w: '132px', label: 'Bet', nosort: 1, cell: (d, r) => {
         const g = el('div', { style: 'display:flex;gap:6px' });
         ['over', 'under'].forEach(side => {
           const on = legIn(r.id + '|' + side);
@@ -1482,7 +1536,7 @@ function ouTable(rows, f) {
         d.appendChild(g);
       } },
   ];
-  return table(cols, rows, f, {
+  return table(cols, rows, f, { id: 'ou',
     emptyTitle: 'No lines posted yet',
     emptyBody: 'Books post these much closer to kickoff than touchdown props.' });
 }
@@ -1623,7 +1677,8 @@ function pageCombos() {
 
   // ── Results ──────────────────────────────────────────────────────────
   const cols = [
-    { w: 'minmax(0,2fr)', label: 'Slip', cell: (d, s) => {
+    { w: 'minmax(0,2fr)', label: 'Slip', sortVal: s => s.ix.map(i => pool[i].player).join(' '),
+      cell: (d, s) => {
         const names = s.ix.map(i => pool[i].player);
         const w = el('div', { class: 'who' });
         w.appendChild(el('b', { text: names.join(' · ') }));
@@ -1638,18 +1693,19 @@ function pageCombos() {
         w.appendChild(sub);
         d.appendChild(w);
       } },
-    { w: '90px', label: 'All hit', r: 1,
+    { w: '90px', label: 'All hit', r: 1, sortVal: s => s.p,
       title: 'The chance every leg lands, treating them as independent.',
       cell: (d, s) => d.appendChild(el('span', { class: 'big',
         text: chanceTxt(s.p) })) },
-    { w: '96px', label: 'Pays', r: 1, cell: (d, s) => d.appendChild(el('span', {
+    { w: '96px', label: 'Pays', r: 1, sortVal: s => s.dec,
+      cell: (d, s) => d.appendChild(el('span', {
         text: s.dec ? american(decToAm(s.dec)) : '—' })) },
-    { w: '100px', label: 'EV on $' + Math.round(stake), r: 1,
+    { w: '100px', label: 'EV on $' + Math.round(stake), r: 1, sortVal: s => s.ev,
       title: 'At our probability and the posted price. Negative is the usual answer.',
       cell: (d, s) => d.appendChild(el('span', {
         class: s.ev === null ? 'note' : (s.ev >= 0 ? 'pos' : 'neg'),
         text: s.ev === null ? 'unpriced' : money(s.ev) })) },
-    { w: '150px', label: '', cell: (d, s) => {
+    { w: '150px', label: '', nosort: 1, cell: (d, s) => {
         const g = el('div', { style: 'display:flex;gap:6px;justify-content:flex-end' });
         g.appendChild(el('button', { class: 'chip', text: 'Load',
           'aria-label': 'Load ' + s.ix.map(i => pool[i].player).join(', ') + ' into the slip',
@@ -1673,7 +1729,7 @@ function pageCombos() {
         d.appendChild(g);
       } },
   ];
-  main.appendChild(table(cols, slips, null, {
+  main.appendChild(table(cols, slips, null, { id: 'combos',
     emptyTitle: pool.length < 2 ? 'Not enough players in this pool'
                                 : 'No slip survives these settings',
     emptyBody: pool.length < 2
@@ -1694,7 +1750,7 @@ function pageCombos() {
     + 'above and also likelier to lose outright.' }));
 
   out.appendChild(main);
-  const slip = slipSlot(false);
+  const slip = slipSlot();
   if (slip) out.appendChild(slip);
   return out;
 }
@@ -1992,15 +2048,16 @@ function pageLadder() {
   ]));
 
   const cols = [
-    { w: '70px', label: 'Rung', cell: (d, r) => d.appendChild(el('span', { text: String(r.rung) })) },
-    { w: 'minmax(0,1fr)', label: 'Balance', r: 1, cell: (d, r) =>
+    { w: '70px', label: 'Rung', sort: 'rung',
+      cell: (d, r) => d.appendChild(el('span', { text: String(r.rung) })) },
+    { w: 'minmax(0,1fr)', label: 'Balance', r: 1, sort: 'bal', cell: (d, r) =>
         d.appendChild(el('span', { class: 'big', text: money2(r.bal) })) },
-    { w: 'minmax(0,1fr)', label: 'Profit so far', r: 1, cell: (d, r) =>
+    { w: 'minmax(0,1fr)', label: 'Profit so far', r: 1, sort: 'won', cell: (d, r) =>
         d.appendChild(el('span', { class: 'pos', text: money2(r.won) })) },
-    { w: 'minmax(0,1fr)', label: 'Chance of getting here', r: 1, cell: (d, r) =>
+    { w: 'minmax(0,1fr)', label: 'Chance of getting here', r: 1, sort: 'p', cell: (d, r) =>
         d.appendChild(el('span', { text: chanceTxt(r.p) })) },
   ];
-  main.appendChild(table(cols, rows, null, {}));
+  main.appendChild(table(cols, rows, null, { id: 'ladder' }));
   main.appendChild(el('p', { class: 'fine', style: 'max-width:640px', text:
     'Every row assumes the one above it won. The branch where it did not is a '
     + 'single row saying zero, and it is the likelier branch from about the '
@@ -2063,19 +2120,19 @@ function marketCard(m) {
   // How the top pick did, per season it never trained on.
   if (r && r.seasons && r.seasons.length) {
     const cols = [
-      { w: 'minmax(0,1fr)', label: 'Test season', cell: (d, s) =>
+      { w: 'minmax(0,1fr)', label: 'Test season', sort: 'season', cell: (d, s) =>
           d.appendChild(el('span', { text: String(s.season) })) },
-      { w: '80px', label: 'Games', r: 1, cell: (d, s) =>
+      { w: '80px', label: 'Games', r: 1, sort: 'games', cell: (d, s) =>
           d.appendChild(el('span', { text: String(s.games) })) },
-      { w: '110px', label: 'Top 1', r: 1,
+      { w: '110px', label: 'Top 1', r: 1, sort: 'top1',
         title: 'How often the player we rank first in a game scored.',
         cell: (d, s) => d.appendChild(el('span', { class: 'big', text: pct(s.top1, 1) })) },
-      { w: '90px', label: 'Top 3', r: 1, cell: (d, s) =>
+      { w: '90px', label: 'Top 3', r: 1, sort: 'top3', cell: (d, s) =>
           d.appendChild(el('span', { class: 'dim', text: pct(s.top3, 1) })) },
-      { w: '90px', label: 'Top 5', r: 1, cell: (d, s) =>
+      { w: '90px', label: 'Top 5', r: 1, sort: 'top5', cell: (d, s) =>
           d.appendChild(el('span', { class: 'dim', text: pct(s.top5, 1) })) },
     ];
-    c.appendChild(table(cols, r.seasons, null, {}));
+    c.appendChild(table(cols, r.seasons, null, { id: 'seasons:' + m.key }));
   }
 
   // What the model is built from, and what each part is worth. `worth_top1` is
@@ -2086,18 +2143,20 @@ function marketCard(m) {
     const fam = r.families.slice().sort((a, b) =>
       (has(b.worth_top1) ? Math.abs(b.worth_top1) : -1) - (has(a.worth_top1) ? Math.abs(a.worth_top1) : -1));
     const cols = [
-      { w: 'minmax(0,1fr)', label: 'Family', cell: (d, f) => d.appendChild(el('div', { class: 'who' }, [
+      { w: 'minmax(0,1fr)', label: 'Family', sort: 'name',
+        cell: (d, f) => d.appendChild(el('div', { class: 'who' }, [
           el('b', { text: f.name }), el('span', { text: f.n + ' columns' })])) },
-      { w: '120px', label: 'Worth', r: 1,
+      { w: '120px', label: 'Worth', r: 1, sort: 'worth_top1',
         title: 'Top-1 lost when this family is removed and the model refitted.',
         cell: (d, f) => d.appendChild(el('span', {
           class: has(f.worth_top1) ? (f.worth_top1 > 0 ? 'pos' : 'neg') : 'note',
           text: has(f.worth_top1) ? spp(f.worth_top1 * 100) + ' pp' : 'not measured' })) },
-      { w: '110px', label: 'p', r: 1, cell: (d, f) => d.appendChild(el('span', {
+      { w: '110px', label: 'p', r: 1, sort: 'p_value',
+        cell: (d, f) => d.appendChild(el('span', {
           class: 'dim', text: has(f.p_value) ? f.p_value.toFixed(3) : '' })) },
     ];
     c.appendChild(el('h3', { style: 'margin-top:4px', text: 'What it uses, and what each part is worth' }));
-    c.appendChild(table(cols, fam, null, {}));
+    c.appendChild(table(cols, fam, null, { id: 'families:' + m.key }));
     if (r.unattributed && r.unattributed.length) c.appendChild(el('p', { class: 'fine',
       text: r.unattributed.length + ' columns belong to no family and are not ablated: '
           + r.unattributed.slice(0, 8).join(', ')
@@ -2122,17 +2181,20 @@ function receptionsCard(rec) {
       + '. That is what a market holding around 7% looks like when you bring a model '
       + 'to it. This market is on the page to be measured in public, not to be bet.' }));
   const cols = [
-    { w: 'minmax(0,1fr)', label: 'Week', cell: (d, w) => d.appendChild(el('span', { text: 'Week ' + w.week })) },
-    { w: '80px', label: 'Lines', r: 1, cell: (d, w) => d.appendChild(el('span', { text: String(w.n) })) },
-    { w: '100px', label: 'Went over', r: 1, cell: (d, w) =>
+    { w: 'minmax(0,1fr)', label: 'Week', sort: 'week',
+      cell: (d, w) => d.appendChild(el('span', { text: 'Week ' + w.week })) },
+    { w: '80px', label: 'Lines', r: 1, sort: 'n',
+      cell: (d, w) => d.appendChild(el('span', { text: String(w.n) })) },
+    { w: '100px', label: 'Went over', r: 1, sort: 'over_rate', cell: (d, w) =>
         d.appendChild(el('span', { class: 'dim', text: pct(w.over_rate, 1) })) },
-    { w: '90px', label: 'Us', r: 1, cell: (d, w) => d.appendChild(el('span', {
-        class: w.model_log_loss < w.market_log_loss ? 'pos' : 'neg',
-        text: w.model_log_loss.toFixed(4) })) },
-    { w: '90px', label: 'Market', r: 1, cell: (d, w) =>
+    { w: '90px', label: 'Us', r: 1, sort: 'model_log_loss', cell: (d, w) =>
+        d.appendChild(el('span', {
+          class: w.model_log_loss < w.market_log_loss ? 'pos' : 'neg',
+          text: w.model_log_loss.toFixed(4) })) },
+    { w: '90px', label: 'Market', r: 1, sort: 'market_log_loss', cell: (d, w) =>
         d.appendChild(el('span', { class: 'dim', text: w.market_log_loss.toFixed(4) })) },
   ];
-  c.appendChild(table(cols, f.weeks, null, {}));
+  c.appendChild(table(cols, f.weeks, null, { id: 'recweeks' }));
   c.appendChild(el('p', { class: 'fine', text: f.note + ' In-play quotes are excluded: a book '
     + 'still quoting in the fourth quarter is quoting on a game it can already see.' }));
   return c;

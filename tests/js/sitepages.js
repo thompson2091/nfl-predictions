@@ -13,10 +13,10 @@ const { ok, done } = reporter();
 const x = loadPage(process.argv[2], process.argv[3],
   ['S', 'rowsFor', 'applyFilters', 'slipMath', 'choose', 'settle', 'legOf', 'PAGES', 'has',
    'combosOf', 'saveCombo', 'comboSaved', 'COMBO_POOL_MAX',
-   'chanceTxt', 'slipSlot', 'slipHandle', 'clearSlip']);
+   'chanceTxt', 'slipSlot', 'slipHandle', 'clearSlip', 'table']);
 const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
         combosOf, saveCombo, comboSaved, COMBO_POOL_MAX,
-        chanceTxt, slipSlot, slipHandle, clearSlip } = x;
+        chanceTxt, slipSlot, slipHandle, clearSlip, table } = x;
 
 const txt = n => textOf(n).join(' ');
 
@@ -86,8 +86,13 @@ S.slip.size = 2;
 m = slipMath();
 ok('by-2s over three legs is three slips', m.slips.length === 3, String(m.slips.length));
 ok('and risks three stakes', Math.abs(m.outlay - 30) < 1e-9, String(m.outlay));
-ok('the breakdown covers every outcome that can pay',
-   m.rows.length === 2 && m.rows[0].hit === 3 && m.rows[1].hit === 2);
+ok('the breakdown covers every outcome, not only the paying ones',
+   m.rows.length === 4 && m.rows[0].hit === 3 && m.rows[3].hit === 0,
+   m.rows.map(r => r.hit).join(','));
+ok('and says how many slips each outcome pays',
+   m.rows[0].slipsWon === 3 && m.rows[1].slipsWon === 1 && m.rows[3].slipsWon === 0,
+   m.rows.map(r => r.slipsWon).join(','));
+ok('the losing rows are losses', m.rows[3].net < 0);
 ok('the chances in the breakdown are probabilities',
    m.rows.every(r => r.chance >= 0 && r.chance <= 1));
 S.slip.size = 0;
@@ -209,23 +214,44 @@ ok('zero and nonsense do not print NaN', chanceTxt(0) === '—' && chanceTxt(nul
 // ── The slip is absent until it holds something ─────────────────────────
 S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };
 S.slipOpen = false; S.conflict = null;
-ok('an empty, closed slip takes no width from the board', slipSlot(true) === null);
+ok('an empty, closed slip takes no width from the board', slipSlot() === null);
+S.slipOpen = true;
+ok('and an empty OPEN slip is still not shown — there is nothing in it',
+   slipSlot() === null);
+S.slipOpen = false;
 ok('and offers no handle when there is nothing in it', slipHandle() === null);
+
+// Asserted on the rendered pages, not only on the helper. The first version of
+// this checked `slipSlot` alone and passed while This week still called
+// `slipPanel` directly — a page-level swap that silently no-opped, so the slip
+// sat on the board at "0 legs" and the helper it was supposed to go through
+// was never reached. A helper nothing calls is not a behaviour.
+['week', 'combos'].forEach(name => {
+  const fn = name === 'week' ? pageWeek : pageCombos;
+  ok(name + ' shows no slip panel when the slip is empty and closed',
+     textOf(fn()).join(' ').indexOf('Your slip') < 0,
+     'the panel is rendered by the page, so the page has to ask for it');
+});
 
 const rows = rowsFor('any', 'all').filter(r => r.priced).slice(0, 2);
 S.slip.legs = rows.map(r => legOf(r));
-ok('a closed slip with legs still yields the board its width', slipSlot(true) === null);
+ok('a closed slip with legs still yields the board its width', slipSlot() === null);
 const h = slipHandle();
 ok('but offers a handle saying how many are in it', h !== null && /2/.test(txt(h)), h && txt(h));
 S.slipOpen = true;
-ok('opening it brings the panel back', slipSlot(true) !== null);
-ok('with the legs still in it', txt(slipSlot(true)).indexOf(rows[0].player) >= 0);
+ok('opening it brings the panel back', slipSlot() !== null);
+ok('with the legs still in it', txt(slipSlot()).indexOf(rows[0].player) >= 0);
+['week', 'combos'].forEach(name => {
+  const fn = name === 'week' ? pageWeek : pageCombos;
+  ok(name + ' renders the panel once it is open',
+     textOf(fn()).join(' ').indexOf('Your slip') >= 0);
+});
 
 // A conflict has to be visible even with the slip put away, or the prompt is
 // posted to a panel nobody can see.
 S.slipOpen = false;
 S.conflict = { row: rowsFor('first', 'all')[0], side: null };
-ok('a market conflict forces the panel open', slipSlot(true) !== null);
+ok('a market conflict forces the panel open', slipSlot() !== null);
 S.conflict = null;
 
 // ── The receptions board is everyone, not only the quoted ───────────────
@@ -251,12 +277,47 @@ S.slip = { market: 'any', legs: rowsFor('any','all').slice(0,3).map(r => legOf(r
            size: 2, stake: 10, stakeRaw: '10' };
 S.slipOpen = true;
 ok('the panel offers one control that empties the whole slip',
-   /Clear/.test(textOf(slipSlot(true)).join(' ')));
+   /Clear/.test(textOf(slipSlot()).join(' ')));
 clearSlip();
 ok('clearing removes every leg at once', S.slip.legs.length === 0);
 ok('and resets the round robin with them', S.slip.size === 0);
 ok('and keeps the stake, which is a preference not a pick', S.slip.stake === 10);
-ok('an emptied slip stops taking the board\'s width', S.slipOpen === false && slipSlot(true) === null);
+ok('an emptied slip stops taking the board\'s width', S.slipOpen === false && slipSlot() === null);
 ok('and offers no handle, because there is nothing to come back to', slipHandle() === null);
+
+// ── Sorting, on every table ─────────────────────────────────────────────
+// Sorting belongs to the table, so a table with no page filter state sorts
+// too. Four of them used to pass `null` and silently did nothing on a click.
+const sortRows = [{ a: 3, b: 'c' }, { a: 1, b: 'a' }, { a: null, b: 'b' }];
+const sortCols = [
+  { w: '1fr', label: 'A', sort: 'a', cell: (d, r) => d.appendChild({ _text: String(r.a) }) },
+  { w: '1fr', label: 'B', sort: 'b', cell: (d, r) => d.appendChild({ _text: r.b }) },
+  { w: '1fr', label: 'X', nosort: 1, cell: (d) => d.appendChild({ _text: '-' }) },
+];
+// Select cells by value, not by position. The sorted header appends its arrow
+// as a separate text node, so "every other token" silently stopped alternating
+// the moment a column was sorted — which is how the first version of this read
+// column A's values and asserted they were column B's.
+const cells = () => textOf(table(sortCols, sortRows, null, { id: 't' }));
+const colA = () => cells().filter(t => /^(1|3|null)$/.test(t));
+const colB = () => cells().filter(t => /^[abc]$/.test(t));
+const order = colA;
+
+S.sort = {};
+ok('unsorted keeps the given order', order().join(',') === '3,1,null', order().join(','));
+
+S.sort.t = { sort: 'a', dir: -1 };
+ok('descending puts the largest first', order()[0] === '3');
+S.sort.t = { sort: 'a', dir: 1 };
+ok('ascending puts the smallest first', order()[0] === '1');
+ok('and a missing value sorts last either way',
+   order().indexOf('null') > order().indexOf('3'),
+   'a blank that floats to the top is a row you re-sort past to read the answer');
+
+S.sort.t = { sort: 'b', dir: 1 };
+ok('a text column sorts as text', colB().join(',') === 'a,b,c', colB().join(','));
+S.sort.t = { sort: 'b', dir: -1 };
+ok('and reverses on a second click', colB().join(',') === 'c,b,a', colB().join(','));
+S.sort = {};
 
 done();
