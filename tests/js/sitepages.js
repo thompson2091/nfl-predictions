@@ -11,13 +11,16 @@ const { loadPage, textOf, reporter } = require('./domstub.js');
 
 const { ok, done } = reporter();
 const x = loadPage(process.argv[2], process.argv[3],
-  ['S', 'rowsFor', 'applyFilters', 'slipMath', 'choose', 'settle', 'legOf', 'PAGES', 'has']);
-const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has } = x;
+  ['S', 'rowsFor', 'applyFilters', 'slipMath', 'choose', 'settle', 'legOf', 'PAGES', 'has',
+   'combosOf', 'saveCombo', 'comboSaved', 'COMBO_POOL_MAX']);
+const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
+        combosOf, saveCombo, comboSaved, COMBO_POOL_MAX } = x;
 
 const txt = n => textOf(n).join(' ');
 
 // ── Every page renders ──────────────────────────────────────────────────
-const pages = { week: pageWeek, saved: pageSaved, ladder: pageLadder, model: pageModel };
+const pages = { week: pageWeek, combos: pageCombos, saved: pageSaved,
+                ladder: pageLadder, model: pageModel };
 Object.entries(pages).forEach(([name, fn]) => {
   let out = null, err = null;
   try { out = fn(); } catch (e) { err = e; }
@@ -26,8 +29,10 @@ Object.entries(pages).forEach(([name, fn]) => {
 });
 
 // ── The nav is four pages, and the shortlist is not one of them ─────────
-ok('nav carries exactly the four pages', PAGES.length === 4,
+ok('nav carries exactly the five pages', PAGES.length === 5,
    PAGES.map(p => p[0]).join(','));
+ok('combinations is a page, because its rows are slips and not players',
+   PAGES.some(p => p[0] === 'combos'));
 ok('shortlist is a view, not a page', !PAGES.some(p => p[0] === 'shortlist'));
 
 // ── The three views are the same board under different rules ────────────
@@ -112,5 +117,48 @@ ok('and pays once per winning pair, not once overall',
 ok('an unknown leg keeps the whole slip pending rather than losing it',
    settle(mk(['any|A', 'any|Unknown Person'])).status === 'Pending',
    'a name that fails to join must not read as a loss');
+
+// ── Combinations ────────────────────────────────────────────────────────
+//
+// The page returns slips, and a slip saved from here has to be
+// indistinguishable from one built by hand — same shape, same settlement, same
+// round robin — or the Saved page would have two kinds of card in it.
+ok('combosOf enumerates every subset and no duplicates',
+   (() => { const c = combosOf(5, 3);
+            const seen = new Set(c.map(x => x.join(',')));
+            return c.length === 10 && seen.size === 10
+                   && c.every(x => x.length === 3 && x[0] < x[1] && x[1] < x[2]); })());
+ok('a pool of one yields no slips', combosOf(1, 2).length === 0);
+
+S.parlays = [];
+S.slip.stake = 10;
+const cpool = rowsFor('any', 'all').filter(r => r.priced && has(r.dec)).slice(0, 4);
+ok('the fixture has a pool to combine', cpool.length >= 3);
+const s3 = { ix: [0, 1, 2], p: cpool.slice(0, 3).reduce((a, r) => a * r.ours, 1),
+             dec: cpool.slice(0, 3).reduce((a, r) => a * r.dec, 1), ev: 0, sameGame: false };
+
+ok('a combination is not saved before you save it', !comboSaved('any', s3, cpool));
+saveCombo('any', s3, cpool);
+ok('saving a combination adds one parlay', S.parlays.length === 1);
+ok('and it is recognised as saved afterwards', comboSaved('any', s3, cpool));
+
+const sv = S.parlays[0];
+ok('the saved slip keeps every leg', sv.legs.length === 3);
+ok('it names the market it belongs to', sv.market === 'any' && !!sv.marketLabel);
+ok('it records the week, so it clears with the week', sv.week === DATA.week);
+ok('it stores the structure, not a pointer',
+   sv.size === 0 && sv.stake === 10 && has(sv.dec) && has(sv.chance));
+ok('it is marked as coming from combinations', sv.from === 'combinations');
+
+// The whole point of the shape matching: a combination has to settle through
+// exactly the same code a hand-built slip does.
+DATA.results = {};
+cpool.slice(0, 3).forEach(r => { DATA.results[r.id] = 'hit'; });
+ok('a saved combination settles like any other parlay',
+   settle(sv).status === 'Won', settle(sv).status);
+DATA.results[cpool[0].id] = 'miss';
+ok('and loses when a leg misses', settle(sv).status === 'Lost');
+DATA.results = {};
+S.parlays = [];
 
 done();

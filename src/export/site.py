@@ -498,8 +498,13 @@ const S = {
         sort: '', dir: -1 },
   fs: { q: '', game: '', pos: '', sort: '', dir: -1 },
   savedFilter: 'all',
-  combosOpen: false,
-  combo: { legs: 2, show: 10 },
+  // Combinations has its own filters rather than inheriting This week's.
+  // Inheriting would make a control on one page silently change the
+  // results on another, which is the kind of coupling nobody can see.
+  // `pool` is the one control that matters: which players are even
+  // eligible to be combined.
+  cb: { pool: 'short', q: '', game: '', pos: '', legs: 3, show: 25,
+        rank: 'likely', sameGame: true },
   ladder: { start: 100, startRaw: '100', bets: 10, betsRaw: '10',
             dec: 1 + 100 / 170, oddsRaw: '−170' },
 };
@@ -529,8 +534,15 @@ function boot() {
 // filter does not — the funnel and the graded return — appears as a strip
 // above the board whenever that view is on, which is the only place it means
 // anything anyway.
+// Combinations is a page and the Shortlist is not, and the difference is the
+// unit. The shortlist is the same players as the board with a rule over them,
+// so it is a view of one table. Combinations returns *slips* — a different
+// thing, with its own pool, its own ranking and its own save — and burying a
+// search tool under a board it does not resemble was the wrong call the first
+// time.
 const PAGES = [
-  ['week', 'This week'], ['saved', 'Saved'], ['ladder', 'Ladder'], ['model', 'Model'],
+  ['week', 'This week'], ['combos', 'Combinations'], ['saved', 'Saved'],
+  ['ladder', 'Ladder'], ['model', 'Model'],
 ];
 function route() {
   const h = (location.hash || '').replace(/^#\/?/, '').split('?')[0];
@@ -1063,7 +1075,12 @@ function pageWeek() {
   const shown = applyFilters(rows, f);
   main.appendChild(kind === 'ou' ? ouTable(shown, f) : tdTable(shown, f, view));
   main.appendChild(countLine(shown.length, rows.length, kind === 'ou' ? 'lines' : 'players'));
-  if (view !== 'fade') main.appendChild(combosSection(shown, key));
+  if (view !== 'fade') main.appendChild(el('p', { class: 'fine' }, [
+    document.createTextNode('Looking for the best slips among these players rather than the '
+      + 'players themselves? '),
+    el('a', { href: '#combos', text: 'Combinations' }),
+    document.createTextNode(' searches every subset of a pool you choose.'),
+  ]));
 
   out.appendChild(main);
   out.appendChild(slipPanel(true));
@@ -1311,72 +1328,233 @@ function addBtn(row) {
     text: on ? '✓' : '+', onclick: () => toggleLeg(row) });
 }
 
-// ── Combinations ─────────────────────────────────────────────────────────
-//
-// The old Combinations tab, folded under the board and closed by default. It
-// searches what is *currently filtered*, which is what makes it useful rather
-// than another whole-slate ranking: filter to your favorites, or to one game,
-// then ask what the best three-leg slip inside that is.
-function combosSection(rows, key) {
-  const c = el('div', { class: 'card pad' });
-  const head = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap' });
-  head.appendChild(el('h2', { text: 'Combinations' }));
-  head.appendChild(el('button', { class: 'chip', 'aria-expanded': S.combosOpen ? 'true' : 'false',
-    text: S.combosOpen ? 'Hide' : 'Show', onclick: () => { S.combosOpen = !S.combosOpen; render(); } }));
-  c.appendChild(head);
-  c.appendChild(el('p', { class: 'note', style: 'margin:6px 0 0',
-    text: 'The most likely slips among the ' + rows.length + ' players the filters above leave. '
-        + 'Filter to one game or to your favorites first, then ask.' }));
-  if (!S.combosOpen) return c;
+"""
 
-  const pool = rows.filter(r => has(r.ours)).slice(0, 40);
-  const k = S.combo.legs;
-  const sets = pool.length >= k ? combosOf(pool.length, k) : [];
-  const scored = sets.map(ix => {
+
+JS_COMBOS = r"""
+// ── Page: Combinations ──────────────────────────────────────────────────
+//
+// The only page whose rows are not players. It takes a pool, enumerates every
+// subset of a given size, and ranks them — so the unit here is a slip, which
+// is why it is a page rather than a view of the board.
+//
+// `pool` is the control that matters and it defaults to the shortlist. Over
+// the whole slate the top combinations are simply the four highest
+// probabilities on the board, which is a list you already have; over a pool
+// you chose, the question becomes the one worth asking — given these players,
+// what goes together.
+//
+// Two honesty problems are on the page rather than in a footnote. Ranking by
+// likelihood alone always returns the shortest-priced favourites, so price and
+// expected value are ranking options beside it. And every number here assumes
+// the legs are independent, which they are not: two players in the same game
+// move together, so a same-game slip is further from its stated chance in both
+// directions. Those slips are marked, and can be excluded outright.
+const COMBO_POOL_MAX = 24;
+const COMBO_SETS_MAX = 20000;
+
+function pageCombos() {
+  const c = S.cb, key = S.market, kind = KIND[key] || 'td';
+  const m = marketOf(key);
+  const out = el('div', { class: 'wrap' });
+  const main = el('main');
+
+  main.appendChild(el('div', { class: 'pagehead' }, [
+    el('div', {}, [
+      el('h1', { text: 'Combinations' }),
+      el('p', { class: 'lede', text: 'Every slip you could build from a pool you choose, '
+        + 'ranked. Save one straight to your parlays, or load it to price a round robin.' }),
+    ]),
+    marketMenu(),
+  ]));
+
+  // ── Pool ─────────────────────────────────────────────────────────────
+  const sl = m.shortlist || {};
+  const pools = {
+    short: { label: 'Shortlist', rows: kind === 'ou' ? [] : rowsFor(key, 'short') },
+    fav: { label: 'Favorites', rows: rowsFor(key, 'all').filter(r => isFav(r.id)) },
+    all: { label: 'Everyone', rows: rowsFor(key, 'all') },
+  };
+  const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Pool' });
+  ['short', 'fav', 'all'].forEach(k => {
+    if (k === 'short' && kind === 'ou') return;
+    seg.appendChild(el('button', { type: 'button', 'aria-pressed': c.pool === k ? 'true' : 'false',
+      text: pools[k].label + ' · ' + pools[k].rows.length,
+      onclick: () => { c.pool = k; render(); } }));
+  });
+  if (kind === 'ou' && c.pool === 'short') c.pool = 'all';
+
+  const bar = el('div', { class: 'chiprow' });
+  bar.appendChild(seg);
+  bar.appendChild(searchBox(c, 'Narrow the pool'));
+  const base = pools[c.pool].rows;
+  const games = Array.from(new Set(base.map(r => r.game).filter(Boolean))).sort();
+  const poss = Array.from(new Set(base.map(r => r.pos).filter(Boolean))).sort();
+  if (poss.length) bar.appendChild(pickerFor('Position', c.pos,
+    [['', 'Any position']].concat(poss.map(x => [x, x])), v => { c.pos = v; }));
+  if (games.length) bar.appendChild(pickerFor('Game', c.game,
+    [['', 'All ' + games.length + ' games']].concat(games.map(g => [g, g])), v => { c.game = v; }));
+  main.appendChild(bar);
+
+  const ctl = el('div', { class: 'chiprow' });
+  ctl.appendChild(el('div', { class: 'field' }, [el('label', { text: 'Legs' }),
+    pickerFor('Legs per slip', c.legs, [2, 3, 4, 5, 6], v => { c.legs = +v; })]));
+  ctl.appendChild(el('div', { class: 'field' }, [el('label', { text: 'Rank by' }),
+    pickerFor('Rank by', c.rank, [
+      ['likely', 'Most likely'], ['price', 'Longest price'], ['ev', 'Expected value'],
+    ], v => { c.rank = v; })]));
+  ctl.appendChild(el('div', { class: 'field' }, [el('label', { text: 'Show' }),
+    pickerFor('How many', c.show, [10, 25, 50, 100], v => { c.show = +v; })]));
+  ctl.appendChild(el('button', { class: 'chip', 'aria-pressed': c.sameGame ? 'true' : 'false',
+    text: 'Allow same-game slips',
+    onclick: () => { c.sameGame = !c.sameGame; render(); } }));
+  main.appendChild(ctl);
+
+  // ── The pool, after filtering ────────────────────────────────────────
+  //
+  // Capped, and the cap is stated. Every subset of 24 players taken 6 at a
+  // time is 134,596 slips, which the browser will enumerate and no one will
+  // read; past that the answer stops depending on the tail anyway because the
+  // pool is already sorted by our own number.
+  let pool = applyFilters(base, { q: c.q, game: c.game, pos: c.pos, priced: 'all' })
+    .filter(r => has(r.ours))
+    .sort((a, b) => b.ours - a.ours);
+  const poolFull = pool.length;
+  pool = pool.slice(0, COMBO_POOL_MAX);
+
+  const k = Math.min(c.legs, pool.length);
+  const sets = pool.length >= 2 && choose(pool.length, k) <= COMBO_SETS_MAX
+    ? combosOf(pool.length, k) : [];
+
+  const stake = S.slip.stake || 10;
+  let slips = sets.map(ix => {
     let p = 1, d = 1, priced = true;
+    const gs = {};
     ix.forEach(i => {
       p *= pool[i].ours;
       if (has(pool[i].dec)) d *= pool[i].dec; else priced = false;
+      gs[pool[i].game] = 1;
     });
-    return { ix: ix, p: p, dec: priced ? d : null };
-  }).sort((a, b) => b.p - a.p).slice(0, S.combo.show);
-
-  const ctl = el('div', { class: 'chiprow', style: 'margin-top:12px' });
-  ctl.appendChild(el('div', { class: 'field' }, [el('label', { text: 'Legs' }),
-    pickerFor('Legs', k, [2, 3, 4, 5], v => { S.combo.legs = +v; })]));
-  ctl.appendChild(el('div', { class: 'field' }, [el('label', { text: 'Show' }),
-    pickerFor('How many', S.combo.show, [10, 25, 50], v => { S.combo.show = +v; })]));
-  c.appendChild(ctl);
-
-  const list = el('div', { style: 'margin-top:12px;display:flex;flex-direction:column;gap:6px' });
-  scored.forEach(s => {
-    const names = s.ix.map(i => pool[i].player);
-    const sameGame = new Set(s.ix.map(i => pool[i].game)).size < s.ix.length;
-    const row = el('div', { class: 'leg' });
-    row.appendChild(el('div', { style: 'min-width:0' }, [
-      el('b', { text: names.join(' · ') }),
-      el('span', { text: pct(s.p, 1) + ' all hit'
-        + (s.dec ? ' · ' + american(decToAm(s.dec)) : ' · one leg unpriced')
-        + (sameGame ? ' · same game' : '') }),
-    ]));
-    row.appendChild(el('button', { class: 'chip', text: 'Load',
-      'aria-label': 'Load ' + names.join(', ') + ' into the slip',
-      onclick: () => {
-        S.slip.market = key;
-        S.slip.legs = s.ix.map(i => legOf(pool[i]));
-        S.slip.size = 0;
-        persistSlip(); render();
-      } }));
-    list.appendChild(row);
+    const sameGame = Object.keys(gs).length < ix.length;
+    // Expected value of one stake on the whole slip, at our probability and
+    // the posted price. Negative is the normal case and is not hidden.
+    const ev = priced ? p * (stake * d - stake) - (1 - p) * stake : null;
+    return { ix: ix, p: p, dec: priced ? d : null, ev: ev, sameGame: sameGame };
   });
-  c.appendChild(list);
-  if (!scored.length) c.appendChild(el('p', { class: 'fine',
-    text: 'Not enough players left after the filters to make a ' + k + '-leg slip.' }));
-  else c.appendChild(el('p', { class: 'fine',
-    text: 'Ranked by the chance every leg hits, treating legs as independent. '
-        + 'Slips inside one game are marked: those legs move together, so the '
-        + 'real chance is further from this number than for a spread-out slip.' }));
-  return c;
+  if (!c.sameGame) slips = slips.filter(s => !s.sameGame);
+
+  const rank = { likely: (a, b) => b.p - a.p,
+                 price: (a, b) => (b.dec || 0) - (a.dec || 0),
+                 ev: (a, b) => (b.ev === null ? -Infinity : b.ev) - (a.ev === null ? -Infinity : a.ev) };
+  const total = slips.length;
+  slips = slips.sort(rank[c.rank] || rank.likely).slice(0, c.show);
+
+  // ── Results ──────────────────────────────────────────────────────────
+  const cols = [
+    { w: 'minmax(0,2fr)', label: 'Slip', cell: (d, s) => {
+        const names = s.ix.map(i => pool[i].player);
+        const w = el('div', { class: 'who' });
+        w.appendChild(el('b', { text: names.join(' · ') }));
+        const sub = el('span');
+        sub.appendChild(document.createTextNode(
+          s.ix.map(i => pool[i].team).join(', ')));
+        if (s.sameGame) {
+          sub.appendChild(document.createTextNode(' · '));
+          sub.appendChild(el('span', { class: 'pill p-bad', style: 'font-size:11px',
+            text: 'same game' }));
+        }
+        w.appendChild(sub);
+        d.appendChild(w);
+      } },
+    { w: '90px', label: 'All hit', r: 1,
+      title: 'The chance every leg lands, treating them as independent.',
+      cell: (d, s) => d.appendChild(el('span', { class: 'big',
+        text: s.p >= 0.1 ? pct(s.p) : pct(s.p, 1) })) },
+    { w: '96px', label: 'Pays', r: 1, cell: (d, s) => d.appendChild(el('span', {
+        text: s.dec ? american(decToAm(s.dec)) : '—' })) },
+    { w: '100px', label: 'EV on $' + Math.round(stake), r: 1,
+      title: 'At our probability and the posted price. Negative is the usual answer.',
+      cell: (d, s) => d.appendChild(el('span', {
+        class: s.ev === null ? 'note' : (s.ev >= 0 ? 'pos' : 'neg'),
+        text: s.ev === null ? 'unpriced' : money(s.ev) })) },
+    { w: '150px', label: '', cell: (d, s) => {
+        const g = el('div', { style: 'display:flex;gap:6px;justify-content:flex-end' });
+        g.appendChild(el('button', { class: 'chip', text: 'Load',
+          'aria-label': 'Load ' + s.ix.map(i => pool[i].player).join(', ') + ' into the slip',
+          onclick: () => {
+            S.slip.market = key;
+            S.slip.legs = s.ix.map(i => legOf(pool[i]));
+            S.slip.size = 0;
+            persistSlip();
+            go('week');
+          } }));
+        const savedAlready = comboSaved(key, s, pool);
+        g.appendChild(el('button', { class: 'chip', 'aria-pressed': savedAlready ? 'true' : 'false',
+          text: savedAlready ? '✓ Saved' : 'Save',
+          'aria-label': (savedAlready ? 'Already saved: ' : 'Save ')
+            + s.ix.map(i => pool[i].player).join(', '),
+          onclick: savedAlready ? null : () => saveCombo(key, s, pool) }));
+        d.appendChild(g);
+      } },
+  ];
+  main.appendChild(table(cols, slips, null, {
+    emptyTitle: pool.length < 2 ? 'Not enough players in this pool'
+                                : 'No slip survives these settings',
+    emptyBody: pool.length < 2
+      ? 'Widen the pool, or clear a filter.'
+      : 'Allow same-game slips, or ask for fewer legs.' }));
+
+  main.appendChild(el('p', { class: 'fine', text:
+    total.toLocaleString() + ' slip' + (total === 1 ? '' : 's') + ' of ' + k + ' from '
+    + pool.length + ' player' + (pool.length === 1 ? '' : 's')
+    + (poolFull > pool.length
+       ? ' (the ' + COMBO_POOL_MAX + ' we rate highest, of ' + poolFull + ')' : '')
+    + (total > slips.length ? ' · showing the top ' + slips.length : '') + '.' }));
+  main.appendChild(el('p', { class: 'fine', style: 'max-width:680px', text:
+    'Every figure treats the legs as independent, which they are not. Two '
+    + 'players in one game share a script — if the offence stalls neither '
+    + 'scores — so a same-game slip lands together or not at all more often '
+    + 'than this says. That cuts both ways: it is likelier than the number '
+    + 'above and also likelier to lose outright.' }));
+
+  out.appendChild(main);
+  out.appendChild(slipPanel(false));
+  return out;
+}
+
+// Saving a combination without going through the slip.
+//
+// It is the same record `saveSlip` writes, built from a slip that was never
+// loaded — so a parlay saved here loads back, settles and prices exactly like
+// one built by hand. The stake and round robin come from the working slip, so
+// the two controls a reader has already set are the ones that apply.
+function comboKey(key, s, pool) {
+  return key + '::' + s.ix.map(i => pool[i].id).sort().join('+');
+}
+function comboSaved(key, s, pool) {
+  const want = comboKey(key, s, pool);
+  return S.parlays.some(p => p.market === key
+    && (p.legs || []).map(l => l.id).sort().join('+') === want.split('::')[1]);
+}
+function saveCombo(key, s, pool) {
+  const legs = s.ix.map(i => legOf(pool[i]));
+  const stake = S.slip.stake || 10;
+  const p = {
+    id: 'p' + Date.now().toString(36),
+    name: legs.length + '-leg ' + marketLabel(key),
+    market: key, marketLabel: marketLabel(key),
+    week: DATA.week, season: DATA.season,
+    size: 0, stake: stake, slips: 1, outlay: stake,
+    chance: s.p, dec: s.dec || 1, priced: !!s.dec,
+    legs: legs.map(l => ({ id: l.id, key: l.key, player: l.player, side: l.side,
+                           label: l.label, odds: l.odds, dec: l.dec, p: l.p, game: l.game })),
+    savedAt: new Date().toISOString(),
+    from: 'combinations',
+  };
+  S.parlays = S.parlays.concat([p]);
+  save('parlays', S.parlays);
+  S.notice = 'Saved ' + p.name + ' to your parlays.';
+  render();
 }
 """
 
@@ -1779,7 +1957,8 @@ function stat(k, v, d) {
 
 JS_SHELL = r"""
 // ── Shell ───────────────────────────────────────────────────────────────
-const VIEWS = { week: pageWeek, saved: pageSaved, ladder: pageLadder, model: pageModel };
+const VIEWS = { week: pageWeek, combos: pageCombos, saved: pageSaved,
+                ladder: pageLadder, model: pageModel };
 
 function render(keepFocus) {
   const active = keepFocus ? document.activeElement : null;
@@ -1851,8 +2030,8 @@ actually returned over the seasons named beside them, and they are negative.</p>
 
 def render(payload: dict) -> str:
     """The whole page, as one string."""
-    js = "\n".join([JS_CORE, JS_SHARED, JS_SLIPVIEW, JS_WEEK, JS_SAVED,
-                    JS_LADDER, JS_MODEL, JS_SHELL])
+    js = "\n".join([JS_CORE, JS_SHARED, JS_SLIPVIEW, JS_WEEK, JS_COMBOS,
+                    JS_SAVED, JS_LADDER, JS_MODEL, JS_SHELL])
     # `</` inside the JSON would close the script tag early and render the rest
     # of the payload as text. Escaping is cheaper than trusting that no player
     # is ever named in a way that produces one.

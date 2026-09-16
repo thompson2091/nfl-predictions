@@ -103,7 +103,7 @@ def page_js(tmp_path_factory) -> Path:
     from src.export import site as d
 
     js = "\n".join([d.JS_CORE, d.JS_SHARED, d.JS_SLIPVIEW, d.JS_WEEK,
-                    d.JS_SAVED, d.JS_LADDER, d.JS_MODEL, d.JS_SHELL])
+                    d.JS_COMBOS, d.JS_SAVED, d.JS_LADDER, d.JS_MODEL, d.JS_SHELL])
     p = tmp_path_factory.mktemp("site") / "page.js"
     p.write_text(js)
     return p
