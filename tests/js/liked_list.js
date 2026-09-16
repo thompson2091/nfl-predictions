@@ -12,57 +12,13 @@
 //
 // Run by tests/test_liked_list.py, which supplies the payload and the script.
 //   node tests/js/liked_list.js <payload.json> <page.js>
-const fs = require('fs');
+const { loadPage, textOf, reporter } = require('./domstub.js');
 
-let failures = 0;
-function ok(what, cond, detail) {
-  if (!cond) { failures++; console.log('FAIL  ' + what + (detail ? '  — ' + detail : '')); }
-  else console.log('ok    ' + what);
-}
-
-// ── A DOM small enough to render into, and no smaller ────────────────────
-const store = new Map();
-globalThis.localStorage = {
-  getItem: k => (store.has(k) ? store.get(k) : null),
-  setItem: (k, v) => store.set(k, String(v)),
-  removeItem: k => store.delete(k),
-};
-function mkNode(tag) {
-  const n = {
-    tagName: tag, children: [], _text: '', _html: '', attrs: {},
-    className: '', style: {}, dataset: {}, value: '', checked: false,
-    classList: {
-      add(c) { n.className += (n.className ? ' ' : '') + c; },
-      contains(c) { return n.className.split(/\s+/).includes(c); },
-    },
-    setAttribute(k, v) { n.attrs[k] = v; },
-    appendChild(c) { n.children.push(c); return c; },
-    get textContent() { return n._text; }, set textContent(v) { n._text = v; },
-    get innerHTML() { return n._html; }, set innerHTML(v) { n._html = v; },
-  };
-  return n;
-}
-globalThis.document = {
-  createElement: mkNode,
-  createTextNode: t => ({ _text: t, children: [] }),
-  addEventListener() {},
-  documentElement: { getAttribute: () => null, setAttribute() {}, removeAttribute() {} },
-  querySelector: () => mkNode('div'),
-  querySelectorAll: () => [],
-  activeElement: null,
-};
-globalThis.window = globalThis;
-globalThis.scrollTo = () => {};
-globalThis.scrollX = 0; globalThis.scrollY = 0;
-
-globalThis.DATA = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-// `const` at a script's top level is not a global, so the helpers the page
-// keeps to itself have to be handed out deliberately.
-const js = fs.readFileSync(process.argv[3], 'utf8')
-  + '\nglobalThis.__x = { has, S, M, LIKED_NS, LIKED_FAV_NS, isLiked, isFav,'
-  + ' likedList, favList };';
-(0, eval)(js);
-const { has, S, M, LIKED_NS, LIKED_FAV_NS, isLiked, isFav, likedList } = globalThis.__x;
+const { ok, done } = reporter();
+const x = loadPage(process.argv[2], process.argv[3],
+  ['has', 'S', 'M', 'LIKED_NS', 'LIKED_FAV_NS', 'isLiked', 'isFav',
+   'likedList', 'favList']);
+const { has, S, M, LIKED_NS, LIKED_FAV_NS, isLiked, isFav, likedList } = x;
 
 // The shell's `render` repaints the whole page from the payload, which needs
 // far more of it than any of this does. Counted rather than run: what matters
@@ -70,14 +26,6 @@ const { has, S, M, LIKED_NS, LIKED_FAV_NS, isLiked, isFav, likedList } = globalT
 let renders = 0;
 globalThis.render = () => { renders++; };
 
-function textOf(n, out) {
-  out = out || [];
-  if (!n) return out;
-  if (n._text) out.push(n._text);
-  if (n._html) out.push(String(n._html).replace(/<[^>]*>/g, ''));
-  (n.children || []).forEach(c => textOf(c, out));
-  return out;
-}
 const paneText = () => textOf(paneLiked()).join(' ');
 
 // ── The list ─────────────────────────────────────────────────────────────
@@ -162,5 +110,4 @@ if (DATA.markets.length > 1) {
      likedList(M()).length === firstCount);
 }
 
-console.log(failures ? '\n' + failures + ' failed' : '\nall passed');
-process.exit(failures ? 1 : 0);
+done();

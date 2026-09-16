@@ -496,6 +496,12 @@ const S = {
   // draw from — a star is a note to yourself, not a filter, and a star that
   // silently changed the pool would make two tools disagree with the list
   // above them.
+  // The ladder is arithmetic on four numbers and touches no payload at all, so
+  // it keeps raw text beside parsed values for the same reason every other
+  // field here does: `-1` and `2.` are the middle of a price, and rewriting
+  // them mid-keystroke makes a box that fights the person using it.
+  ladder: { start: 100, startRaw: '100', goal: 10000, goalRaw: '10000',
+            bets: 10, betsRaw: '10', dec: 1 + 100 / 170, oddsRaw: '-170' },
   liked: {}, likedFav: {}, likedBroken: false,
   likedCover: { picked: null, stake: 1, stakeRaw: '1.00', dec: 2.0, decRaw: '+100',
                 decMarket: null, q: '', game: '', sizes: [],
@@ -504,6 +510,10 @@ const S = {
   sort: {},
 };
 const M = () => DATA.markets[S.market];
+
+//: Rungs the ladder will draw. Past this the table is longer than the idea it
+//: illustrates, and the payout has long since stopped meaning anything.
+const LADDER_MAX = 50;
 
 // ── Tables ──────────────────────────────────────────────────────────────
 // `cols` is [{k, label, t?: 'text', fmt, cls, title, bar}]. Sorting is by the
@@ -2438,6 +2448,141 @@ function paneLiked() {
 }
 """
 
+JS_LADDER = r"""
+// ── Pane: ladder ────────────────────────────────────────────────────────
+//
+// Roll the whole balance into the next bet and see the path. Four inputs, one
+// row per rung, and the arithmetic is not in question: at decimal price d the
+// balance is start × d^n if every bet wins.
+//
+// The thing worth saying is what that sentence carries. "If every bet wins" is
+// doing all the work, and a ladder table shows only the branch where it holds
+// — the other branch is one row tall and says zero. So the chance of the whole
+// run is on the strip beside the payout, at the same size, because a payout
+// without it is a number with no scale.
+//
+// That chance is read off the posted price and is therefore generous. A price
+// implies 1/d, which includes the bookmaker's margin, so it sits above what
+// the book itself thinks will happen; the true figure is lower by however much
+// margin is in the line, which one price cannot reveal. Taken at face value
+// the whole ladder is worth exactly its stake — p × d = 1 at every rung, so
+// every dollar of upside is paid for by the chance of losing the lot — and the
+// margin is what pushes it below that.
+function paneLadder() {
+  const L = S.ladder, out = el('div');
+
+  out.appendChild(bar([
+    text('Starting bankroll', L.startRaw,
+      v => { L.startRaw = v; const x = parseMoney(v); if (x) L.start = x; }, '$100'),
+    text('Target', L.goalRaw,
+      v => { L.goalRaw = v; const x = parseMoney(v); if (x) L.goal = x; }, '$10,000'),
+    text('Bets', L.betsRaw,
+      v => { L.betsRaw = v; const n = parseInt(String(v).replace(/[^0-9]/g, ''), 10);
+             if (n >= 1 && n <= LADDER_MAX) L.bets = n; },
+      '10', 'How many rungs to show. ' + LADDER_MAX + ' at most — past that the ' +
+      'table is longer than the idea it illustrates.'),
+    text('Price each bet', L.oddsRaw,
+      v => { L.oddsRaw = v; const d = parsePrice(v); if (d) L.dec = d; },
+      '-170 or 1.59',
+      'American or decimal, the same as everywhere else on this page. Every ' +
+      'rung is priced the same, which is the assumption the table is built on.'),
+  ]));
+
+  // `-1` and `2.` are the middle of a price, not a mistake, and a warning that
+  // appears on them shoves the table down the page mid-keystroke. Anything
+  // that could still become a price is therefore silent — which includes `+50`,
+  // a finished thought that happens to be wrong, because `+50` is also the
+  // first three characters of `+500`. Only a string no price starts with gets
+  // told. Same rule, and the same regex, as the parlay.
+  const midPrice = /^[+-]?[0-9]*\.?$/.test(L.oddsRaw || '');
+  if (L.oddsRaw && !midPrice && !parsePrice(L.oddsRaw)) {
+    out.appendChild(el('div', { class: 'warn-box', html:
+      '<b>' + esc(L.oddsRaw) + '</b> is not a price. Type American — ' +
+      '<b>+150</b>, <b>-170</b> — or decimal, <b>1.59</b>. Still using ' +
+      bothPrices(L.dec) + '.' }));
+  }
+
+  const d = L.dec, n = L.bets, start = L.start, goal = L.goal;
+  const perLeg = 1 / d;
+  const final = start * Math.pow(d, n);
+  const runAll = Math.pow(perLeg, n);
+  // The inverse question, which is usually the one being asked: how many rungs
+  // does this price actually need.
+  const need = (goal > start && d > 1)
+    ? Math.ceil(Math.log(goal / start) / Math.log(d)) : 0;
+
+  out.appendChild(card(null, null, [tiles([
+    { k: 'Final payout', v: usd(final),
+      d: n + (n === 1 ? ' bet at ' : ' bets at ') + bothPrices(d),
+      help: 'The balance after every one of them wins, rolling the full payout in each time.' },
+    { k: 'Net profit', v: money(final - start),
+      d: 'on ' + usd(start) + ' staked once',
+      help: 'The whole run risks the starting bankroll and nothing more — but it risks all of it, at every rung.' },
+    { k: 'Chance of running it', v: pct(runAll, runAll < 0.01 ? 3 : 1),
+      d: pct(perLeg, 1) + ' a leg, margin included',
+      help: 'Read off the posted price, so it includes the bookmaker’s margin and sits above what the book itself expects. The true figure is lower.' },
+    { k: 'Bets to the target', v: need ? String(need) : '—',
+      d: need ? 'at ' + bothPrices(d) : (goal <= start ? 'already there' : ''),
+      help: 'How many rungs this price needs to clear the target, rounded up.' },
+  ])]));
+
+  const hit = final >= goal;
+  out.appendChild(el('div', { class: 'warn-box' + (hit ? '' : ' bad-box'), html:
+    hit
+      ? '<b>Clears ' + usd(goal) + ' by ' + usd(final - goal) + '</b> after ' +
+        n + ' winning ' + (n === 1 ? 'bet' : 'bets') + ' — about ' +
+        pct(runAll, runAll < 0.01 ? 3 : 1) + ' of the time, at this price and ' +
+        'taking it at face value.'
+      : '<b>Finishes ' + usd(goal - final) + ' short of ' + usd(goal) + '.</b> ' +
+        (need ? need + ' bets at ' + bothPrices(d) + ' would get there, which lands at ' +
+           pct(Math.pow(perLeg, need), Math.pow(perLeg, need) < 0.01 ? 3 : 1) + '.'
+              : 'A longer price or a lower target.') }));
+
+  const rows = [];
+  let bal = start;
+  for (let i = 1; i <= n; i++) {
+    const open = bal, payout = open * d;
+    rows.push({ i: i, open: open, profit: payout - open, payout: payout,
+                progress: payout / goal, alive: Math.pow(perLeg, i) });
+    bal = payout;
+  }
+  const cols = [
+    { k: 'i', label: 'Bet', nosort: true },
+    { k: 'open', label: 'Starting bankroll', fmt: v => usd(v) },
+    { k: 'profit', label: 'Profit if it wins', fmt: v => money(v), cls: v => cls(v) },
+    { k: 'payout', label: 'Payout, and the next stake', fmt: v => usd(v),
+      title: 'The whole balance goes back on. Nothing is ever taken off the table, which is what makes the run compound and what makes it total.' },
+    { k: 'alive', label: 'Still alive here',
+      fmt: v => pct(v, v < 0.01 ? 3 : 1),
+      title: 'The chance of having got this far — every rung to this point won. At the posted price, so generous for the same reason.' },
+    { k: 'progress', label: 'Of target', fmt: v => pct(v, 1),
+      bar: v => Math.min(1, v) },
+  ];
+  out.appendChild(card(null, null, [
+    table('ladder', cols, rows, { nosort: true }),
+    el('p', { class: 'rowcount', text:
+      'Every rung assumes the one before it won. The row where one does not is ' +
+      'not in this table, and it is the row that ends the run.' }),
+  ]));
+
+  out.appendChild(el('div', { class: 'warn-box', html:
+    '<b>This is arithmetic, not a plan.</b> It assumes every leg wins, the ' +
+    'whole balance rolls over with no stake limit, the same price is there ' +
+    'every week, and nothing is voided or cashed out. The first of those is ' +
+    'the one that matters: at ' + bothPrices(d) + ' the run lands about ' +
+    pct(runAll, runAll < 0.01 ? 3 : 1) + ' of the time — and that figure is ' +
+    'generous, because it is read off the posted price and a posted price ' +
+    'carries the bookmaker’s margin, so it sits above what the book itself ' +
+    'expects. Taken at face value the whole ladder is worth exactly its ' +
+    'stake: every dollar of upside is paid for by the chance of losing the ' +
+    'lot, and the margin is what pushes it below that. ' +
+    'Nothing here draws on the model — no board, no edge, no player. It ' +
+    'prices a shape, and the shape is the same whoever is on the ticket.' }));
+
+  return out;
+}
+"""
+
 JS_SHELL = r"""
 // ── Shell ───────────────────────────────────────────────────────────────
 const TABS = [
@@ -2447,6 +2592,7 @@ const TABS = [
   ['players', 'Players', paneMPlayers],
   ['combos', 'Combinations', paneCombos],
   ['teams', 'Teams', paneTeams],
+  ['ladder', 'Ladder', paneLadder],
 ];
 function paneMPlayers() { return panePlayers(); }
 
@@ -2558,7 +2704,7 @@ def render(payload: dict) -> str:
     data = (json.dumps(payload, separators=(",", ":"), allow_nan=False)
             .replace("</", "<\\/"))
     js = "\n".join([JS, JS_PLAYERS, JS_COMBOS, JS_TEAMS, JS_SHORTLIST,
-                    JS_LIKED, JS_SHELL])
+                    JS_LIKED, JS_LADDER, JS_SHELL])
     labels = " and ".join(m["label"] for m in payload["markets"]) or "NFL"
     return (SHELL
             .replace("__TITLE__", html.escape(f"{labels} — model dashboard"))

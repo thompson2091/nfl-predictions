@@ -28,7 +28,6 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-HARNESS = REPO / "tests" / "js" / "liked_list.js"
 
 
 def _player(name, team, game, ours, dec=None, **kw):
@@ -86,7 +85,8 @@ def page_js(tmp_path_factory) -> Path:
     from src.export import dashboard as d
 
     js = "\n".join([d.JS, d.JS_PLAYERS, d.JS_COMBOS, d.JS_TEAMS,
-                    d.JS_SHORTLIST, d.JS_LIKED, d.JS_SHELL])
+                    d.JS_SHORTLIST, d.JS_LIKED, d.JS_LADDER,
+                    d.JS_SHELL])
     p = tmp_path_factory.mktemp("liked") / "page.js"
     p.write_text(js)
     return p
@@ -100,11 +100,27 @@ def test_the_page_script_parses(page_js):
     assert r.returncode == 0, r.stderr
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
-def test_guys_i_like(page_js, tmp_path):
+def _run(script: str, page_js: Path, tmp_path: Path):
     payload = tmp_path / "payload.json"
     payload.write_text(json.dumps(PAYLOAD))
-    r = subprocess.run(
-        ["node", str(HARNESS), str(payload), str(page_js)],
+    return subprocess.run(
+        ["node", str(REPO / "tests" / "js" / script), str(payload), str(page_js)],
         capture_output=True, text=True, cwd=str(REPO))
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_guys_i_like(page_js, tmp_path):
+    r = _run("liked_list.js", page_js, tmp_path)
+    assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_ladder(page_js, tmp_path):
+    """The ladder reads nothing from the payload — it prices a shape.
+
+    Which is exactly why it needs pinning: there is no board to disagree with
+    it, so a wrong multiplier or a missing caveat would look entirely
+    reasonable on screen.
+    """
+    r = _run("ladder.js", page_js, tmp_path)
     assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")

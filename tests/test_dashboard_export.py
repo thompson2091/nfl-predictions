@@ -534,8 +534,10 @@ def test_the_page_opens_on_the_thing_being_built_not_on_its_own_report_card():
     order = re.findall(r"\['(\w+)'", tabs)
     # `liked` sits next to `cover` because it is the same builder over a chosen
     # subset, and a reader who has just priced a slip is the one who wants it.
+    # `ladder` is last because it is the only pane that reads nothing from the
+    # payload — it prices a shape, with no board behind it.
     assert order == ["shortlist", "cover", "liked", "players", "combos",
-                     "teams"], order
+                     "teams", "ladder"], order
     assert "tab: 'shortlist'," in dashboard.JS, "the default tab must be a real tab"
 
     js = "".join(v for k, v in vars(dashboard).items() if k.startswith("JS"))
