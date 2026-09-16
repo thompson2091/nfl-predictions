@@ -153,6 +153,20 @@ for TT in anytime_td first_td; do
         || say "     (expected before the open capture archives prices)"
 done
 
+# Re-measure receptions against the closes now that another week has settled.
+# Not fatal either way, and deliberately loud on the GOOD result: exit 2 means
+# the count model is ahead of the market, which on this market has meant a leak
+# every previous time. Exit 3 is "nothing settled yet", the normal state.
+"$PY" scripts/46_receptions_forward.py > "$LOG_DIR/receptions_forward_${DATE}.log" 2>&1
+case $? in
+  0) say "  -> receptions_forward (market better, as expected)" ;;
+  2) say "  -> receptions_forward: THE MODEL IS AHEAD OF THE MARKET — see" \
+         "$LOG_DIR/receptions_forward_${DATE}.log. On this market that has" \
+         "meant a leak every previous time. Investigate before believing it." ;;
+  3) say "  -> receptions_forward (nothing settled yet)" ;;
+  *) say "  -> receptions_forward failed — see $LOG_DIR/receptions_forward_${DATE}.log" ;;
+esac
+
 run dashboard "$PY" scripts/34_export_dashboard.py || exit 1
 run site      "$PY" scripts/20_export_html.py      || exit 1
 

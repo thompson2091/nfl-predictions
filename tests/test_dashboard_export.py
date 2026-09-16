@@ -534,12 +534,16 @@ def test_the_page_opens_on_the_thing_being_built_not_on_its_own_report_card():
     order = re.findall(r"\['(\w+)'", tabs)
     # `liked` sits next to `cover` because it is the same builder over a chosen
     # subset, and a reader who has just priced a slip is the one who wants it.
-    # `served` is provenance, not a report card — it says what is scoring the
-    # board, which is a different question from whether it is any good, and the
-    # page still opens on the shortlist. `ladder` is last because it is the
-    # only pane that reads nothing from the payload at all.
+    # `receptions` is last of the panes that show a board, because it is the
+    # only market here the book prices better than we do — it belongs on the
+    # page to be measured in public, and it belongs after every market where
+    # the numbers are worth acting on. `served` is provenance, not a report
+    # card — it says what is scoring the board, which is a different question
+    # from whether it is any good, and the page still opens on the shortlist.
+    # `ladder` is last because it is the only pane that reads nothing from the
+    # payload at all.
     assert order == ["shortlist", "cover", "liked", "players", "combos",
-                     "teams", "served", "ladder"], order
+                     "teams", "receptions", "served", "ladder"], order
     assert "tab: 'shortlist'," in dashboard.JS, "the default tab must be a real tab"
 
     js = "".join(v for k, v in vars(dashboard).items() if k.startswith("JS"))

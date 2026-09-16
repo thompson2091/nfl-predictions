@@ -894,11 +894,59 @@ def clean(x):
     return x
 
 
+def receptions(season: int | None, week: int | None) -> dict:
+    """The count market, which does not fit the shape every other tab assumes.
+
+    Every pane on this page reads `M()` — one of `DATA.markets` — and every one
+    of those is a player with a probability of a yes/no event. Receptions is a
+    player, a *line*, and a distribution over counts, and the same player
+    appears three times because three books drew the line in three places. So
+    it gets its own payload and its own tab rather than a third entry in
+    `markets`, where it would have silently broken the shortlist, the parlay
+    builder and the combination search at once.
+
+    Two blocks. `board` is what we say about this week against what is posted;
+    `forward` is how that claim has held up on the weeks already played, which
+    is the part that decides whether the board is worth reading at all.
+    """
+    from src.evaluation.receptions_forward import record
+    from src.prediction.receptions import board_for_week, load_model
+
+    s, w = latest_slate("anytime_td")
+    season = season if season is not None else s
+    week = week if week is not None else w
+    print(f"  receptions: {season} week {week}", file=sys.stderr)
+
+    out = {"season": season, "week": week, "rows": [], "problem": "",
+           "forward": None, "model": load_model() is not None}
+    if season is None or week is None:
+        out["problem"] = "no slate to show"
+        return out
+
+    board, msg = board_for_week(season, week)
+    out["problem"] = msg
+    if board is not None and board.height:
+        keep = ["player_name", "team", "game_id", "mu", "point", "odds",
+                "fair_prob", "ours", "edge_pp", "ev", "n_books", "thin"]
+        out["rows"] = board.select([c for c in keep if c in board.columns]
+                                   ).to_dicts()
+    try:
+        out["forward"] = record(season)
+    except Exception as e:                                   # noqa: BLE001
+        # A missing forward record must not take the board down with it: the
+        # board is this week and the record is last week, and they fail for
+        # different reasons.
+        out["problem"] = (out["problem"] + " · " if out["problem"] else "") + \
+            f"forward record unavailable ({type(e).__name__})"
+    return out
+
+
 def build(season: int | None, week: int | None) -> dict:
     ensure_registered()
     return clean({
         "built": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "markets": [market(k, label, season, week) for k, label in MARKETS],
+        "receptions": receptions(season, week),
     })
 
 

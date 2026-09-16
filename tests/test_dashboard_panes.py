@@ -106,6 +106,39 @@ PAYLOAD = {
             _player("Delta Wide", "BBB", "AAA @ BBB", 0.09, 11.0),
         ]),
     ],
+    # The count market's payload is a different shape from a TD market's and
+    # deliberately so: a player, a line, and the same player again at another
+    # book's line. `thin` is what a one-book consensus is marked with, and the
+    # fixture carries one because "shown but marked" is the behaviour under
+    # test — dropping it would hide the only price there is.
+    "receptions": {
+        "season": 2026, "week": 2, "problem": "", "model": True,
+        "rows": [
+            {"player_name": "Echo Slot", "team": "AAA", "game_id": "g1",
+             "mu": 5.5, "point": 4.5, "odds": -105, "fair_prob": 0.478,
+             "ours": 0.591, "edge_pp": 11.3, "ev": 15.4, "n_books": 6,
+             "thin": False},
+            {"player_name": "Foxtrot Tight", "team": "BBB", "game_id": "g1",
+             "mu": 3.9, "point": 3.5, "odds": 120, "fair_prob": 0.583,
+             "ours": 0.522, "edge_pp": -6.1, "ev": -8.0, "n_books": 6,
+             "thin": False},
+            {"player_name": "Golf Wide", "team": "CCC", "game_id": "g2",
+             "mu": 2.4, "point": 1.5, "odds": 150, "fair_prob": 0.331,
+             "ours": 0.661, "edge_pp": 32.9, "ev": 40.1, "n_books": 1,
+             "thin": True},
+        ],
+        "forward": {
+            "season": 2026, "pushes": 0,
+            "pooled": {"n": 283, "over_rate": 0.477,
+                       "model_log_loss": 0.7030, "market_log_loss": 0.6769,
+                       "model_brier": 0.2540, "market_brier": 0.2422},
+            "weeks": [{"week": 1, "n": 283, "over_rate": 0.477,
+                       "model_log_loss": 0.7030, "market_log_loss": 0.6769,
+                       "model_brier": 0.2540, "market_brier": 0.2422}],
+            "beats_market": False,
+            "note": "Log loss, lower is better.",
+        },
+    },
 }
 
 
@@ -116,7 +149,7 @@ def page_js(tmp_path_factory) -> Path:
 
     js = "\n".join([d.JS, d.JS_PLAYERS, d.JS_COMBOS, d.JS_TEAMS,
                     d.JS_SHORTLIST, d.JS_LIKED, d.JS_LADDER,
-                    d.JS_SERVED, d.JS_SHELL])
+                    d.JS_RECEPTIONS, d.JS_SERVED, d.JS_SHELL])
     p = tmp_path_factory.mktemp("liked") / "page.js"
     p.write_text(js)
     return p
@@ -161,4 +194,17 @@ def test_ladder(page_js, tmp_path):
     reasonable on screen.
     """
     r = _run("ladder.js", page_js, tmp_path)
+    assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_receptions(page_js, tmp_path):
+    """The one tab whose job is to talk the reader out of the numbers on it.
+
+    Receptions is the market this project is measurably worse at than the
+    book, and the failure mode is not an exception — it is a column of positive
+    disagreements rendering as though it were a bet card. So the framing is
+    asserted the same way the arithmetic is.
+    """
+    r = _run("receptions.js", page_js, tmp_path)
     assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")

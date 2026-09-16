@@ -506,6 +506,10 @@ const S = {
   likedCover: { picked: null, stake: 1, stakeRaw: '1.00', dec: 2.0, decRaw: '+100',
                 decMarket: null, q: '', game: '', sizes: [],
                 pricedOnly: false, open: true },
+  // Receptions: the count market's own filters. `thick` hides lines only
+  // one or two books stood behind, off by default — a thin line is still
+  // the only price there is, so the row is marked rather than dropped.
+  r: { q: '', thick: false },
   t: { game: '' },
   sort: {},
 };
@@ -2797,6 +2801,150 @@ function paneServed() {
 }
 """
 
+JS_RECEPTIONS = r"""
+// ── Pane: receptions ────────────────────────────────────────────────
+//
+// The count market, and the only tab that does not read `M()`. Every other
+// pane is built on a player with a probability of a yes/no event; this one is
+// a player, a line, and a distribution over counts, and the same player is on
+// it three times because three books drew the line in three places. It reads
+// `DATA.receptions` instead.
+//
+// It leads with the thing a page like this normally buries: the market prices
+// this better than we do, measured on the weeks already played, at the prices
+// that were actually on offer. That is not modesty. Every previous time this
+// model appeared to beat receptions it was a leak — the first version returned
+// +17-22% ROI and that was the NGS existence leak — so a reader who arrives
+// at a column of positive edges and no context is being set up.
+//
+// Which is why the verdict tile is the same size as the board and sits above
+// it, and why the column is called "Disagreement" rather than "Edge". An edge
+// is a claim about money. A disagreement is what the number actually is: two
+// estimates of the same probability, one of which is better calibrated than
+// ours on every week measured so far.
+function paneReceptions() {
+  const R = DATA.receptions || {}, out = el('div');
+  const rows = R.rows || [], f = R.forward;
+
+  if (!R.model) {
+    out.appendChild(el('div', { class: 'warn-box bad-box', html:
+      '<b>No count model on disk.</b> Run <code>make receptions</code>.' }));
+    return out;
+  }
+
+  const better = f && !f.beats_market;
+  out.appendChild(card(null, null, [tiles([
+    { k: 'Week', v: R.season ? R.season + ' wk ' + R.week : '\u2014',
+      d: rows.length + ' posted line' + (rows.length === 1 ? '' : 's'),
+      help: 'Books post receptions much closer to kickoff than touchdown props, so this fills up late in the week.' },
+    { k: 'Settled so far', v: f ? f.pooled.n.toLocaleString() : '\u2014',
+      d: f ? f.weeks.length + ' week' + (f.weeks.length === 1 ? '' : 's') + ' graded' : 'nothing graded yet',
+      help: 'Lines from this season that have since been settled, priced at the last quote before kickoff.' },
+    { k: 'Better calibrated', v: f ? (better ? 'The market' : 'This model') : '\u2014',
+      d: f ? 'log loss ' + f.pooled.model_log_loss.toFixed(4) + ' vs ' +
+             f.pooled.market_log_loss.toFixed(4) : ' ',
+      help: 'Log loss on settled lines, lower is better. Ours first, the de-vigged market price second.' },
+  ])]));
+
+  if (f && f.beats_market) {
+    out.appendChild(el('div', { class: 'warn-box bad-box', html:
+      '<b>This model is currently ahead of the market, which on this market ' +
+      'has meant a bug every previous time.</b> The first version of it beat ' +
+      'receptions by +17-22% ROI and that was the NGS existence leak \u2014 ' +
+      'the model could see whether a player had a tracking record, which only ' +
+      'exists for players who played. Treat this as something to investigate, ' +
+      'not something to bet.' }));
+  } else if (f) {
+    out.appendChild(el('div', { class: 'warn-box', html:
+      '<b>The market prices this better than we do.</b> Over ' +
+      f.pooled.n.toLocaleString() + ' settled lines the de-vigged book price ' +
+      'has a log loss of ' + f.pooled.market_log_loss.toFixed(4) + ' against ' +
+      'our ' + f.pooled.model_log_loss.toFixed(4) + '. That is what a market ' +
+      'holding around 7% looks like when you bring a model to it, and it is ' +
+      'the reason the column below is a disagreement rather than an edge. ' +
+      'Nothing here is a bet card.' }));
+  }
+
+  if (R.problem) out.appendChild(el('div', { class: 'warn-box bad-box',
+    text: String(R.problem) }));
+
+  // ── This week's board ────────────────────────────────────────
+  if (rows.length) {
+    const q = S.r.q.trim().toLowerCase();
+    let data = rows.filter(r =>
+      (!S.r.thick || !r.thin) &&
+      (!q || String(r.player_name || '').toLowerCase().includes(q)));
+
+    out.appendChild(bar([
+      text('Player', S.r.q, v => { S.r.q = v; }, 'name'),
+      check('Two books or fewer hidden', S.r.thick, v => { S.r.thick = v; }, false,
+        'A consensus of one book is one opinion wearing the word. The row is kept by default and marked rather than dropped, because a thin line is still the only price there is.'),
+    ]));
+
+    const cols = [
+      { k: 'player_name', label: 'Player', t: 1 },
+      { k: 'team', label: 'Team', t: 1 },
+      { k: 'point', label: 'Line', fmt: v => has(v) ? v.toFixed(1) : '',
+        title: 'The number the book posted. The same player appears once per distinct line.' },
+      { k: 'mu', label: 'We project', fmt: v => has(v) ? v.toFixed(2) : '',
+        title: 'Expected receptions \u2014 the count model\u2019s mean, before any line is applied.' },
+      { k: 'odds', label: 'Over', t: 1, fmt: v => american(v) },
+      { k: 'fair_prob', label: 'Book (fair)', fmt: v => pct(v, 1),
+        title: 'The de-vigged two-sided price. On every week measured so far, the better estimate.' },
+      { k: 'ours', label: 'We say', fmt: v => pct(v, 1),
+        title: 'P(over) from the fitted negative binomial, with the push mass removed so it is comparable to the book\u2019s.' },
+      { k: 'edge_pp', label: 'Disagreement', fmt: v => spct(v / 100, 1),
+        cls: v => cls(v), bar: v => Math.min(1, Math.abs(v) / 25),
+        title: 'Ours minus the book\u2019s, in probability points. Not an edge \u2014 see the note above.' },
+      { k: 'n_books', label: 'Books',
+        cls: (v, r) => r.thin ? 'neg' : '',
+        title: 'How many books stood behind the consensus. Fewer than three is marked.' },
+    ];
+    out.appendChild(card('This week, against what is posted',
+      'Sorted by how far we are from the book. A large disagreement on this ' +
+      'market has historically been our error rather than theirs, so the ' +
+      'column is worth reading as a list of places the model is least like ' +
+      'the people setting the price.',
+      [table('rboard', cols, data, {}),
+       el('p', { class: 'fine', text: data.length + ' of ' + rows.length +
+         ' lines shown.' })]));
+  } else if (!R.problem) {
+    out.appendChild(card('This week, against what is posted', null, [
+      el('p', { class: 'muted', text:
+        'No receptions lines archived for this week yet. Books post these much ' +
+        'closer to kickoff than touchdown props, and the weekly capture picks ' +
+        'them up automatically once they appear.' })]));
+  }
+
+  // ── The forward record ─────────────────────────────────────
+  if (f && f.weeks.length) {
+    const wcols = [
+      { k: 'week', label: 'Week', t: 1 },
+      { k: 'n', label: 'Lines' },
+      { k: 'over_rate', label: 'Went over', fmt: v => pct(v, 1) },
+      { k: 'model_log_loss', label: 'Us', fmt: v => v.toFixed(4),
+        cls: (v, r) => v < r.market_log_loss ? 'pos' : 'neg' },
+      { k: 'market_log_loss', label: 'Market', fmt: v => v.toFixed(4) },
+      { k: 'gap', label: 'Difference', sortVal: r => r.model_log_loss - r.market_log_loss,
+        fmt: (v, r) => (r.model_log_loss - r.market_log_loss).toFixed(4),
+        cls: (v, r) => r.model_log_loss < r.market_log_loss ? 'pos' : 'neg',
+        title: 'Negative means we were better calibrated that week.' },
+    ];
+    out.appendChild(card('How it has actually done, week by week',
+      'Per week rather than pooled, because a pooled figure over a season ' +
+      'hides the week the model fell over. Measured against the last price ' +
+      'on offer before kickoff \u2014 in-play quotes are excluded, which ' +
+      'matters here because a book that keeps quoting into the fourth quarter ' +
+      'is quoting on a game it can already see.',
+      [table('rfwd', wcols, f.weeks, {}),
+       el('p', { class: 'fine', text: f.note })]));
+  }
+
+  return out;
+}
+"""
+
+
 JS_SHELL = r"""
 // ── Shell ───────────────────────────────────────────────────────────────
 const TABS = [
@@ -2806,6 +2954,7 @@ const TABS = [
   ['players', 'Players', paneMPlayers],
   ['combos', 'Combinations', paneCombos],
   ['teams', 'Teams', paneTeams],
+  ['receptions', 'Receptions', paneReceptions],
   ['served', 'Model', paneServed],
   ['ladder', 'Ladder', paneLadder],
 ];
@@ -2919,7 +3068,7 @@ def render(payload: dict) -> str:
     data = (json.dumps(payload, separators=(",", ":"), allow_nan=False)
             .replace("</", "<\\/"))
     js = "\n".join([JS, JS_PLAYERS, JS_COMBOS, JS_TEAMS, JS_SHORTLIST,
-                    JS_LIKED, JS_LADDER, JS_SERVED, JS_SHELL])
+                    JS_LIKED, JS_LADDER, JS_RECEPTIONS, JS_SERVED, JS_SHELL])
     labels = " and ".join(m["label"] for m in payload["markets"]) or "NFL"
     return (SHELL
             .replace("__TITLE__", html.escape(f"{labels} — model dashboard"))

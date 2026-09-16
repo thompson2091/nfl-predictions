@@ -161,6 +161,13 @@ combos:
 receptions:
 	$(PYTHON) scripts/30_receptions.py
 
+# The same comparison, re-made every week on the season being played, against
+# the prices that were actually on offer before kickoff. Exits 2 when the model
+# is AHEAD of the market — which is not good news here: every previous time
+# that happened it was a leak. `-` so a 2 does not stop a chained make.
+receptions-forward:
+	-$(PYTHON) scripts/46_receptions_forward.py
+
 # Everything the app reads, rebuilt in dependency order, for both markets.
 # Run this after `make train` or the app will quote a model that no longer exists.
 # --walk-forward retrains on earlier seasons before scoring each one. Without
