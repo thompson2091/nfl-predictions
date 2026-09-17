@@ -127,6 +127,10 @@ def payload() -> dict:
             # `model_only` is deliberately not `ours`: the board shows both,
             # and a fixture where they coincide cannot catch the bug where the
             # two columns print the same number.
+            # An opening price a little away from the close, so the movement
+            # the board reports has something to report.
+            "open_odds": None if dec is None else round((dec * 1.08 - 1) * 100),
+            "open_implied": None if dec is None else 1 / (dec * 1.08),
             "pos": pos, "read": "Strong call", "rank": 1,
             "model_only": min(0.99, ours + 0.07),
             "best": None, "best_book": None, "status": None, "blocked": False,
@@ -179,6 +183,7 @@ def payload() -> dict:
             "rows": [{"player_name": "Alpha Back", "team": "AAA", "game_id": "AAA @ BBB",
                       "mu": 5.5, "point": 4.5, "odds": -105, "fair_prob": 0.48,
                       "model_only": 0.66, "ours": 0.59, "edge_pp": 11.3,
+                      "open_point": 4.5, "open_odds": -115, "open_implied": 0.535,
                       "lo": 3, "hi": 9, "n_books": 6, "thin": False}]
                     # Floor and ceiling widen with the mean, which is the
                     # property the column exists to show and the one a fixed
@@ -187,6 +192,12 @@ def payload() -> dict:
                         "lo": max(0, int(mu * 0.55)), "hi": int(mu * 1.7) + 2,
                         "point": None, "odds": None, "fair_prob": None,
                         "model_only": None,
+                        # Half of them opened with a line and have no close,
+                        # which is the real shape mid-week and the case the
+                        # fallback exists for.
+                        "open_point": round(mu * 2) / 2 if mu > 2 else None,
+                        "open_odds": -110 if mu > 2 else None,
+                        "open_implied": 0.524 if mu > 2 else None,
                         "ours": None, "edge_pp": None, "n_books": 0, "thin": False}
                        for n, t, g, mu in [
                            ("Bravo Wide", "BBB", "AAA @ BBB", 4.8),

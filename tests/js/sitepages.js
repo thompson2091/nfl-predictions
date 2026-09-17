@@ -319,8 +319,11 @@ S.conflict = null;
 S.market = 'rec';
 const rec = rowsFor('rec', 'all');
 const quoted = rec.filter(r => has(r.line));
-ok('receptions shows far more than the book has quoted',
-   rec.length > quoted.length * 5, rec.length + ' rows, ' + quoted.length + ' quoted');
+// Quoted means a close was captured. A row standing on the opening line is
+// not the book's current opinion and is counted separately.
+const closed = rec.filter(r => has(r.line) && !r.stale);
+ok('receptions shows far more than the book has currently quoted',
+   rec.length > closed.length * 3, rec.length + ' rows, ' + closed.length + ' with a close');
 ok('an unquoted row still carries a projection',
    rec.filter(r => !has(r.line)).every(r => has(r.proj)));
 ok('and is not given a line it was never offered',
@@ -488,5 +491,36 @@ ok('a fairly priced bet is worth nothing',
 ok('an unpriced row has no EV rather than a zero',
    ev100({ kind:'td', modelOnly: 0.5, ours: 0.5, dec: null }) === null);
 S.market = 'any'; S.fw.view = 'all';
+
+// ── Opening prices ──────────────────────────────────────────────────────
+//
+// The other end of the same measurement. Early in the week it is also more
+// coverage than the close, not less: a count market's close held seven lines
+// on the Wednesday of week 2 and the open held sixty-eight.
+const opTd = rowsFor('any', 'all');
+ok('the touchdown board carries an opening price',
+   opTd.filter(r => has(r.openOdds)).length > 0);
+ok('and the move is measured implied against implied, not against the de-vigged book',
+   /1 \/ row.dec/.test(PAGE_SRC),
+   'an opening touchdown price is one-sided and cannot be de-vigged, so half '
+   + 'the difference would be the margin rather than the market');
+const mv = opTd.find(r => has(r.openImplied) && has(r.dec));
+ok('a moved market says which way it went relative to us',
+   /moved [\d.]+pp (up|down) since it opened, (toward|away from) our number/
+     .test(moveTxt(mv)) || /has not moved/.test(moveTxt(mv)),
+   moveTxt(mv));
+ok('an unpriced row claims no movement', moveTxt({ dec: null, openImplied: 0.5 }) === '');
+
+S.market = 'rec';
+const opOu = rowsFor('rec', 'all');
+const withLine = opOu.filter(r => has(r.line));
+ok('a count row with no close falls back to the opening line',
+   withLine.filter(r => r.stale).length > 0);
+ok('and that fallback is marked, not passed off as a close',
+   withLine.filter(r => r.stale).every(r => r.stale === true));
+ok('the fallback is what makes the pool usable at all',
+   opOu.filter(r => r.priced).length > opOu.filter(r => has(r.line) && !r.stale).length,
+   'a pool of only the closes is a handful of names permuted');
+S.market = 'any';
 
 done();

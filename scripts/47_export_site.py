@@ -129,6 +129,88 @@ def _week_results(season: int, week: int, pool: pl.DataFrame) -> dict[str, str]:
     return out
 
 
+def opening_prices(season: int, week: int) -> dict[str, dict]:
+    """`<market>|<normalised name>` -> the first price of the week, per market.
+
+    The board is priced at the close, which is the price you could actually
+    take. The open is the other end of the same measurement, and the gap
+    between them is the one thing on this page that is evidence rather than
+    opinion: it is the market moving, and `shortlist.floor` is fitted on
+    whether it moves toward our number or away from it.
+
+    It is also, early in the week, more coverage rather than less. On the
+    Wednesday of week 2 the close held 19 first-TD players and 7 receptions
+    lines, because the Sunday captures have not fired; the open held 437 and
+    68. A board with no price on it is not the same as a market with no
+    opinion.
+
+    Earliest capture wins, and the market is part of the key — the same player
+    is quoted in three of them.
+    """
+    from src.ingest.odds_history import (HISTORY_PATH, drop_in_play,
+                                         resolve_game_ids)
+    if not Path(HISTORY_PATH).exists():
+        return {}
+    h = drop_in_play(resolve_game_ids(pl.read_parquet(HISTORY_PATH))).filter(
+        (pl.col("season") == season) & (pl.col("week") == week)
+        & (pl.col("snapshot") == "open"))
+    if h.height == 0:
+        return {}
+    h = (h.sort("captured_at")
+          .unique(subset=["market", "player_name_norm", "point"], keep="first")
+          # One row per player per market: the lowest line a book opened at,
+          # which for a yes/no market is the only one there is.
+          .sort("point", nulls_last=False)
+          .unique(subset=["market", "player_name_norm"], keep="first"))
+    out = {}
+    for r in h.iter_rows(named=True):
+        # `implied_prob`, not `fair_prob`. A touchdown market is quoted one
+        # side only at the open, so there is nothing to de-vig against and
+        # `fair_prob` is null on every one of those rows. The implied figure
+        # is always there, and comparing it to the board's implied price is
+        # like for like — both carry the book's margin, so the difference is
+        # the market moving rather than the margin changing.
+        out[f"{r['market']}|{r['player_name_norm']}"] = {
+            "odds": r.get("odds"), "point": r.get("point"),
+            "prob": r.get("implied_prob"),
+        }
+    return out
+
+
+def _attach_opens(payload: dict, season: int, week: int) -> None:
+    from src.prediction.predict import _norm_name_expr
+
+    opens = opening_prices(season, week)
+    if not opens:
+        return
+
+    def norm(names):
+        if not names:
+            return {}
+        df = (pl.DataFrame({"p": list(names)})
+              .with_columns(_norm_name_expr("p").alias("n")))
+        return dict(zip(df["p"].to_list(), df["n"].to_list()))
+
+    for key, m in zip(("anytime_td", "first_td"), payload.get("markets") or []):
+        players = m.get("players") or []
+        keys = norm({p.get("player") for p in players if p.get("player")})
+        for p in players:
+            o = opens.get(f"{key}|{keys.get(p.get('player'), '')}")
+            if o:
+                p["open_odds"] = o["odds"]
+                p["open_implied"] = o["prob"]
+
+    rec = payload.get("receptions") or {}
+    rows = rec.get("rows") or []
+    keys = norm({r.get("player_name") for r in rows if r.get("player_name")})
+    for r in rows:
+        o = opens.get(f"receptions|{keys.get(r.get('player_name'), '')}")
+        if o:
+            r["open_point"] = o["point"]
+            r["open_odds"] = o["odds"]
+            r["open_implied"] = o["prob"]
+
+
 def _receptions_projections(payload: dict, season: int, week: int) -> None:
     """Add a row for every candidate, not only the ones a book has quoted.
 
@@ -215,6 +297,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
         # cannot disagree with the table they filter.
 
     _receptions_projections(payload, s, w)
+    _attach_opens(payload, s, w)
     payload["brand"] = brand
     payload["season"] = s
     payload["week"] = w

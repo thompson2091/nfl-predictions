@@ -442,6 +442,22 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = (v, d) => has(v) ? (v * 100).toFixed(d == null ? 0 : d) + '%' : '';
 const spp = v => has(v) ? (v > 0 ? '+' : '') + v.toFixed(0) : '';
+// How far the market moved since it opened, and which way relative to us.
+// Probability points, not odds: +150 to +130 and -150 to -170 are the same
+// twenty points of American and nothing like the same move.
+function moveTxt(row) {
+  // Implied against implied. The board's de-vigged Book number is not
+  // comparable to an opening price that could not be de-vigged, and half the
+  // difference would be the margin rather than the market.
+  const now = has(row.dec) ? 1 / row.dec : null;
+  if (!has(row.openImplied) || !has(now)) return '';
+  const d = (now - row.openImplied) * 100;
+  if (Math.abs(d) < 0.05) return 'opened here and has not moved';
+  const toward = has(row.ours) && ((row.ours > row.book) === (d > 0));
+  return 'market has moved ' + Math.abs(d).toFixed(1) + 'pp '
+    + (d > 0 ? 'up' : 'down') + ' since it opened, '
+    + (toward ? 'toward our number' : 'away from our number');
+}
 // Two places, unless they are both zero. A quantile that lands exactly on a
 // whole number is a whole number, and "3.00" is two characters of noise.
 const num2 = v => !has(v) ? '' :
@@ -546,13 +562,25 @@ function rowsFor(key, view) {
       key: key, kind: 'ou',
       id: key + '|' + r.player_name + '|' + r.point,
       player: r.player_name, team: r.team, game: r.game_id || '',
-      line: r.point, proj: r.mu, lo: r.lo, hi: r.hi,
+      // The line, and where it started. A count market's close is thin for
+      // most of the week — on the Wednesday of week 2 the close held seven
+      // lines and the open held sixty-eight — so a row with no close falls
+      // back to the price the book opened at, flagged, rather than showing
+      // nothing. A stale line is a line; an empty cell is not a market with
+      // no opinion.
+      line: has(r.point) ? r.point : r.open_point,
+      openLine: r.open_point, openOdds: r.open_odds, openImplied: r.open_implied,
+      stale: !has(r.point) && has(r.open_point),
+      proj: r.mu, lo: r.lo, hi: r.hi,
       ours: r.ours, book: r.fair_prob, edge: r.edge_pp,
       modelOnly: r.model_only,
-      odds: r.odds, dec: has(r.odds) ? amToDec(r.odds) : null,
+      odds: has(r.odds) ? r.odds : r.open_odds,
+      dec: has(r.odds) ? amToDec(r.odds)
+         : (has(r.open_odds) ? amToDec(r.open_odds) : null),
       // Priced means a book has quoted this player, not that the row exists.
       // Most of this board is a projection with no line against it.
-      thin: !!r.thin, nBooks: r.n_books, priced: has(r.point),
+      thin: !!r.thin, nBooks: r.n_books,
+      priced: has(r.point) || has(r.open_point),
     }));
   }
 
@@ -571,6 +599,7 @@ function rowsFor(key, view) {
     odds: r.odds_num, dec: r.dec, priced: !!r.priced,
     best: r.best, bestBook: r.best_book, read: r.read, rank: r.rank,
     status: r.status, blocked: r.blocked, pos: r.pos,
+    openOdds: r.open_odds, openImplied: r.open_implied,
   }));
 
   // The shortlist and the fades are this table with a rule applied — the same
@@ -726,7 +755,7 @@ const S = {
   // `pool` is the one control that matters: which players are even
   // eligible to be combined.
   cb: { pool: 'short', q: '', game: '', pos: '', legs: 3, show: 25,
-        rank: 'likely', sameGame: true },
+        rank: 'likely', sameGame: true, open: true },
   ladder: { start: 100, startRaw: '100', bets: 10, betsRaw: '10',
             dec: 1 + 100 / 170, oddsRaw: '−170' },
 };
@@ -1677,6 +1706,16 @@ function tdTable(rows, f, view) {
     // No "best price" line under it. It named a book per player on a page that
     // is not a bet card, and the shopping figure it came from is a
     // week-level number — `line_shopping` reports it on its own terms.
+    { w: '78px', label: 'Open', r: 1, sort: 'openOdds', hide: 1,
+      title: 'The first price of the week, from the opening capture. The gap '
+           + 'between it and Odds is the market moving, which is the one thing '
+           + 'on this page that is evidence rather than opinion \u2014 the '
+           + 'shortlist rule is fitted on whether it moves toward our number.',
+      cell: (d, r) => {
+        const mv = moveTxt(r);
+        d.appendChild(el('span', { class: 'dim', title: mv || null,
+          text: has(r.openOdds) ? american(r.openOdds) : '\u2014' }));
+      } },
     { w: '80px', label: 'Odds', r: 1, sort: 'odds',
       title: 'The consensus price across books, de-vigged into Book beside it. '
            + '\u201cNo price\u201d means nobody has quoted him yet, which is common '
@@ -1758,11 +1797,20 @@ function ouTable(rows, f) {
         b.appendChild(el('u', { style: 'left:' + Math.min(100, r.line / top * 100).toFixed(1) + '%' }));
         d.appendChild(b);
       } },
+    { w: '62px', label: 'Open', r: 1, sort: 'openLine', hide: 1,
+      title: 'The line the book opened at. Where Line is blank the close has '
+           + 'not been captured yet and the board is showing this one instead, '
+           + 'marked.',
+      cell: (d, r) => d.appendChild(el('span', { class: 'dim',
+        title: moveTxt(r) || null,
+        text: has(r.openLine) ? r.openLine.toFixed(1) : '\u2014' })) },
     { w: '52px', label: 'Line', r: 1, sort: 'line',
       title: 'The number a book posted. Blank means nobody has drawn one yet '
            + '\u2014 most of this board, until close to kickoff.',
-      cell: (d, r) =>
-        d.appendChild(el('span', { text: has(r.line) ? r.line.toFixed(1) : '' })) },
+      cell: (d, r) => d.appendChild(el('span', {
+        class: r.stale ? 'dim' : '',
+        title: r.stale ? 'No close captured yet \u2014 this is the opening line.' : null,
+        text: has(r.line) ? r.line.toFixed(1) + (r.stale ? '*' : '') : '' })) },
     { w: '56px', label: 'Proj', r: 1, sort: 'proj',
       title: 'Expected receptions \u2014 the count model\u2019s mean. Read it with the '
            + 'floor and ceiling beside it; a mean alone cannot be read.',
@@ -2068,6 +2116,28 @@ function pageCombos() {
     + (poolFull > pool.length
        ? ' (the ' + COMBO_POOL_MAX + ' we rate highest, of ' + poolFull + ')' : '')
     + (total > slips.length ? ' · showing the top ' + slips.length : '') + '.' }));
+  // The pool itself, as the same table it is on This week.
+  //
+  // A slip is a different unit from a player and the table above says so, but
+  // "which players am I combining" is the first question anyone asks of it —
+  // and answering it by listing names inside a slip cell answers it badly.
+  // Same columns, same numbers, same star and the same +.
+  const preview = el('div', { class: 'card pad' });
+  const ph = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap' });
+  ph.appendChild(el('h2', { text: 'Players in this pool' }));
+  ph.appendChild(el('button', { class: 'chip', 'aria-expanded': S.cb.open ? 'true' : 'false',
+    text: S.cb.open ? 'Hide' : 'Show',
+    onclick: () => { S.cb.open = !S.cb.open; render(); } }));
+  preview.appendChild(ph);
+  preview.appendChild(el('p', { class: 'note', style: 'margin:6px 0 0',
+    text: 'The ' + pool.length + ' the slips above are drawn from, ranked by our '
+        + 'number. Star one to build a Favorites pool, or add it straight to '
+        + 'your slip.' }));
+  main.appendChild(preview);
+  if (S.cb.open) {
+    main.appendChild(kind === 'ou' ? ouTable(pool, S.cb) : tdTable(pool, S.cb, 'all'));
+  }
+
   main.appendChild(el('p', { class: 'fine', style: 'max-width:680px', text:
     'Every figure treats the legs as independent, which they are not. Two '
     + 'players in one game share a script — if the offence stalls neither '
