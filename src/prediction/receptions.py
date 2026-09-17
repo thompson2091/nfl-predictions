@@ -13,9 +13,13 @@ first version of this model beat receptions by +17-22% ROI and that was the NGS
 existence leak; the edge was the bug. So this exists to be measured against the
 close and to be wrong in public, not to be bet.
 
-NOT WIRED IN YET. Nothing imports this: it is not in the weekly pipeline, not
-in MARKETS and not on the dashboard. The two bugs that held it there are fixed
-and both are worth knowing about, because neither failed loudly.
+WIRED IN since 2026-08. It is a market in the menu, a board on This week, a
+pool on Combinations and a card on the Model page — and the three yardage
+markets that followed it are served by `src/prediction/yards.py`, which is this
+module's shape with a different distribution underneath.
+
+Two bugs held it out of the pipeline for a while, and both are worth knowing
+about because neither failed loudly.
 
 The first board this produced carried +70 point edges into a 7% hold market,
 which in this project means a bug rather than an edge, and it was two bugs.

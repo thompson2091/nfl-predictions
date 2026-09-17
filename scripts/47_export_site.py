@@ -553,6 +553,16 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     s = season if season is not None else (mk[0].get("season") if mk else None)
     w = week if week is not None else (mk[0].get("week") if mk else None)
 
+    # Every team's defence is on the touchdown board under the single name
+    # "DEF/ST", so all 32 of them share the id `any|DEF/ST`. Starring one stars
+    # them all, a saved leg cannot say which one was meant, and the settlement
+    # map keyed on that name resolves 32 rows to one result. Qualified by team
+    # here, where it fixes the identity and the label at once.
+    for m in mk:
+        for pl_ in m.get("players") or []:
+            if pl_.get("player") == "DEF/ST" and pl_.get("team"):
+                pl_["player"] = f"{pl_['team']} DEF/ST"
+
     pos = positions(s, w) if s and w else {}
     for m in mk:
         for p in m.get("players") or []:

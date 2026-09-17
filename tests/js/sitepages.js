@@ -1014,6 +1014,17 @@ S.market = 'any'; S.fw.view = 'all';
   ok('but a defence stays on the touchdown board, where it can score',
      rowsFor('any', 'all').some(isDef),
      'defensive touchdowns are a real market and this is it');
+  // And each one is its own row. They all arrive named "DEF/ST", so every id
+  // built from a player's name collided: starring one starred all 32, a saved
+  // leg could not say which was meant, and the settlement map resolved 32 rows
+  // to one result.
+  const defs = rowsFor('any', 'all').filter(isDef);
+  ok('and each defence is a distinct row, not 32 sharing one id',
+     new Set(defs.map(r => r.id)).size === defs.length,
+     defs.length + ' defences, ' + new Set(defs.map(r => r.id)).size + ' ids');
+  ok('named by the team it plays for',
+     defs.every(r => r.team && r.player.indexOf(r.team) === 0),
+     defs.slice(0, 2).map(r => r.player).join(', '));
 })();
 
 done();

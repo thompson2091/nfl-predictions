@@ -151,7 +151,7 @@ def payload() -> dict:
     # named "DEF/ST" — which is why the line boards exclude them (a defence
     # catches nothing) and the touchdown board does not (it scores).
     for tm, gm in (("AAA", "AAA @ BBB"), ("BBB", "AAA @ BBB")):
-        players.append(player("DEF/ST", tm, gm, 0.09, 0.07, 12.0, "DEFST"))
+        players.append(player(f"{tm} DEF/ST", tm, gm, 0.09, 0.07, 12.0, "DEFST"))
 
     _teams = [("AAA", "AAA @ BBB"), ("BBB", "AAA @ BBB"),
               ("CCC", "CCC @ DDD"), ("DDD", "CCC @ DDD")]
