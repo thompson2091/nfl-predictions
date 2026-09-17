@@ -228,7 +228,8 @@ input[type=text],input[type=search],select{
   background:var(--card);
 }
 input[type=search]{-webkit-appearance:none}
-.search{position:relative;display:flex;align-items:center}
+.search{position:relative;display:flex;align-items:center;
+  flex-grow:1;min-width:180px;max-width:320px}
 .search svg{position:absolute;left:12px;pointer-events:none;color:var(--mut3)}
 .search input{padding-left:36px;width:100%}
 
@@ -254,7 +255,7 @@ input[type=search]{-webkit-appearance:none}
 
 /* ── Tables ──────────────────────────────────────────────────────────── */
 .rows{padding:4px 20px}
-.hd,.row{display:grid;gap:12px;align-items:center}
+.hd,.row{display:grid;grid-template-columns:var(--cols);gap:12px;align-items:center}
 .hd{
   height:40px;font-size:12px;font-weight:600;letter-spacing:.5px;
   text-transform:uppercase;color:var(--mut2);border-bottom:1px solid var(--line2);
@@ -380,7 +381,7 @@ input[type=search]{-webkit-appearance:none}
   .seg{width:100%}
   .seg button{flex:1 1 0;padding:0 8px;font-size:13px}
   .chiprow{gap:6px}
-  .search{max-width:none!important;flex:1 1 100%!important}
+  .search{max-width:none;flex:1 1 100%}
   .two,.three{grid-template-columns:1fr}
   .sliptab{right:12px;bottom:12px}
   .fieldrow .field{flex:1 1 100%}
@@ -396,7 +397,7 @@ input[type=search]{-webkit-appearance:none}
   .rows{padding:0}
   .hd{display:none}
   .row{
-    display:grid!important;
+    display:grid;
     grid-template-columns:44px minmax(0,1fr) auto;
     gap:2px 10px;
     padding:12px 12px 14px;
@@ -805,7 +806,7 @@ function searchBox(f, placeholder) {
     'aria-label': 'Search' });
   let t;
   i.oninput = () => { clearTimeout(t); t = setTimeout(() => { f.q = i.value; render(true); }, 110); };
-  const w = el('div', { class: 'search', style: 'flex-grow:1;min-width:180px;max-width:320px' });
+  const w = el('div', { class: 'search' });
   w.appendChild(svg(MAG, { size: 16, stroke: 'currentColor' }));
   w.appendChild(i);
   return w;
@@ -875,7 +876,14 @@ function table(cols, rows, f, opts) {
 
   const tpl = cols.map(c => c.w).join(' ');
   const wrap = el('div', { class: 'card rows' });
-  const hd = el('div', { class: 'hd', style: 'grid-template-columns:' + tpl });
+  // `--cols`, not `grid-template-columns`.
+  //
+  // An inline declaration beats every rule in the stylesheet including one
+  // inside a media query, so writing the nine-column track inline made the
+  // narrow layout unreachable — it was in the sheet, it was correct, and it
+  // never applied. A custom property carries the same value while leaving the
+  // property itself to the cascade, where a breakpoint can have it.
+  const hd = el('div', { class: 'hd', style: '--cols:' + tpl });
   cols.forEach(c => {
     const on = sortable(c);
     const d = el('div', { class: (c.r ? 'r ' : '') + (c.hide ? 'hidesm ' : '') + (on ? 's' : ''),
@@ -899,7 +907,7 @@ function table(cols, rows, f, opts) {
   });
   wrap.appendChild(hd);
   rows.forEach(r => {
-    const tr = el('div', { class: 'row', style: 'grid-template-columns:' + tpl });
+    const tr = el('div', { class: 'row', style: '--cols:' + tpl });
     cols.forEach(c => {
       // `data-label` is what the narrow layout prints beside the value. The
       // header is gone below 680px, so without it a stacked row is a column of

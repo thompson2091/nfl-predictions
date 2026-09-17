@@ -362,3 +362,34 @@ def test_the_slip_is_a_sheet_on_narrow_screens_not_a_block_below_the_board():
     assert "padding-bottom:180px" in flat, (
         "the board needs room to scroll clear of the sheet, or its last rows "
         "sit underneath it with no way to reach them")
+
+
+def test_no_layout_property_is_written_inline_where_a_breakpoint_overrides_it():
+    """An inline declaration beats every rule in the stylesheet, media queries included.
+
+    The column track was written inline as `grid-template-columns`, so the
+    narrow layout was present, correct, and unreachable — the board kept its
+    nine-column grid at 360px and no amount of CSS could take it back. The
+    track is a custom property now, which carries the same value while leaving
+    the property to the cascade.
+
+    Falsified by writing the track inline again: `--cols` disappears from the
+    output and the assertion below fails, which is the only signal this bug
+    gives — it does not throw, it just quietly ignores the breakpoint.
+    """
+    from src.export import site as d
+
+    assert "'--cols:' + tpl" in d.JS_SHARED, (
+        "the track must be a custom property, not the property itself")
+    assert "grid-template-columns:' + tpl" not in d.JS_SHARED
+    assert "grid-template-columns:var(--cols)" in d.CSS.replace(" ", "")
+
+    # And nothing else writes a property inline that the narrow rules restyle.
+    narrow = d.CSS[d.CSS.index("@media (max-width:1100px)"):]
+    overridden = {p.split(":")[0].strip()
+                  for p in ("grid-template-columns:", "position:", "max-height:")}
+    for prop in overridden:
+        assert f"style: '{prop}" not in d.JS_SHARED, (
+            f"{prop} is set inline and restyled at a breakpoint")
+    assert "!important" not in narrow.split("@media (max-width:680px)")[0], (
+        "a breakpoint needing !important is a breakpoint fighting an inline style")
