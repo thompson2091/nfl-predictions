@@ -1668,14 +1668,24 @@ function ouTable(rows, f) {
         d.appendChild(el('span', { text: has(r.line) ? r.line.toFixed(1) : '' })) },
     { w: '56px', label: 'Proj', r: 1, sort: 'proj', cell: (d, r) =>
         d.appendChild(el('span', { class: 'big', text: has(r.proj) ? r.proj.toFixed(1) : '' })) },
-    // The range the count lands in seven games out of ten, read off the same
-    // fitted distribution as every probability on the row. Two players can
-    // project the same mean and be different bets; this is where that shows.
-    { w: '72px', label: 'Range', r: 1, sort: 'hi',
-      title: 'Where the count lands about 70% of the time — the 15th to 85th '
+    // Floor and ceiling as two columns rather than one range, so each can be
+    // sorted on its own: "who has the highest floor" and "who has the biggest
+    // ceiling" are different questions and a combined cell answers neither.
+    //
+    // Both are read off the same fitted distribution as every probability on
+    // the row — the 15th and 85th percentiles, so the count sits between them
+    // about seven games in ten. Two players can project the same mean and be
+    // completely different bets; this is where that shows.
+    { w: '58px', label: 'Floor', r: 1, sort: 'lo',
+      title: 'He catches at least this many about 85% of the time — the 15th '
            + 'percentile of the fitted distribution.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
-        text: (has(r.lo) && has(r.hi)) ? r.lo + '\u2013' + r.hi : '' })) },
+        text: has(r.lo) ? String(r.lo) : '' })) },
+    { w: '68px', label: 'Ceiling', r: 1, sort: 'hi',
+      title: 'He stays under this about 85% of the time — the 85th percentile '
+           + 'of the fitted distribution.',
+      cell: (d, r) => d.appendChild(el('span', { class: 'dim',
+        text: has(r.hi) ? String(r.hi) : '' })) },
     { w: '56px', label: 'Over', r: 1, sort: 'ours', cell: (d, r) =>
         d.appendChild(el('span', { text: pct(r.ours) })) },
     { w: '56px', label: 'Book', r: 1, sort: 'book', cell: (d, r) =>

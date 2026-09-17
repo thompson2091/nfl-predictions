@@ -19,6 +19,7 @@ const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
         chanceTxt, slipSlot, slipHandle, clearSlip, table } = x;
 
 const txt = n => textOf(n).join(' ');
+const PAGE_SRC = require('fs').readFileSync(process.argv[3], 'utf8');
 
 // ── Every page renders ──────────────────────────────────────────────────
 const pages = { week: pageWeek, combos: pageCombos, saved: pageSaved,
@@ -377,5 +378,25 @@ ok('a text column sorts as text', colB().join(',') === 'a,b,c', colB().join(',')
 S.sort.t = { sort: 'b', dir: -1 };
 ok('and reverses on a second click', colB().join(',') === 'c,b,a', colB().join(','));
 S.sort = {};
+
+// ── Floor and ceiling, on the count market ──────────────────────────────
+S.market = 'rec';
+const recRows = rowsFor('rec', 'all').filter(r => has(r.lo) && has(r.hi));
+ok('the count board carries a floor and a ceiling', recRows.length > 0);
+ok('the floor is never above the ceiling', recRows.every(r => r.lo <= r.hi));
+ok('and both bracket the projection',
+   recRows.every(r => r.lo <= Math.ceil(r.proj) && r.hi >= Math.floor(r.proj)),
+   recRows.filter(r => !(r.lo <= Math.ceil(r.proj) && r.hi >= Math.floor(r.proj)))
+          .slice(0, 2).map(r => r.player + ' ' + r.lo + '-' + r.hi + ' proj ' + r.proj).join('; '));
+ok('nobody catches a negative number of passes', recRows.every(r => r.lo >= 0));
+ok('a bigger projection has a higher ceiling',
+   (() => { const s = recRows.slice().sort((a, b) => b.proj - a.proj);
+            return s[0].hi >= s[s.length - 1].hi; })());
+// Two columns, not one cell: "highest floor" and "biggest ceiling" are
+// different questions and a combined range answers neither.
+ok('each is sortable on its own',
+   /label: 'Floor'[\s\S]{0,200}?sort: 'lo'/.test(PAGE_SRC)
+   && /label: 'Ceiling'[\s\S]{0,200}?sort: 'hi'/.test(PAGE_SRC));
+S.market = 'any';
 
 done();

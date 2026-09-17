@@ -178,9 +178,15 @@ def payload() -> dict:
             "priced_rows": 1,
             "rows": [{"player_name": "Alpha Back", "team": "AAA", "game_id": "AAA @ BBB",
                       "mu": 5.5, "point": 4.5, "odds": -105, "fair_prob": 0.48,
-                      "ours": 0.59, "edge_pp": 11.3, "n_books": 6, "thin": False}]
+                      "model_only": 0.66, "ours": 0.59, "edge_pp": 11.3,
+                      "lo": 3, "hi": 9, "n_books": 6, "thin": False}]
+                    # Floor and ceiling widen with the mean, which is the
+                    # property the column exists to show and the one a fixed
+                    # window would hide.
                     + [{"player_name": n, "team": t, "game_id": g, "mu": mu,
+                        "lo": max(0, int(mu * 0.55)), "hi": int(mu * 1.7) + 2,
                         "point": None, "odds": None, "fair_prob": None,
+                        "model_only": None,
                         "ours": None, "edge_pp": None, "n_books": 0, "thin": False}
                        for n, t, g, mu in [
                            ("Bravo Wide", "BBB", "AAA @ BBB", 4.8),
