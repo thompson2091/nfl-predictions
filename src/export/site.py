@@ -798,6 +798,8 @@ const S = {
         allLines: false, sort: '', dir: -1 },
   fs: { q: '', game: '', pos: '', sort: '', dir: -1 },
   savedFilter: 'all',
+  // Which markets' feature tables are unfolded on the Model page.
+  fam: {},
   // Combinations has its own filters rather than inheriting This week's.
   // Inheriting would make a control on one page silently change the
   // results on another, which is the kind of coupling nobody can see.
@@ -1546,7 +1548,12 @@ function gradedNote(key) {
     if (!f) return 'receptions has not been graded against a close yet.';
     if (f.raw_beats_market) return 'the raw receptions model is ahead of the market, '
       + 'which has meant a leak every previous time. See the Model page.';
-    return 'receptions is served as 17% our number and 83% the book\u2019s, which beats '
+    const m = DATA.receptions || {};
+    const mix = has(m.blend)
+      ? Math.round(m.blend * 100) + '% our number and '
+        + Math.round((1 - m.blend) * 100) + '% the book\u2019s'
+      : 'a fitted mix of our number and the book\u2019s';
+    return 'receptions is served as ' + mix + ', which beats '
       + 'the book by ' + (f.pooled.market_log_loss - f.pooled.model_log_loss).toFixed(4)
       + ' of log loss over ' + f.pooled.n.toLocaleString() + ' settled lines. Real, '
       + 'small, and not a betting edge.';
@@ -2828,156 +2835,212 @@ function pageLadder() {
 JS_MODEL = r"""
 // ── Page: Model ─────────────────────────────────────────────────────────
 //
-// Provenance and record, for all three markets at once rather than for
-// whichever one happened to be selected. What is scoring the board, how it did
-// on seasons it never trained on, what it is built from, and — for receptions
-// — the standing admission that the book is better at it than we are.
+// What each model is, in the three or four numbers that describe it, for every
+// market the export serves.
 //
-// Everything here is read off artifacts. Nothing is recomputed for display: a
-// page that recalculates its own provenance can agree with itself while
-// disagreeing with what is being served.
+// This page used to open with a boxed warning that the served artifacts were
+// locked from a dirty tree, follow it with a 24-row ablation table of feature
+// families, and end with a red panel explaining that the book prices
+// receptions better than we do. All of that was true and almost none of it was
+// what the page is for. Provenance belongs in the registry, ablation in the
+// lab script that measured it, and a standing admission does not need a colour
+// that means "something has gone wrong" — nothing has; that is simply the
+// finding.
+//
+// What is NOT dropped is the finding itself. Every card still says what its
+// model is measured to do and what it is not, in a sentence, because the
+// boards link here for exactly that and a page that answered "how good is the
+// model?" with only its best angle would be the one dishonest screen in a
+// project built around not having one.
+//
+// Everything is read off artifacts. Nothing is recomputed for display: a page
+// that recalculates its own provenance can agree with itself while disagreeing
+// with what is being served.
 function pageModel() {
   const out = el('div', { class: 'wrap' });
   const main = el('main');
   main.appendChild(el('div', { class: 'pagehead' }, [el('div', {}, [
     el('h1', { text: 'How good is the model?' }),
-    el('p', { class: 'lede', text: 'What is scoring this week’s board, how it did on seasons it '
-      + 'never saw, and where the numbers came from.' }),
+    el('p', { class: 'lede', text: 'Every market this page serves, measured on '
+      + 'seasons the model never trained on.' }),
   ])]));
 
-  DATA.markets.forEach(m => main.appendChild(marketCard(m)));
-  const rec = DATA.receptions;
-  if (rec && rec.forward) main.appendChild(receptionsCard(rec));
+  const best = strengthCard();
+  if (best) main.appendChild(best);
+
+  MENU.forEach(g => g.items.forEach(([k]) => {
+    if (!served(k)) return;
+    const c = KIND[k] === 'ou' ? ouModelCard(k) : tdModelCard(k);
+    if (c) main.appendChild(c);
+  }));
 
   out.appendChild(main);
   return out;
 }
 
-function marketCard(m) {
-  const w = m.served || {}, r = m.recipe;
-  const c = el('div', { class: 'card pad', style: 'display:flex;flex-direction:column;gap:14px' });
-  c.appendChild(el('h2', { class: 'h2s', text: m.label }));
-
+// The one thing this project has measured that is unambiguously positive.
+//
+// Backing what we rate above the price loses: -19.6% over 6,345 bets. Fading
+// what we rate BELOW it returns +25.0% over 8,397, with an interval that
+// clears zero and a concentration of 0.005 — spread across the board rather
+// than won in a handful of fixtures, which is the test the backing arms fail.
+//
+// The commission line is not a hedge, it is the finding. You cannot lay a
+// player at a sportsbook, so capturing this needs an exchange, and at 5%
+// commission +25% becomes +2.5%. That is why the board words it as players to
+// keep OFF a slip rather than as a bet.
+function strengthCard() {
+  const rec = ((marketOf('any').shortlist || {}).record) || {};
+  const f = rec.fade;
+  if (!f || !has(f.roi)) return null;
+  const c = el('div', { class: 'card pad',
+    style: 'display:flex;flex-direction:column;gap:14px' });
+  c.appendChild(el('h2', { class: 'h2s', text: 'What it is best at' }));
   c.appendChild(el('div', { class: 'three' }, [
-    stat('Model', (w.model || '—').toUpperCase(), 'chosen per market, not globally'),
-    stat('Version', w.version || '—', w.created ? w.created.slice(0, 10) + ' promoted' : ' '),
-    stat('Features', r ? r.n_features.toLocaleString() : '—',
-         r ? r.n_families + ' families' : ' '),
+    stat('Fading a player', roiTxt(f.roi),
+         'over ' + f.n.toLocaleString() + ' graded bets'),
+    stat('Interval', roiTxt(f.lo) + ' to ' + roiTxt(f.hi), 'clears zero'),
+    stat('Spread of it', (f.concentration * 100).toFixed(1) + '%',
+         'share from the best fixture'),
   ]));
-
-  if (w.dirty) c.appendChild(el('div', { class: 'warnbox', html:
-    '<b>This version was locked from a tree with uncommitted changes.</b> The '
-    + 'artifacts scoring the board are the promoted ones and are fine; what is '
-    + 'incomplete is their provenance. Cleaning the tree now does not change '
-    + 'this — locking a new version from a clean one does.' }));
-  (w.problems || []).forEach(p => c.appendChild(el('div', { class: 'badbox', text: String(p) })));
-  if (w.note) c.appendChild(el('p', { class: 'muted', text: w.note }));
-
-  // How the top pick did, per season it never trained on.
-  if (r && r.seasons && r.seasons.length) {
-    const cols = [
-      { w: 'minmax(0,1fr)', label: 'Test season', sort: 'season',
-        title: 'A season the model never trained on. Everything in this row is '
-             + 'measured on games it had not seen.',
-        cell: (d, s) =>
-          d.appendChild(el('span', { text: String(s.season) })) },
-      { w: '80px', label: 'Games', r: 1, sort: 'games',
-        title: 'How many fixtures the row is measured over.',
-        cell: (d, s) =>
-          d.appendChild(el('span', { text: String(s.games) })) },
-      { w: '110px', label: 'Top 1', r: 1, sort: 'top1',
-        title: 'How often the player we rank first in a game scored.',
-        cell: (d, s) => d.appendChild(el('span', { class: 'big', text: pct(s.top1, 1) })) },
-      { w: '90px', label: 'Top 3', r: 1, sort: 'top3',
-        title: 'How often at least one of our top three in a game scored.',
-        cell: (d, s) =>
-          d.appendChild(el('span', { class: 'dim', text: pct(s.top3, 1) })) },
-      { w: '90px', label: 'Top 5', r: 1, sort: 'top5',
-        title: 'How often at least one of our top five in a game scored.',
-        cell: (d, s) =>
-          d.appendChild(el('span', { class: 'dim', text: pct(s.top5, 1) })) },
-    ];
-    c.appendChild(table(cols, r.seasons, null, { id: 'seasons:' + m.key }));
-  }
-
-  // What the model is built from, and what each part is worth. `worth_top1` is
-  // an ablation: retrain without the family and see what the top pick loses.
-  // Families with a measured cost are listed first because that is the only
-  // part of this a reader can act on.
-  if (r && r.families && r.families.length) {
-    const fam = r.families.slice().sort((a, b) =>
-      (has(b.worth_top1) ? Math.abs(b.worth_top1) : -1) - (has(a.worth_top1) ? Math.abs(a.worth_top1) : -1));
-    const cols = [
-      { w: 'minmax(0,1fr)', label: 'Family', sort: 'name',
-        title: 'A group of related feature columns \u2014 usage, matchup, pace \u2014 '
-             + 'and how many columns are in it.',
-        cell: (d, f) => d.appendChild(el('div', { class: 'who' }, [
-          el('b', { text: f.name }), el('span', { text: f.n + ' columns' })])) },
-      { w: '120px', label: 'Worth', r: 1, sort: 'worth_top1',
-        title: 'Top-1 lost when this family is removed and the model refitted.',
-        cell: (d, f) => d.appendChild(el('span', {
-          class: has(f.worth_top1) ? (f.worth_top1 > 0 ? 'pos' : 'neg') : 'note',
-          text: has(f.worth_top1) ? spp(f.worth_top1 * 100) + ' pp' : 'not measured' })) },
-      { w: '110px', label: 'p', r: 1, sort: 'p_value',
-        title: 'How likely a drop this size is if the family were worth nothing. '
-             + 'Small means the loss is unlikely to be noise.',
-        cell: (d, f) => d.appendChild(el('span', {
-          class: 'dim', text: has(f.p_value) ? f.p_value.toFixed(3) : '' })) },
-    ];
-    c.appendChild(el('h3', { style: 'margin-top:4px', text: 'What it uses, and what each part is worth' }));
-    c.appendChild(table(cols, fam, null, { id: 'families:' + m.key }));
-    if (r.unattributed && r.unattributed.length) c.appendChild(el('p', { class: 'fine',
-      text: r.unattributed.length + ' columns belong to no family and are not ablated: '
-          + r.unattributed.slice(0, 8).join(', ')
-          + (r.unattributed.length > 8 ? ' …' : '') }));
-  }
+  c.appendChild(el('p', { class: 'muted', text:
+    'The model is better at saying who will NOT score than who will. Players it '
+    + 'rates below the posted price come in under it often enough to return '
+    + roiTxt(f.roi) + ', and that return is spread across the board rather than '
+    + 'won in a few fixtures.' }));
+  c.appendChild(el('p', { class: 'fine', text:
+    'Read as players to leave off a slip rather than as a bet: no sportsbook '
+    + 'lets you lay a player, and on an exchange at 5% commission this is '
+    + (f.exchange && f.exchange[1] ? roiTxt(f.exchange[1].roi) : 'close to flat')
+    + '. The Fades view on This week is the same rule.' }));
   return c;
 }
 
-function receptionsCard(rec) {
-  const f = rec.forward, p = f.pooled;
-  const c = el('div', { class: 'card pad', style: 'display:flex;flex-direction:column;gap:14px' });
-  c.appendChild(el('h2', { class: 'h2s', text: 'Receptions' }));
-  c.appendChild(el('div', { class: f.beats_market ? 'badbox' : 'warnbox', html: f.beats_market
-    ? '<b>This model is currently ahead of the market, which on this market has '
-      + 'meant a bug every previous time.</b> The first version of it beat receptions '
-      + 'by +17–22% ROI and that was the NGS existence leak — the model could see '
-      + 'whether a player had a tracking record, which only exists for players who '
-      + 'played. Treat this as something to investigate, not something to bet.'
-    : '<b>The book prices this market better than we do.</b> Over '
-      + p.n.toLocaleString() + ' settled lines its de-vigged price has a log loss of '
-      + p.market_log_loss.toFixed(4) + ' against our ' + p.model_log_loss.toFixed(4)
-      + '. That is what a market holding around 7% looks like when you bring a model '
-      + 'to it. This market is on the page to be measured in public, not to be bet.' }));
+// A touchdown market: how often the player it ranks first actually scored, on
+// seasons it never trained on.
+function tdModelCard(key) {
+  const m = marketOf(key), r = m.recipe;
+  if (!r || !r.seasons || !r.seasons.length) return null;
+  const ss = r.seasons.slice().sort((a, b) => a.season - b.season);
+  const top1 = ss.map(s => s.top1), top3 = ss.map(s => s.top3);
+  const games = ss.reduce((a, s) => a + s.games, 0);
+  const auc = ss.filter(s => has(s.auc)).map(s => s.auc);
+  const span = lo => lo.length < 2 ? pct(lo[0], 1)
+    : pct(Math.min.apply(null, lo), 1) + '\u2013' + pct(Math.max.apply(null, lo), 1);
+
+  const c = el('div', { class: 'card pad',
+    style: 'display:flex;flex-direction:column;gap:14px' });
+  c.appendChild(el('h2', { class: 'h2s', text: marketLabel(key) }));
+  c.appendChild(el('div', { class: 'three' }, [
+    stat('Top pick scored', span(top1),
+         'across ' + ss.length + ' unseen season' + (ss.length === 1 ? '' : 's')),
+    stat('One of the top three', span(top3), 'in the same games'),
+    stat('Ranking quality', auc.length
+         ? Math.max.apply(null, auc).toFixed(2) : '\u2014',
+         auc.length ? 'AUC, best season' : ' '),
+  ]));
+  c.appendChild(el('p', { class: 'muted', text:
+    'Graded over ' + games.toLocaleString() + ' games it had never seen, on '
+    + (r.n_features ? r.n_features.toLocaleString() + ' features. ' : '')
+    + 'Ranking is what this model is for: the order it puts players in is '
+    + 'sharper than the prices it is ranking against.' }));
+  const note = gradedNote(key);
+  if (note) c.appendChild(el('p', { class: 'fine', text:
+    'Graded as a bet: ' + note }));
+  const fam = familyPanel(key, r);
+  if (fam) c.appendChild(fam);
+  return c;
+}
+
+// What the model is built from, folded away.
+//
+// `worth_top1` is an ablation: drop the family, refit, and see what the top
+// pick loses. Worth keeping and not worth leading with — twenty-four rows of
+// p-values is the answer to a question nobody arrives at this page asking.
+//
+// The numbers are already in percentage points. This used to multiply them by
+// a hundred and print "+282.94 pp" against a top-1 accuracy of 49.6%, which is
+// a loss of 283 points from a number that only has 50 — arithmetically
+// impossible and on screen for as long as the column has existed.
+function familyPanel(key, r) {
+  if (!r || !r.families || !r.families.length) return null;
+  const open = !!S.fam[key];
+  const w = el('div', { style: 'display:flex;flex-direction:column;gap:10px' });
+  const h = el('div', { style: 'display:flex;justify-content:space-between;'
+    + 'align-items:center;gap:16px;flex-wrap:wrap' });
+  h.appendChild(el('h3', { style: 'margin:0', text: 'What it is built from' }));
+  h.appendChild(el('button', { class: 'chip', 'aria-expanded': open ? 'true' : 'false',
+    text: (open ? 'Hide' : 'Show') + ' ' + r.families.length + ' feature families',
+    onclick: () => { S.fam[key] = !S.fam[key]; render(); } }));
+  w.appendChild(h);
+  if (!open) return w;
+
+  const fam = r.families.slice().sort((a, b) =>
+    (has(b.worth_top1) ? Math.abs(b.worth_top1) : -1)
+    - (has(a.worth_top1) ? Math.abs(a.worth_top1) : -1));
   const cols = [
-    { w: 'minmax(0,1fr)', label: 'Week', sort: 'week',
-      title: 'A played week of this season, graded against the last price on '
-           + 'offer before kickoff.',
-      cell: (d, w) => d.appendChild(el('span', { text: 'Week ' + w.week })) },
-    { w: '80px', label: 'Lines', r: 1, sort: 'n',
-      title: 'Settled lines in the week. Whole-number pushes are excluded \u2014 '
-           + 'neither side called those wrong.',
-      cell: (d, w) => d.appendChild(el('span', { text: String(w.n) })) },
-    { w: '100px', label: 'Went over', r: 1, sort: 'over_rate',
-      title: 'How often the count actually beat the line. Near 50% is what a '
-           + 'well-set market looks like.',
-      cell: (d, w) =>
-        d.appendChild(el('span', { class: 'dim', text: pct(w.over_rate, 1) })) },
-    { w: '90px', label: 'Us', r: 1, sort: 'model_log_loss',
-      title: 'Log loss of what we serve. Lower is better; green means we beat '
-           + 'the market that week.',
-      cell: (d, w) =>
-        d.appendChild(el('span', {
-          class: w.model_log_loss < w.market_log_loss ? 'pos' : 'neg',
-          text: w.model_log_loss.toFixed(4) })) },
-    { w: '90px', label: 'Market', r: 1, sort: 'market_log_loss',
-      title: 'Log loss of the de-vigged book price over the same lines.',
-      cell: (d, w) =>
-        d.appendChild(el('span', { class: 'dim', text: w.market_log_loss.toFixed(4) })) },
+    { w: 'minmax(0,1fr)', label: 'Family', sort: 'name',
+      title: 'A group of related feature columns \u2014 usage, matchup, pace \u2014 '
+           + 'and how many columns are in it.',
+      cell: (d, f) => d.appendChild(el('div', { class: 'who' }, [
+        el('b', { text: f.name }), el('span', { text: f.n + ' columns' })])) },
+    { w: '120px', label: 'Worth', r: 1, sort: 'worth_top1',
+      title: 'Top-1 accuracy lost when this family is removed and the model '
+           + 'refitted, in percentage points.',
+      cell: (d, f) => d.appendChild(el('span', {
+        class: has(f.worth_top1) ? (f.worth_top1 > 0 ? 'pos' : 'neg') : 'note',
+        text: has(f.worth_top1) ? spp(f.worth_top1) + ' pp' : 'not measured' })) },
+    { w: '110px', label: 'p', r: 1, sort: 'p_value',
+      title: 'How likely a drop this size is if the family were worth nothing. '
+           + 'Small means the loss is unlikely to be noise.',
+      cell: (d, f) => d.appendChild(el('span', {
+        class: 'dim', text: has(f.p_value) ? f.p_value.toFixed(3) : '' })) },
   ];
-  c.appendChild(table(cols, f.weeks, null, { id: 'recweeks' }));
-  c.appendChild(el('p', { class: 'fine', text: f.note + ' In-play quotes are excluded: a book '
-    + 'still quoting in the fourth quarter is quoting on a game it can already see.' }));
+  w.appendChild(table(cols, fam, null, { id: 'families:' + key }));
+  if (r.unattributed && r.unattributed.length) w.appendChild(el('p', { class: 'fine',
+    text: r.unattributed.length + ' columns belong to no family and are not '
+        + 'ablated: ' + r.unattributed.slice(0, 8).join(', ')
+        + (r.unattributed.length > 8 ? ' \u2026' : '') }));
+  return w;
+}
+
+// A line market: what we serve, and how its calibration compares to the book's.
+function ouModelCard(key) {
+  const m = marketOf(key);
+  const c = el('div', { class: 'card pad',
+    style: 'display:flex;flex-direction:column;gap:14px' });
+  c.appendChild(el('h2', { class: 'h2s', text: marketLabel(key) }));
+
+  // Receptions carries a forward record of this season; the yardage markets
+  // carry a graded one from the seasons the blend was tested on. Same three
+  // numbers either way.
+  let n = null, ours = null, book = null, span = '';
+  const f = m.forward;
+  if (f && f.pooled) {
+    n = f.pooled.n; ours = f.pooled.model_log_loss;
+    book = f.pooled.market_log_loss; span = 'this season so far';
+  } else if (m.graded && (m.graded.seasons || []).length) {
+    const oos = m.graded.seasons.filter(s => !s.in_sample);
+    const s0 = oos[oos.length - 1] || m.graded.seasons[0];
+    n = s0.n; ours = has(s0.blend) ? s0.blend : s0.model;
+    book = s0.market; span = String(s0.season);
+  }
+  const mix = has(m.blend)
+    ? Math.round(m.blend * 100) + '% / ' + Math.round((1 - m.blend) * 100) + '%'
+    : '\u2014';
+  c.appendChild(el('div', { class: 'three' }, [
+    stat('Served as', mix, 'our number / the book\u2019s'),
+    stat('Lines graded', has(n) ? n.toLocaleString() : '\u2014', span || ' '),
+    stat('Calibration', has(ours) && has(book)
+         ? (book - ours >= 0 ? '+' : '') + (book - ours).toFixed(4) : '\u2014',
+         'log loss against the book'),
+  ]));
+  c.appendChild(el('p', { class: 'muted', text:
+    'A line market is priced by shrinking our number toward the book\u2019s, by a '
+    + 'weight fitted on a season we did not train on. That blend is worth a '
+    + 'little on calibration and the board says how much.' }));
+  const note = gradedNote(key);
+  if (note) c.appendChild(el('p', { class: 'fine', text: note }));
   return c;
 }
 

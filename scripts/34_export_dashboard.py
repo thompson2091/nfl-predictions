@@ -917,8 +917,13 @@ def receptions(season: int | None, week: int | None) -> dict:
     week = week if week is not None else w
     print(f"  receptions: {season} week {week}", file=sys.stderr)
 
+    from src.prediction.receptions import load_blend
+
+    # The weight actually fitted, so no screen has to carry "17% / 83%" as a
+    # typed-in constant that the next refit silently falsifies.
     out = {"season": season, "week": week, "rows": [], "problem": "",
-           "forward": None, "model": load_model() is not None}
+           "forward": None, "model": load_model() is not None,
+           "blend": load_blend()}
     if season is None or week is None:
         out["problem"] = "no slate to show"
         return out

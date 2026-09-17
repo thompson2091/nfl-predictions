@@ -17,14 +17,14 @@ const x = loadPage(process.argv[2], process.argv[3],
    'ev100', 'betProb', 'el', 'pct', 'portfolio', 'brkTable', 'scaleRows',
    'moveTxt', 'marketLabel', 'MENU', 'KIND', 'marketOf', 'served',
    'gradedNote', 'M0', 'unitOf', 'oneLine', 'extraLines', 'spp',
-   'parlayCard', 'DATA']);
+   'parlayCard', 'DATA', 'pageModel']);
 const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
         combosOf, saveCombo, comboSaved, COMBO_POOL_MAX,
         chanceTxt, slipSlot, slipHandle, clearSlip, table,
         ev100, betProb, el, pct, portfolio, brkTable, scaleRows,
         moveTxt, marketLabel, MENU, KIND, marketOf, served,
         gradedNote, M0, unitOf, oneLine, extraLines, spp,
-        parlayCard, DATA } = x;
+        parlayCard, DATA, pageModel } = x;
 
 const txt = n => textOf(n).join(' ');
 const PAGE_SRC = require('fs').readFileSync(process.argv[3], 'utf8');
@@ -863,6 +863,56 @@ S.market = 'any'; S.fw.view = 'all';
   DATA.results = realResults;
   ok('a settled card says which row happened and what came back',
      /Result/.test(done_) && /Legs in/.test(done_), done_.slice(0, 200));
+})();
+
+// ── The Model page ──────────────────────────────────────────────────────
+(() => {
+  S.route = 'model'; S.fam = {};
+  const page = pageModel();
+  const t = txt(page);
+
+  // Every served market, and nothing that is not served.
+  const want = [];
+  MENU.forEach(g => g.items.forEach(([k]) => { if (served(k)) want.push(k); }));
+  ok('every served market has a card on the Model page',
+     want.every(k => t.indexOf(marketLabel(k)) >= 0),
+     want.filter(k => t.indexOf(marketLabel(k)) < 0).join(','));
+
+  // No colour that means "something has gone wrong". A standing finding is
+  // not an alert.
+  const modelBlock = PAGE_SRC.slice(PAGE_SRC.indexOf('function pageModel'),
+                                   PAGE_SRC.indexOf('function stat('));
+  ok('the Model page raises no alert boxes',
+     !/warnbox|badbox/.test(modelBlock),
+     'provenance belongs in the registry; a measured finding does not need red');
+
+  // But the findings themselves survive, because the boards link here for them.
+  ok('and still says what backing this model has returned',
+     /−19\.6%|-19\.6%/.test(t), 'the graded record is the point of the page');
+  ok('and what each line market is served as',
+     /17% our number/.test(t) && /6% our number/.test(t));
+
+  // The one unambiguous positive, with the reason it is not a bet.
+  ok('it leads with what the model is measurably best at',
+     /What it is best at/.test(t) && /\+25\.0%/.test(t), t.slice(0, 200));
+  ok('and says why that is not money',
+     /no sportsbook lets you lay a player/.test(t) && /commission/.test(t),
+     'a +25% headline with no commission line would be the one dishonest '
+     + 'screen in a project built around not having one');
+
+  // Features: kept, folded.
+  const famName = ((marketOf('any').recipe || {}).families || [{}])[0].name || '';
+  ok('feature families are folded away by default',
+     !!famName && t.indexOf(famName) < 0 && /feature families/.test(t));
+  S.fam.any = true;
+  const open = txt(pageModel());
+  ok('and open on request',
+     open.indexOf(famName) >= 0, 'the chip should unfold the table');
+  ok('with a worth a top-1 accuracy could actually lose',
+     !/\+[1-9]\d\d\.\d+ pp/.test(open) && /\+\d\.\d\d pp/.test(open),
+     'these are already percentage points; multiplying by 100 printed '
+     + '"+282.94 pp" against a top-1 of 49.6%');
+  S.fam = {}; S.route = 'week';
 })();
 
 done();

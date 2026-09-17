@@ -172,6 +172,17 @@ def payload() -> dict:
                                   {"filter": "floor", "dropped": 2, "left": 1}],
                       "floor": {"lo": 10.0},
                       "record": {"seasons": [2024, 2025],
+                                 # Backing loses and fading wins, which is the
+                                 # actual shape of this model's record and the
+                                 # reason the Model page leads with the second.
+                                 # `exchange` is not a footnote: you cannot lay
+                                 # a player at a sportsbook, so +25% becomes
+                                 # +2.5% net of commission.
+                                 "fade": {"n": 8397, "roi": 24.97, "lo": 20.23,
+                                          "hi": 29.69, "concentration": 0.0048,
+                                          "verdict": "positive",
+                                          "exchange": [{"commission": 0.02, "roi": 3.07},
+                                                       {"commission": 0.05, "roi": 2.46}]},
                                  "arms": [{"arm": "shortlist", "roi": -19.6, "n": 6345}]}},
         # The fitted teammate correlation, which the slip's round robin prices
         # with. Negative and small, as measured: one offence stalling takes its
@@ -184,8 +195,16 @@ def payload() -> dict:
                    "problems": [], "note": "A test version.",
                    "created": "2026-01-01T00:00:00+00:00"},
         "recipe": {"n_features": 5, "n_families": 2, "unattributed": [],
-                   "families": [{"name": "usage", "n": 3, "worth_top1": 0.021,
-                                 "p_value": 0.01, "cols": []}],
+                   # `worth_top1` is ALREADY in percentage points. A fixture
+                   # carrying 0.021 cannot catch a page that multiplies by a
+                   # hundred, because 2.1 still looks like a plausible number;
+                   # 2.83 becoming 283 does not.
+                   "families": [{"name": "build_qb_features", "n": 4,
+                                 "worth_top1": 2.83, "p_value": 0.002,
+                                 "cols": []},
+                                {"name": "build_usage_features", "n": 18,
+                                 "worth_top1": 1.42, "p_value": 0.03,
+                                 "cols": []}],
                    "seasons": [{"season": 2025, "games": 1231, "top1": 0.114,
                                 "top3": 0.279, "top5": 0.434}]},
     }
@@ -198,6 +217,9 @@ def payload() -> dict:
         "markets": [market, second],
         "receptions": {
             "season": 2026, "week": 2, "problem": "", "model": True,
+            # The weight actually fitted, read by the board and the Model page
+            # rather than typed into either.
+            "blend": 0.17,
             # One quoted line and several projections, which is the real
             # proportion: books post receptions far later than touchdown
             # props, so most of this board has no line against it all week.
