@@ -523,4 +523,128 @@ ok('the fallback is what makes the pool usable at all',
    'a pool of only the closes is a handful of names permuted');
 S.market = 'any';
 
+// ── A count row falling back to the open is PRICED, not just lined ──────
+//
+// It used to carry a line and odds and nothing else — no model number, no
+// book number, no edge. That is worse than an empty row, because the
+// Combinations page multiplies these together and `p *= null` fills the All
+// hit column with NaN on a board that looks populated.
+S.market = 'rec';
+const lined = rowsFor('rec', 'all').filter(r => r.priced);
+ok('every lined count row carries a probability, not only a line',
+   lined.length > 0 && lined.every(r => has(r.ours) && has(r.modelOnly)),
+   lined.filter(r => !has(r.ours)).length + ' of ' + lined.length + ' have no number');
+ok('and a book number to have been shrunk toward',
+   lined.every(r => has(r.book)),
+   'an over/under posts both sides at the open, so the de-vig is real there');
+ok('so a combination of them is a number rather than NaN',
+   lined.length >= 2 && isFinite(betProb(lined[0]) * betProb(lined[1])));
+
+// ── The under is priced at the under's price ────────────────────────────
+//
+// An under leg used to carry the OVER's price while flipping every
+// probability: harmless at -110 both ways, a different bet at -160/+130.
+const twoSided = rowsFor('rec', 'all').find(r => has(r.odds) && has(r.underOdds)
+                                                 && r.odds !== r.underOdds);
+if (twoSided) {
+  const o = legOf(twoSided, 'over'), u = legOf(twoSided, 'under');
+  ok('the under leg is not paid at the over\'s price',
+     u.odds !== o.odds && u.dec !== o.dec, o.odds + ' vs ' + u.odds);
+  ok('and its probability is the other side of the same line',
+     Math.abs((o.p + u.p) - 1) < 1e-9, o.p + ' + ' + u.p);
+  ok('the two sides do not both look like value',
+     !(o.odds > 0 && u.odds > 0) || twoSided.thin,
+     'a two-way market with both sides plus-money has no margin in it');
+} else {
+  ok('a two-sided count row exists to check the under price on', false,
+     'no row carries both an over and an under price');
+}
+// Asserted by rendering rather than by matching the source. The column is
+// only useful if it reaches the page, and a regex over the source would pass
+// on a column defined and never appended.
+S.market = 'rec'; S.fw.view = 'priced';
+const recHead = textOf(pageWeek()).join(' ');
+ok('the count board shows the price every money figure is computed from',
+   /\bOdds\b/.test(recHead),
+   'EV $100 cannot be checked against a price that is not on screen');
+ok('and still shows the line it is a price for',
+   /\bLine\b/.test(recHead) && /EV \$100/.test(recHead));
+S.fw.view = 'all';
+
+// ── The combination says what it is ─────────────────────────────────────
+ok('a count leg names its line, not just the player',
+   /o' \+ r\.line\.toFixed\(1\)/.test(PAGE_SRC),
+   '"St. Brown" and "St. Brown over 5.5" are different bets');
+
+// ── Unpriced players are reachable on Combinations ──────────────────────
+//
+// They were never filtered out on purpose. The pool is capped at the
+// COMBO_POOL_MAX players we rate highest, and those are the ones books have
+// already quoted, so the cap did the excluding.
+S.market = 'any';
+const tdBoard = rowsFor('any', 'all').filter(r => has(r.ours));
+const topN = tdBoard.slice().sort((a, b) => b.ours - a.ours).slice(0, COMBO_POOL_MAX);
+ok('the cap alone hides every unpriced player',
+   tdBoard.some(r => !r.priced) && topN.every(r => r.priced),
+   'if the top ' + COMBO_POOL_MAX + ' already held an unpriced player the '
+   + 'control would be unnecessary');
+const unpricedPool = applyFilters(tdBoard, { q: '', game: '', pos: '', priced: 'unpriced' });
+ok('and the Priced control reaches them',
+   unpricedPool.length >= 2 && unpricedPool.every(r => !r.priced),
+   unpricedPool.length + ' unpriced players');
+ok('an unpriced slip still has a chance, just no payout',
+   isFinite(betProb(unpricedPool[0]) * betProb(unpricedPool[1]))
+   && !has(unpricedPool[0].dec));
+ok('the Combinations page passes the control through',
+   /priced: kind === 'td' \? \(c\.priced \|\| 'all'\) : 'all'/.test(PAGE_SRC));
+
+// ── Expected scorers is about the fixture, not the filter ───────────────
+//
+// It used to be built from the rows on screen, so a fixture whose shortlisted
+// players all came from one side printed that side's total as the game's,
+// with the other half reading "—" and the bar pinned at 100%.
+ok('the game card is built from the whole board',
+   /function gameCard\(game, key\)[\s\S]{0,400}?rowsFor\(key, 'all'\)/.test(PAGE_SRC),
+   'taking the filtered rows makes a filtered board look like a broken card');
+ok('and it does not call an over/under projection a scorer',
+   /kind === 'ou' \? marketLabel\(key\)\.toLowerCase\(\) : 'scorers'/.test(PAGE_SRC));
+ok('nor count a player once per line he is quoted at',
+   /seen\[r\.player\] \? false : \(seen\[r\.player\] = 1\)/.test(PAGE_SRC));
+
+// ── Saved cards show the round robin ────────────────────────────────────
+S.market = 'any';
+const legs3 = rowsFor('any', 'all').filter(r => has(r.dec)).slice(0, 3)
+  .map(r => legOf(r));
+const pf = portfolio(legs3, 10, 0);
+ok('the breakdown is one component, not two copies',
+   (PAGE_SRC.match(/\['Legs in', 'Chance', 'Net'\]/g) || []).length === 1,
+   'the slip and the card must not be able to disagree about the same slip');
+const grid = brkTable(pf.rows, pf.slips, 3);
+const gtxt = textOf(grid).join(' ');
+ok('a card breakdown names every outcome from all-in to none',
+   /3 of 3/.test(gtxt) && /0 of 3/.test(gtxt), gtxt);
+ok('and carries a chance and a net for each',
+   pf.rows.length === 4 && pf.rows.every(r => has(r.chance) && has(r.net)));
+ok('a null chance prints as a dash rather than 0%',
+   /—/.test(textOf(brkTable([{ hit: 1, slipsWon: 0, chance: null, net: -10 }], 1, 2)).join(' ')),
+   'a combination slip only ever computed its all-hit probability');
+
+// Net is linear in the stake, which is what lets a saved curve be re-read.
+const twice = portfolio(legs3, 20, 0);
+ok('doubling the stake doubles every net',
+   pf.rows.every((r, i) => Math.abs(r.net * 2 - twice.rows[i].net) < 1e-9),
+   'rescaling a saved curve would be wrong if it were not');
+ok('and leaves every chance alone',
+   pf.rows.every((r, i) => Math.abs(r.chance - twice.rows[i].chance) < 1e-12));
+const scaled = scaleRows(pf.rows, 2);
+ok('scaleRows reproduces a re-priced curve exactly',
+   scaled.every((r, i) => Math.abs(r.net - twice.rows[i].net) < 1e-9));
+ok('a settled card is not rescalable',
+   /Rescaling\s*\n?\s*\/\/ a settled card would restate what was actually won/.test(PAGE_SRC)
+   || /pend\) \{[\s\S]{0,300}?Stake per slip/.test(PAGE_SRC),
+   'the one number on the page that is not a projection');
+ok('the stake box has a focus key of its own',
+   /'data-fk': 'stake-' \+ p\.id/.test(PAGE_SRC),
+   'two pending parlays share a name, so an aria-label is not a unique handle');
+
 done();

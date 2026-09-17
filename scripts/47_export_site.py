@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, ".")
 
+import numpy as np
 import polars as pl
 
 from src.utils.paths import get_path
@@ -170,9 +171,16 @@ def opening_prices(season: int, week: int) -> dict[str, dict]:
         # is always there, and comparing it to the board's implied price is
         # like for like — both carry the book's margin, so the difference is
         # the market moving rather than the margin changing.
+        # `fair` and `n_books` are carried for the over/under markets only,
+        # where they exist. An over/under book posts BOTH sides at the open, so
+        # unlike a touchdown prop it has a real two-way de-vig — and that is
+        # the number the model gets blended toward when a row is falling back
+        # to the opening line. Null on the touchdown markets, which is correct
+        # rather than missing: there is no second side to remove a margin with.
         out[f"{r['market']}|{r['player_name_norm']}"] = {
             "odds": r.get("odds"), "point": r.get("point"),
             "prob": r.get("implied_prob"),
+            "fair": r.get("fair_prob"), "n_books": r.get("n_books"),
         }
     return out
 
@@ -209,6 +217,65 @@ def _attach_opens(payload: dict, season: int, week: int) -> None:
             r["open_point"] = o["point"]
             r["open_odds"] = o["odds"]
             r["open_implied"] = o["prob"]
+            r["open_fair"] = o.get("fair")
+            r["open_books"] = o.get("n_books")
+
+
+def _price_open_fallback(payload: dict) -> None:
+    """Give the rows that fall back to the opening line a probability.
+
+    `board_for_week` prices a row only where a CLOSING line joined it, and for
+    most of the week almost nothing has one — on the Wednesday of 2026 week 2
+    the close held 7 receptions lines and the open held 67. The board already
+    showed the opening line on those 60 rows, and their odds, and nothing else:
+    no model number, no book number, no edge, no EV.
+
+    That is worse than an empty cell, because the Combinations page multiplies
+    these together. A pool of 67 "priced" rows of which 60 carry no probability
+    produces `p *= null` for almost every slip, and the All hit column fills
+    with NaN — a board that looks populated and answers nothing.
+
+    So a row showing the opening line is priced against the opening line, by
+    the same three steps the close gets: the count model's own number from the
+    fitted distribution, the book's with its margin removed, and the blend
+    between them. An over/under posts both sides at the open, so the de-vig is
+    real here rather than the one-sided normalisation a touchdown prop needs.
+    Where a book somehow posted only one side, `blend_to_market` returns the
+    model alone rather than reading a missing price as a 50% opinion.
+    """
+    from src.models.count import blend_to_market, fair_two_way, prob_over
+    from src.prediction.receptions import THIN_BOOKS, load_blend, load_model
+
+    rec = payload.get("receptions") or {}
+    rows = [r for r in (rec.get("rows") or [])
+            if r.get("point") is None and r.get("open_point") is not None
+            and r.get("mu") is not None]
+    if not rows:
+        return
+    art = load_model()
+    if art is None:
+        return
+
+    mu = np.array([float(r["mu"]) for r in rows], dtype=float)
+    line = np.array([float(r["open_point"]) for r in rows], dtype=float)
+    over, push = prob_over(mu, line, float(art["dispersion"]))
+    raw = fair_two_way(over, push)
+    book = np.array([float(r["open_fair"]) if r.get("open_fair") is not None
+                     else np.nan for r in rows], dtype=float)
+    w = load_blend()
+    ours = raw if w is None else blend_to_market(raw, book, w)
+
+    for i, r in enumerate(rows):
+        r["model_only"] = float(raw[i])
+        r["ours"] = float(ours[i])
+        if np.isfinite(book[i]):
+            r["fair_prob"] = float(book[i])
+            r["edge_pp"] = float((ours[i] - book[i]) * 100)
+        nb = r.get("open_books")
+        if nb is not None:
+            r["n_books"] = int(nb)
+            r["thin"] = bool(int(nb) < THIN_BOOKS)
+    rec["open_priced_rows"] = len(rows)
 
 
 def _receptions_projections(payload: dict, season: int, week: int) -> None:
@@ -298,6 +365,8 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
 
     _receptions_projections(payload, s, w)
     _attach_opens(payload, s, w)
+    # After the opens are attached, because it prices against them.
+    _price_open_fallback(payload)
     payload["brand"] = brand
     payload["season"] = s
     payload["week"] = w

@@ -926,7 +926,13 @@ def receptions(season: int | None, week: int | None) -> dict:
     board, msg = board_for_week(season, week)
     out["problem"] = msg
     if board is not None and board.height:
+        # `implied_prob` and `overround` are the over's vigged price and the
+        # two sides summed, and they are here so the page can price the UNDER.
+        # Without them a row carries one price while the board sells two
+        # sides, and the under leg was being paid at the over's number — which
+        # is near enough at -110/-110 and badly wrong at -160.
         keep = ["player_name", "team", "game_id", "mu", "point", "odds",
+                "implied_prob", "overround",
                 "fair_prob", "model_only", "ours", "edge_pp", "ev",
                 "n_books", "thin"]
         out["rows"] = board.select([c for c in keep if c in board.columns]

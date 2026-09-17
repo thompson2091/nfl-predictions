@@ -482,6 +482,14 @@ const money = v => (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString(undefined
 const american = o => !has(o) ? '' : (o > 0 ? '+' + o : String(o));
 const decToAm = d => d >= 2 ? Math.round((d - 1) * 100) : -Math.round(100 / (d - 1));
 const amToDec = a => a > 0 ? 1 + a / 100 : 1 + 100 / -a;
+// The under's American price, from the over's vigged implied and the two sides
+// summed. Guarded at both ends: a one-sided quote has no overround, and a
+// rounding artefact that leaves a non-positive remainder is not a price.
+function underAm(overImplied, overround) {
+  if (!has(overImplied) || !has(overround)) return null;
+  const u = overround - overImplied;
+  return (u > 0.001 && u < 0.999) ? decToAm(1 / u) : null;
+}
 
 function el(tag, attrs, kids) {
   const n = document.createElement(tag);
@@ -577,6 +585,15 @@ function rowsFor(key, view) {
       odds: has(r.odds) ? r.odds : r.open_odds,
       dec: has(r.odds) ? amToDec(r.odds)
          : (has(r.open_odds) ? amToDec(r.open_odds) : null),
+      // The other side of the same line, at the book's own price rather than
+      // the over's. `overround` is the two vigged sides summed, so what is
+      // left after taking the over out IS the under, vig included — which is
+      // what you would actually be paid. Null on a row showing the opening
+      // line, where only the over price was archived; an under with no price
+      // is shown as having none rather than borrowing the over's.
+      underOdds: underAm(r.implied_prob, r.overround),
+      underDec: has(underAm(r.implied_prob, r.overround))
+        ? amToDec(underAm(r.implied_prob, r.overround)) : null,
       // Priced means a book has quoted this player, not that the row exists.
       // Most of this board is a projection with no line against it.
       thin: !!r.thin, nBooks: r.n_books,
@@ -754,7 +771,7 @@ const S = {
   // results on another, which is the kind of coupling nobody can see.
   // `pool` is the one control that matters: which players are even
   // eligible to be combined.
-  cb: { pool: 'short', q: '', game: '', pos: '', legs: 3, show: 25,
+  cb: { pool: 'short', q: '', game: '', pos: '', priced: 'all', legs: 3, show: 25,
         rank: 'likely', sameGame: true, open: true },
   ladder: { start: 100, startRaw: '100', bets: 10, betsRaw: '10',
             dec: 1 + 100 / 170, oddsRaw: '−170' },
@@ -1032,6 +1049,13 @@ function toggleLeg(row, side) {
   persistSlip();
   render(true);
 }
+// Which price a side is taken at. A touchdown row has one; an over/under has
+// two and the row is written from the over's point of view throughout.
+function ouPrice(row, over) {
+  if (row.kind !== 'ou' || over) return { odds: row.odds, dec: row.dec };
+  return { odds: has(row.underOdds) ? row.underOdds : null,
+           dec: has(row.underDec) ? row.underDec : null };
+}
 function legOf(row, side) {
   const over = side !== 'under';
   // Taking the under flips every probability on the row, not just the one we
@@ -1049,8 +1073,13 @@ function legOf(row, side) {
     // the decision turns on which of them you believe. Showing the served
     // figure alone hid whether we and the book agreed on our own or because
     // we were pulled there.
-    sub: legSub(pm, pb, p, row.odds),
-    p: p, pm: pm, pb: pb, dec: row.dec, odds: row.odds, game: row.game,
+    // Priced on the side actually being taken. An under leg used to carry the
+    // OVER's price while flipping every probability, so the slip multiplied
+    // the wrong number: harmless at -110 both ways, and a different bet when
+    // the over is -160 and the under is +130.
+    sub: legSub(pm, pb, p, ouPrice(row, over).odds),
+    p: p, pm: pm, pb: pb,
+    dec: ouPrice(row, over).dec, odds: ouPrice(row, over).odds, game: row.game,
   };
 }
 function legSub(model, book, adj, odds) {
@@ -1158,6 +1187,52 @@ function portfolio(legs, stake, rho) {
   return { n: n, slips: slips, stake: stake, outlay: staked, rows: rows,
            ev: ev, roi: staked ? ev / staked : 0, priced: allPriced,
            all: prob[N - 1] };
+}
+
+// The round robin broken out by how many legs land, as a three-column grid.
+//
+// Shared by the slip and by every saved card rather than written twice. The
+// two showing different nets for the same slip is exactly the kind of bug
+// nobody finds by looking, because each reads correctly on its own.
+//
+// `chance` is allowed to be null. A slip saved off the Combinations page is
+// one combination rather than a cover, and only its all-hit probability was
+// ever computed \u2014 so the rows below that are a real "not known" rather than a
+// zero, and print as a dash.
+function brkTable(rows, slips, nLegs) {
+  const brk = el('div', { class: 'brk' });
+  ['Legs in', 'Chance', 'Net'].forEach((h, i) =>
+    brk.appendChild(el('div', { class: 'h' + (i ? ' r' : ''), text: h })));
+  (rows || []).forEach(r => {
+    brk.appendChild(el('div', {
+      title: r.slipsWon ? r.slipsWon + ' of ' + slips + ' slips pay' : 'no slip pays',
+      text: r.hit + ' of ' + nLegs
+          + (r.slipsWon ? ' \u00b7 ' + r.slipsWon + '/' + slips : '') }));
+    brk.appendChild(el('div', { class: 'r',
+      text: has(r.chance) ? chanceTxt(r.chance) : '\u2014' }));
+    // A range where there is one. With k of n landing, *which* k they were
+    // decides what came back, and on spread-out prices the best and worst
+    // cases are far apart \u2014 an average alone would read as a certainty.
+    const spread = has(r.netLo) && has(r.netHi)
+                   && Math.abs(r.netHi - r.netLo) > 0.005;
+    brk.appendChild(el('div', {
+      class: 'r ' + (r.net >= 0 ? 'pos' : 'neg'),
+      title: spread ? 'between ' + money(r.netLo) + ' and ' + money(r.netHi)
+                    + ', depending which legs landed' : null,
+      text: money(r.net) + (spread ? '*' : '') }));
+  });
+  return brk;
+}
+
+// Net is exactly linear in the stake \u2014 every slip's payout and the outlay
+// both scale by the same factor \u2014 so a saved curve can be re-read at a
+// different stake without re-pricing anything. Chance does not move.
+function scaleRows(rows, ratio) {
+  if (!(ratio > 0) || ratio === 1) return rows || [];
+  return (rows || []).map(r => ({ ...r,
+    net: has(r.net) ? r.net * ratio : r.net,
+    netLo: has(r.netLo) ? r.netLo * ratio : r.netLo,
+    netHi: has(r.netHi) ? r.netHi * ratio : r.netHi }));
 }
 
 function slipMath() {
@@ -1301,26 +1376,8 @@ function slipPanel() {
           + (m.legs.length === 1 ? ' leg' : ' legs') }));
 
     if (m.priced) {
-      const brk = el('div', { class: 'brk' });
-      ['Legs in', 'Chance', 'Net'].forEach((h, i) =>
-        brk.appendChild(el('div', { class: 'h' + (i ? ' r' : ''), text: h })));
-      m.rows.forEach(r => {
-        brk.appendChild(el('div', {
-          title: r.slipsWon ? r.slipsWon + ' of ' + m.slips + ' slips pay' : 'no slip pays',
-          text: r.hit + ' of ' + m.legs.length
-              + (r.slipsWon ? ' · ' + r.slipsWon + '/' + m.slips : '') }));
-        brk.appendChild(el('div', { class: 'r', text: chanceTxt(r.chance) }));
-        // A range where there is one. With k of n scoring, *which* k they were
-        // decides what came back, and on spread-out prices the best and worst
-        // cases are far apart — an average alone would read as a certainty.
-        const spread = Math.abs(r.netHi - r.netLo) > 0.005;
-        brk.appendChild(el('div', {
-          class: 'r ' + (r.net >= 0 ? 'pos' : 'neg'),
-          title: spread ? 'between ' + money(r.netLo) + ' and ' + money(r.netHi)
-                        + ', depending which legs landed' : null,
-          text: money(r.net) + (spread ? '*' : '') }));
-      });
-      a.appendChild(el('div', { class: 'panel' }, [brk]));
+      a.appendChild(el('div', { class: 'panel' },
+        [brkTable(m.rows, m.slips, m.legs.length)]));
       const anySpread = m.rows.some(r => Math.abs(r.netHi - r.netLo) > 0.005);
       a.appendChild(el('p', { class: 'fine', html:
         'Expected <b class="' + (m.ev >= 0 ? 'pos' : 'neg') + '">' + esc(money(m.ev)) + '</b> per run ('
@@ -1405,7 +1462,12 @@ function saveSlip() {
     // The whole payout curve, so a saved slip reproduces its breakdown rather
     // than being re-derived from a single averaged price that no slip pays.
     rows: m.rows.map(r => ({ hit: r.hit, slipsWon: r.slipsWon,
-                             chance: r.chance, net: r.net })),
+                             chance: r.chance, net: r.net,
+                             netLo: r.netLo, netHi: r.netHi })),
+    // The stake the curve above was priced at. Net is linear in the stake, so
+    // the card can re-read the same curve at any other one — but only if it
+    // knows which stake produced it. `stake` moves; this does not.
+    rowStake: S.slip.stake,
     ev: m.ev,
     legs: m.legs.map(l => ({ id: l.id, key: l.key, player: l.player, side: l.side,
                              label: l.label, odds: l.odds, dec: l.dec, p: l.p, game: l.game })),
@@ -1510,7 +1572,7 @@ function pageWeek() {
     } }));
   main.appendChild(bar);
 
-  if (f.game) main.appendChild(gameCard(f.game, rows));
+  if (f.game) main.appendChild(gameCard(f.game, key));
 
   const shown = applyFilters(rows, f);
   main.appendChild(kind === 'ou' ? ouTable(shown, f) : tdTable(shown, f, view));
@@ -1627,21 +1689,45 @@ function marketMenu() {
 }
 
 // What Teams used to answer, scoped to the fixture you picked: who the model
-// likes on each side, and how much scoring it expects in total.
-function gameCard(game, rows) {
-  const inGame = rows.filter(r => r.game === game);
+// likes on each side, and how much it expects in total.
+//
+// Built from the WHOLE board for the market, never from the rows currently on
+// screen. It used to take the filtered set, and a fixture whose shortlisted
+// players all came from one side printed that side's total as the game's —
+// with the other half of the card reading "—" and the bar pinned at 100%,
+// which looks like a broken card rather than a filtered one. The card is about
+// the fixture; the filters are about the table under it.
+function gameCard(game, key) {
+  const kind = KIND[key] || 'td';
+  let inGame = rowsFor(key, 'all').filter(r => r.game === game);
+  // An over/under board carries one row per LINE, so a player a book has
+  // quoted at three numbers is on it three times. Summing that counts him
+  // three times.
+  if (kind === 'ou') {
+    const seen = {};
+    inGame = inGame.filter(r => seen[r.player] ? false : (seen[r.player] = 1));
+  }
+  // A count market has no "scorers" to add up, and summing its over
+  // probabilities would produce a number that means nothing. The quantity
+  // there is the projection itself.
+  const val = r => kind === 'ou' ? (has(r.proj) ? r.proj : 0)
+                                 : (has(r.ours) ? r.ours : 0);
+  const unit = kind === 'ou' ? marketLabel(key).toLowerCase() : 'scorers';
+  const fmt = v => kind === 'ou' ? v.toFixed(1) : pct(v);
+
   const teams = Array.from(new Set(inGame.map(r => r.team).filter(Boolean)));
   const byTeam = teams.map(t => ({
     team: t,
-    sum: inGame.filter(r => r.team === t).reduce((a, r) => a + (has(r.ours) ? r.ours : 0), 0),
-    top: inGame.filter(r => r.team === t).sort((a, b) => (b.ours || 0) - (a.ours || 0))[0],
+    sum: inGame.filter(r => r.team === t).reduce((a, r) => a + val(r), 0),
+    top: inGame.filter(r => r.team === t).sort((a, b) => val(b) - val(a))[0],
   })).sort((a, b) => b.sum - a.sum);
-  const total = byTeam.reduce((a, t) => a + t.sum, 0) || 1;
+  const total = byTeam.reduce((a, t) => a + t.sum, 0);
+  const share = total > 0 ? (byTeam[0] ? byTeam[0].sum : 0) / total * 100 : 50;
 
   const c = el('div', { class: 'card pad', style: 'display:flex;align-items:center;gap:28px;flex-wrap:wrap' });
   c.appendChild(el('div', { style: 'width:150px;flex-shrink:0' }, [
     el('div', { class: 'note', style: 'text-transform:uppercase;letter-spacing:.5px;font-weight:600',
-      text: 'Expected scorers' }),
+      text: 'Expected ' + unit }),
     el('div', { style: 'font-size:18px;font-weight:700', text: game }),
   ]));
   const mid = el('div', { style: 'flex-grow:1;min-width:220px;display:flex;flex-direction:column;gap:6px' });
@@ -1651,12 +1737,18 @@ function gameCard(game, rows) {
   ]));
   const track = el('div', { style: 'height:10px;border-radius:5px;overflow:hidden;background:var(--oursfaint)' });
   track.appendChild(el('div', { style: 'height:100%;background:var(--ours);width:'
-    + ((byTeam[0] ? byTeam[0].sum : 0) / total * 100).toFixed(1) + '%' }));
+    + share.toFixed(1) + '%' }));
   mid.appendChild(track);
+  // Say so when only one side is on the board at all, rather than printing a
+  // half-empty card and leaving the reader to work out which half is missing.
+  const oneSided = byTeam.length < 2
+    ? ' Only ' + (byTeam[0] ? byTeam[0].team : 'one side') + ' has players on '
+      + 'this board, so this is one half of the fixture.'
+    : '';
   mid.appendChild(el('div', { class: 'fine', text:
-    'Our numbers add to ' + total.toFixed(1) + ' scorers in this game. '
+    'Our numbers add to ' + total.toFixed(1) + ' ' + unit + ' in this game. '
     + (byTeam[0] && byTeam[0].top ? byTeam[0].team + '’s best is ' + byTeam[0].top.player
-       + ' at ' + pct(byTeam[0].top.ours) + '.' : '') }));
+       + ' at ' + fmt(val(byTeam[0].top)) + '.' : '') + oneSided }));
   c.appendChild(mid);
   return c;
 }
@@ -1811,6 +1903,24 @@ function ouTable(rows, f) {
         class: r.stale ? 'dim' : '',
         title: r.stale ? 'No close captured yet \u2014 this is the opening line.' : null,
         text: has(r.line) ? r.line.toFixed(1) + (r.stale ? '*' : '') : '' })) },
+    // The price, which every money figure on this row is computed from and
+    // which was not on the board at all until now. Two rows with the same Gap
+    // are not the same bet at -140 and at +105, and EV $100 cannot be checked
+    // against a price that is not shown.
+    { w: '78px', label: 'Odds', r: 1, sort: 'odds',
+      title: 'What the over pays. The whole row is written from the over\u2019s '
+           + 'side \u2014 the projection, Model, Book, Adj, Gap and EV all answer '
+           + '\u201cdoes he go over?\u201d \u2014 so this is the over\u2019s price. The '
+           + 'under\u2019s is in this cell\u2019s tooltip and on the Bet button.',
+      cell: (d, r) => {
+        const stale = r.stale && has(r.odds);
+        d.appendChild(el('span', {
+          class: stale ? 'dim' : '',
+          title: has(r.underOdds) ? 'under ' + american(r.underOdds)
+               : (stale ? 'No close captured yet \u2014 this is the opening price.'
+                        : null),
+          text: has(r.odds) ? american(r.odds) + (stale ? '*' : '') : '\u2014' }));
+      } },
     { w: '56px', label: 'Proj', r: 1, sort: 'proj',
       title: 'Expected receptions \u2014 the count model\u2019s mean. Read it with the '
            + 'floor and ceiling beside it; a mean alone cannot be read.',
@@ -1927,6 +2037,19 @@ JS_COMBOS = r"""
 const COMBO_POOL_MAX = 24;
 const COMBO_SETS_MAX = 20000;
 
+// What a leg in a combination actually says. On a touchdown market the
+// player IS the proposition; on a count market he is not — "Amon-Ra St. Brown"
+// and "Amon-Ra St. Brown over 5.5" are different bets, and the board carries
+// the same player at several lines, so a slip listing bare names cannot be
+// told apart from the next slip down.
+//
+// Combinations are built with `legOf(row)`, which takes the over, so that is
+// what this names.
+function comboLeg(r) {
+  return r.kind === 'ou' && has(r.line)
+    ? r.player + ' o' + r.line.toFixed(1) : r.player;
+}
+
 function pageCombos() {
   const c = S.cb, key = S.market, kind = KIND[key] || 'td';
   const m = marketOf(key);
@@ -1980,6 +2103,20 @@ function pageCombos() {
     [['', 'Any position']].concat(poss.map(x => [x, x])), v => { c.pos = v; }));
   if (games.length) bar.appendChild(pickerFor('Game', c.game,
     [['', 'All ' + games.length + ' games']].concat(games.map(g => [g, g])), v => { c.game = v; }));
+  // The same control This week carries, and it is what makes an unpriced
+  // combination reachable at all. The pool is capped at the COMBO_POOL_MAX
+  // players we rate highest, and the players we rate highest are the ones
+  // books have already quoted — so on a 531-player board every unpriced
+  // player was cut by the cap before any combination was built, even though
+  // nothing was filtering them out on purpose. A slip of them still has a
+  // real All hit; what it has no price for is the payout.
+  //
+  // Touchdown markets only. On a count market an unpriced row has no LINE,
+  // and without one there is no over to have a chance of — those rows are
+  // excluded by `eligible` above rather than filtered here.
+  if (kind === 'td') bar.appendChild(pickerFor('Priced', c.priced,
+    [['all', 'Priced and not'], ['priced', 'Priced only'], ['unpriced', 'No price only']],
+    v => { c.priced = v; }));
   main.appendChild(bar);
 
   const ctl = el('div', { class: 'chiprow' });
@@ -2002,7 +2139,8 @@ function pageCombos() {
   // time is 134,596 slips, which the browser will enumerate and no one will
   // read; past that the answer stops depending on the tail anyway because the
   // pool is already sorted by our own number.
-  let pool = applyFilters(base, { q: c.q, game: c.game, pos: c.pos, priced: 'all' })
+  let pool = applyFilters(base, { q: c.q, game: c.game, pos: c.pos,
+                                  priced: kind === 'td' ? (c.priced || 'all') : 'all' })
     .sort((a, b) => b.ours - a.ours);
   const poolFull = pool.length;
   pool = pool.slice(0, COMBO_POOL_MAX);
@@ -2041,9 +2179,9 @@ function pageCombos() {
     { w: 'minmax(0,2fr)', label: 'Slip', mob: 'title',
       title: 'The players in this combination, and their teams. Slips whose '
            + 'legs share a fixture are marked \u2014 those legs move together.',
-      sortVal: s => s.ix.map(i => pool[i].player).join(' '),
+      sortVal: s => s.ix.map(i => comboLeg(pool[i])).join(' '),
       cell: (d, s) => {
-        const names = s.ix.map(i => pool[i].player);
+        const names = s.ix.map(i => comboLeg(pool[i]));
         const w = el('div', { class: 'who' });
         w.appendChild(el('b', { text: names.join(' · ') }));
         const sub = el('span');
@@ -2079,7 +2217,7 @@ function pageCombos() {
       cell: (d, s) => {
         const g = el('div', { style: 'display:flex;gap:6px;justify-content:flex-end' });
         g.appendChild(el('button', { class: 'chip', text: 'Load',
-          'aria-label': 'Load ' + s.ix.map(i => pool[i].player).join(', ') + ' into the slip',
+          'aria-label': 'Load ' + s.ix.map(i => comboLeg(pool[i])).join(', ') + ' into the slip',
           onclick: () => {
             // Stay put. The slip is beside this table, so navigating away to
             // show what just landed in it takes the reader off the page they
@@ -2095,7 +2233,7 @@ function pageCombos() {
         g.appendChild(el('button', { class: 'chip', 'aria-pressed': savedAlready ? 'true' : 'false',
           text: savedAlready ? '✓ Saved' : 'Save',
           'aria-label': (savedAlready ? 'Already saved: ' : 'Save ')
-            + s.ix.map(i => pool[i].player).join(', '),
+            + s.ix.map(i => comboLeg(pool[i])).join(', '),
           onclick: savedAlready ? null : () => saveCombo(key, s, pool) }));
         d.appendChild(g);
       } },
@@ -2173,7 +2311,7 @@ function saveCombo(key, s, pool) {
     name: legs.length + '-leg ' + marketLabel(key),
     market: key, marketLabel: marketLabel(key),
     week: DATA.week, season: DATA.season,
-    size: 0, stake: stake, slips: 1, outlay: stake,
+    size: 0, stake: stake, slips: 1, outlay: stake, rowStake: stake,
     chance: s.p, dec: s.dec || 1, priced: !!s.dec,
     // One slip, not a cover: you picked this combination, so it pays only
     // when every leg lands. Stored as the same curve shape as anything else
@@ -2336,6 +2474,55 @@ function parlayCard(p) {
       el('b', { class: pend ? '' : (p.net >= 0 ? 'pos' : 'neg'), style: 'font-size:16px',
         text: pend ? p.hits + ' of ' + p.legs.length : money(p.net) })]),
   ]));
+
+  // The round robin, the same table the slip shows. A card that gave only
+  // "All hit" hid the whole point of a cover: most of the money in one comes
+  // back on the rows where some of the legs missed.
+  const base = has(p.rowStake) && p.rowStake > 0 ? p.rowStake : p.stake;
+  const ratio = base > 0 ? (p.stake || 0) / base : 1;
+  const rows = scaleRows(p.rows, ratio);
+  if (rows.length) {
+    const slips = p.slips || 1;
+    if (pend) {
+      // Editable while it is still pending, and fixed once it is not. Rescaling
+      // a settled card would restate what was actually won, which is the one
+      // number on this page that is not a projection.
+      const si = el('input', { type: 'text', inputmode: 'decimal',
+        value: String(p.stake), 'data-fk': 'stake-' + p.id,
+        'aria-label': 'Stake per slip for ' + p.name });
+      si.oninput = () => {
+        const x = parseFloat(si.value.replace(/[^0-9.]/g, ''));
+        if (!isFinite(x) || x <= 0) return;
+        S.parlays = S.parlays.map(q => q.id !== p.id ? q : { ...q,
+          // Pin the curve's own stake before moving the live one, so a parlay
+          // saved before `rowStake` existed still rescales from the right base
+          // rather than from wherever the reader has just dragged it.
+          rowStake: has(q.rowStake) && q.rowStake > 0 ? q.rowStake : q.stake,
+          stake: x });
+        saveParlays(S.parlays);
+        render(true);
+      };
+      a.appendChild(el('div', { class: 'field' },
+        [el('label', { text: 'Stake per slip ($)' }), si]));
+    }
+    a.appendChild(el('p', { class: 'fine',
+      text: slips + (slips === 1 ? ' slip \u00b7 ' : ' slips \u00b7 ')
+          + money((p.stake || 0) * slips) + ' at risk' }));
+    a.appendChild(el('div', { class: 'panel' },
+      [brkTable(rows, slips, p.legs.length)]));
+    const anySpread = rows.some(r => has(r.netLo) && has(r.netHi)
+                                     && Math.abs(r.netHi - r.netLo) > 0.005);
+    if (has(p.ev)) {
+      const ev = p.ev * ratio, outlay = (p.stake || 0) * slips;
+      a.appendChild(el('p', { class: 'fine', html:
+        'Expected <b class="' + (ev >= 0 ? 'pos' : 'neg') + '">' + esc(money(ev))
+        + '</b> per run (' + (outlay ? ((ev / outlay >= 0 ? '+' : '')
+        + (ev / outlay * 100).toFixed(1) + '% on ' + esc(money(outlay))) : '')
+        + '), at the numbers this slip was saved with.'
+        + (anySpread ? ' A starred net is an average: which legs landed changes '
+                     + 'what came back.' : '') }));
+    }
+  }
 
   const act = el('div', { style: 'display:flex;gap:8px;align-items:center' });
   act.appendChild(el('button', { class: 'btn solid', style: 'flex-grow:1',
@@ -2665,7 +2852,15 @@ const VIEWS = { week: pageWeek, combos: pageCombos, saved: pageSaved,
 
 function render(keepFocus) {
   const active = keepFocus ? document.activeElement : null;
-  const label = active && active.getAttribute ? active.getAttribute('aria-label') : null;
+  // `data-fk` where one is set, the aria-label otherwise. Saved parlays name
+  // themselves "3-leg Anytime TD", so two of them collide — and restoring
+  // focus by label would drop the caret into another card's stake box
+  // mid-type. A focus key is allowed to be opaque; a label has to stay
+  // readable, so they are two attributes rather than one overloaded.
+  const fk = active && active.getAttribute ? active.getAttribute('data-fk') : null;
+  const label = fk || (active && active.getAttribute
+    ? active.getAttribute('aria-label') : null);
+  const attr = fk ? 'data-fk' : 'aria-label';
   const sel = active && active.selectionStart;
 
   $('#top').innerHTML = '';
@@ -2691,7 +2886,7 @@ function render(keepFocus) {
   if (handle) root.appendChild(handle);
 
   if (label) {
-    const again = root.querySelector('[aria-label="' + label.replace(/"/g, '\\"') + '"]');
+    const again = root.querySelector('[' + attr + '="' + label.replace(/"/g, '\\"') + '"]');
     if (again && again.focus) {
       again.focus();
       if (sel != null && again.setSelectionRange) { try { again.setSelectionRange(sel, sel); } catch (e) {} }
