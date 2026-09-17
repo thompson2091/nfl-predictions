@@ -15,12 +15,14 @@ const x = loadPage(process.argv[2], process.argv[3],
    'combosOf', 'saveCombo', 'comboSaved', 'COMBO_POOL_MAX',
    'chanceTxt', 'slipSlot', 'slipHandle', 'clearSlip', 'table',
    'ev100', 'betProb', 'el', 'pct', 'portfolio', 'brkTable', 'scaleRows',
-   'moveTxt', 'marketLabel']);
+   'moveTxt', 'marketLabel', 'MENU', 'KIND', 'marketOf', 'served',
+   'gradedNote', 'M0', 'unitOf']);
 const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
         combosOf, saveCombo, comboSaved, COMBO_POOL_MAX,
         chanceTxt, slipSlot, slipHandle, clearSlip, table,
         ev100, betProb, el, pct, portfolio, brkTable, scaleRows,
-        moveTxt, marketLabel } = x;
+        moveTxt, marketLabel, MENU, KIND, marketOf, served,
+        gradedNote, M0, unitOf } = x;
 
 const txt = n => textOf(n).join(' ');
 const PAGE_SRC = require('fs').readFileSync(process.argv[3], 'utf8');
@@ -680,5 +682,73 @@ ok('a settled card is not rescalable',
 ok('the stake box has a focus key of its own',
    /'data-fk': 'stake-' \+ p\.id/.test(PAGE_SRC),
    'two pending parlays share a name, so an aria-label is not a unique handle');
+
+// ── Six markets through one board ───────────────────────────────────────
+//
+// The menu resolution used to be `key === 'first' ? 1 : 0` with receptions
+// special-cased beside it — a conditional that has to be edited in four
+// places every time a market is added, and was.
+S.market = 'any';
+ok('every menu market resolves to a payload',
+   MENU.every(g => g.items.every(([k]) => marketOf(k) && typeof marketOf(k) === 'object')),
+   MENU.flatMap(g => g.items.map(([k]) => k)).join(','));
+ok('and none of them resolves to the same block as another',
+   (() => { const seen = new Set();
+     for (const g of MENU) for (const [k] of g.items) {
+       if (!served(k)) continue;
+       const m = marketOf(k);
+       if (seen.has(m)) return false;
+       seen.add(m);
+     } return true; })(),
+   'two markets sharing one payload is how First TD read Anytime TD\'s board');
+ok('a yardage board is served and is an over/under',
+   served('rush') && KIND.rush === 'ou');
+ok('its projection comes from `proj`, not the count market\'s `mu`',
+   (() => { const r = rowsFor('rush', 'all').filter(x => has(x.proj));
+            return r.length > 0 && r.every(x => has(x.proj)); })(),
+   'a yardage model has no mean to read; the board shows its median');
+ok('a yardage row prices its own line',
+   rowsFor('rush', 'all').filter(x => x.priced).every(x => has(x.ours) && has(x.odds)));
+ok('an unquoted yardage player is a projection with no bet',
+   rowsFor('rush', 'all').some(x => !x.priced && has(x.proj) && !has(x.ours)));
+
+// The blend weight shown is the one actually fitted, not a number typed in.
+S.market = 'rush'; S.fw.view = 'priced';
+const rushTxt = textOf(pageWeek()).join(' ');
+ok('a yardage board renders', rushTxt.length > 200);
+ok('and is labelled as itself, not as receptions',
+   /Rushing yards/.test(rushTxt) && !/Receptions/.test(rushTxt), rushTxt.slice(0, 120));
+ok('the served mix in the copy is read from the payload',
+   /Math\.round\(w \* 100\)/.test(PAGE_SRC),
+   'the Adj tooltip said "17% the model, 83% the book" for every market');
+ok('a yardage market states its own graded record',
+   /served as 6% our number and 94%/.test(gradedNote('rush')), gradedNote('rush'));
+ok('and does not claim an edge',
+   /Not a betting edge/.test(gradedNote('rush')));
+
+// An over/under slip must not borrow the touchdown correlation, and a
+// touchdown slip must still get it.
+//
+// Only the first of those two can fail today, and the comment says so rather
+// than implying otherwise. No yardage or receptions payload carries a `cover`
+// block, so `M0` returning the market instead of `{}` for an over/under slip
+// changes nothing that can be observed — the guard in `M0` is defensive, not
+// a fix for a bug that was there. The second assertion pins the payload
+// invariant that makes it defensive: add a fitted correlation to an
+// over/under block later and this is what says the guard has started
+// mattering.
+(() => {
+  const rho = m => { S.slip = { market: m, legs: [], size: 0, stake: 10, stakeRaw: '10' };
+                     return ((M0() || {}).cover || {}).rho; };
+  const td = rho('any');
+  ok('a touchdown slip uses the fitted teammate correlation',
+     has(td) && td !== 0, String(td));
+  ok('and a line slip prices its legs independently',
+     !has(rho('rush')) && !has(rho('rec')),
+     'that correlation is about SCORING — one offence stalls and neither of '
+     + 'its players gets in. Nothing has measured it for a yardage line.');
+})();
+S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };
+S.market = 'any'; S.fw.view = 'all';
 
 done();

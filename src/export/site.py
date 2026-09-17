@@ -537,14 +537,32 @@ const EX = 'M6 6l12 12M18 6L6 18';
 const MENU = [
   { title: 'Touchdowns', items: [['any', 'Anytime TD'], ['first', 'First TD']] },
   { title: 'Volume', items: [['rec', 'Receptions']] },
-  { title: 'Yards', items: [['rush', 'Rushing yards', 1], ['recyds', 'Receiving yards', 1],
-                            ['passyds', 'Passing yards', 1]] },
+  { title: 'Yards', items: [['rush', 'Rushing yards'], ['recyds', 'Receiving yards'],
+                            ['passyds', 'Passing yards']] },
 ];
-const KIND = { any: 'td', first: 'td', rec: 'ou' };
+const KIND = { any: 'td', first: 'td', rec: 'ou',
+               rush: 'ou', recyds: 'ou', passyds: 'ou' };
+
+// Where each market's payload lives, and the noun its projection is counted
+// in. The touchdown pair share one list because they share a shape; everything
+// else is its own block. This used to be `key === 'first' ? 1 : 0` with
+// receptions special-cased alongside, which is a conditional that has to be
+// edited in four places every time a market is added — and was.
+const PAYLOAD = {
+  any: ['markets', 0], first: ['markets', 1],
+  rec: ['receptions', null, 'catches'],
+  rush: ['yards', 'rushing_yards', 'yards'],
+  recyds: ['yards', 'receiving_yards', 'yards'],
+  passyds: ['yards', 'passing_yards', 'yards'],
+};
+const unitOf = key => (PAYLOAD[key] || [])[2] || '';
 
 function marketOf(key) {
-  if (key === 'rec') return DATA.receptions || {};
-  return DATA.markets[key === 'first' ? 1 : 0] || {};
+  const p = PAYLOAD[key];
+  if (!p) return {};
+  if (p[0] === 'markets') return (DATA.markets || [])[p[1]] || {};
+  if (p[0] === 'yards') return (DATA.yards || {})[p[1]] || {};
+  return DATA[p[0]] || {};
 }
 function marketLabel(key) {
   for (const g of MENU) for (const it of g.items) if (it[0] === key) return it[1];
@@ -554,8 +572,12 @@ function marketLabel(key) {
 // DATA.markets and receptions a separate payload, so "served" is not the same
 // question for the two and is asked separately.
 function served(key) {
-  if (key === 'rec') return !!(DATA.receptions && DATA.receptions.model);
-  return !!DATA.markets[key === 'first' ? 1 : 0];
+  const m = marketOf(key);
+  // An over/under board is served when a model is behind it; a touchdown board
+  // when the payload carries it at all. Two questions, asked separately,
+  // because a yardage block exists in the payload whether or not
+  // `scripts/49_yards.py` has ever been run.
+  return KIND[key] === 'ou' ? !!m.model : !!(PAYLOAD[key] && marketOf(key).players);
 }
 
 // ── Rows ────────────────────────────────────────────────────────────────
@@ -579,7 +601,7 @@ function rowsFor(key, view) {
       line: has(r.point) ? r.point : r.open_point,
       openLine: r.open_point, openOdds: r.open_odds, openImplied: r.open_implied,
       stale: !has(r.point) && has(r.open_point),
-      proj: r.mu, lo: r.lo, hi: r.hi,
+      proj: has(r.proj) ? r.proj : r.mu, lo: r.lo, hi: r.hi,
       ours: r.ours, book: r.fair_prob, edge: r.edge_pp,
       modelOnly: r.model_only,
       odds: has(r.odds) ? r.odds : r.open_odds,
@@ -1250,7 +1272,11 @@ function slipMath() {
 }
 // The market payload carrying `cover`, whichever market the slip belongs to.
 function M0() {
-  return S.slip.market === 'rec' ? {} : marketOf(S.slip.market);
+  // The fitted teammate correlation is a touchdown-market quantity — one
+  // offence stalls and neither of its players SCORES. Nothing has measured it
+  // for a line, so an over/under slip prices its legs independently rather
+  // than borrowing a number fitted for a different question.
+  return KIND[S.slip.market] === 'ou' ? {} : marketOf(S.slip.market);
 }
 
 // Every k-subset of n, as index lists. Used by the Combinations page, which
@@ -1479,6 +1505,32 @@ function saveSlip() {
   render();
 }
 function gradedNote(key) {
+  if (KIND[key] === 'ou' && key !== 'rec') {
+    const m = marketOf(key);
+    const g = m.graded;
+    if (!g) return marketLabel(key).toLowerCase() + ' has not been graded '
+      + 'against a close yet.';
+    // Out of sample means the season the blend weight was NOT fitted on.
+    const oos = (g.seasons || []).filter(r => !r.in_sample);
+    const r = oos[oos.length - 1] || (g.seasons || [])[0];
+    if (!r) return null;
+    const mix = has(m.blend)
+      ? Math.round(m.blend * 100) + '% our number and '
+        + Math.round((1 - m.blend) * 100) + '% the book\u2019s'
+      : 'our number alone';
+    if (g.beats_market) return 'the raw ' + marketLabel(key).toLowerCase()
+      + ' model is ahead of the market, which has meant a leak every previous '
+      + 'time. See the Model page.';
+    const gap = (r.market - r.model);
+    return marketLabel(key).toLowerCase() + ' is served as ' + mix + '. On '
+      + r.season + ' the model alone was ' + Math.abs(gap).toFixed(4)
+      + ' of log loss ' + (gap > 0 ? 'ahead of' : 'behind') + ' the book over '
+      + r.n.toLocaleString() + ' settled lines'
+      + (r.vs_market ? ', and over ' + r.vs_market.n_games + ' fixtures that '
+         + 'gap\u2019s 95% interval is [' + r.vs_market.ci95[0].toFixed(4) + ', '
+         + r.vs_market.ci95[1].toFixed(4) + ']' : '')
+      + '. Not a betting edge.';
+  }
   if (key === 'rec') {
     const f = (DATA.receptions || {}).forward;
     if (!f) return 'receptions has not been graded against a close yet.';
@@ -1538,7 +1590,7 @@ function pageWeek() {
   const head = kind === 'ou'
     ? (view === 'priced'
         ? [marketLabel(key), 'The lines a book has actually posted, against what '
-           + 'the count model projects.']
+           + 'we project.']
         : [marketLabel(key), 'Every player on the slate with a projection, whether '
            + 'or not a book has drawn a line on him yet.'])
     : HEAD[view];
@@ -1575,7 +1627,7 @@ function pageWeek() {
   if (f.game) main.appendChild(gameCard(f.game, key));
 
   const shown = applyFilters(rows, f);
-  main.appendChild(kind === 'ou' ? ouTable(shown, f) : tdTable(shown, f, view));
+  main.appendChild(kind === 'ou' ? ouTable(shown, f, key) : tdTable(shown, f, view));
   main.appendChild(countLine(shown.length, rows.length, kind === 'ou' ? 'lines' : 'players'));
   if (view !== 'fade') main.appendChild(el('p', { class: 'fine' }, [
     document.createTextNode('Looking for the best slips among these players rather than the '
@@ -1862,7 +1914,19 @@ function tdTable(rows, f, view) {
   return table(cols, rows, f, Object.assign({ id: 'td' }, empty));
 }
 
-function ouTable(rows, f) {
+function ouTable(rows, f, key) {
+  key = key || (rows[0] || {}).key || 'rec';
+  // What this board counts, and how far toward the book we serve. Both used to
+  // be typed into the tooltips as "receptions" and "17% the model, 83% the
+  // book" — true of one of the four markets that now come through here, and
+  // silently wrong about the other three. The weight is read from the payload
+  // so it cannot drift from the one actually fitted.
+  const unit = unitOf(key);
+  const m = marketOf(key);
+  const w = has(m.blend) ? m.blend : (KIND[key] === 'ou' && key === 'rec' ? 0.17 : null);
+  const mix = has(w)
+    ? Math.round(w * 100) + '% the model, ' + Math.round((1 - w) * 100) + '% the book'
+    : 'the model, with the book where one is posted';
   const cols = [
     { w: '44px', label: '', nosort: 1, mob: 'lead',
       title: 'Star a player to keep him in view. Favorites are held in this '
@@ -1922,8 +1986,10 @@ function ouTable(rows, f) {
           text: has(r.odds) ? american(r.odds) + (stale ? '*' : '') : '\u2014' }));
       } },
     { w: '56px', label: 'Proj', r: 1, sort: 'proj',
-      title: 'Expected receptions \u2014 the count model\u2019s mean. Read it with the '
-           + 'floor and ceiling beside it; a mean alone cannot be read.',
+      title: 'Expected ' + unit + ' \u2014 our central projection. Read it with the '
+           + 'floor and ceiling beside it; a middle alone cannot be read, '
+           + 'because two players can share one and be completely different '
+           + 'bets.',
       cell: (d, r) =>
         d.appendChild(el('span', { class: 'big', text: has(r.proj) ? r.proj.toFixed(1) : '' })) },
     // Floor and ceiling as two columns rather than one range, so each can be
@@ -1935,18 +2001,17 @@ function ouTable(rows, f) {
     // about seven games in ten. Two players can project the same mean and be
     // completely different bets; this is where that shows.
     { w: '58px', label: 'Floor', r: 1, sort: 'lo',
-      title: 'He catches at least this many about 85% of the time — the 15th '
-           + 'percentile of the fitted distribution.',
+      title: 'He beats this about 85% of the time \u2014 the 15th percentile of '
+           + 'the fitted distribution.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
         text: num2(r.lo) })) },
     { w: '68px', label: 'Ceiling', r: 1, sort: 'hi',
-      title: 'He stays under this about 85% of the time — the 85th percentile '
-           + 'of the fitted distribution.',
+      title: 'He stays under this about 85% of the time \u2014 the 85th '
+           + 'percentile of the fitted distribution.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
         text: num2(r.hi) })) },
     { w: '56px', label: 'Model', r: 1, sort: 'modelOnly', hide: 1,
-      title: 'The count model\u2019s own chance of the over, before it is shrunk '
-           + 'toward the book.',
+      title: 'Our own chance of the over, before it is shrunk toward the book.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
         text: has(r.modelOnly) ? pct(r.modelOnly) : '\u2014' })) },
     { w: '56px', label: 'Book', r: 1, sort: 'book',
@@ -1954,8 +2019,8 @@ function ouTable(rows, f) {
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
         text: has(r.book) ? pct(r.book) : '\u2014' })) },
     { w: '56px', label: 'Adj', r: 1, sort: 'ours',
-      title: 'What we serve: 17% the model, 83% the book. Where no line is '
-           + 'posted there is nothing to shrink toward, so it is the model alone.',
+      title: 'What we serve: ' + mix + '. Where no line is posted there is '
+           + 'nothing to shrink toward, so it is the model alone.',
       cell: (d, r) => d.appendChild(el('span', { class: 'big',
         text: has(r.ours) ? pct(r.ours) : '\u2014' })) },
     { w: '72px', label: 'Gap', r: 1, sort: 'edge',
@@ -1964,17 +2029,17 @@ function ouTable(rows, f) {
         class: has(r.edge) ? (r.edge > 0 ? 'pos' : 'neg') : '', text: has(r.edge) ? spp(r.edge) : '' })) },
     { w: '86px', label: 'EV $100', r: 1, sortVal: r => ev100(r),
       title: 'What a flat $100 on the over returns on average, at what we serve '
-           + 'and the posted price. On this market we serve 83% the book, so '
-           + 'these are small by construction and mostly negative \u2014 the hold '
-           + 'is about 7%.',
+           + 'and the posted price. We serve ' + mix + ', so these are small '
+           + 'by construction and mostly negative \u2014 the hold on these '
+           + 'markets is about 7%.',
       cell: (d, r) => {
         const v = ev100(r);
         d.appendChild(el('span', { class: has(v) ? (v >= 0 ? 'pos' : 'neg') : 'dim',
           text: has(v) ? money(v) : '\u2014' }));
       } },
     { w: '132px', label: 'Bet', nosort: 1, mob: 'act',
-      title: 'Add the over or the under to your slip. A count market has two '
-           + 'sides, unlike a touchdown.',
+      title: 'Add the over or the under to your slip. A line has two sides, '
+           + 'unlike a touchdown.',
       cell: (d, r) => {
         const g = el('div', { style: 'display:flex;gap:6px' });
         ['over', 'under'].forEach(side => {
@@ -2273,7 +2338,7 @@ function pageCombos() {
         + 'your slip.' }));
   main.appendChild(preview);
   if (S.cb.open) {
-    main.appendChild(kind === 'ou' ? ouTable(pool, S.cb) : tdTable(pool, S.cb, 'all'));
+    main.appendChild(kind === 'ou' ? ouTable(pool, S.cb, key) : tdTable(pool, S.cb, 'all'));
   }
 
   main.appendChild(el('p', { class: 'fine', style: 'max-width:680px', text:

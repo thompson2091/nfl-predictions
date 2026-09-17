@@ -173,6 +173,13 @@ def payload() -> dict:
                       "floor": {"lo": 10.0},
                       "record": {"seasons": [2024, 2025],
                                  "arms": [{"arm": "shortlist", "roi": -19.6, "n": 6345}]}},
+        # The fitted teammate correlation, which the slip's round robin prices
+        # with. Negative and small, as measured: one offence stalling takes its
+        # players down together, so a same-team parlay is worth slightly less
+        # than independence says. Only the touchdown markets carry this — an
+        # over/under block has no such number, which is the invariant
+        # `sitepages.js` pins.
+        "cover": {"rho": -0.0241, "max_players": 12},
         "served": {"version": "2026.01.01-test", "model": "xgb", "dirty": False,
                    "problems": [], "note": "A test version.",
                    "created": "2026-01-01T00:00:00+00:00"},
@@ -245,6 +252,35 @@ def payload() -> dict:
                                    "model_log_loss": 0.7030, "market_log_loss": 0.6769},
                         "weeks": [{"week": 1, "n": 283, "over_rate": 0.477,
                                    "model_log_loss": 0.7030, "market_log_loss": 0.6769}]},
+        },
+        # One yardage board, wired the same way and NOT a copy of receptions:
+        # a different model family underneath, its own fitted blend weight, and
+        # `proj` rather than `mu`. A fixture carrying only receptions cannot
+        # catch the page reading the count market's field name on all four.
+        "yards": {
+            "rushing_yards": {
+                "season": 2026, "week": 2, "problem": "", "model": True,
+                "market": "rushing_yards", "label": "Rushing yards",
+                "blend": 0.06, "priced_rows": 1,
+                "graded": {"beats_market": False, "blend_beats_market": False,
+                           "seasons": [{"season": 2025, "n": 5728,
+                                        "model": 0.71367, "market": 0.69261,
+                                        "blend": 0.69103, "in_sample": False,
+                                        "vs_market": {"n_games": 282,
+                                                      "ci95": [-0.0371, -0.0053]}}]},
+                "rows": [{"player_name": "Alpha Back", "team": "AAA",
+                          "game_id": "AAA @ BBB", "proj": 62.4, "lo": 31.0,
+                          "hi": 98.0, "point": 54.5, "odds": -118,
+                          "implied_prob": 0.5413, "overround": 1.0476,
+                          "fair_prob": 0.5166, "model_only": 0.58,
+                          "ours": 0.522, "edge_pp": 0.5, "n_books": 5,
+                          "thin": False},
+                         {"player_name": "Bravo Wide", "team": "BBB",
+                          "game_id": "AAA @ BBB", "proj": 4.1, "lo": 0.0,
+                          "hi": 12.0, "point": None, "odds": None,
+                          "fair_prob": None, "model_only": None, "ours": None,
+                          "edge_pp": None, "n_books": 0, "thin": False}],
+            },
         },
     }
 

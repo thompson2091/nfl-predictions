@@ -208,17 +208,115 @@ def _attach_opens(payload: dict, season: int, week: int) -> None:
                 p["open_odds"] = o["odds"]
                 p["open_implied"] = o["prob"]
 
-    rec = payload.get("receptions") or {}
-    rows = rec.get("rows") or []
+    blocks = [("receptions", payload.get("receptions") or {})]
+    blocks += [(mk, blk) for mk, blk in (payload.get("yards") or {}).items()]
+    for market, blk in blocks:
+        _attach_open_rows(market, blk.get("rows") or [], opens, norm)
+
+
+def _attach_open_rows(market: str, rows: list, opens: dict, norm) -> None:
     keys = norm({r.get("player_name") for r in rows if r.get("player_name")})
     for r in rows:
-        o = opens.get(f"receptions|{keys.get(r.get('player_name'), '')}")
+        o = opens.get(f"{market}|{keys.get(r.get('player_name'), '')}")
         if o:
             r["open_point"] = o["point"]
             r["open_odds"] = o["odds"]
             r["open_implied"] = o["prob"]
             r["open_fair"] = o.get("fair")
             r["open_books"] = o.get("n_books")
+
+
+def yards(market: str, season: int | None, week: int | None) -> dict:
+    """One yardage board, in the shape the page already reads for receptions.
+
+    The same two blocks and the same column names, because the page's `ou`
+    board is written once and these are four markets through it rather than
+    four boards. What differs underneath is the model — a fitted quantile
+    curve rather than a mean and a dispersion — and the page never needs to
+    know that; it gets a projection, a floor, a ceiling and three
+    probabilities either way.
+
+    Every candidate gets a row, not only the ones a book has quoted. Books post
+    yardage lines late, so a board built from posted lines alone is thin for
+    most of the week — the same reason `_receptions_projections` exists.
+    """
+    from src.prediction.yards import MARKETS, board_for_week, load_model
+
+    out = {"season": season, "week": week, "rows": [], "problem": "",
+           "market": market, "label": MARKETS[market]["label"],
+           "model": load_model(market) is not None, "blend": None}
+    if season is None or week is None:
+        out["problem"] = "no slate to show"
+        return out
+
+    board, msg = board_for_week(market, season, week)
+    out["problem"] = msg
+    keep = ["player_name", "team", "game_id", "proj", "lo", "hi", "point",
+            "odds", "implied_prob", "overround", "fair_prob", "model_only",
+            "ours", "edge_pp", "ev", "n_books", "thin"]
+    priced: set[str] = set()
+    if board is not None and board.height:
+        out["rows"] = board.select([c for c in keep if c in board.columns]).to_dicts()
+        priced = {r["player_name"] for r in out["rows"]}
+        out["blend"] = board["blend_weight"][0]
+
+    # The graded verdict, so no screen has to infer which claim is being made.
+    # Carried as the numbers rather than a sentence: `beats_market` here is the
+    # significance-tested flag from `scripts/49_yards.py:compare`, not a raw
+    # log-loss comparison, and the first version of that comparison said True
+    # on a coin flip.
+    summary = get_path("output", market) / "summary.json"
+    if summary.exists():
+        try:
+            sm = json.loads(summary.read_text())
+            out["graded"] = {
+                "beats_market": sm.get("beats_market"),
+                "blend_beats_market": sm.get("blend_beats_market"),
+                "seasons": [{"season": r["season"], "n": r["n"],
+                             "model": r["model"]["log_loss"],
+                             "market": r["market"]["log_loss"],
+                             "blend": (r.get("blend") or {}).get("log_loss"),
+                             "in_sample": (r.get("blend") or {}).get("in_sample"),
+                             "vs_market": r.get("vs_market")}
+                            for r in sm.get("seasons") or []],
+            }
+        except Exception:                                        # noqa: BLE001
+            pass
+    return out
+
+
+def _yards_projections(payload: dict, market: str, season: int, week: int) -> None:
+    """Add a row for every candidate on a yardage board, not only the quoted ones."""
+    from src.prediction.yards import expected_quantiles
+    from src.models.yards import interval, quantile_at
+
+    blk = (payload.get("yards") or {}).get(market) or {}
+    got = _YARD_Q.get(market) or expected_quantiles(market, season, week)
+    if got is None:
+        return
+    ids, q = got
+    lo, hi = interval(q)
+    med = quantile_at(q, 0.5)
+    eligible = {p.get("player") for m in payload.get("markets") or []
+                for p in m.get("players") or []}
+    priced = {r.get("player_name") for r in blk.get("rows") or []}
+    extra = []
+    for i, row in enumerate(ids.iter_rows(named=True)):
+        name = row["player_name"]
+        if name in priced:
+            continue
+        if eligible and name not in eligible:
+            continue
+        extra.append({
+            "player_name": name, "team": row["team"],
+            "game_id": row.get("game_id"),
+            "proj": float(med[i]), "lo": float(lo[i]), "hi": float(hi[i]),
+            "point": None, "odds": None, "fair_prob": None, "ours": None,
+            "model_only": None, "edge_pp": None, "n_books": 0, "thin": False,
+        })
+    blk["rows"] = (blk.get("rows") or []) + sorted(
+        extra, key=lambda r: -r["proj"])
+    blk["priced_rows"] = len(priced)
 
 
 def _price_open_fallback(payload: dict) -> None:
@@ -243,39 +341,73 @@ def _price_open_fallback(payload: dict) -> None:
     Where a book somehow posted only one side, `blend_to_market` returns the
     model alone rather than reading a missing price as a 50% opinion.
     """
-    from src.models.count import blend_to_market, fair_two_way, prob_over
-    from src.prediction.receptions import THIN_BOOKS, load_blend, load_model
+    from src.models.count import blend_to_market
 
-    rec = payload.get("receptions") or {}
-    rows = [r for r in (rec.get("rows") or [])
-            if r.get("point") is None and r.get("open_point") is not None
-            and r.get("mu") is not None]
-    if not rows:
-        return
-    art = load_model()
-    if art is None:
-        return
+    blocks = [("receptions", payload.get("receptions") or {})]
+    blocks += [(mk, blk) for mk, blk in (payload.get("yards") or {}).items()]
+    for market, blk in blocks:
+        rows = [r for r in (blk.get("rows") or [])
+                if r.get("point") is None and r.get("open_point") is not None]
+        if not rows:
+            continue
+        got = _open_probs(market, rows)
+        if got is None:
+            continue
+        raw, w = got
+        book = np.array([float(r["open_fair"]) if r.get("open_fair") is not None
+                         else np.nan for r in rows], dtype=float)
+        ours = raw if w is None else blend_to_market(raw, book, w)
+        for i, r in enumerate(rows):
+            r["model_only"] = float(raw[i])
+            r["ours"] = float(ours[i])
+            if np.isfinite(book[i]):
+                r["fair_prob"] = float(book[i])
+                r["edge_pp"] = float((ours[i] - book[i]) * 100)
+            nb = r.get("open_books")
+            if nb is not None:
+                r["n_books"] = int(nb)
+                r["thin"] = bool(int(nb) < 3)
+        blk["open_priced_rows"] = len(rows)
 
-    mu = np.array([float(r["mu"]) for r in rows], dtype=float)
+
+def _open_probs(market: str, rows: list) -> tuple | None:
+    """Our chance of the over at the opening line, by whichever model serves it.
+
+    The two families are asked the same question and answer it differently:
+    receptions reads a line off a fitted negative binomial, the three yardage
+    markets off a fitted quantile curve. Only this function knows that.
+    """
     line = np.array([float(r["open_point"]) for r in rows], dtype=float)
-    over, push = prob_over(mu, line, float(art["dispersion"]))
-    raw = fair_two_way(over, push)
-    book = np.array([float(r["open_fair"]) if r.get("open_fair") is not None
-                     else np.nan for r in rows], dtype=float)
-    w = load_blend()
-    ours = raw if w is None else blend_to_market(raw, book, w)
 
-    for i, r in enumerate(rows):
-        r["model_only"] = float(raw[i])
-        r["ours"] = float(ours[i])
-        if np.isfinite(book[i]):
-            r["fair_prob"] = float(book[i])
-            r["edge_pp"] = float((ours[i] - book[i]) * 100)
-        nb = r.get("open_books")
-        if nb is not None:
-            r["n_books"] = int(nb)
-            r["thin"] = bool(int(nb) < THIN_BOOKS)
-    rec["open_priced_rows"] = len(rows)
+    if market == "receptions":
+        from src.models.count import fair_two_way, prob_over
+        from src.prediction.receptions import load_blend, load_model
+        art = load_model()
+        if art is None or any(r.get("mu") is None for r in rows):
+            return None
+        mu = np.array([float(r["mu"]) for r in rows], dtype=float)
+        over, push = prob_over(mu, line, float(art["dispersion"]))
+        return fair_two_way(over, push), load_blend()
+
+    from src.models.yards import prob_over as q_over
+    from src.prediction.yards import expected_quantiles, load_blend
+
+    art = _YARD_Q.get(market)
+    if art is None:
+        return None
+    ids, q = art
+    ix = {n: i for i, n in enumerate(ids["player_name"].to_list())}
+    if any(r.get("player_name") not in ix for r in rows):
+        return None
+    qq = q[[ix[r["player_name"]] for r in rows]]
+    over, push = q_over(qq, line)
+    return np.clip(over / np.clip(1.0 - push, 1e-9, None), 0.0, 1.0), load_blend(market)
+
+
+#: Fitted quantile curves for this week, cached across the three passes that
+#: need them. Scoring 800 rows through a 21-level booster three times over is
+#: the kind of waste that only shows up as a slow build.
+_YARD_Q: dict = {}
 
 
 def _receptions_projections(payload: dict, season: int, week: int) -> None:
@@ -364,6 +496,21 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
         # cannot disagree with the table they filter.
 
     _receptions_projections(payload, s, w)
+
+    # The three yardage boards. Built here rather than in
+    # `34_export_dashboard.py` because only site.html reads them.
+    from src.prediction.yards import MARKETS as YARD_MARKETS
+    payload["yards"] = {}
+    for mk in sorted(YARD_MARKETS):
+        print(f"  {mk}: {s} week {w}", file=sys.stderr)
+        payload["yards"][mk] = yards(mk, s, w)
+        if s and w:
+            from src.prediction.yards import expected_quantiles
+            got = expected_quantiles(mk, s, w)
+            if got is not None:
+                _YARD_Q[mk] = got
+            _yards_projections(payload, mk, s, w)
+
     _attach_opens(payload, s, w)
     # After the opens are attached, because it prices against them.
     _price_open_fallback(payload)
