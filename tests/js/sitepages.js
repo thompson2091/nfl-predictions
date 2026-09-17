@@ -41,7 +41,24 @@ ok('shortlist is a view, not a page', !PAGES.some(p => p[0] === 'shortlist'));
 const all = rowsFor('any', 'all'), short = rowsFor('any', 'short'), fade = rowsFor('any', 'fade');
 ok('the shortlist is smaller than the board', short.length < all.length,
    short.length + ' vs ' + all.length);
-ok('shortlist rows carry the graded band', short.every(r => r.band !== undefined));
+// The whole point of the rewrite: a shortlisted player is the *same row* as on
+// the full board, not a second one built from a different payload entry. They
+// used to disagree — the Adj column showed the pre-blend number on this view
+// because the figures came from somewhere else.
+ok('a shortlisted player is the board row, field for field',
+   short.every(sr => {
+     const br = all.find(r => r.id === sr.id);
+     return br && ['ours', 'modelOnly', 'book', 'edge', 'odds', 'priced']
+       .every(k => String(br[k]) === String(sr[k]));
+   }),
+   'the views filter one table rather than mapping a parallel one');
+ok('the three numbers are genuinely three numbers',
+   short.some(r => has(r.modelOnly) && has(r.ours) && r.modelOnly !== r.ours),
+   'Model and Adj showing the same value is the bug this replaced');
+ok('edge is measured on the pre-blend number, as the rule was backtested',
+   short.filter(r => has(r.edge) && has(r.modelOnly) && has(r.book))
+        .every(r => Math.abs(r.edge - (r.modelOnly - r.book) * 100) < 0.6),
+   'an edge taken from the published probability is about 62% of the real one');
 ok('fade rows exist to be kept off a slip', fade.length > 0);
 // Ids must agree across views or a star set on the board is lost on the
 // shortlist, which is the bug that made two separate pages feel broken.

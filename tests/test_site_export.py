@@ -124,7 +124,11 @@ def payload() -> dict:
             "player": name, "team": team, "game": game, "game_id": game,
             "ours": ours, "book": book, "priced": dec is not None, "dec": dec,
             "odds_num": None if dec is None else round((dec - 1) * 100),
-            "pos": pos, "read": "Leans", "rank": 1, "model_only": ours,
+            # `model_only` is deliberately not `ours`: the board shows both,
+            # and a fixture where they coincide cannot catch the bug where the
+            # two columns print the same number.
+            "pos": pos, "read": "Strong call", "rank": 1,
+            "model_only": min(0.99, ours + 0.07),
             "best": None, "best_book": None, "status": None, "blocked": False,
         }, **kw)
 

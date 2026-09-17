@@ -147,12 +147,20 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
     if not rec.get("model") or not season or not week:
         return
     try:
+        from src.models.count import count_interval
         from src.prediction.receptions import expected_counts, load_model
-        mus = expected_counts(season, week, load_model())
+        art = load_model()
+        mus = expected_counts(season, week, art)
     except Exception:                                            # noqa: BLE001
         return
     if mus is None or mus.height == 0:
         return
+
+    # Floor and ceiling, off the same fitted distribution the probabilities
+    # come from. A mean alone cannot be read: 4.2 from a target hog and 4.2
+    # from a deep threat are different bets, and the dispersion is what knows.
+    lo, hi = count_interval(mus["mu"].to_numpy(), float(art["dispersion"]))
+    mus = mus.with_columns([pl.Series("lo", lo), pl.Series("hi", hi)])
 
     # Held to the same population the touchdown board shows, which has already
     # had the low-activity and availability filters applied. Without it this is
@@ -160,6 +168,12 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
     # carrying a projected reception count, which is noise wearing a number.
     eligible = {p.get("player") for m in payload.get("markets") or []
                 for p in m.get("players") or []}
+    rng = {r["player_name"]: (int(r["lo"]), int(r["hi"]))
+           for r in mus.iter_rows(named=True)}
+    for r in rec.get("rows") or []:
+        got = rng.get(r.get("player_name"))
+        if got:
+            r["lo"], r["hi"] = got
     priced = {r.get("player_name") for r in rec.get("rows") or []}
     extra = []
     for row in mus.sort("mu", descending=True).iter_rows(named=True):
@@ -170,8 +184,9 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
         extra.append({
             "player_name": row["player_name"], "team": row["team"],
             "game_id": row.get("game_id"), "mu": row["mu"],
+            "lo": int(row["lo"]), "hi": int(row["hi"]),
             "point": None, "odds": None, "fair_prob": None, "ours": None,
-            "edge_pp": None, "n_books": 0, "thin": False,
+            "model_only": None, "edge_pp": None, "n_books": 0, "thin": False,
         })
     rec["rows"] = (rec.get("rows") or []) + extra
     rec["priced_rows"] = len(priced)
@@ -192,20 +207,12 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
 
     pos = positions(s, w) if s and w else {}
     for m in mk:
-        # The raw model number, before the market blend and the joint step.
-        # The board shows it beside the adjusted one, so the shortlist rows
-        # need it too or the column is blank on two of the three views.
-        raw = {p.get("player"): p.get("model_only")
-               for p in m.get("players") or [] if p.get("model_only") is not None}
         for p in m.get("players") or []:
             if p.get("player") in pos:
                 p["pos"] = pos[p["player"]]
-        for bucket in ("rows", "vetoes"):
-            for r in (m.get("shortlist") or {}).get(bucket) or []:
-                if r.get("player") in pos:
-                    r["pos"] = pos[r["player"]]
-                if r.get("player") in raw:
-                    r["model_only"] = raw[r["player"]]
+        # Shortlist and veto rows need no enrichment: the page reads them as a
+        # set of names and takes every figure from the board, so the two views
+        # cannot disagree with the table they filter.
 
     _receptions_projections(payload, s, w)
     payload["brand"] = brand

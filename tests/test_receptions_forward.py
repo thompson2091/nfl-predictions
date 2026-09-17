@@ -205,3 +205,39 @@ def test_the_alarm_fires_on_the_raw_model_not_on_what_is_served(monkeypatch):
     assert r["raw_beats_market"] is False, "the raw model is behind, and that is the alarm"
     assert "leak" not in F.report(2026).lower(), (
         "a blend doing its job must not read as a leak")
+
+
+def test_the_range_brackets_the_mean_and_widens_with_it():
+    """A mean alone cannot be read; the interval is what makes it a projection.
+
+    Falsified by returning a fixed window, or by swapping the percentiles: the
+    bracket check fails and so does the ordering, because a nine-catch
+    projection is genuinely more spread than a two-catch one.
+    """
+    from src.models.count import count_interval
+
+    mu = np.array([1.0, 4.0, 9.0])
+    lo, hi = count_interval(mu, 8.4)
+
+    assert (lo <= np.floor(mu)).all() and (hi >= np.ceil(mu)).all(), (
+        f"the interval must contain the mean: {list(zip(lo, hi))}")
+    assert (hi - lo)[2] > (hi - lo)[0], "a bigger count is a wider count"
+    assert (lo >= 0).all(), "nobody catches a negative number of passes"
+
+
+def test_the_interval_is_the_stated_share_of_games():
+    """70%, and the tails are deliberately not 5/95.
+
+    A 5th percentile on a count this small is 0 for most of the board, which
+    says nothing about anyone. Falsified by widening the defaults: the
+    coverage below stops matching the interval the column claims.
+    """
+    from scipy import stats
+    from src.models.count import count_interval
+
+    mu, r = 4.0, 8.4
+    lo, hi = count_interval(np.array([mu]), r)
+    d = stats.nbinom(r, r / (r + mu))
+    covered = d.cdf(hi[0]) - d.cdf(lo[0] - 1)
+
+    assert 0.6 < covered < 0.85, f"claims ~70%, covers {covered:.0%}"

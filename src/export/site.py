@@ -284,6 +284,8 @@ input[type=search]{-webkit-appearance:none}
 .pill.p-good{background:var(--goodbg);color:var(--good)}
 .pill.p-bad{background:var(--badbg);color:var(--bad)}
 .pill.p-mut{background:var(--inset);color:var(--mut)}
+/* Between agreement and a strong call. Green, but the quiet one. */
+.pill.p-lean{background:var(--goodbg);color:var(--mut)}
 .empty{padding:48px 20px;text-align:center}
 .empty b{display:block;font-size:18px}
 .empty span{font-size:15px;color:var(--mut);display:block;margin-top:6px}
@@ -534,51 +536,50 @@ function served(key) {
 // has a line and two, and carries `side` on the leg rather than the row.
 function rowsFor(key, view) {
   const m = marketOf(key);
-  // The shortlist and the fade list are not other boards — they are this
-  // board with a rule applied, which is why they are a filter here rather
-  // than a page of their own. They arrive pre-computed because the rule is
-  // fitted (`shortlist.floor`) rather than a threshold anyone typed, but the
-  // rows are the same players with the same ids, so a favourite starred on
-  // the full board is still starred here and a leg added from either is the
-  // same leg.
-  if (view === 'short' || view === 'fade') {
-    const src = ((m.shortlist || {})[view === 'short' ? 'rows' : 'vetoes']) || [];
-    return src.map(r => ({
-      key: key, kind: 'td', id: key + '|' + r.player,
-      player: r.player, team: r.team, game: r.game,
-      ours: r.ours, book: r.book, edge: r.edge_pp,
-      odds: r.odds, dec: has(r.odds) ? amToDec(r.odds) : null, priced: has(r.odds),
-      best: r.best_odds, bestBook: r.best_book, modelOnly: r.model_only,
-      band: r.band, bandRoi: r.band_roi, layable: r.layable,
-      pos: r.pos, rank: r.rank,
-    }));
-  }
   if (KIND[key] === 'ou') {
     return (m.rows || []).map(r => ({
       key: key, kind: 'ou',
       id: key + '|' + r.player_name + '|' + r.point,
       player: r.player_name, team: r.team, game: r.game_id || '',
-      line: r.point, proj: r.mu,
+      line: r.point, proj: r.mu, lo: r.lo, hi: r.hi,
       ours: r.ours, book: r.fair_prob, edge: r.edge_pp,
+      modelOnly: r.model_only,
       odds: r.odds, dec: has(r.odds) ? amToDec(r.odds) : null,
       // Priced means a book has quoted this player, not that the row exists.
-      // Most of this board is a projection with no line against it — books
-      // post receptions far later than touchdown props — and calling those
-      // priced would let them through the priced-only filter with nothing to
-      // bet on them.
+      // Most of this board is a projection with no line against it.
       thin: !!r.thin, nBooks: r.n_books, priced: has(r.point),
     }));
   }
-  return (m.players || []).map(r => ({
+
+  const rows = (m.players || []).map(r => ({
     key: key, kind: 'td',
     id: key + '|' + r.player,
     player: r.player, team: r.team, game: r.game, gameId: r.game_id,
-    ours: r.ours, book: r.book, edge: has(r.book) ? (r.ours - r.book) * 100 : null,
+    ours: r.ours, modelOnly: r.model_only, book: r.book,
+    // Measured on the pre-blend number, which is the basis the shortlist rule
+    // was fitted and backtested on. The published probability has already been
+    // pulled toward the price it is being compared against, so an edge taken
+    // from it is about 62% of the real one and shrinks most exactly where the
+    // disagreement is largest — see `src/prediction/bets.py`. First TD
+    // publishes the model number directly and the two coincide there.
+    edge: has(r.book) ? ((has(r.model_only) ? r.model_only : r.ours) - r.book) * 100 : null,
     odds: r.odds_num, dec: r.dec, priced: !!r.priced,
     best: r.best, bestBook: r.best_book, read: r.read, rank: r.rank,
-    modelOnly: r.model_only,
     status: r.status, blocked: r.blocked, pos: r.pos,
   }));
+
+  // The shortlist and the fades are this table with a rule applied — the same
+  // rows, the same columns, the same numbers, fewer players. They used to be
+  // mapped from their own payload entries, which meant their figures came from
+  // a different place and could disagree with the board about the same man;
+  // they did, and the Adj column showed the pre-blend number as a result.
+  if (view === 'short' || view === 'fade') {
+    const sl = m.shortlist || {};
+    const want = new Set((((view === 'short') ? sl.rows : sl.vetoes) || [])
+      .map(r => r.player));
+    return rows.filter(r => want.has(r.player));
+  }
+  return rows;
 }
 
 // ── Storage ─────────────────────────────────────────────────────────────
@@ -923,10 +924,11 @@ function table(cols, rows, f, opts) {
 // The comparison, as one cell: our probability filled, the book's as a tick.
 // Both scaled to the same ceiling on every row, so a longer bar always means a
 // higher number rather than a higher number *for this row*.
-function barCell(d, r, ceiling) {
+function barCell(d, r, ceiling, key) {
   const c = ceiling || 0.75;
+  const v = r[key || 'ours'];
   const b = el('div', { class: 'bar' });
-  if (has(r.ours)) b.appendChild(el('i', { style: 'width:' + Math.min(100, r.ours / c * 100).toFixed(1) + '%' }));
+  if (has(v)) b.appendChild(el('i', { style: 'width:' + Math.min(100, v / c * 100).toFixed(1) + '%' }));
   if (has(r.book)) b.appendChild(el('u', { style: 'left:' + Math.min(100, r.book / c * 100).toFixed(1) + '%' }));
   d.appendChild(b);
 }
@@ -1373,10 +1375,11 @@ JS_WEEK = r"""
 function pageWeek() {
   const f = S.fw, key = S.market, kind = KIND[key] || 'td';
   const m = marketOf(key);
-  // A count market has no fitted shortlist rule, so the view control does not
-  // apply to it and the board falls back to everything.
-  const view = kind === 'ou' ? 'all' : f.view;
-  const rows = rowsFor(key, view);
+  // A count market has no fitted shortlist rule, so its views are different:
+  // everything, or the rows a book has actually quoted. See `viewSeg`.
+  const view = kind === 'ou' ? (f.view === 'priced' ? 'priced' : 'all') : f.view;
+  let rows = rowsFor(key, view === 'priced' ? 'all' : view);
+  if (view === 'priced') rows = rows.filter(r => r.priced);
   const out = el('div', { class: 'wrap' });
   const main = el('main');
 
@@ -1388,14 +1391,18 @@ function pageWeek() {
            + 'book, but they are worth keeping off a parlay.'],
   };
   const head = kind === 'ou'
-    ? [marketLabel(key), 'Every posted line, against what the count model projects.']
+    ? (view === 'priced'
+        ? [marketLabel(key), 'The lines a book has actually posted, against what '
+           + 'the count model projects.']
+        : [marketLabel(key), 'Every player on the slate with a projection, whether '
+           + 'or not a book has drawn a line on him yet.'])
     : HEAD[view];
   main.appendChild(el('div', { class: 'pagehead' }, [
     el('div', {}, [el('h1', { text: head[0] }), el('p', { class: 'lede', text: head[1] })]),
     marketMenu(),
   ]));
 
-  if (kind !== 'ou') main.appendChild(viewSeg(f, m));
+  main.appendChild(viewSeg(f, m, kind, rowsFor(key, 'all')));
   if (view === 'short') main.appendChild(funnelStrip(m, key, rows.length));
 
   (m.problems || []).forEach(p => main.appendChild(el('div', { class: 'badbox', text: String(p) })));
@@ -1441,14 +1448,30 @@ function pageWeek() {
 // Three views of one board. A segmented control rather than chips, because
 // they are mutually exclusive readings of the same rows and chips read as
 // additive.
-function viewSeg(f, m) {
-  const sl = m.shortlist || {};
-  const counts = { all: (m.players || []).length,
-                   short: (sl.rows || []).length, fade: (sl.vetoes || []).length };
+function viewSeg(f, m, kind, allRows) {
   const g = el('div', { class: 'seg', role: 'group', 'aria-label': 'View' });
-  [['all', 'Everyone'], ['short', 'Shortlist'], ['fade', 'Fades']].forEach(([k, label]) => {
-    g.appendChild(el('button', { type: 'button', 'aria-pressed': f.view === k ? 'true' : 'false',
-      text: label + ' · ' + counts[k],
+  let opts;
+  if (kind === 'ou') {
+    // No Shortlist here, and that is a statement rather than an omission.
+    // The touchdown shortlist is a rule with a floor fitted on the seasons the
+    // market moved our way and a graded return beside it. Nothing equivalent
+    // exists for receptions: what we serve is 83% the book, the disagreements
+    // that remain are one or two points, and they do not survive the vig. A
+    // control called Shortlist would imply a bet list that has not been
+    // measured. Priced is the narrowing that is actually useful — most of this
+    // board has no line on it until close to kickoff.
+    const priced = allRows.filter(r => r.priced).length;
+    opts = [['all', 'Everyone', allRows.length], ['priced', 'Priced', priced]];
+  } else {
+    const sl = m.shortlist || {};
+    opts = [['all', 'Everyone', (m.players || []).length],
+            ['short', 'Shortlist', (sl.rows || []).length],
+            ['fade', 'Fades', (sl.vetoes || []).length]];
+  }
+  const cur = opts.some(o => o[0] === f.view) ? f.view : 'all';
+  opts.forEach(([k, label, n]) => {
+    g.appendChild(el('button', { type: 'button', 'aria-pressed': cur === k ? 'true' : 'false',
+      text: label + ' · ' + n,
       onclick: () => { f.view = k; f.sort = ''; render(); } }));
   });
   return el('div', { class: 'chiprow' }, [g]);
@@ -1571,14 +1594,29 @@ function tdTable(rows, f, view) {
         w.appendChild(sub);
         d.appendChild(w);
       } },
-    { w: '150px', hide: 1, nosort: 1, head: d => keyHead(d, 'Adj', 'Book'),
-      cell: (d, r) => barCell(d, r) },
+    { w: '150px', hide: 1, nosort: 1,
+      head: d => keyHead(d, view === 'all' ? 'Adj' : 'Model', 'Book'),
+      // On the shortlist and the fades the bar draws the number the rule acts
+      // on, which is the pre-blend one. Drawing the published number beside an
+      // edge computed from a different one would be two answers to the same
+      // question in the same row.
+      cell: (d, r) => barCell(d, r, null, view === 'all' ? 'ours' : 'modelOnly') },
     // Three numbers, in the order they are made. `Model` is what the fitted
     // model said on its own; `Book` is the de-vigged market price; `Adj` is
     // ours after the market blend and the joint step, and is the one every
     // other column is computed from. Showing only the last of those made the
     // blend invisible — a row where we agree with the book because we were
     // pulled there looked identical to one where we agreed on our own.
+    // Odds first: it is the thing being compared against, so the three
+    // probabilities read left to right as an answer to it rather than as
+    // figures you have to carry across the row.
+    //
+    // No "best price" line under it. It named a book per player on a page that
+    // is not a bet card, and the shopping figure it came from is a
+    // week-level number — `line_shopping` reports it on its own terms.
+    { w: '80px', label: 'Odds', r: 1, sort: 'odds',
+      cell: (d, r) => d.appendChild(el('span', {
+        class: r.priced ? '' : 'dim', text: r.priced ? american(r.odds) : 'no price' })) },
     { w: '56px', label: 'Model', r: 1, sort: 'modelOnly', hide: 1,
       title: 'The fitted model alone, before any market information.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
@@ -1589,39 +1627,16 @@ function tdTable(rows, f, view) {
       title: 'What we serve: the model after the market blend and the joint step.',
       cell: (d, r) => d.appendChild(el('span', { class: 'big', text: pct(r.ours) })) },
     { w: '64px', label: 'Edge', r: 1, sort: 'edge',
-      title: 'Ours minus the book’s, in probability points.',
+      title: 'Model minus the book’s, in probability points — measured before '
+           + 'the market blend, which is the basis the shortlist rule was '
+           + 'backtested on.',
       cell: (d, r) => d.appendChild(el('span', {
         class: has(r.edge) ? (r.edge > 0 ? 'pos' : 'neg') : '', text: has(r.edge) ? spp(r.edge) : '' })) },
-    { w: '104px', label: 'Price', r: 1, sort: 'odds', cell: (d, r) => {
-        if (!r.priced) return d.appendChild(el('span', { class: 'dim', text: 'no price' }));
-        d.appendChild(el('div', { text: american(r.odds) }));
-        if (r.best) d.appendChild(el('div', { class: 'pos', style: 'font-size:12px',
-          text: 'best ' + american(r.best) + (r.bestBook ? ' ' + r.bestBook : '') }));
-      } },
+
     { w: '92px', label: 'Read', sort: 'read', cell: (d, r) => r.read && d.appendChild(
         el('span', { class: 'pill ' + readClass(r.read), text: r.read })) },
     { w: '44px', label: '', nosort: 1, mob: 'act', cell: (d, r) => d.appendChild(addBtn(r)) },
   ];
-  if (view === 'short') {
-    // What every bet at this price range actually returned, which is the one
-    // column that answers "and how has that gone" per row rather than in
-    // aggregate. It replaces Read, which is a judgement, with a measurement.
-    cols.splice(7, 1, { w: '80px', label: 'Band', r: 1, sort: 'bandRoi',
-      title: 'What every bet in this price range returned, 2023–25.',
-      cell: (d, r) => d.appendChild(el('div', {}, [
-        el('div', { class: has(r.bandRoi) ? (r.bandRoi >= 0 ? 'pos' : 'neg') : '',
-          style: 'font-size:13px', text: has(r.bandRoi) ? roiTxt(r.bandRoi) : '' }),
-        el('div', { class: 'note', style: 'font-size:11px', text: r.band || '' }),
-      ])) });
-  } else if (view === 'fade') {
-    // There is no + on a fade: you cannot back the under on an anytime TD at
-    // a book, and offering a button that builds an unplaceable slip would be
-    // the page inventing a market.
-    cols.splice(8, 1, { w: '44px', label: '', cell: (d, r) =>
-      d.appendChild(el('span', { class: 'note', title: r.layable
-        ? 'Layable on an exchange, not at a book.' : 'No way to take this side.',
-        text: r.layable ? 'lay' : '—' })) });
-  }
   const empty = view === 'short'
     ? { emptyTitle: 'Nothing survives every filter this week',
         emptyBody: 'That is an answer, not a gap: no disagreement here has held '
@@ -1652,7 +1667,15 @@ function ouTable(rows, f) {
     { w: '52px', label: 'Line', r: 1, sort: 'line', cell: (d, r) =>
         d.appendChild(el('span', { text: has(r.line) ? r.line.toFixed(1) : '' })) },
     { w: '56px', label: 'Proj', r: 1, sort: 'proj', cell: (d, r) =>
-        d.appendChild(el('span', { class: 'big', text: has(r.proj) ? r.proj.toFixed(2) : '' })) },
+        d.appendChild(el('span', { class: 'big', text: has(r.proj) ? r.proj.toFixed(1) : '' })) },
+    // The range the count lands in seven games out of ten, read off the same
+    // fitted distribution as every probability on the row. Two players can
+    // project the same mean and be different bets; this is where that shows.
+    { w: '72px', label: 'Range', r: 1, sort: 'hi',
+      title: 'Where the count lands about 70% of the time — the 15th to 85th '
+           + 'percentile of the fitted distribution.',
+      cell: (d, r) => d.appendChild(el('span', { class: 'dim',
+        text: (has(r.lo) && has(r.hi)) ? r.lo + '\u2013' + r.hi : '' })) },
     { w: '56px', label: 'Over', r: 1, sort: 'ours', cell: (d, r) =>
         d.appendChild(el('span', { text: pct(r.ours) })) },
     { w: '56px', label: 'Book', r: 1, sort: 'book', cell: (d, r) =>
@@ -1678,11 +1701,18 @@ function ouTable(rows, f) {
     emptyBody: 'Books post these much closer to kickoff than touchdown props.' });
 }
 
+// The four verdicts the board actually produces, each with its own colour.
+// Substring matching got this wrong in a way nobody would notice: "Strong
+// call" contains none of the words it looked for, so the strongest reading on
+// the page rendered in the same grey as "Matches book".
+const READ_CLASS = {
+  'strong call': 'p-good',      // we rate him well above the price
+  'leans': 'p-lean',            // above it, but not by much
+  'matches book': 'p-mut',      // we and the market agree
+  'veto': 'p-bad',              // we rate him below the price
+};
 function readClass(read) {
-  const r = String(read).toLowerCase();
-  if (r.indexOf('back') >= 0 || r.indexOf('lean') >= 0) return 'p-good';
-  if (r.indexOf('fade') >= 0 || r.indexOf('avoid') >= 0) return 'p-bad';
-  return 'p-mut';
+  return READ_CLASS[String(read).toLowerCase()] || 'p-mut';
 }
 function addBtn(row) {
   const on = legIn(row.id);

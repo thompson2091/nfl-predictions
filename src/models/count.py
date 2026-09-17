@@ -231,6 +231,32 @@ def prob_over(mu: np.ndarray, line: np.ndarray, dispersion: float
     return np.clip(over, 0.0, 1.0), np.clip(push, 0.0, 1.0)
 
 
+def count_interval(mu: np.ndarray, dispersion: float,
+                   lo: float = 0.15, hi: float = 0.85
+                   ) -> tuple[np.ndarray, np.ndarray]:
+    """The range a count actually lands in, from the same fitted distribution.
+
+    A mean on its own is the one number a projection cannot be read from. Two
+    players can both project 4.2 and be completely different bets: a target
+    hog who catches three to six every week, and a deep threat who catches
+    one or nine. The fitted negative binomial already knows the difference —
+    it is the whole reason `fit_dispersion` exists — so the floor and ceiling
+    are read off it rather than estimated.
+
+    15th and 85th percentiles by default, not 5/95. The tails of a count this
+    small are a single catch wide and a 5th percentile is 0 for most of the
+    board, which says nothing about anybody. Seven games in ten land inside
+    the interval returned here.
+
+    Both ends are inclusive counts, so `(2, 6)` means two to six catches.
+    """
+    mu = np.clip(np.asarray(mu, dtype=float), 1e-6, None)
+    r = float(dispersion)
+    p = r / (r + mu)
+    dist = stats.nbinom(r, p)
+    return dist.ppf(lo).astype(int), dist.ppf(hi).astype(int)
+
+
 def fair_two_way(over: np.ndarray, push: np.ndarray) -> np.ndarray:
     """Renormalise over/under to exclude the push, for comparison with a price.
 
