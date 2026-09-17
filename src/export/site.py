@@ -455,48 +455,20 @@ input[type=search]{-webkit-appearance:none}
      inside its own card. The name stays put while the numbers move under it,
      which is what makes the scrolling usable rather than disorienting: the
      star and the player pin to the left edge and everything else slides. */
-  /* Four aligned columns and no sideways scrolling at all.
-     The grid is replaced by a flex row, so a hidden cell takes no track with
-     it and the visible ones keep fixed widths — which is what holds the
-     numbers in line down the page. Alignment is the whole reason a table beats
-     a list of cards, and it is the thing the previous two attempts each broke:
-     one scrolled 3.4 screens sideways, the other stacked every cell as a
-     label and lost the columns entirely. */
-  .rows{padding:0;overflow:visible;max-height:none}
-  .hd,.row{display:flex;gap:8px;padding:0 12px;width:auto;min-width:0}
-  .hd{font-size:11px;top:0}
-  .row{min-height:50px;font-size:13px;cursor:pointer}
-  .hd>div,.row>div{display:none;padding:0}
-  .hd>.mob-title,.row>.mob-title{
-    display:flex;align-items:center;flex:1 1 auto;min-width:0;text-align:left;
-  }
-  .hd>.mobshow,.row>.mobshow{
-    display:flex;align-items:center;justify-content:flex-end;
-    flex:0 0 60px;text-align:right;
-  }
-  .row>.mobmore{
-    display:flex;align-items:center;justify-content:center;flex:0 0 16px;
-    color:var(--mut3);font-size:15px;
-  }
+  /* Same table, smaller. The pane, the pinned headings and the pinned name
+     are declared once at the top and apply here unchanged; a phone scrolls
+     further because a phone is smaller, not because it was given a different
+     thing to learn.
+     `hidesm` above has already dropped the least useful columns, which is what
+     shortens the journey. */
+  .rows{max-height:calc(100vh - 300px)}
+  .hd,.row{gap:8px;padding-left:10px;padding-right:10px}
+  .hd{font-size:11px}
+  .row{min-height:52px;font-size:13px}
   .row .mob-title .who b{white-space:nowrap;font-size:14px}
   .row .mob-title .who span{font-size:11px}
-
-  /* Opened out. The columns that did not fit, plus the controls the row gave
-     up its width for. */
-  .rowmore{
-    padding:4px 12px 14px;background:var(--inset);
-    border-bottom:1px solid var(--line3);
-    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px;
-  }
-  .rowmore .mk{
-    display:flex;align-items:baseline;justify-content:space-between;gap:10px;
-    min-height:24px;
-  }
-  .rowmore .mk i{
-    font-style:normal;color:var(--mut2);font-size:11px;font-weight:600;
-    letter-spacing:.4px;text-transform:uppercase;
-  }
-  .rowmore .mk.act{grid-column:1 / -1;justify-content:flex-start;gap:12px}
+  /* The headings are still there to tap, but reaching the far ones means
+     scrolling to them first. This is the same control, somewhere findable. */
   .sortbar{display:flex}
   .brk{grid-template-columns:1fr 64px 76px}
   .cards article{padding:14px 16px}
@@ -896,8 +868,6 @@ const S = {
   savedFilter: 'all',
   // Which markets' feature tables are unfolded on the Model page.
   fam: {},
-  // Which rows are opened out on a phone, keyed `<table id>:<row index>`.
-  expand: {},
   // Combinations has its own filters rather than inheriting This week's.
   // Inheriting would make a control on one page silently change the
   // results on another, which is the kind of coupling nobody can see.
@@ -1048,35 +1018,6 @@ function countLine(shown, total, noun) {
 // `cols` is [{k, label, w, cell, r, sort, title}]. Sorting is on the raw
 // value through the filter state, never on the rendered string: "9%" sorts
 // after "10%" as text and the column becomes a lie.
-//: How many numeric columns a phone shows beside the name. Three fits 390px
-//: with the name and the action; four does not, and a column you cannot read
-//: is worse than one you have to sort for.
-const MOB_COLS = 3;
-
-// Is this tap the row's, or does it belong to a control inside the row?
-//
-// Walked by hand rather than with `closest`, which the stub DOM the tests run
-// against does not implement — and a row whose star silently also opened the
-// detail panel would be found by a person, not by a test.
-function inControl(node, stop) {
-  for (let n = node; n && n !== stop; n = n.parentNode) {
-    const t = (n.tagName || '').toLowerCase();
-    if (t === 'button' || t === 'a' || t === 'input' || t === 'select') return true;
-  }
-  return false;
-}
-
-// Whether a rendered cell said anything. A column that prints nothing for this
-// player is not a blank line in his detail panel; it is a column that does not
-// apply to him.
-function textOfNode(n) {
-  if (!n) return '';
-  if (n.nodeType === 3) return String(n.textContent || n.nodeValue || '');
-  let out = String(n.textContent || '');
-  (n.children || []).forEach(c => { out += textOfNode(c); });
-  return out.trim();
-}
-
 // The sort control, for a screen with no room for a header to click.
 //
 // Hidden above 680px, where the headings are the control and are better at it:
@@ -1133,39 +1074,21 @@ function table(cols, rows, f, opts) {
     });
   }
 
-  // ── Which columns a phone gets ───────────────────────────────────────
+  // ── One layout, at every width ───────────────────────────────────────
   //
-  // Twelve columns is a desktop density. The touchdown board is 1,086px wide
-  // and the line boards 1,312px; on a 390px phone that is 2.8 and 3.4 screens,
-  // and freezing the name column spends half the viewport to make the rest
-  // worse. Scrolling sideways is a real pattern and it fits a table that is
-  // slightly too wide, not one that is three times too wide.
+  // Four attempts have now been made at a narrow-screen table and the first
+  // three each invented a second thing for a phone to be: a stack of
+  // label/value cards (which destroyed the alignment that makes a table
+  // scannable), a sideways scroll with a frozen name (right idea, applied
+  // where the table was three screens wide rather than one), and four chosen
+  // columns with the rest behind a tap (which put a `\u22ef` on every row and
+  // hid the bet buttons one gesture deep).
   //
-  // Stacking every cell as a label/value pair — what this did before — fails
-  // from the other side: it destroys the vertical alignment that is the whole
-  // reason tabular data can be scanned at all.
-  //
-  // So the phone gets a REAL table of four aligned columns, and the columns
-  // that do not fit stay reachable two ways: the third numeric column follows
-  // whatever you sorted by, and tapping a row opens the rest of it. That is
-  // the column-toggle plus expandable-row pattern, with the sort doing the
-  // toggling so there is no column menu to open.
-  //
-  // `mobKey` marks the columns worth a slot by default. The active sort
-  // replaces the last of them, so sorting by Floor puts Floor on screen.
-  let mobShown = cols.filter(c => c.mobKey).map(keyOf).slice(0, MOB_COLS);
-  if (st.sort && mobShown.indexOf(st.sort) < 0
-      && cols.some(c => sortable(c) && keyOf(c) === st.sort)) {
-    mobShown = mobShown.slice(0, MOB_COLS - 1).concat([st.sort]);
-  }
-  const onPhone = c => mobShown.indexOf(keyOf(c)) >= 0;
-  // What tapping a row reveals: everything the phone had no room for,
-  // INCLUDING the star and the bet control. A name, three numbers and a
-  // chevron is already the whole of 390px — the two buttons are another 120
-  // between them, and squeezing them in costs the name the width it needs to
-  // be a name. So the row is for reading and the panel is for acting.
-  const rest = cols.filter(c => !onPhone(c) && c.mob !== 'title');
-
+  // The table is the same table everywhere. It scrolls inside a bounded pane,
+  // the headings pin to the top of that pane, the name pins to its left edge,
+  // and `hide` drops the least useful columns on a small screen to shorten the
+  // journey. A phone does more scrolling than a desktop because a phone is
+  // smaller; it does not get a different set of ideas to learn.
   const tpl = cols.map(c => c.w).join(' ');
   const wrap = el('div', { class: 'card rows' });
   if (opts.id) wrap.appendChild(sortBar(cols, st, sortable, keyOf));
@@ -1184,8 +1107,7 @@ function table(cols, rows, f, opts) {
     // under them, and a header that does not pin with its column slides out
     // from over it — the numbers end up under the wrong headings.
     const d = el('div', { class: (c.r ? 'r ' : '') + (c.hide ? 'hidesm ' : '')
-      + (c.mob ? 'mob-' + c.mob + ' ' : '') + (onPhone(c) ? 'mobshow ' : '')
-      + (on ? 's' : ''),
+      + (c.mob ? 'mob-' + c.mob + ' ' : '') + (on ? 's' : ''),
       title: c.title || null, role: on ? 'button' : null, tabindex: on ? '0' : null });
     if (c.head) c.head(d); else d.textContent = c.label || '';
     if (on) {
@@ -1205,7 +1127,7 @@ function table(cols, rows, f, opts) {
     hd.appendChild(d);
   });
   wrap.appendChild(hd);
-  rows.forEach((r, i) => {
+  rows.forEach(r => {
     const tr = el('div', { class: 'row', style: '--cols:' + tpl });
     cols.forEach(c => {
       // `data-label` is what the narrow layout prints beside the value. The
@@ -1213,46 +1135,13 @@ function table(cols, rows, f, opts) {
       // unlabelled numbers — which is what the first mobile attempt was.
       const d = el('div', {
         class: (c.r ? 'r ' : '') + (c.hide ? 'hidesm ' : '')
-          + (onPhone(c) ? 'mobshow ' : '') + (c.mob ? 'mob-' + c.mob : ''),
+          + (c.mob ? 'mob-' + c.mob : ''),
         'data-label': c.label || null,
       });
       c.cell(d, r);
       tr.appendChild(d);
     });
-
-    // Tap to open the rest of the row. Only on a phone — the CSS hides both
-    // the affordance and the panel above 680px, where every column is already
-    // on screen and a tap target over the whole row would fight the controls
-    // inside it.
-    const rk = (opts.id || 'x') + ':' + i;
-    if (rest.length) {
-      tr.appendChild(el('div', { class: 'mobmore',
-        'aria-label': 'Show the rest of this row',
-        text: S.expand[rk] ? '\u2715' : '\u22ef' }));
-      tr.onclick = e => {
-        // A tap on the star or the add button is that button's, not the row's.
-        if (inControl(e.target, tr)) return;
-        S.expand[rk] = !S.expand[rk];
-        render();
-      };
-    }
     wrap.appendChild(tr);
-    if (rest.length && S.expand[rk]) {
-      const more = el('div', { class: 'rowmore' });
-      rest.forEach(c => {
-        const cell = el('div', {});
-        c.cell(cell, r);
-        // A column whose cell renders nothing for this row is not a blank line
-        // in the detail; it is a column that does not apply to him. A control
-        // renders no text and is kept regardless — that is what it is for.
-        const act = c.mob === 'act' || c.mob === 'lead';
-        if (!act && !textOfNode(cell)) return;
-        more.appendChild(el('div', { class: 'mk' + (act ? ' act' : '') }, [
-          el('i', { text: c.label || (c.mob === 'lead' ? 'Favourite' : '') }),
-          cell]));
-      });
-      if (more.children.length) wrap.appendChild(more);
-    }
   });
   if (!rows.length) {
     wrap.appendChild(el('div', { class: 'empty' }, [
@@ -2172,7 +2061,7 @@ function tdTable(rows, f, view) {
         d.appendChild(el('span', { class: 'dim', title: mv || null,
           text: has(r.openOdds) ? american(r.openOdds) : '\u2014' }));
       } },
-    { w: '80px', label: 'Odds', r: 1, sort: 'odds', mobKey: 1,
+    { w: '80px', label: 'Odds', r: 1, sort: 'odds',
       title: 'The consensus price across books, de-vigged into Book beside it. '
            + '\u201cNo price\u201d means nobody has quoted him yet, which is common '
            + 'early in the week.',
@@ -2187,7 +2076,7 @@ function tdTable(rows, f, view) {
            + 'book actually thinks, rather than what it charges.',
       cell: (d, r) =>
         d.appendChild(el('span', { class: 'dim', text: r.priced ? pct(r.book) : '—' })) },
-    { w: '56px', label: 'Adj', r: 1, sort: 'ours', mobKey: 1,
+    { w: '56px', label: 'Adj', r: 1, sort: 'ours',
       title: 'What we serve: the model after the market blend and the joint step.',
       cell: (d, r) => d.appendChild(el('span', { class: 'big', text: pct(r.ours) })) },
     { w: '64px', label: 'Edge', r: 1, sort: 'edge',
@@ -2197,7 +2086,7 @@ function tdTable(rows, f, view) {
       cell: (d, r) => d.appendChild(el('span', {
         class: has(r.edge) ? (r.edge > 0 ? 'pos' : 'neg') : '', text: has(r.edge) ? spp(r.edge) : '' })) },
 
-    { w: '86px', label: 'EV $100', r: 1, sortVal: r => ev100(r), mobKey: 1,
+    { w: '86px', label: 'EV $100', r: 1, sortVal: r => ev100(r),
       title: 'What a flat $100 returns on average, at our number and the posted '
            + 'price. Negative is the usual answer. It is not a forecast of this '
            + 'bet — backing every player we rate above the price returned '
@@ -2280,7 +2169,7 @@ function ouTable(rows, f, key) {
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
         title: moveTxt(r) || null,
         text: has(r.openLine) ? r.openLine.toFixed(1) : '\u2014' })) },
-    { w: '52px', label: 'Line', r: 1, sort: 'line', mobKey: 1,
+    { w: '52px', label: 'Line', r: 1, sort: 'line',
       title: 'The number a book posted. Blank means nobody has drawn one yet '
            + '\u2014 most of this board, until close to kickoff.',
       cell: (d, r) => {
@@ -2302,7 +2191,7 @@ function ouTable(rows, f, key) {
     // which was not on the board at all until now. Two rows with the same Gap
     // are not the same bet at -140 and at +105, and EV $100 cannot be checked
     // against a price that is not shown.
-    { w: '78px', label: 'Odds', r: 1, sort: 'odds', mobKey: 1,
+    { w: '78px', label: 'Odds', r: 1, sort: 'odds',
       title: 'What the over pays. The whole row is written from the over\u2019s '
            + 'side \u2014 the projection, Model, Book, Adj, Gap and EV all answer '
            + '\u201cdoes he go over?\u201d \u2014 so this is the over\u2019s price. The '
@@ -2360,7 +2249,7 @@ function ouTable(rows, f, key) {
       title: 'The market\u2019s own chance of the over, with its margin removed.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
         text: has(r.book) ? pct(r.book) : '\u2014' })) },
-    { w: '56px', label: 'Adj', r: 1, sort: 'ours', mobKey: 1,
+    { w: '56px', label: 'Adj', r: 1, sort: 'ours',
       title: 'What we serve: ' + mix + '. Where no line is posted there is '
            + 'nothing to shrink toward, so it is the model alone.',
       cell: (d, r) => d.appendChild(el('span', { class: 'big',
@@ -2369,7 +2258,7 @@ function ouTable(rows, f, key) {
       title: 'Ours minus the book’s. A disagreement, not an edge — on this market the book has been the better estimate.',
       cell: (d, r) => d.appendChild(el('span', {
         class: has(r.edge) ? (r.edge > 0 ? 'pos' : 'neg') : '', text: has(r.edge) ? spp(r.edge) : '' })) },
-    { w: '86px', label: 'EV $100', r: 1, sortVal: r => ev100(r), mobKey: 1,
+    { w: '86px', label: 'EV $100', r: 1, sortVal: r => ev100(r),
       title: 'What a flat $100 on the over returns on average, at what we serve '
            + 'and the posted price. We serve ' + mix + ', so these are small '
            + 'by construction and mostly negative \u2014 the hold on these '

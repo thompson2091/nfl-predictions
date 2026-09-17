@@ -457,22 +457,19 @@ def test_launch_builds_one_file_under_a_name_a_server_will_serve():
     assert "public/" in (REPO / ".gitignore").read_text()
 
 
-def test_a_phone_gets_four_aligned_columns_and_no_sideways_scrolling():
-    """Twelve columns is a desktop density and no amount of scrolling saves it.
+def test_one_table_layout_at_every_width():
+    """A phone scrolls further because it is smaller, not because it is different.
 
-    The touchdown board is 1,086px wide and the line boards 1,312px. On a 390px
-    phone that is 2.8 and 3.4 screens, and freezing the name spends half the
-    viewport to make the rest worse. Stacking every cell as a label/value pair
-    fails from the other side: it destroys the vertical alignment that is the
-    only reason a table beats a list of cards.
+    Four attempts: label/value cards (destroyed the alignment that makes a
+    table scannable), sideways scroll with a frozen name (right pattern, wrong
+    table — three screens wide), four chosen columns with the rest behind a tap
+    (put a chevron on every row, hid the bet buttons a gesture deep, and leaked
+    the chevron onto the desktop as a stray grid child).
 
-    So a phone gets a real table of four columns — the name and three numbers —
-    with the rest reachable two ways: the third numeric column follows whatever
-    you sorted by, and tapping a row opens everything else including the star
-    and the bet control.
-
-    Between 680 and 900 the table is 1.2 to 1.9 screens, which IS the case
-    sideways scrolling is for, and that layout is kept there.
+    It is one table now. A bounded pane that scrolls inside its own card, with
+    the headings pinned to the pane and the name pinned to its left edge, and
+    `hide` dropping the least useful columns on a small screen to shorten the
+    journey.
     """
     from src.export import site as d
 
@@ -481,58 +478,41 @@ def test_a_phone_gets_four_aligned_columns_and_no_sideways_scrolling():
                 d.CSS.index("@media (max-width:680px)")].replace(" ", "")
     narrow = d.CSS[d.CSS.index("@media (max-width:680px)"):].replace(" ", "")
 
-    # Every width above the phone: the table is a pane that scrolls inside its
-    # own card. Without it the overflow renders UNDERNEATH the slip — fourteen
-    # columns come to ~1,150px and the board keeps ~1,080 once the slip takes
-    # its 360, so Adj, Gap, EV and the Bet buttons were drawn behind an opaque
-    # panel: in the DOM, reachable by nothing.
-    assert ".rows{" in base and "overflow:auto" in base, (
+    # The pane, declared once. Without it the overflow is not clipped, not
+    # scrolled and not warned about — it is RENDERED, underneath the slip.
+    assert "overflow:auto" in base and "max-height:calc(100vh-230px)" in base, (
         "a table that does not fit must say so by scrolling, not by hiding "
         "under the panel beside it")
-    assert "max-height:calc(100vh-230px)" in base
     assert "position:sticky;top:0;z-index:5" in base, (
         "the pane is what scrolls, so the headings pin to it and need no "
         "constant for a site header whose height changes")
     assert "position:sticky;left:0" in base, "the name pins while numbers move"
-    # The tablet range only shortens the pane; it restates nothing.
+
+    # The breakpoints only resize it. Nothing invents a second layout.
     assert "max-height:calc(100vh-280px)" in mid
-
-    # Phone: no scrolling at all.
-    assert ".rows{padding:0;overflow:visible;max-height:none}" in narrow, (
-        "a 3.4-screen scroll is not a layout, it is a shrug")
-    assert ".hd,.row{display:flex" in narrow, (
-        "a hidden grid cell still holds its track; a hidden flex item does not")
-    assert ".hd>div,.row>div{display:none;padding:0}" in narrow, (
-        "columns are opt-in on a phone, not opt-out")
-    assert ".hd>.mobshow,.row>.mobshow{" in narrow, (
-        "the chosen columns are the ones that show")
-    # `narrow` has had its spaces stripped, so this is `flex:0 0 60px`.
-    assert "flex:0060px" in narrow, (
-        "a fixed width is what holds the numbers in line down the page, which "
-        "is the whole point of keeping it a table")
-
-    # The detail panel, and the controls the row gave up its width for.
-    assert ".rowmore{" in narrow
-    assert ".rowmore.mk.act{grid-column:1/-1" in narrow, (
-        "the star and the bet buttons live in the panel on a phone")
+    assert "max-height:calc(100vh-300px)" in narrow
+    for gone in ("display:flex", "display:none;padding:0", "flex:0060px",
+                 ".rowmore{", "mobshow"):
+        assert gone not in narrow.replace(".sortbar{display:flex}", ""), (
+            f"{gone!r} is from the four-column phone layout, which is gone")
     assert ".sortbar{display:flex}" in narrow, (
-        "with no header to click, the sort needs somewhere it can be found")
+        "the far headings need scrolling to reach, so the sort stays somewhere "
+        "findable")
 
 
-def test_the_phone_columns_are_declared_and_the_sort_can_replace_one():
-    """Three numbers beside the name, and which three is not arbitrary."""
+def test_no_cell_is_rendered_without_a_column_to_put_it_in():
+    """The chevron was appended to every row and styled only below 680px.
+
+    Above it the grid has tracks for the real columns and nothing else, so the
+    extra child wrapped onto an implicit row: an ellipsis on its own line under
+    all 531 players, on the desktop, where it was never meant to appear at all.
+    """
     from src.export import site as d
 
-    assert "const MOB_COLS = 3;" in d.JS_SHARED
-    assert "cols.filter(c => c.mobKey).map(keyOf).slice(0, MOB_COLS)" in d.JS_SHARED
-    assert "mobShown.slice(0, MOB_COLS - 1).concat([st.sort])" in d.JS_SHARED, (
-        "sorting by a column that is off screen must bring it on screen, or "
-        "the sort ranks by something you cannot see")
-    # Both boards declare their three.
-    for label in ("'Odds'", "'Adj'", "'EV $100'", "'Line'"):
-        assert f"label: {label}, r: 1" in d.JS_WEEK or f"label: {label}," in d.JS_WEEK
-    assert d.JS_WEEK.count("mobKey: 1") >= 6, (
-        "the touchdown board and the line board each need their own three")
+    for dead in ("mobmore", "rowmore", "mobshow", "MOB_COLS", "mobKey"):
+        assert dead not in d.JS_SHARED and dead not in d.JS_WEEK, (
+            f"{dead!r} belonged to the removed layout")
+        assert dead not in d.CSS, f"{dead!r} still has styling with nothing to style"
 
 
 def test_the_slip_is_a_sheet_on_narrow_screens_not_a_block_below_the_board():
