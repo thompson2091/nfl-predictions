@@ -73,6 +73,23 @@ MARKET_SPECS: tuple[MarketSpec, ...] = (
     MarketSpec("player_rush_tds", "rush_td", "over_under"),
     MarketSpec("player_reception_tds", "reception_td", "over_under"),
     MarketSpec("player_receptions", "receptions", "over_under"),
+    # The yardage markets. Archived under the weekly-stats column name they are
+    # graded against, the way `receptions` is, so the label join is the market
+    # name and cannot drift.
+    #
+    # Same over/under shape as receptions and a different market underneath it.
+    # Books agree on a receptions line and scatter on a yardage one: measured
+    # over four 2026 week-2 events, a player carries a median of 3 distinct
+    # lines across the board (up to 6) and each (player, line) cell is quoted
+    # by a median of 2 books. So `n_books` on these rows counts the books at
+    # THAT line rather than the books pricing the player, and a median across
+    # a cell is a median of two. What it costs is a consensus; what it buys is
+    # that every archived row is a ticket that existed at a price, which is
+    # the unit these get graded on. 91% of cells post both sides, so the
+    # two-way de-vig behind `fair_prob` still applies.
+    MarketSpec("player_rush_yds", "rushing_yards", "over_under"),
+    MarketSpec("player_reception_yds", "receiving_yards", "over_under"),
+    MarketSpec("player_pass_yds", "passing_yards", "over_under"),
 )
 SPEC_BY_MARKET = {s.market: s for s in MARKET_SPECS}
 
@@ -112,13 +129,22 @@ _LEGACY_REGIONS: str = "us"
 #: the credit cost of a fetch, so this list is a standing weekly bill and not
 #: just a default.
 #:
-#: `receptions` is here before any model reads it, and that is deliberate. The
-#: Odds API serves only *current* markets, so a week that is not captured is
-#: gone for good — the archive cannot be rebuilt later at any price. Waiting
-#: until the model was finished would have cost however many weeks the model
-#: took, permanently. The three markets we can already price are cheap
-#: insurance against that.
-DEFAULT_MARKETS: tuple[str, ...] = ("first_td", "anytime_td", "receptions")
+#: Markets are added here BEFORE a model reads them, and that is deliberate.
+#: The normal endpoints serve only *current* markets, so a week that is not
+#: captured has to be bought back from the historical endpoint later at 2
+#: credits per market per region per game — affordable now, and not a bill
+#: worth incurring to save 6 credits a fetch today. Waiting until a model was
+#: finished would have meant paying it for every week the model took.
+#:
+#: `receptions` was here for weeks before `30_receptions.py` existed. The three
+#: yardage markets were added 2026-09-16 on the same rule, with no model behind
+#: any of them yet.
+#:
+#: The standing weekly bill: 6 markets x 2 regions = 12 credits per event call,
+#: ~16 events a firing, ~15 close firings a week ~= 2,900 credits a week.
+DEFAULT_MARKETS: tuple[str, ...] = ("first_td", "anytime_td", "receptions",
+                                   "rushing_yards", "receiving_yards",
+                                   "passing_yards")
 
 #: Over/under outcomes are normalised onto the yes/no vocabulary the archive
 #: already speaks. "Over" is the side that wins when the player does more,

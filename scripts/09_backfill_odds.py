@@ -54,6 +54,13 @@ MARKET_SETS: dict[str, tuple[str, ...]] = {
     # rather than inferred.
     "td_types": ("rush_td", "reception_td"),
     "receptions": ("receptions",),
+    # The three yardage markets, which have no archive at all before
+    # 2026-09-16 — they were never in DEFAULT_MARKETS, so no live capture ever
+    # asked for them. Everything about them has to be bought.
+    "rush_yards": ("rushing_yards",),
+    "rec_yards": ("receiving_yards",),
+    "pass_yards": ("passing_yards",),
+    "yards": ("rushing_yards", "receiving_yards", "passing_yards"),
     "all": tuple(sp.market for sp in MARKET_SPECS),
 }
 #: Default region set. See odds_api.DEFAULT_REGIONS for what `us` alone was
