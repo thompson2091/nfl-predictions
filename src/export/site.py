@@ -546,6 +546,10 @@ const MENU = [
 const KIND = { any: 'td', first: 'td', rec: 'ou',
                rush: 'ou', recyds: 'ou', passyds: 'ou' };
 
+// How a team's total is formed from its players. Everything adds except
+// passing yards, where one man throws them. See `gameCard`.
+const TEAM_TOTAL = { passyds: 'top' };
+
 // Where each market's payload lives, and the noun its projection is counted
 // in. The touchdown pair share one list because they share a shape; everything
 // else is its own block. This used to be `key === 'first' ? 1 : 0` with
@@ -588,13 +592,31 @@ function served(key) {
 // One shape for both kinds, so the filters, the slip and the combinations
 // search are written once. A `td` row has no line and one side; an `ou` row
 // has a line and two, and carries `side` on the leg rather than the row.
+// "2026_02_IND_KC" -> "IND @ KC".
+//
+// The touchdown payload carries a readable fixture; the line markets carry
+// only the id, so their board showed the raw key — in the player cell, and in
+// the Game filter, where the dropdown read "2026_02_IND_KC · 2026_02_DET_BUF".
+// The id is season, week, away, home, and none of the four contains an
+// underscore.
+function fixtureOf(gameId) {
+  const g = String(gameId || '');
+  const b = g.split('_');
+  // Anything that does not look like an id is passed through, not blanked. A
+  // value that is already "DET @ BUF" is the answer, and returning '' for it
+  // empties the player cell and the Game filter at once — silently, because
+  // an empty fixture renders as an empty cell rather than as an error.
+  return b.length >= 4 ? b[b.length - 2] + ' @ ' + b[b.length - 1] : g;
+}
+
 function rowsFor(key, view) {
   const m = marketOf(key);
   if (KIND[key] === 'ou') {
     return (m.rows || []).map(r => ({
       key: key, kind: 'ou',
       id: key + '|' + r.player_name + '|' + r.point,
-      player: r.player_name, team: r.team, game: r.game_id || '',
+      player: r.player_name, team: r.team,
+      game: fixtureOf(r.game_id), gameId: r.game_id || '',
       // The line, and where it started. A count market's close is thin for
       // most of the week — on the Wednesday of week 2 the close held seven
       // lines and the open held sixty-eight — so a row with no close falls
@@ -1821,12 +1843,27 @@ function gameCard(game, key) {
   const unit = kind === 'ou' ? marketLabel(key).toLowerCase() : 'scorers';
   const fmt = v => kind === 'ou' ? v.toFixed(1) : pct(v);
 
+  // Added up, except where the team's total is not a sum.
+  //
+  // Anytime TD adds because several players each score; receptions, receiving
+  // and rushing yards add because several players each catch and carry — the
+  // team receiving total comes out at 222 a game, which is what a team throws
+  // for. Passing yards does NOT add, because one quarterback throws them and
+  // every backup on the board carries a projection that assumes a normal
+  // workload of his OWN. Summed, Minnesota's four quarterbacks made 631
+  // passing yards and the league averages 362; taking the starter gives 233.
+  const agg = TEAM_TOTAL[key] || 'sum';
   const teams = Array.from(new Set(inGame.map(r => r.team).filter(Boolean)));
-  const byTeam = teams.map(t => ({
-    team: t,
-    sum: inGame.filter(r => r.team === t).reduce((a, r) => a + val(r), 0),
-    top: inGame.filter(r => r.team === t).sort((a, b) => val(b) - val(a))[0],
-  })).sort((a, b) => b.sum - a.sum);
+  const byTeam = teams.map(t => {
+    const mine = inGame.filter(r => r.team === t);
+    return {
+      team: t,
+      sum: agg === 'top'
+        ? mine.reduce((a, r) => Math.max(a, val(r)), 0)
+        : mine.reduce((a, r) => a + val(r), 0),
+      top: mine.slice().sort((a, b) => val(b) - val(a))[0],
+    };
+  }).sort((a, b) => b.sum - a.sum);
   const total = byTeam.reduce((a, t) => a + t.sum, 0);
   const share = total > 0 ? (byTeam[0] ? byTeam[0].sum : 0) / total * 100 : 50;
 
@@ -1852,7 +1889,11 @@ function gameCard(game, key) {
       + 'this board, so this is one half of the fixture.'
     : '';
   mid.appendChild(el('div', { class: 'fine', text:
-    'Our numbers add to ' + total.toFixed(1) + ' ' + unit + ' in this game. '
+    (agg === 'top'
+      ? 'Our numbers put ' + total.toFixed(1) + ' ' + unit + ' in this game, '
+        + 'counting each side\u2019s starter \u2014 one quarterback throws them, so '
+        + 'these are not added up. '
+      : 'Our numbers add to ' + total.toFixed(1) + ' ' + unit + ' in this game. ')
     + (byTeam[0] && byTeam[0].top ? byTeam[0].team + '’s best is ' + byTeam[0].top.player
        + ' at ' + fmt(val(byTeam[0].top)) + '.' : '') + oneSided }));
   c.appendChild(mid);
@@ -1987,13 +2028,21 @@ function ouTable(rows, f, key) {
            + 'browser for this week only.',
       cell: (d, r) => d.appendChild(starBtn(r)) },
     { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', mob: 'title',
-      title: 'Who and his team. A book count appears where fewer than three '
+      title: 'Who, his team, and the fixture. Click the fixture to filter the '
+           + 'board to that game. A book count appears where fewer than three '
            + 'stood behind the line.',
       cell: (d, r) => {
-        d.appendChild(el('div', { class: 'who' }, [
-          el('b', { text: r.player }),
-          el('span', { text: (r.team || '') + (r.thin ? ' · ' + r.nBooks + ' book' + (r.nBooks === 1 ? '' : 's') : '') }),
-        ]));
+        const w = el('div', { class: 'who' });
+        w.appendChild(el('b', { text: r.player }));
+        const sub = el('span');
+        sub.appendChild(document.createTextNode((r.team || '') + ' · '));
+        sub.appendChild(el('a', { href: '#week', text: r.game || '',
+          style: 'color:var(--mut2)',
+          onclick: e => { e.preventDefault(); f.game = r.game; render(); } }));
+        if (r.thin) sub.appendChild(document.createTextNode(
+          ' · ' + r.nBooks + ' book' + (r.nBooks === 1 ? '' : 's')));
+        w.appendChild(sub);
+        d.appendChild(w);
       } },
     { w: '120px', hide: 1, nosort: 1,
       title: 'The projection as a filled bar against the posted line as a tick '

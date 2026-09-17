@@ -136,6 +136,12 @@ def expected_counts(season: int, week: int, art: dict | None = None
     df = (pl.scan_parquet(feats_path)
           .filter((pl.col("season") == season) & (pl.col("week") == week))
           .collect())
+    # No defence has ever caught a pass. It is on this matrix because it scores
+    # touchdowns; it reached this board with a projected reception count, and
+    # all 32 of them share the name "DEF/ST", so any key built from a player's
+    # name folds them into a single row belonging to no team.
+    if "position_DEFST" in df.columns:
+        df = df.filter(pl.col("position_DEFST") != 1)
     if df.height == 0:
         return None
 

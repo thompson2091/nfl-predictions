@@ -17,14 +17,14 @@ const x = loadPage(process.argv[2], process.argv[3],
    'ev100', 'betProb', 'el', 'pct', 'portfolio', 'brkTable', 'scaleRows',
    'moveTxt', 'marketLabel', 'MENU', 'KIND', 'marketOf', 'served',
    'gradedNote', 'M0', 'unitOf', 'oneLine', 'extraLines', 'spp',
-   'parlayCard', 'DATA', 'pageModel', 'num2']);
+   'parlayCard', 'DATA', 'pageModel', 'num2', 'fixtureOf']);
 const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
         combosOf, saveCombo, comboSaved, COMBO_POOL_MAX,
         chanceTxt, slipSlot, slipHandle, clearSlip, table,
         ev100, betProb, el, pct, portfolio, brkTable, scaleRows,
         moveTxt, marketLabel, MENU, KIND, marketOf, served,
         gradedNote, M0, unitOf, oneLine, extraLines, spp,
-        parlayCard, DATA, pageModel, num2 } = x;
+        parlayCard, DATA, pageModel, num2, fixtureOf } = x;
 
 const txt = n => textOf(n).join(' ');
 const PAGE_SRC = require('fs').readFileSync(process.argv[3], 'utf8');
@@ -925,6 +925,95 @@ S.market = 'any'; S.fw.view = 'all';
      'these are already percentage points; multiplying by 100 printed '
      + '"+282.94 pp" against a top-1 of 49.6%');
   S.fam = {}; S.route = 'week';
+})();
+
+// ── A team's total is not always a sum ──────────────────────────────────
+//
+// Anytime TD adds because several players each score; receptions, receiving
+// and rushing yards add because several players each catch and carry — team
+// receiving comes out around 222 a game, which is what a team throws for.
+// Passing yards does NOT add: one quarterback throws them, and every backup on
+// the board carries a projection assuming a normal workload of his own.
+// Summed, Minnesota's four quarterbacks made 631 passing yards.
+(() => {
+  const teamTotals = key => {
+    const rows = oneLine(rowsFor(key, 'all').filter(r => has(r.proj)), null);
+    const games = [...new Set(rows.map(r => r.game).filter(Boolean))];
+    const g = games[0];
+    const mine = rows.filter(r => r.game === g);
+    const byTeam = {};
+    mine.forEach(r => { (byTeam[r.team] = byTeam[r.team] || []).push(r.proj); });
+    return { game: g, teams: Object.values(byTeam) };
+  };
+
+  ['passyds', 'recyds', 'rush'].forEach(key => {
+    if (!served(key)) return;
+    const { game, teams } = teamTotals(key);
+    S.market = key; S.fw.view = 'priced'; S.fw.game = game;
+    const t = txt(pageWeek());
+    const sum = teams.reduce((a, v) => a + v.reduce((x, y) => x + y, 0), 0);
+    const top = teams.reduce((a, v) => a + Math.max.apply(null, v), 0);
+    const shown = parseFloat((t.match(/(?:add to|put) ([\d.]+)/) || [])[1]);
+    const want = key === 'passyds' ? top : sum;
+    ok('the ' + marketLabel(key) + ' game card totals its side correctly',
+       Math.abs(shown - want) < 0.75,
+       'card says ' + shown + '; sum is ' + sum.toFixed(1)
+       + ', starters-only is ' + top.toFixed(1));
+    if (key === 'passyds') {
+      ok('and says why passing yards are not added up',
+         /one quarterback throws them/.test(t), t.slice(0, 160));
+      ok('and a team total lands where a team total lands',
+         shown / 2 > 150 && shown / 2 < 320,
+         'per side ' + (shown / 2).toFixed(0) + ' yards');
+    }
+    S.fw.game = '';
+  });
+  S.market = 'any'; S.fw.view = 'all';
+})();
+
+// ── The fixture, not the database key ───────────────────────────────────
+//
+// The touchdown payload carries a readable "DET @ BUF"; the line markets carry
+// only the id. Their player cell and their Game filter both showed
+// "2026_02_DET_BUF" — the dropdown read as a list of database keys.
+(() => {
+  MENU.forEach(g => g.items.forEach(([k]) => {
+    if (!served(k)) return;
+    const games = [...new Set(rowsFor(k, 'all').map(r => r.game).filter(Boolean))];
+    ok(marketLabel(k) + ' filters by fixture, not by row id',
+       games.length > 0 && games.every(x => /^[A-Z]{2,3} @ [A-Z]{2,3}$/.test(x)),
+       games.slice(0, 2).join(' · '));
+  }));
+  S.market = 'rush'; S.fw.view = 'priced'; S.fw.game = '';
+  ok('and the fixture is in the player cell beside his team',
+     /[A-Z]{2,3} ·\s+[A-Z]{2,3} @ [A-Z]{2,3}/.test(txt(pageWeek())),
+     'the touchdown board has shown this since it existed');
+  ok('a value that is already a fixture is passed through, not blanked',
+     fixtureOf('DET @ BUF') === 'DET @ BUF'
+     && fixtureOf('2026_02_DET_BUF') === 'DET @ BUF'
+     && fixtureOf(null) === '',
+     'returning empty for an unparsed id empties the cell AND the filter, '
+     + 'and an empty fixture renders as an empty cell rather than an error');
+  S.market = 'any'; S.fw.view = 'all';
+})();
+
+// ── A defence does not catch passes ─────────────────────────────────────
+//
+// It is on the shared feature matrix because it scores touchdowns, and it
+// arrived on the line boards carrying 2.34 projected receiving yards for
+// Buffalo — one row per team, all 32 of them named "DEF/ST", so anything keyed
+// on a player's name folds them into one row belonging to nobody.
+(() => {
+  const isDef = r => /DEF|ST$/.test(r.player || '');
+  MENU.forEach(g => g.items.forEach(([k]) => {
+    if (!served(k) || KIND[k] !== 'ou') return;
+    ok('no defence is on the ' + marketLabel(k) + ' board',
+       !rowsFor(k, 'all').some(isDef),
+       rowsFor(k, 'all').filter(isDef).length + ' DEF/ST rows');
+  }));
+  ok('but a defence stays on the touchdown board, where it can score',
+     rowsFor('any', 'all').some(isDef),
+     'defensive touchdowns are a real market and this is it');
 })();
 
 done();

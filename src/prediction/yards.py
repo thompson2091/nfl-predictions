@@ -125,6 +125,16 @@ def expected_quantiles(market: str, season: int, week: int,
     gate = MARKETS[market]["gate"]
     if gate and gate in df.columns:
         df = df.filter(pl.col(gate) == 1)
+    # A defence does not catch passes, carry the ball or throw. It is on the
+    # shared matrix because it scores touchdowns, which is a real market and
+    # not this one — and it arrived here carrying a projection of 2.34
+    # receiving yards for Buffalo, 1.72 for Cleveland, one row per team.
+    #
+    # Worse than the number being meaningless: all 32 of them are NAMED
+    # "DEF/ST", so anything keyed on a player's name collapses them into one
+    # row belonging to no team.
+    if "position_DEFST" in df.columns:
+        df = df.filter(pl.col("position_DEFST") != 1)
     if df.height == 0:
         return None
 

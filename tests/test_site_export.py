@@ -147,6 +147,12 @@ def payload() -> dict:
     # cap alone hides every unpriced one. A four-player fixture cannot show that
     # — the cap never engages — and the Combinations pool control it justifies
     # would look like a filter with nothing to filter.
+    # Every team's defence is on the touchdown board, and every one of them is
+    # named "DEF/ST" — which is why the line boards exclude them (a defence
+    # catches nothing) and the touchdown board does not (it scores).
+    for tm, gm in (("AAA", "AAA @ BBB"), ("BBB", "AAA @ BBB")):
+        players.append(player("DEF/ST", tm, gm, 0.09, 0.07, 12.0, "DEFST"))
+
     _teams = [("AAA", "AAA @ BBB"), ("BBB", "AAA @ BBB"),
               ("CCC", "CCC @ DDD"), ("DDD", "CCC @ DDD")]
     for i in range(30):
@@ -298,35 +304,35 @@ def payload() -> dict:
                 # player cannot catch a board that leads with the friendliest
                 # single quote.
                 "rows": [{"player_name": "Alpha Back", "team": "AAA",
-                          "game_id": "AAA @ BBB", "proj": 62.37, "lo": 30.72,
+                          "game_id": "2026_02_AAA_BBB", "proj": 62.37, "lo": 30.72,
                           "hi": 97.41, "point": 54.5, "odds": -118,
                           "implied_prob": 0.5413, "overround": 1.0476,
                           "fair_prob": 0.5166, "model_only": 0.58,
                           "ours": 0.522, "edge_pp": 0.5, "n_books": 5,
                           "thin": False, "best_line": True, "n_lines": 3},
                          {"player_name": "Alpha Back", "team": "AAA",
-                          "game_id": "AAA @ BBB", "proj": 62.37, "lo": 30.72,
+                          "game_id": "2026_02_AAA_BBB", "proj": 62.37, "lo": 30.72,
                           "hi": 97.41, "point": 51.5, "odds": -125,
                           "implied_prob": 0.5556, "overround": 1.048,
                           "fair_prob": 0.5301, "model_only": 0.62,
                           "ours": 0.547, "edge_pp": 1.7, "n_books": 2,
                           "thin": True, "best_line": False, "n_lines": 3},
                          {"player_name": "Alpha Back", "team": "AAA",
-                          "game_id": "AAA @ BBB", "proj": 62.37, "lo": 30.72,
+                          "game_id": "2026_02_AAA_BBB", "proj": 62.37, "lo": 30.72,
                           "hi": 97.41, "point": 58.5, "odds": -108,
                           "implied_prob": 0.5192, "overround": 1.047,
                           "fair_prob": 0.4959, "model_only": 0.54,
                           "ours": 0.509, "edge_pp": 1.3, "n_books": 1,
                           "thin": True, "best_line": False, "n_lines": 3},
                          {"player_name": "Charlie End", "team": "CCC",
-                          "game_id": "CCC @ DDD", "proj": 18.0, "lo": 4.0,
+                          "game_id": "2026_02_CCC_DDD", "proj": 18.0, "lo": 4.0,
                           "hi": 34.0, "point": 16.5, "odds": -112,
                           "implied_prob": 0.5283, "overround": 1.0472,
                           "fair_prob": 0.5046, "model_only": 0.53,
                           "ours": 0.509, "edge_pp": 0.4, "n_books": 4,
                           "thin": False, "best_line": True, "n_lines": 1},
                          {"player_name": "Bravo Wide", "team": "BBB",
-                          "game_id": "AAA @ BBB", "proj": 4.1, "lo": 0.0,
+                          "game_id": "2026_02_AAA_BBB", "proj": 4.1, "lo": 0.0,
                           "hi": 12.0, "point": None, "odds": None,
                           "fair_prob": None, "model_only": None, "ours": None,
                           "edge_pp": None, "n_books": 0, "thin": False}],
