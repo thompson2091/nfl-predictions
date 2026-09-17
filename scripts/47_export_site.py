@@ -344,6 +344,48 @@ def _yards_projections(payload: dict, market: str, season: int, week: int) -> No
     blk["priced_rows"] = len(priced)
 
 
+def _mark_consensus_lines(payload: dict) -> None:
+    """Which of a player's posted lines is the one to lead with.
+
+    A yardage board carries one row per (player, line), and books scatter: on
+    2026 week 2 that is 4.4 rows per quarterback on passing yards, 2.7 per
+    receiver, 2.5 per back — Jaxson Dart six times at six different numbers.
+    Receptions never does this, at 1.0 rows per player, which is why the board
+    was built without a view for it.
+
+    They are not duplicates. Each is a real bet at a real number, and most of
+    them are one book deep: Dart's six read 210.5(1) 212.5(1) 213.5(2)
+    214.5(2) 215.5(1) 217.5(3). But a board that prints a player six times and
+    leads with whichever row happens to sort highest is a board where the
+    biggest disagreement is an artefact of which single book drew the friendliest
+    number.
+
+    So one row per player is flagged as the consensus — the line the most books
+    drew, ties to the one nearest that player's median, which is the same rule
+    `opening_prices` uses. The others keep every figure they had and the page
+    hides them by default behind a control that says how many there are.
+    """
+    import statistics
+
+    blocks = [payload.get("receptions") or {}]
+    blocks += list((payload.get("yards") or {}).values())
+    for blk in blocks:
+        rows = [r for r in (blk.get("rows") or [])
+                if r.get("point") is not None or r.get("open_point") is not None]
+        by_player: dict = {}
+        for r in rows:
+            by_player.setdefault(r.get("player_name"), []).append(r)
+        for group in by_player.values():
+            def line_of(r):
+                return r["point"] if r.get("point") is not None else r["open_point"]
+            med = statistics.median([line_of(r) for r in group])
+            best = max(group, key=lambda r: ((r.get("n_books") or 0),
+                                             -abs(line_of(r) - med)))
+            for r in group:
+                r["best_line"] = r is best
+                r["n_lines"] = len(group)
+
+
 def _price_open_fallback(payload: dict) -> None:
     """Give the rows that fall back to the opening line a probability.
 
@@ -539,6 +581,9 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     _attach_opens(payload, s, w)
     # After the opens are attached, because it prices against them.
     _price_open_fallback(payload)
+    # And after that, because a row showing only an opening line is a line
+    # like any other and belongs in the count.
+    _mark_consensus_lines(payload)
     payload["brand"] = brand
     payload["season"] = s
     payload["week"] = w

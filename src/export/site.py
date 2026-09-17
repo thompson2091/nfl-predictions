@@ -441,7 +441,10 @@ const has = v => v !== null && v !== undefined && !(typeof v === 'number' && isN
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = (v, d) => has(v) ? (v * 100).toFixed(d == null ? 0 : d) + '%' : '';
-const spp = v => has(v) ? (v > 0 ? '+' : '') + v.toFixed(0) : '';
+// Signed probability points, to two places. Whole points hid real
+// differences: two rows both reading "+3" could be +2.51 and +3.49, which on a
+// market we serve mostly from the book is most of the disagreement there is.
+const spp = v => has(v) ? (v > 0 ? '+' : '') + v.toFixed(2) : '';
 // How far the market moved since it opened, and which way relative to us.
 // Probability points, not odds: +150 to +130 and -150 to -170 are the same
 // twenty points of American and nothing like the same move.
@@ -460,6 +463,7 @@ function moveTxt(row) {
 }
 // Two places, unless they are both zero. A quantile that lands exactly on a
 // whole number is a whole number, and "3.00" is two characters of noise.
+const num0 = v => !has(v) ? '' : String(Math.round(v));
 const num2 = v => !has(v) ? '' :
   (Math.abs(v - Math.round(v)) < 5e-3 ? String(Math.round(v)) : v.toFixed(2));
 // A probability a person can read, at any scale. `toExponential` is correct
@@ -619,6 +623,11 @@ function rowsFor(key, view) {
       // Priced means a book has quoted this player, not that the row exists.
       // Most of this board is a projection with no line against it.
       thin: !!r.thin, nBooks: r.n_books,
+      // Which of this player's posted lines to lead with, and how many he has.
+      // Books scatter on a yardage line — 4.4 rows per quarterback on passing
+      // yards against 1.0 on receptions — so a board showing every one of them
+      // prints the same man six times. See `_mark_consensus_lines`.
+      bestLine: r.best_line !== false, nLines: r.n_lines || 1,
       priced: has(r.point) || has(r.open_point),
     }));
   }
@@ -785,7 +794,8 @@ const S = {
   // separate toggle because it is orthogonal — you can want your starred
   // players within the shortlist.
   fw: { view: 'all', q: '', game: '', pos: '', priced: 'all', favOnly: false,
-        sort: '', dir: -1 },
+        // Off means one row per player. See `oneLine`.
+        allLines: false, sort: '', dir: -1 },
   fs: { q: '', game: '', pos: '', sort: '', dir: -1 },
   savedFilter: 'all',
   // Combinations has its own filters rather than inheriting This week's.
@@ -1577,6 +1587,7 @@ function pageWeek() {
   const view = kind === 'ou' ? (f.view === 'priced' ? 'priced' : 'all') : f.view;
   let rows = rowsFor(key, view === 'priced' ? 'all' : view);
   if (view === 'priced') rows = rows.filter(r => r.priced);
+  rows = oneLine(rows, f);
   const out = el('div', { class: 'wrap' });
   const main = el('main');
 
@@ -1612,14 +1623,26 @@ function pageWeek() {
   bar.appendChild(favChip(f, rows));
   if (poss.length) bar.appendChild(pickerFor('Position', f.pos,
     [['', 'Any position']].concat(poss.map(p => [p, p])), v => { f.pos = v; }));
+  // Only where books actually scatter. On receptions every player has one
+  // line, so a control offering to collapse them would collapse nothing.
+  const dupes = extraLines(rowsFor(key, 'all').filter(r => r.priced));
+  if (kind === 'ou' && dupes > 0)
+    bar.appendChild(el('button', { class: 'chip',
+      'aria-pressed': f.allLines ? 'true' : 'false',
+      title: 'Books do not agree on a yardage line. Off, this board shows each '
+           + 'player once at the line the most books drew; on, it shows every '
+           + 'line posted on him, each of which is a separate bet.',
+      text: f.allLines ? 'Every posted line' : 'Every posted line · +' + dupes,
+      onclick: () => { f.allLines = !f.allLines; render(); } }));
   if (kind === 'td') bar.appendChild(pickerFor('Priced', f.priced,
     [['all', 'Priced and not'], ['priced', 'Priced only'], ['unpriced', 'No price only']],
     v => { f.priced = v; }));
   if (games.length) bar.appendChild(pickerFor('Game', f.game,
     [['', 'All ' + games.length + ' games']].concat(games.map(g => [g, g])), v => { f.game = v; }));
-  if (f.q || f.game || f.pos || f.favOnly || f.priced !== 'all')
+  if (f.q || f.game || f.pos || f.favOnly || f.priced !== 'all' || f.allLines)
     bar.appendChild(el('button', { class: 'chip', text: 'Clear filters', onclick: () => {
-      S.fw = Object.assign(S.fw, { q: '', game: '', pos: '', priced: 'all', favOnly: false });
+      S.fw = Object.assign(S.fw, { q: '', game: '', pos: '', priced: 'all',
+                                   favOnly: false, allLines: false });
       render();
     } }));
   main.appendChild(bar);
@@ -1645,6 +1668,28 @@ function pageWeek() {
 // Three views of one board. A segmented control rather than chips, because
 // they are mutually exclusive readings of the same rows and chips read as
 // additive.
+// One row per player, unless asked otherwise.
+//
+// A yardage board carries one row per (player, line) and books do not agree on
+// the line: 4.4 rows per quarterback on passing yards, 2.7 per receiver, 2.5
+// per back, against 1.0 on receptions. They are not duplicates — each is a bet
+// at a real number — but most are one book deep, and a board that prints a
+// player six times leads with whichever of his lines a single book drew
+// friendliest. So the default is the consensus line and the rest are one click
+// away.
+function oneLine(rows, f) {
+  return (f && f.allLines) ? rows : rows.filter(r => r.bestLine !== false);
+}
+
+// How many rows the narrowing is hiding, so the control can say so.
+//
+// Counted as what is dropped, not as the sum of every row's sibling count —
+// that adds each player's total once per row he appears in, and reported 322
+// hidden lines on a board with 95 of them.
+function extraLines(rows) {
+  return rows.length - oneLine(rows, null).length;
+}
+
 function viewSeg(f, m, kind, allRows) {
   const g = el('div', { class: 'seg', role: 'group', 'aria-label': 'View' });
   let opts;
@@ -1657,8 +1702,11 @@ function viewSeg(f, m, kind, allRows) {
     // control called Shortlist would imply a bet list that has not been
     // measured. Priced is the narrowing that is actually useful — most of this
     // board has no line on it until close to kickoff.
-    const priced = allRows.filter(r => r.priced).length;
-    opts = [['all', 'Everyone', allRows.length], ['priced', 'Priced', priced]];
+    // Counted after the same narrowing the board applies, or the control says
+    // "Priced · 137" above a table showing 31 rows.
+    const shown = oneLine(allRows, f);
+    opts = [['all', 'Everyone', shown.length],
+            ['priced', 'Priced', shown.filter(r => r.priced).length]];
   } else {
     const sl = m.shortlist || {};
     opts = [['all', 'Everyone', (m.players || []).length],
@@ -1963,10 +2011,21 @@ function ouTable(rows, f, key) {
     { w: '52px', label: 'Line', r: 1, sort: 'line',
       title: 'The number a book posted. Blank means nobody has drawn one yet '
            + '\u2014 most of this board, until close to kickoff.',
-      cell: (d, r) => d.appendChild(el('span', {
-        class: r.stale ? 'dim' : '',
-        title: r.stale ? 'No close captured yet \u2014 this is the opening line.' : null,
-        text: has(r.line) ? r.line.toFixed(1) + (r.stale ? '*' : '') : '' })) },
+      cell: (d, r) => {
+        d.appendChild(el('span', {
+          class: r.stale ? 'dim' : '',
+          title: r.stale ? 'No close captured yet \u2014 this is the opening line.' : null,
+          text: has(r.line) ? r.line.toFixed(1) + (r.stale ? '*' : '') : '' }));
+        // How many other numbers books have drawn on him. Not decoration: it
+        // is the difference between a line the market agrees on and one book's
+        // opinion, and this column shows only the first of them by default.
+        if ((r.nLines || 1) > 1 && !f.allLines) d.appendChild(el('span', {
+          class: 'note', style: 'font-size:11px;margin-left:4px',
+          title: 'Books have drawn ' + r.nLines + ' different lines on him. '
+               + 'This is the one the most of them agree on; "Every posted '
+               + 'line" shows the rest.',
+          text: '+' + (r.nLines - 1) }));
+      } },
     // The price, which every money figure on this row is computed from and
     // which was not on the board at all until now. Two rows with the same Gap
     // are not the same bet at -140 and at +105, and EV $100 cannot be checked
@@ -1991,7 +2050,8 @@ function ouTable(rows, f, key) {
            + 'because two players can share one and be completely different '
            + 'bets.',
       cell: (d, r) =>
-        d.appendChild(el('span', { class: 'big', text: has(r.proj) ? r.proj.toFixed(1) : '' })) },
+        d.appendChild(el('span', { class: 'big',
+          text: has(r.proj) ? (unit === 'yards' ? num0(r.proj) : r.proj.toFixed(1)) : '' })) },
     // Floor and ceiling as two columns rather than one range, so each can be
     // sorted on its own: "who has the highest floor" and "who has the biggest
     // ceiling" are different questions and a combined cell answers neither.
@@ -2001,15 +2061,18 @@ function ouTable(rows, f, key) {
     // about seven games in ten. Two players can project the same mean and be
     // completely different bets; this is where that shows.
     { w: '58px', label: 'Floor', r: 1, sort: 'lo',
+      // Whole yards, two places on a count. "174.44 yards" claims a precision
+      // the 15th percentile of a distribution this wide does not have, and on
+      // receptions 3.47 against 3.52 is a real difference between two players.
       title: 'He beats this about 85% of the time \u2014 the 15th percentile of '
            + 'the fitted distribution.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
-        text: num2(r.lo) })) },
+        text: unit === 'yards' ? num0(r.lo) : num2(r.lo) })) },
     { w: '68px', label: 'Ceiling', r: 1, sort: 'hi',
       title: 'He stays under this about 85% of the time \u2014 the 85th '
            + 'percentile of the fitted distribution.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
-        text: num2(r.hi) })) },
+        text: unit === 'yards' ? num0(r.hi) : num2(r.hi) })) },
     { w: '56px', label: 'Model', r: 1, sort: 'modelOnly', hide: 1,
       title: 'Our own chance of the over, before it is shrunk toward the book.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
@@ -2140,7 +2203,13 @@ function pageCombos() {
   // rows were eligible, so any filter at all emptied the table and the label
   // was the thing that was wrong.
   const eligible = r => kind === 'ou' ? r.priced : has(r.ours);
-  const board = rowsFor(key, 'all').filter(eligible);
+  // One line per player here ALWAYS, and not because the board is set that
+  // way. A yardage board carries the same man at up to six numbers, and a pool
+  // holding all six builds slips pairing Mahomes over 215.5 with Mahomes over
+  // 217.5 — two legs of one event, which no book will price and whose joint
+  // probability this page would compute as the product of two numbers that are
+  // nearly the same bet. That is not a view; it is a slip that cannot exist.
+  const board = oneLine(rowsFor(key, 'all'), null).filter(eligible);
   const pools = kind === 'ou'
     ? { all: { label: 'Priced', rows: board },
         fav: { label: 'Favorites', rows: board.filter(r => isFav(r.id)) } }
@@ -2529,15 +2598,26 @@ function parlayCard(p) {
   });
   a.appendChild(legs);
 
-  a.appendChild(el('div', { class: 'three panel' }, [
+  // Only once the games are in.
+  //
+  // While a slip is pending this said Pays / All hit / Legs in, and all three
+  // are in the breakdown below it: Pays is the top row's net, All hit is its
+  // chance, and Legs in is the column the whole table is indexed by. Three
+  // numbers restated above a table that gives every one of them, plus the
+  // other outcomes they leave out.
+  //
+  // Settled, it stops being a restatement and starts being the answer — which
+  // of those rows actually happened, and what came back. That is the one thing
+  // the curve cannot say, because the curve is what was true beforehand.
+  if (!pend) a.appendChild(el('div', { class: 'three panel' }, [
     el('div', {}, [el('i', { class: 'note', style: 'font-style:normal;display:block;font-size:12px', text: 'Pays' }),
       el('b', { style: 'font-size:16px', text: p.priced ? american(decToAm(p.dec)) : '—' })]),
-    el('div', {}, [el('i', { class: 'note', style: 'font-style:normal;display:block;font-size:12px', text: 'All hit' }),
-      el('b', { style: 'font-size:16px', text: chanceTxt(p.chance) })]),
+    el('div', {}, [el('i', { class: 'note', style: 'font-style:normal;display:block;font-size:12px', text: 'Legs in' }),
+      el('b', { style: 'font-size:16px', text: p.hits + ' of ' + p.legs.length })]),
     el('div', {}, [el('i', { class: 'note', style: 'font-style:normal;display:block;font-size:12px',
-        text: pend ? 'Legs in' : 'Result' }),
-      el('b', { class: pend ? '' : (p.net >= 0 ? 'pos' : 'neg'), style: 'font-size:16px',
-        text: pend ? p.hits + ' of ' + p.legs.length : money(p.net) })]),
+        text: 'Result' }),
+      el('b', { class: p.net >= 0 ? 'pos' : 'neg', style: 'font-size:16px',
+        text: money(p.net) })]),
   ]));
 
   // The round robin, the same table the slip shows. A card that gave only

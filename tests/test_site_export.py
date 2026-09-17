@@ -268,13 +268,41 @@ def payload() -> dict:
                                         "blend": 0.69103, "in_sample": False,
                                         "vs_market": {"n_games": 282,
                                                       "ci95": [-0.0371, -0.0053]}}]},
+                # Alpha Back at four different lines, which is what a yardage
+                # board actually looks like: books scatter, most of the lines
+                # are one book deep, and only one of them is where the market
+                # is. 58.5 is the lowest-priced over and one book drew it;
+                # 54.5 is where five of them are. A fixture with one line per
+                # player cannot catch a board that leads with the friendliest
+                # single quote.
                 "rows": [{"player_name": "Alpha Back", "team": "AAA",
-                          "game_id": "AAA @ BBB", "proj": 62.4, "lo": 31.0,
-                          "hi": 98.0, "point": 54.5, "odds": -118,
+                          "game_id": "AAA @ BBB", "proj": 62.37, "lo": 30.72,
+                          "hi": 97.41, "point": 54.5, "odds": -118,
                           "implied_prob": 0.5413, "overround": 1.0476,
                           "fair_prob": 0.5166, "model_only": 0.58,
                           "ours": 0.522, "edge_pp": 0.5, "n_books": 5,
-                          "thin": False},
+                          "thin": False, "best_line": True, "n_lines": 3},
+                         {"player_name": "Alpha Back", "team": "AAA",
+                          "game_id": "AAA @ BBB", "proj": 62.37, "lo": 30.72,
+                          "hi": 97.41, "point": 51.5, "odds": -125,
+                          "implied_prob": 0.5556, "overround": 1.048,
+                          "fair_prob": 0.5301, "model_only": 0.62,
+                          "ours": 0.547, "edge_pp": 1.7, "n_books": 2,
+                          "thin": True, "best_line": False, "n_lines": 3},
+                         {"player_name": "Alpha Back", "team": "AAA",
+                          "game_id": "AAA @ BBB", "proj": 62.37, "lo": 30.72,
+                          "hi": 97.41, "point": 58.5, "odds": -108,
+                          "implied_prob": 0.5192, "overround": 1.047,
+                          "fair_prob": 0.4959, "model_only": 0.54,
+                          "ours": 0.509, "edge_pp": 1.3, "n_books": 1,
+                          "thin": True, "best_line": False, "n_lines": 3},
+                         {"player_name": "Charlie End", "team": "CCC",
+                          "game_id": "CCC @ DDD", "proj": 18.0, "lo": 4.0,
+                          "hi": 34.0, "point": 16.5, "odds": -112,
+                          "implied_prob": 0.5283, "overround": 1.0472,
+                          "fair_prob": 0.5046, "model_only": 0.53,
+                          "ours": 0.509, "edge_pp": 0.4, "n_books": 4,
+                          "thin": False, "best_line": True, "n_lines": 1},
                          {"player_name": "Bravo Wide", "team": "BBB",
                           "game_id": "AAA @ BBB", "proj": 4.1, "lo": 0.0,
                           "hi": 12.0, "point": None, "odds": None,
@@ -538,3 +566,79 @@ def test_the_opening_line_is_the_consensus_not_the_friendliest():
         f"kept the {got['point']} line; the consensus is 254.5, where six "
         f"books are. 248.5 is the lowest and one book drew it.")
     assert got["n_books"] == 6, got
+
+
+def test_the_consensus_line_is_the_one_the_most_books_drew():
+    """Which of a player's posted lines the board leads with.
+
+    A yardage board carries one row per (player, line) and books scatter: 4.4
+    rows per quarterback on passing yards against 1.0 on receptions. They are
+    not duplicates — each is a real bet — but most are one book deep, and a
+    board that shows a player six times leads with whichever of his lines
+    sorted highest, which is usually the friendliest single quote.
+
+    The rule matters more than it looks. Measured on 2026 week 2, picking each
+    player's BEST-EV line instead of the consensus raises the share of
+    one-book rows from 0% to 39% on passing yards and invents +2.3 of mean EV
+    — and the graded record says exactly that band is where the model's
+    apparent edge is fake (2024 passing: +0.0057 against one book, -0.0143
+    against two, -0.0245 against three or more).
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "es_cons", REPO / "scripts" / "47_export_site.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    def row(point, books):
+        return {"player_name": "Test Man", "point": point, "n_books": books}
+
+    # 58.5 is the friendliest over and one book drew it; 54.5 is where five are.
+    rows = [row(58.5, 1), row(51.5, 2), row(54.5, 5), row(56.5, 1)]
+    other = {"player_name": "Only One", "point": 20.5, "n_books": 3}
+    payload = {"yards": {"rushing_yards": {"rows": rows + [other]}},
+               "receptions": {"rows": []}}
+    mod._mark_consensus_lines(payload)
+
+    best = [r for r in rows if r["best_line"]]
+    assert len(best) == 1, best
+    assert best[0]["point"] == 54.5, (
+        f"led with {best[0]['point']}; five books are on 54.5 and one drew "
+        f"58.5")
+    assert all(r["n_lines"] == 4 for r in rows), rows
+    assert other["best_line"] and other["n_lines"] == 1
+
+    # A tie on book count goes to the line nearest that player's median, not
+    # to whichever happened to be first.
+    tied = [row(40.5, 3), row(60.5, 3), row(50.5, 1)]
+    mod._mark_consensus_lines({"yards": {"rushing_yards": {"rows": tied}}})
+    picked = [r for r in tied if r["best_line"]]
+    assert len(picked) == 1 and picked[0]["point"] in (40.5, 60.5), picked
+    assert abs(picked[0]["point"] - 50.5) == 10.0, picked
+
+
+def test_a_row_showing_only_an_opening_line_still_counts_as_a_line():
+    """The collapse runs after the open-line fallback, so it sees those rows.
+
+    Mid-week most of a count board has an opening line and no close. If the
+    consensus pass ignored them they would every one be flagged `best_line`
+    by default and the narrowing would do nothing on the week it matters most.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "es_cons2", REPO / "scripts" / "47_export_site.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    rows = [{"player_name": "Open Only", "point": None, "open_point": 4.5,
+             "n_books": 7},
+            {"player_name": "Open Only", "point": None, "open_point": 5.5,
+             "n_books": 2},
+            {"player_name": "No Line", "point": None, "open_point": None}]
+    mod._mark_consensus_lines({"receptions": {"rows": rows}})
+    assert rows[0]["best_line"] is True and rows[0]["n_lines"] == 2
+    assert rows[1]["best_line"] is False
+    # A projection with no line anywhere is not part of the count.
+    assert "best_line" not in rows[2]

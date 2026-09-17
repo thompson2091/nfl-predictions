@@ -16,13 +16,15 @@ const x = loadPage(process.argv[2], process.argv[3],
    'chanceTxt', 'slipSlot', 'slipHandle', 'clearSlip', 'table',
    'ev100', 'betProb', 'el', 'pct', 'portfolio', 'brkTable', 'scaleRows',
    'moveTxt', 'marketLabel', 'MENU', 'KIND', 'marketOf', 'served',
-   'gradedNote', 'M0', 'unitOf']);
+   'gradedNote', 'M0', 'unitOf', 'oneLine', 'extraLines', 'spp',
+   'parlayCard', 'DATA']);
 const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
         combosOf, saveCombo, comboSaved, COMBO_POOL_MAX,
         chanceTxt, slipSlot, slipHandle, clearSlip, table,
         ev100, betProb, el, pct, portfolio, brkTable, scaleRows,
         moveTxt, marketLabel, MENU, KIND, marketOf, served,
-        gradedNote, M0, unitOf } = x;
+        gradedNote, M0, unitOf, oneLine, extraLines, spp,
+        parlayCard, DATA } = x;
 
 const txt = n => textOf(n).join(' ');
 const PAGE_SRC = require('fs').readFileSync(process.argv[3], 'utf8');
@@ -750,5 +752,117 @@ ok('and does not claim an edge',
 })();
 S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };
 S.market = 'any'; S.fw.view = 'all';
+
+// ── One row per player ──────────────────────────────────────────────────
+//
+// A board carries one row per (player, line) and books do not agree on the
+// line. On closing prices across the archive: 8.69 lines per quarterback on
+// passing yards, 5.4 per receiver, 5.0 per back — and 2.03 even on
+// receptions, where only 45% of player-weeks carry a single line. They are
+// not duplicates; each is a real bet. But a board that prints a man eight
+// times leads with whichever of his lines sorted highest, which is usually
+// the friendliest single quote.
+S.market = 'rush'; S.fw.view = 'priced'; S.fw.allLines = false;
+(() => {
+  const priced = rowsFor('rush', 'all').filter(r => r.priced);
+  const shown = oneLine(priced, { allLines: false });
+  const names = new Set(shown.map(r => r.player));
+  // Asserted on the RENDERED board, not on the helper. Calling `oneLine` here
+  // and checking its output passes with the call site deleted from
+  // `pageWeek`, which is the only place it matters — and did.
+  //
+  // Counted by NAME, not by line value. Checking that no non-consensus line
+  // appears anywhere on the board is wrong on a real slate: with 63 players
+  // one man's discarded 24.5 is another man's consensus 24.5, so the
+  // assertion failed on live data while passing on a four-player fixture.
+  const onBoard = txt(pageWeek());
+  const dupes = priced.filter(r => !r.bestLine);
+  const seen = n => onBoard.split(n).length - 1;
+  const twice = [...new Set(dupes.map(r => r.player))].filter(n => seen(n) > 1);
+  ok('a yardage board shows each player once',
+     dupes.length > 0 && twice.length === 0,
+     dupes.length + ' non-consensus lines; still doubled: '
+     + twice.slice(0, 3).join(', '));
+  ok('and the helper agrees with what was rendered',
+     shown.length === names.size && shown.length < priced.length,
+     shown.length + ' rows for ' + names.size + ' players, from ' + priced.length);
+  ok('and the row it keeps is the line the most books drew',
+     shown.every(r => priced.filter(o => o.player === r.player)
+                            .every(o => (o.nBooks || 0) <= (r.nBooks || 0))),
+     'picking each player\'s best PRICE instead triples the share of one-book '
+     + 'rows, which is the band the model is measurably fooled by');
+  ok('the toggle brings the rest back',
+     oneLine(priced, { allLines: true }).length === priced.length);
+  ok('and the chip counts what is hidden, not every row’s sibling count',
+     extraLines(priced) === priced.length - shown.length,
+     'summing nLines-1 over all rows reported 322 hidden on a board with 95');
+})();
+
+// Combinations collapses unconditionally — a parlay cannot hold one player
+// twice, whatever the board is set to.
+(() => {
+  S.fw.allLines = true;
+  const pool = oneLine(rowsFor('rush', 'all').filter(r => r.priced), null);
+  const names = pool.map(r => r.player);
+  ok('a combination pool never holds one player at two lines',
+     new Set(names).size === names.length,
+     'Mahomes over 215.5 AND over 217.5 is two legs of one event');
+  ok('and that does not follow the board toggle',
+     /oneLine\(rowsFor\(key, 'all'\), null\)/.test(PAGE_SRC));
+  S.fw.allLines = false;
+})();
+
+// ── Formatting ──────────────────────────────────────────────────────────
+ok('a gap of two probability points reads to two places',
+   spp(14.2857) === '+14.29' && spp(-0.4) === '-0.40', spp(14.2857));
+// The fixture's yardage floor and ceiling are 30.72 and 97.41, so the two
+// formatters give visibly different answers: whole yards reads 31 and 97,
+// two places reads 30.72 and 97.41. A fixture carrying round numbers cannot
+// tell them apart, and did not.
+ok('yardage floors and ceilings are whole yards',
+   (() => { S.market = 'rush'; S.fw.view = 'priced';
+            const t = textOf(pageWeek()).join(' ');
+            return /\b31\b/.test(t) && !/30\.72/.test(t) && !/97\.41/.test(t); })(),
+   '"174.44 yards" claims a precision the 15th percentile does not have');
+ok('a count keeps two places, where 3.47 and 3.52 are different players',
+   (() => { S.market = 'rec'; S.fw.view = 'priced';
+            const t = textOf(pageWeek()).join(' ');
+            return /\d\.\d\d/.test(t); })(),
+   'a catch is a unit you can count; a yard at the 15th percentile is not');
+S.market = 'any'; S.fw.view = 'all';
+
+// ── A pending card does not restate its own breakdown ───────────────────
+//
+// Pays / All hit / Legs in were three numbers above a table that gives all
+// three and the outcomes they leave out. Settled, the same panel stops being
+// a restatement and becomes the answer — which row actually happened.
+(() => {
+  const legsP = rowsFor('any', 'all').filter(r => has(r.dec)).slice(0, 2).map(r => legOf(r));
+  const f = portfolio(legsP, 10, 0);
+  const card = p => txt(parlayCard(settle(p)));
+  const base = { id: 'tp', name: 'test', market: 'any', marketLabel: 'Anytime TD',
+                 week: DATA.week, season: DATA.season, size: 0, stake: 10,
+                 rowStake: 10, slips: f.slips, outlay: f.outlay, chance: f.all,
+                 priced: true, dec: 3.0, ev: f.ev, legs: legsP,
+                 rows: f.rows.map(r => ({ hit: r.hit, slipsWon: r.slipsWon,
+                   chance: r.chance, net: r.net, netLo: r.netLo, netHi: r.netHi })) };
+  const pending = card(base);
+  ok('a pending card shows the breakdown', /Legs in/.test(pending) && /Chance/.test(pending));
+  ok('and does not also carry a Pays / All hit panel above it',
+     !/All hit/.test(pending),
+     'the top row of the breakdown IS Pays and All hit');
+  ok('a pending card still says what is at risk',
+     /at risk/.test(pending), pending.slice(0, 160));
+
+  // Settled: `DATA.results` decides, so mark both legs hit.
+  const res = {};
+  legsP.forEach(l => { res[DATA.week + '|' + l.id] = 'hit'; });
+  const realResults = DATA.results;
+  DATA.results = res;
+  const done_ = card(base);
+  DATA.results = realResults;
+  ok('a settled card says which row happened and what came back',
+     /Result/.test(done_) && /Legs in/.test(done_), done_.slice(0, 200));
+})();
 
 done();
