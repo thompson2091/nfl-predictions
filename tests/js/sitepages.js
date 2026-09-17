@@ -399,4 +399,63 @@ ok('each is sortable on its own',
    && /label: 'Ceiling'[\s\S]{0,200}?sort: 'hi'/.test(PAGE_SRC));
 S.market = 'any';
 
+// ── Every column header explains itself ─────────────────────────────────
+//
+// Walked over the rendered pages rather than grepped out of the source, so a
+// column added later is covered by this without anyone remembering to add it
+// here. A header with no title is a column whose meaning lives only in
+// whoever wrote it — and half of these are probabilities that differ by which
+// information went into them, which is exactly the thing a label cannot carry.
+function headersIn(node, out) {
+  out = out || [];
+  if (!node) return out;
+  if (String(node.className || '').split(/\s+/).includes('hd')) {
+    (node.children || []).forEach(c => out.push(c));
+    return out;
+  }
+  (node.children || []).forEach(c => headersIn(c, out));
+  return out;
+}
+const bare = [];
+['any', 'first', 'rec'].forEach(mk => {
+  S.market = mk;
+  [['all', 'week'], ['short', 'week'], ['fade', 'week'], ['priced', 'week'],
+   [null, 'combos'], [null, 'ladder'], [null, 'model']].forEach(([v, page]) => {
+    if (v) S.fw.view = v;
+    const fn = page === 'week' ? pageWeek : page === 'combos' ? pageCombos
+             : page === 'ladder' ? pageLadder : pageModel;
+    let out = null;
+    try { out = fn(); } catch (e) { return; }
+    headersIn(out).forEach(h => {
+      if (!h.attrs || !h.attrs.title) {
+        bare.push(mk + '/' + page + (v ? '/' + v : '') + ': "'
+                  + String(h._text || '(unlabelled)').trim() + '"');
+      }
+    });
+  });
+  S.fw.view = 'all';
+});
+S.market = 'any';
+ok('every column header carries a description', bare.length === 0,
+   bare.slice(0, 8).join(' | '));
+
+// ── Every number on a slip leg ──────────────────────────────────────────
+const td = rowsFor('any','all').filter(r => r.priced && has(r.modelOnly) && has(r.book))[0];
+const leg = legOf(td);
+ok('a leg carries all three numbers and the price',
+   /M \d+% · B \d+% · A \d+% · [+-−]\d+/.test(leg.sub), leg.sub);
+S.slip = { market:'any', legs:[leg], size:0, stake:10, stakeRaw:'10' }; S.slipOpen = true;
+const t = textOf(slipSlot()).join(' ');
+ok('and the panel says what M, B and A are', /M model · B book · A adj/.test(t));
+ok('the leg is rendered with them', t.indexOf(leg.sub) >= 0);
+
+// Taking the under flips every probability, not only the one we price with.
+S.market = 'rec';
+const ou = rowsFor('rec','all').filter(r => r.priced && has(r.modelOnly) && has(r.book))[0];
+const over = legOf(ou, 'over'), under = legOf(ou, 'under');
+ok('an under flips all three', Math.abs(over.pm + under.pm - 1) < 1e-9
+   && Math.abs(over.pb + under.pb - 1) < 1e-9 && Math.abs(over.p + under.p - 1) < 1e-9,
+   'otherwise the leg shows the book on the over beside us on the under');
+S.market = 'any';
+
 done();

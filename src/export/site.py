@@ -971,16 +971,33 @@ function toggleLeg(row, side) {
 }
 function legOf(row, side) {
   const over = side !== 'under';
-  const p = row.kind === 'ou' ? (over ? row.ours : 1 - row.ours) : row.ours;
+  // Taking the under flips every probability on the row, not just the one we
+  // price with — otherwise the leg would show the book's chance of the over
+  // beside our chance of the under and invite the comparison.
+  const flip = v => !has(v) ? null : (row.kind === 'ou' && !over ? 1 - v : v);
+  const p = flip(row.ours), pm = flip(row.modelOnly), pb = flip(row.book);
   return {
     id: row.id + (side ? '|' + side : ''),
-    key: row.key, player: row.player, side: side || null,
+    key: row.key, player: row.player, side: side || null, team: row.team,
     label: row.kind === 'ou'
       ? row.player + ' ' + (over ? 'over ' : 'under ') + row.line
       : row.player,
-    sub: (has(p) ? pct(p) + ' adj' : 'no number') + (has(row.odds) ? ' · ' + american(row.odds) : ''),
-    p: p, dec: row.dec, odds: row.odds, game: row.game,
+    // All three numbers on the leg, because the slip is where you decide and
+    // the decision turns on which of them you believe. Showing the served
+    // figure alone hid whether we and the book agreed on our own or because
+    // we were pulled there.
+    sub: legSub(pm, pb, p, row.odds),
+    p: p, pm: pm, pb: pb, dec: row.dec, odds: row.odds, game: row.game,
   };
+}
+function legSub(model, book, adj, odds) {
+  const bits = [];
+  if (has(model)) bits.push('M ' + pct(model));
+  if (has(book)) bits.push('B ' + pct(book));
+  if (has(adj)) bits.push('A ' + pct(adj));
+  if (!bits.length) bits.push('no number');
+  if (has(odds)) bits.push(american(odds));
+  return bits.join(' · ');
 }
 function persistSlip() {
   S.saved = {};                     // any edit unsaves; see saveSlip
@@ -1176,7 +1193,10 @@ function slipPanel() {
     return a;
   }
 
-  a.appendChild(el('div', { class: 'note', text: marketLabel(S.slip.market) }));
+  a.appendChild(el('div', { class: 'note',
+    title: 'M is the model on its own, B is the de-vigged book price, A is what '
+         + 'we serve — the model after the market blend.',
+    text: marketLabel(S.slip.market) + ' · M model · B book · A adj' }));
   const list = el('div', { style: 'display:flex;flex-direction:column;gap:6px' });
   m.legs.forEach(l => {
     const x = el('button', { class: 'icon', 'aria-label': 'Remove ' + l.player,
@@ -1581,8 +1601,14 @@ function gameCard(game, rows) {
 // ── The two board shapes ─────────────────────────────────────────────────
 function tdTable(rows, f, view) {
   const cols = [
-    { w: '44px', label: '', nosort: 1, mob: 'lead', cell: (d, r) => d.appendChild(starBtn(r)) },
-    { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', mob: 'title', cell: (d, r) => {
+    { w: '44px', label: '', nosort: 1, mob: 'lead',
+      title: 'Star a player to keep him in view. Favorites are held in this '
+           + 'browser for this week only.',
+      cell: (d, r) => d.appendChild(starBtn(r)) },
+    { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', mob: 'title',
+      title: 'Who, his team, and the fixture. Click the fixture to filter the '
+           + 'board to that game.',
+      cell: (d, r) => {
         const w = el('div', { class: 'who' });
         w.appendChild(el('b', { text: r.player }));
         const sub = el('span');
@@ -1595,6 +1621,9 @@ function tdTable(rows, f, view) {
         d.appendChild(w);
       } },
     { w: '150px', hide: 1, nosort: 1,
+      title: 'Our number as a filled bar against the book\u2019s as a tick, both on '
+           + 'the same scale for every row \u2014 so a longer bar always means a '
+           + 'higher number, not a higher number for that row.',
       head: d => keyHead(d, view === 'all' ? 'Adj' : 'Model', 'Book'),
       // On the shortlist and the fades the bar draws the number the rule acts
       // on, which is the pre-blend one. Drawing the published number beside an
@@ -1615,13 +1644,19 @@ function tdTable(rows, f, view) {
     // is not a bet card, and the shopping figure it came from is a
     // week-level number — `line_shopping` reports it on its own terms.
     { w: '80px', label: 'Odds', r: 1, sort: 'odds',
+      title: 'The consensus price across books, de-vigged into Book beside it. '
+           + '\u201cNo price\u201d means nobody has quoted him yet, which is common '
+           + 'early in the week.',
       cell: (d, r) => d.appendChild(el('span', {
         class: r.priced ? '' : 'dim', text: r.priced ? american(r.odds) : 'no price' })) },
     { w: '56px', label: 'Model', r: 1, sort: 'modelOnly', hide: 1,
       title: 'The fitted model alone, before any market information.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
         text: has(r.modelOnly) ? pct(r.modelOnly) : '—' })) },
-    { w: '56px', label: 'Book', r: 1, sort: 'book', cell: (d, r) =>
+    { w: '56px', label: 'Book', r: 1, sort: 'book',
+      title: 'The market\u2019s own probability with its margin removed \u2014 what the '
+           + 'book actually thinks, rather than what it charges.',
+      cell: (d, r) =>
         d.appendChild(el('span', { class: 'dim', text: r.priced ? pct(r.book) : '—' })) },
     { w: '56px', label: 'Adj', r: 1, sort: 'ours',
       title: 'What we serve: the model after the market blend and the joint step.',
@@ -1633,9 +1668,14 @@ function tdTable(rows, f, view) {
       cell: (d, r) => d.appendChild(el('span', {
         class: has(r.edge) ? (r.edge > 0 ? 'pos' : 'neg') : '', text: has(r.edge) ? spp(r.edge) : '' })) },
 
-    { w: '92px', label: 'Read', sort: 'read', cell: (d, r) => r.read && d.appendChild(
+    { w: '92px', label: 'Read', sort: 'read',
+      title: 'The verdict in one word. Strong call and Leans are above the price, '
+           + 'Matches book is agreement, Veto is below it.',
+      cell: (d, r) => r.read && d.appendChild(
         el('span', { class: 'pill ' + readClass(r.read), text: r.read })) },
-    { w: '44px', label: '', nosort: 1, mob: 'act', cell: (d, r) => d.appendChild(addBtn(r)) },
+    { w: '44px', label: '', nosort: 1, mob: 'act',
+      title: 'Add him to your slip, where the whole set is priced together.',
+      cell: (d, r) => d.appendChild(addBtn(r)) },
   ];
   const empty = view === 'short'
     ? { emptyTitle: 'Nothing survives every filter this week',
@@ -1648,14 +1688,23 @@ function tdTable(rows, f, view) {
 
 function ouTable(rows, f) {
   const cols = [
-    { w: '44px', label: '', nosort: 1, mob: 'lead', cell: (d, r) => d.appendChild(starBtn(r)) },
-    { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', mob: 'title', cell: (d, r) => {
+    { w: '44px', label: '', nosort: 1, mob: 'lead',
+      title: 'Star a player to keep him in view. Favorites are held in this '
+           + 'browser for this week only.',
+      cell: (d, r) => d.appendChild(starBtn(r)) },
+    { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', mob: 'title',
+      title: 'Who and his team. A book count appears where fewer than three '
+           + 'stood behind the line.',
+      cell: (d, r) => {
         d.appendChild(el('div', { class: 'who' }, [
           el('b', { text: r.player }),
           el('span', { text: (r.team || '') + (r.thin ? ' · ' + r.nBooks + ' book' + (r.nBooks === 1 ? '' : 's') : '') }),
         ]));
       } },
-    { w: '120px', hide: 1, nosort: 1, head: d => keyHead(d, 'Proj', 'Line'), cell: (d, r) => {
+    { w: '120px', hide: 1, nosort: 1,
+      title: 'The projection as a filled bar against the posted line as a tick '
+           + '\u2014 how far clear of the number we have him.',
+      head: d => keyHead(d, 'Proj', 'Line'), cell: (d, r) => {
         // Projection against the line, both scaled to the same ceiling, so the
         // bar says "how far clear of the number do we have him".
         const top = Math.max(10, r.line * 1.6);
@@ -1664,9 +1713,15 @@ function ouTable(rows, f) {
         b.appendChild(el('u', { style: 'left:' + Math.min(100, r.line / top * 100).toFixed(1) + '%' }));
         d.appendChild(b);
       } },
-    { w: '52px', label: 'Line', r: 1, sort: 'line', cell: (d, r) =>
+    { w: '52px', label: 'Line', r: 1, sort: 'line',
+      title: 'The number a book posted. Blank means nobody has drawn one yet '
+           + '\u2014 most of this board, until close to kickoff.',
+      cell: (d, r) =>
         d.appendChild(el('span', { text: has(r.line) ? r.line.toFixed(1) : '' })) },
-    { w: '56px', label: 'Proj', r: 1, sort: 'proj', cell: (d, r) =>
+    { w: '56px', label: 'Proj', r: 1, sort: 'proj',
+      title: 'Expected receptions \u2014 the count model\u2019s mean. Read it with the '
+           + 'floor and ceiling beside it; a mean alone cannot be read.',
+      cell: (d, r) =>
         d.appendChild(el('span', { class: 'big', text: has(r.proj) ? r.proj.toFixed(1) : '' })) },
     // Floor and ceiling as two columns rather than one range, so each can be
     // sorted on its own: "who has the highest floor" and "who has the biggest
@@ -1686,15 +1741,28 @@ function ouTable(rows, f) {
            + 'of the fitted distribution.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
         text: has(r.hi) ? String(r.hi) : '' })) },
-    { w: '56px', label: 'Over', r: 1, sort: 'ours', cell: (d, r) =>
-        d.appendChild(el('span', { text: pct(r.ours) })) },
-    { w: '56px', label: 'Book', r: 1, sort: 'book', cell: (d, r) =>
-        d.appendChild(el('span', { class: 'dim', text: pct(r.book) })) },
+    { w: '56px', label: 'Model', r: 1, sort: 'modelOnly', hide: 1,
+      title: 'The count model\u2019s own chance of the over, before it is shrunk '
+           + 'toward the book.',
+      cell: (d, r) => d.appendChild(el('span', { class: 'dim',
+        text: has(r.modelOnly) ? pct(r.modelOnly) : '\u2014' })) },
+    { w: '56px', label: 'Book', r: 1, sort: 'book',
+      title: 'The market\u2019s own chance of the over, with its margin removed.',
+      cell: (d, r) => d.appendChild(el('span', { class: 'dim',
+        text: has(r.book) ? pct(r.book) : '\u2014' })) },
+    { w: '56px', label: 'Adj', r: 1, sort: 'ours',
+      title: 'What we serve: 17% the model, 83% the book. Where no line is '
+           + 'posted there is nothing to shrink toward, so it is the model alone.',
+      cell: (d, r) => d.appendChild(el('span', { class: 'big',
+        text: has(r.ours) ? pct(r.ours) : '\u2014' })) },
     { w: '72px', label: 'Gap', r: 1, sort: 'edge',
       title: 'Ours minus the book’s. A disagreement, not an edge — on this market the book has been the better estimate.',
       cell: (d, r) => d.appendChild(el('span', {
         class: has(r.edge) ? (r.edge > 0 ? 'pos' : 'neg') : '', text: has(r.edge) ? spp(r.edge) : '' })) },
-    { w: '132px', label: 'Bet', nosort: 1, mob: 'act', cell: (d, r) => {
+    { w: '132px', label: 'Bet', nosort: 1, mob: 'act',
+      title: 'Add the over or the under to your slip. A count market has two '
+           + 'sides, unlike a touchdown.',
+      cell: (d, r) => {
         const g = el('div', { style: 'display:flex;gap:6px' });
         ['over', 'under'].forEach(side => {
           const on = legIn(r.id + '|' + side);
@@ -1773,19 +1841,31 @@ function pageCombos() {
 
   // ── Pool ─────────────────────────────────────────────────────────────
   const sl = m.shortlist || {};
-  const pools = {
-    short: { label: 'Shortlist', rows: kind === 'ou' ? [] : rowsFor(key, 'short') },
-    fav: { label: 'Favorites', rows: rowsFor(key, 'all').filter(r => isFav(r.id)) },
-    all: { label: 'Everyone', rows: rowsFor(key, 'all') },
-  };
+  // Only a row that can actually be backed belongs in a pool.
+  //
+  // On a count market most of the board is a projection with no line against
+  // it, and a projection has no side and no price — there is nothing to
+  // combine. Counting those in made the control say "Everyone · 531" while 7
+  // rows were eligible, so any filter at all emptied the table and the label
+  // was the thing that was wrong.
+  const eligible = r => kind === 'ou' ? r.priced : has(r.ours);
+  const board = rowsFor(key, 'all').filter(eligible);
+  const pools = kind === 'ou'
+    ? { all: { label: 'Priced', rows: board },
+        fav: { label: 'Favorites', rows: board.filter(r => isFav(r.id)) } }
+    : { short: { label: 'Shortlist', rows: rowsFor(key, 'short').filter(eligible) },
+        fav: { label: 'Favorites', rows: board.filter(r => isFav(r.id)) },
+        all: { label: 'Everyone', rows: board } };
+  // Fall back before the control is drawn, or the pool in use is not the one
+  // showing as pressed — which is how a count market rendered with nothing
+  // selected at all.
+  if (!pools[c.pool]) c.pool = 'all';
   const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Pool' });
-  ['short', 'fav', 'all'].forEach(k => {
-    if (k === 'short' && kind === 'ou') return;
+  Object.keys(pools).forEach(k => {
     seg.appendChild(el('button', { type: 'button', 'aria-pressed': c.pool === k ? 'true' : 'false',
       text: pools[k].label + ' · ' + pools[k].rows.length,
       onclick: () => { c.pool = k; render(); } }));
   });
-  if (kind === 'ou' && c.pool === 'short') c.pool = 'all';
 
   const bar = el('div', { class: 'chiprow' });
   bar.appendChild(seg);
@@ -1820,7 +1900,6 @@ function pageCombos() {
   // read; past that the answer stops depending on the tail anyway because the
   // pool is already sorted by our own number.
   let pool = applyFilters(base, { q: c.q, game: c.game, pos: c.pos, priced: 'all' })
-    .filter(r => has(r.ours))
     .sort((a, b) => b.ours - a.ours);
   const poolFull = pool.length;
   pool = pool.slice(0, COMBO_POOL_MAX);
@@ -1855,6 +1934,8 @@ function pageCombos() {
   // ── Results ──────────────────────────────────────────────────────────
   const cols = [
     { w: 'minmax(0,2fr)', label: 'Slip', mob: 'title',
+      title: 'The players in this combination, and their teams. Slips whose '
+           + 'legs share a fixture are marked \u2014 those legs move together.',
       sortVal: s => s.ix.map(i => pool[i].player).join(' '),
       cell: (d, s) => {
         const names = s.ix.map(i => pool[i].player);
@@ -1876,6 +1957,8 @@ function pageCombos() {
       cell: (d, s) => d.appendChild(el('span', { class: 'big',
         text: chanceTxt(s.p) })) },
     { w: '96px', label: 'Pays', r: 1, sortVal: s => s.dec,
+      title: 'What this slip returns if every leg lands, at each leg\u2019s own '
+           + 'posted price. Blank where one of them has no price.',
       cell: (d, s) => d.appendChild(el('span', {
         text: s.dec ? american(decToAm(s.dec)) : '—' })) },
     { w: '100px', label: 'EV on $' + Math.round(stake), r: 1, sortVal: s => s.ev,
@@ -1883,7 +1966,10 @@ function pageCombos() {
       cell: (d, s) => d.appendChild(el('span', {
         class: s.ev === null ? 'note' : (s.ev >= 0 ? 'pos' : 'neg'),
         text: s.ev === null ? 'unpriced' : money(s.ev) })) },
-    { w: '150px', label: '', nosort: 1, mob: 'act', cell: (d, s) => {
+    { w: '150px', label: '', nosort: 1, mob: 'act',
+      title: 'Load puts the combination in your slip to price as a round robin. '
+           + 'Save keeps it as it stands, on the Saved page.',
+      cell: (d, s) => {
         const g = el('div', { style: 'display:flex;gap:6px;justify-content:flex-end' });
         g.appendChild(el('button', { class: 'chip', text: 'Load',
           'aria-label': 'Load ' + s.ix.map(i => pool[i].player).join(', ') + ' into the slip',
@@ -1911,7 +1997,10 @@ function pageCombos() {
     emptyTitle: pool.length < 2 ? 'Not enough players in this pool'
                                 : 'No slip survives these settings',
     emptyBody: pool.length < 2
-      ? 'Widen the pool, or clear a filter.'
+      ? (kind === 'ou'
+          ? 'Only players a book has quoted can be combined — a projection with '
+            + 'no line has no side to back. Books post these close to kickoff.'
+          : 'Widen the pool, or clear a filter.')
       : 'Allow same-game slips, or ask for fewer legs.' }));
 
   main.appendChild(el('p', { class: 'fine', text:
@@ -2244,12 +2333,23 @@ function pageLadder() {
 
   const cols = [
     { w: '70px', label: 'Rung', sort: 'rung',
+      title: 'Which bet in the run this is. Every rung assumes the one above it '
+           + 'won.',
       cell: (d, r) => d.appendChild(el('span', { text: String(r.rung) })) },
-    { w: 'minmax(0,1fr)', label: 'Balance', r: 1, sort: 'bal', cell: (d, r) =>
+    { w: 'minmax(0,1fr)', label: 'Balance', r: 1, sort: 'bal',
+      title: 'What the whole bankroll is worth after this rung, with everything '
+           + 'rolled into the next bet.',
+      cell: (d, r) =>
         d.appendChild(el('span', { class: 'big', text: money2(r.bal) })) },
-    { w: 'minmax(0,1fr)', label: 'Profit so far', r: 1, sort: 'won', cell: (d, r) =>
+    { w: 'minmax(0,1fr)', label: 'Profit so far', r: 1, sort: 'won',
+      title: 'Balance less what you started with \u2014 the winnings, if you stopped '
+           + 'here.',
+      cell: (d, r) =>
         d.appendChild(el('span', { class: 'pos', text: money2(r.won) })) },
-    { w: 'minmax(0,1fr)', label: 'Chance of getting here', r: 1, sort: 'p', cell: (d, r) =>
+    { w: 'minmax(0,1fr)', label: 'Chance of getting here', r: 1, sort: 'p',
+      title: 'The chance every rung up to this one won. Read off the posted '
+           + 'price, so it includes the book\u2019s margin and is kinder than the truth.',
+      cell: (d, r) =>
         d.appendChild(el('span', { text: chanceTxt(r.p) })) },
   ];
   main.appendChild(table(cols, rows, null, { id: 'ladder' }));
@@ -2315,16 +2415,25 @@ function marketCard(m) {
   // How the top pick did, per season it never trained on.
   if (r && r.seasons && r.seasons.length) {
     const cols = [
-      { w: 'minmax(0,1fr)', label: 'Test season', sort: 'season', cell: (d, s) =>
+      { w: 'minmax(0,1fr)', label: 'Test season', sort: 'season',
+        title: 'A season the model never trained on. Everything in this row is '
+             + 'measured on games it had not seen.',
+        cell: (d, s) =>
           d.appendChild(el('span', { text: String(s.season) })) },
-      { w: '80px', label: 'Games', r: 1, sort: 'games', cell: (d, s) =>
+      { w: '80px', label: 'Games', r: 1, sort: 'games',
+        title: 'How many fixtures the row is measured over.',
+        cell: (d, s) =>
           d.appendChild(el('span', { text: String(s.games) })) },
       { w: '110px', label: 'Top 1', r: 1, sort: 'top1',
         title: 'How often the player we rank first in a game scored.',
         cell: (d, s) => d.appendChild(el('span', { class: 'big', text: pct(s.top1, 1) })) },
-      { w: '90px', label: 'Top 3', r: 1, sort: 'top3', cell: (d, s) =>
+      { w: '90px', label: 'Top 3', r: 1, sort: 'top3',
+        title: 'How often at least one of our top three in a game scored.',
+        cell: (d, s) =>
           d.appendChild(el('span', { class: 'dim', text: pct(s.top3, 1) })) },
-      { w: '90px', label: 'Top 5', r: 1, sort: 'top5', cell: (d, s) =>
+      { w: '90px', label: 'Top 5', r: 1, sort: 'top5',
+        title: 'How often at least one of our top five in a game scored.',
+        cell: (d, s) =>
           d.appendChild(el('span', { class: 'dim', text: pct(s.top5, 1) })) },
     ];
     c.appendChild(table(cols, r.seasons, null, { id: 'seasons:' + m.key }));
@@ -2339,6 +2448,8 @@ function marketCard(m) {
       (has(b.worth_top1) ? Math.abs(b.worth_top1) : -1) - (has(a.worth_top1) ? Math.abs(a.worth_top1) : -1));
     const cols = [
       { w: 'minmax(0,1fr)', label: 'Family', sort: 'name',
+        title: 'A group of related feature columns \u2014 usage, matchup, pace \u2014 '
+             + 'and how many columns are in it.',
         cell: (d, f) => d.appendChild(el('div', { class: 'who' }, [
           el('b', { text: f.name }), el('span', { text: f.n + ' columns' })])) },
       { w: '120px', label: 'Worth', r: 1, sort: 'worth_top1',
@@ -2347,6 +2458,8 @@ function marketCard(m) {
           class: has(f.worth_top1) ? (f.worth_top1 > 0 ? 'pos' : 'neg') : 'note',
           text: has(f.worth_top1) ? spp(f.worth_top1 * 100) + ' pp' : 'not measured' })) },
       { w: '110px', label: 'p', r: 1, sort: 'p_value',
+        title: 'How likely a drop this size is if the family were worth nothing. '
+             + 'Small means the loss is unlikely to be noise.',
         cell: (d, f) => d.appendChild(el('span', {
           class: 'dim', text: has(f.p_value) ? f.p_value.toFixed(3) : '' })) },
     ];
@@ -2377,16 +2490,28 @@ function receptionsCard(rec) {
       + 'to it. This market is on the page to be measured in public, not to be bet.' }));
   const cols = [
     { w: 'minmax(0,1fr)', label: 'Week', sort: 'week',
+      title: 'A played week of this season, graded against the last price on '
+           + 'offer before kickoff.',
       cell: (d, w) => d.appendChild(el('span', { text: 'Week ' + w.week })) },
     { w: '80px', label: 'Lines', r: 1, sort: 'n',
+      title: 'Settled lines in the week. Whole-number pushes are excluded \u2014 '
+           + 'neither side called those wrong.',
       cell: (d, w) => d.appendChild(el('span', { text: String(w.n) })) },
-    { w: '100px', label: 'Went over', r: 1, sort: 'over_rate', cell: (d, w) =>
+    { w: '100px', label: 'Went over', r: 1, sort: 'over_rate',
+      title: 'How often the count actually beat the line. Near 50% is what a '
+           + 'well-set market looks like.',
+      cell: (d, w) =>
         d.appendChild(el('span', { class: 'dim', text: pct(w.over_rate, 1) })) },
-    { w: '90px', label: 'Us', r: 1, sort: 'model_log_loss', cell: (d, w) =>
+    { w: '90px', label: 'Us', r: 1, sort: 'model_log_loss',
+      title: 'Log loss of what we serve. Lower is better; green means we beat '
+           + 'the market that week.',
+      cell: (d, w) =>
         d.appendChild(el('span', {
           class: w.model_log_loss < w.market_log_loss ? 'pos' : 'neg',
           text: w.model_log_loss.toFixed(4) })) },
-    { w: '90px', label: 'Market', r: 1, sort: 'market_log_loss', cell: (d, w) =>
+    { w: '90px', label: 'Market', r: 1, sort: 'market_log_loss',
+      title: 'Log loss of the de-vigged book price over the same lines.',
+      cell: (d, w) =>
         d.appendChild(el('span', { class: 'dim', text: w.market_log_loss.toFixed(4) })) },
   ];
   c.appendChild(table(cols, f.weeks, null, { id: 'recweeks' }));
