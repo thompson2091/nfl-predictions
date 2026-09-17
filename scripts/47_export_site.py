@@ -168,7 +168,7 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
     # carrying a projected reception count, which is noise wearing a number.
     eligible = {p.get("player") for m in payload.get("markets") or []
                 for p in m.get("players") or []}
-    rng = {r["player_name"]: (int(r["lo"]), int(r["hi"]))
+    rng = {r["player_name"]: (float(r["lo"]), float(r["hi"]))
            for r in mus.iter_rows(named=True)}
     for r in rec.get("rows") or []:
         got = rng.get(r.get("player_name"))
@@ -184,7 +184,7 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
         extra.append({
             "player_name": row["player_name"], "team": row["team"],
             "game_id": row.get("game_id"), "mu": row["mu"],
-            "lo": int(row["lo"]), "hi": int(row["hi"]),
+            "lo": float(row["lo"]), "hi": float(row["hi"]),
             "point": None, "odds": None, "fair_prob": None, "ours": None,
             "model_only": None, "edge_pp": None, "n_books": 0, "thin": False,
         })

@@ -27,6 +27,8 @@ def _graded(rows: list[dict]) -> pl.DataFrame:
     df = pl.DataFrame(rows)
     if "p_model_raw" not in df.columns:
         df = df.with_columns(pl.col("p_model").alias("p_model_raw"))
+    if "p_model" not in df.columns:
+        df = df.with_columns(pl.col("p_model_raw").alias("p_model"))
     return df.with_columns([
         (pl.col("receptions") > pl.col("point")).cast(pl.Float64).alias("y_over"),
         (pl.col("receptions") == pl.col("point")).alias("push"),
@@ -40,20 +42,25 @@ def test_a_push_is_not_a_loss_for_either_side(monkeypatch):
     as a loss against both probabilities, and because the model and the market
     disagree about it the two log losses move by different amounts — so the
     verdict can flip on a bet nobody won or lost.
+
+    The served number is derived from the raw one and the blend weight rather
+    than read from the frame, so the weight is pinned here. That derivation is
+    the point: what gets graded is what the board would have served, not what a
+    caller claimed it served.
     """
     rows = [
-        {"week": 1, "point": 3.5, "receptions": 5, "p_model": 0.7, "fair_prob": 0.6},
-        {"week": 1, "point": 4.5, "receptions": 2, "p_model": 0.3, "fair_prob": 0.4},
+        {"week": 1, "point": 3.5, "receptions": 5, "p_model_raw": 0.7, "fair_prob": 0.6},
+        {"week": 1, "point": 4.5, "receptions": 2, "p_model_raw": 0.3, "fair_prob": 0.4},
         # The push: a 5.0 line and exactly five catches.
-        {"week": 1, "point": 5.0, "receptions": 5, "p_model": 0.9, "fair_prob": 0.2},
+        {"week": 1, "point": 5.0, "receptions": 5, "p_model_raw": 0.9, "fair_prob": 0.2},
     ]
     monkeypatch.setattr(F, "graded", lambda season, snapshot="close": _graded(rows))
+    monkeypatch.setattr(F, "_shipped_weight", lambda: 1.0)   # served == raw
     r = F.record(2026)
 
     assert r["pushes"] == 1
     assert r["pooled"]["n"] == 2, "the push must not be graded"
 
-    # The two settled rows alone, computed independently of the module.
     y = np.array([1.0, 0.0])
     expect = float(-np.mean(y * np.log([0.7, 0.3]) + (1 - y) * np.log([0.3, 0.7])))
     assert r["pooled"]["model_log_loss"] == pytest.approx(expect)
@@ -191,18 +198,20 @@ def test_the_alarm_fires_on_the_raw_model_not_on_what_is_served(monkeypatch):
     Falsified by pointing `raw_beats_market` back at the served number: the
     warning then fires every week the blend does its job, and the one signal
     that has meant a leak every previous time is buried under it.
+
+    The raw model here is confidently wrong on both rows while the book is
+    nearly right, which is the real shape of this market.
     """
     rows = [
-        {"week": 1, "point": 3.5, "receptions": 5, "p_model": 0.60,
-         "p_model_raw": 0.40, "fair_prob": 0.55},
-        {"week": 1, "point": 3.5, "receptions": 1, "p_model": 0.40,
-         "p_model_raw": 0.60, "fair_prob": 0.45},
+        {"week": 1, "point": 3.5, "receptions": 5, "p_model_raw": 0.30, "fair_prob": 0.62},
+        {"week": 1, "point": 3.5, "receptions": 1, "p_model_raw": 0.70, "fair_prob": 0.38},
     ]
     monkeypatch.setattr(F, "graded", lambda season, snapshot="close": _graded(rows))
+    monkeypatch.setattr(F, "_shipped_weight", lambda: 0.0)   # served == the book
     r = F.record(2026)
 
-    assert r["beats_market"] is True, "the served blend is ahead"
-    assert r["raw_beats_market"] is False, "the raw model is behind, and that is the alarm"
+    assert r["raw_beats_market"] is False, (
+        "the raw model is behind, and that is the alarm")
     assert "leak" not in F.report(2026).lower(), (
         "a blend doing its job must not read as a leak")
 
@@ -241,3 +250,70 @@ def test_the_interval_is_the_stated_share_of_games():
     covered = d.cdf(hi[0]) - d.cdf(lo[0] - 1)
 
     assert 0.6 < covered < 0.85, f"claims ~70%, covers {covered:.0%}"
+
+
+def test_a_live_refit_waits_until_the_season_can_carry_it(monkeypatch):
+    """One parameter does not need many lines, but two weeks is not enough.
+
+    A weight refitted each week on two weeks of data would swing with each of
+    them, and what is served would be chasing noise it had just seen.
+    """
+    rows = [{"week": 1, "point": 3.5, "receptions": 5,
+             "p_model_raw": 0.6, "fair_prob": 0.5}] * 50
+    monkeypatch.setattr(F, "graded", lambda season, snapshot="close": _graded(rows))
+
+    assert F.refit_blend(2026, write=False) is None, "50 lines is not a season"
+    assert F.refit_blend(2026, min_n=10, write=False) is not None, (
+        "and the guard must be a threshold, not a refusal")
+
+
+def test_grading_never_uses_a_weight_fitted_on_the_week_it_grades():
+    """Serving looks back; grading must look further back.
+
+    Refitting on the live season is right for what we serve — fitted on weeks
+    already played, applied to the ones after. Grading with that same weight
+    would make the record in sample for it, and the headline would improve for
+    no reason anyone should believe.
+
+    Falsified by fitting on `week <= wk` and grading week `wk` with it: the
+    first week then carries a weight fitted on itself and the assertion below
+    fails.
+    """
+    live = pl.DataFrame({
+        "week": [1] * 3000 + [2] * 3000,
+        "p_model_raw": [0.6] * 6000,
+        "fair_prob": [0.5] * 6000,
+        "y_over": ([1.0] * 2000 + [0.0] * 1000) * 2,
+    })
+    by_week = F.walk_forward_weights(live, fallback=0.17)
+
+    assert by_week[1] == pytest.approx(0.17), (
+        "the first week has nothing before it, so it keeps the shipped weight")
+    assert by_week[2] != pytest.approx(0.17), (
+        "the second week is graded on a weight fitted on the first")
+
+
+def test_the_shipped_weight_is_the_fallback_not_a_default_of_one(monkeypatch):
+    """With no history of its own, serving the raw model is the worst of both.
+
+    A fallback of 1.0 means "keep all of our number", which is the arm that
+    loses to the market by 0.028 on this season. The shipped weight is the one
+    thing known to work before the live season has any evidence.
+
+    Asserted through `record`, not only on the helper. The first version called
+    `walk_forward_weights` directly with an explicit fallback, so changing what
+    `record` passes in — the only place it is decided — broke nothing.
+    """
+    live = pl.DataFrame({"week": [1] * 10, "p_model_raw": [0.6] * 10,
+                         "fair_prob": [0.5] * 10, "y_over": [1.0] * 10})
+    assert F.walk_forward_weights(live, fallback=0.17)[1] == pytest.approx(0.17)
+
+    rows = [{"week": 1, "point": 3.5, "receptions": 5,
+             "p_model_raw": 0.7, "fair_prob": 0.5},
+            {"week": 1, "point": 3.5, "receptions": 1,
+             "p_model_raw": 0.3, "fair_prob": 0.5}]
+    monkeypatch.setattr(F, "graded", lambda season, snapshot="close": _graded(rows))
+    monkeypatch.setattr(F, "_shipped_weight", lambda: 0.23)
+    r = F.record(2026)
+    assert r["weights"]["1"] == pytest.approx(0.23), (
+        "an unevidenced week is served the shipped weight, not the raw model")

@@ -22,6 +22,8 @@ by +17-22% ROI and that was the NGS existence leak.
 """
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import polars as pl
 
@@ -104,6 +106,84 @@ def graded(season: int, snapshot: str = "close") -> pl.DataFrame | None:
     ])
 
 
+#: Settled lines needed before the live season is allowed to fit its own blend
+#: weight. One free parameter does not need many, but a weight refitted on two
+#: weeks would swing with each of them and the number being served would be
+#: chasing noise it had just seen. Receptions settle at roughly 280 lines a
+#: week, so this is about week eight.
+MIN_BLEND_LINES = 2000
+
+
+def _shipped_weight() -> float | None:
+    """The weight fitted at training time, which is the fallback."""
+    path = get_path("models", "receptions") / "market_blend.json"
+    if not path.exists():
+        return None
+    try:
+        return float(json.loads(path.read_text())["weight"])
+    except Exception:                                            # noqa: BLE001
+        return None
+
+
+def refit_blend(season: int, min_n: int = MIN_BLEND_LINES,
+                write: bool = True) -> dict | None:
+    """Refit the market blend on the season being played, once it can carry it.
+
+    The weight shipped with the model is fitted on 2024 and fixed. It is
+    holding up — 2025 out of sample, and 2026 week 1 — but a weight fitted two
+    seasons ago is an assumption about how much the model adds *now*, and the
+    live season is the only evidence about that.
+
+    Fitted on every line settled so far and applied to the weeks after, so what
+    it serves is always out of sample for the week it is serving. It is
+    deliberately NOT what the forward record grades with: see
+    `walk_forward_weights`.
+    """
+    from src.models.count import fit_market_blend
+
+    g = graded(season)
+    if g is None or g.height == 0:
+        return None
+    live = g.filter(~pl.col("push"))
+    if live.height < min_n:
+        return None
+
+    out = fit_market_blend(live["p_model_raw"].to_numpy(),
+                           live["fair_prob"].to_numpy(),
+                           live["y_over"].to_numpy())
+    out["fitted_on"] = season
+    out["through_week"] = int(live["week"].max())
+    out["live"] = True
+    if write:
+        path = get_path("models", "receptions") / "market_blend_live.json"
+        path.write_text(json.dumps(out, indent=1))
+        out["path"] = str(path)
+    return out
+
+
+def walk_forward_weights(live: pl.DataFrame, fallback: float) -> dict[int, float]:
+    """The weight in force for each week, fitted only on the weeks before it.
+
+    Without this, refitting on the live season would make the forward record
+    in-sample for its own weight and the headline would improve for no reason
+    anyone should believe. A week is graded with what could have been known
+    before it kicked off, which for the early weeks is the weight shipped with
+    the model.
+    """
+    from src.models.count import fit_market_blend
+
+    weeks = sorted(live["week"].unique().to_list())
+    out, w = {}, fallback
+    for wk in weeks:
+        out[int(wk)] = w
+        prior = live.filter(pl.col("week") <= wk)
+        if prior.height >= MIN_BLEND_LINES:
+            w = fit_market_blend(prior["p_model_raw"].to_numpy(),
+                                 prior["fair_prob"].to_numpy(),
+                                 prior["y_over"].to_numpy())["weight"]
+    return out
+
+
 def record(season: int) -> dict | None:
     """The forward measurement, pooled and per week.
 
@@ -136,12 +216,33 @@ def record(season: int) -> dict | None:
             "market_brier": float(np.mean((pk - y) ** 2)),
         }
 
+    # Grade each week with the weight that could have been known before it
+    # kicked off. Serving uses everything settled so far, which is right for a
+    # bet; grading must not, or the record is in sample for its own weight.
+    from src.models.count import blend_to_market
+    from src.prediction.receptions import load_blend
+
+    shipped = _shipped_weight()
+    by_week = walk_forward_weights(live, shipped if shipped is not None else 1.0)
+    live = live.with_columns(
+        pl.col("week").replace_strict(by_week, default=shipped or 1.0).alias("_w"))
+    live = live.with_columns(pl.Series("p_model", blend_to_market(
+        live["p_model_raw"].to_numpy(), live["fair_prob"].to_numpy(), 0.0)))
+    # `blend_to_market` takes one weight, so apply it per distinct value.
+    served = live["p_model_raw"].to_numpy().copy()
+    for w in sorted(set(by_week.values())):
+        sel = (live["_w"] == w).to_numpy()
+        if sel.any():
+            served[sel] = blend_to_market(live["p_model_raw"].to_numpy()[sel],
+                                          live["fair_prob"].to_numpy()[sel], w)
+    live = live.with_columns(pl.Series("p_model", served))
+
     weeks = []
     for wk in sorted(live["week"].unique().to_list()):
         d = live.filter(pl.col("week") == wk)
         if d.height < 2:
             continue
-        weeks.append({"week": int(wk), **block(d)})
+        weeks.append({"week": int(wk), "weight": float(by_week[int(wk)]), **block(d)})
 
     pooled = block(live)
     return {
@@ -163,6 +264,7 @@ def record(season: int) -> dict | None:
         # nothing has made that plausible: it loses by 0.017 on 2025 and 0.028
         # here, and every previous time it appeared to win it was a leak.
         "raw_beats_market": pooled["raw_log_loss"] < pooled["market_log_loss"],
+        "weights": {str(k): v for k, v in by_week.items()},
         "note": (
             "Log loss, lower is better. The market is the de-vigged two-sided "
             "price. This is measured on the prices actually on offer before "

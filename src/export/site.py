@@ -442,6 +442,10 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = (v, d) => has(v) ? (v * 100).toFixed(d == null ? 0 : d) + '%' : '';
 const spp = v => has(v) ? (v > 0 ? '+' : '') + v.toFixed(0) : '';
+// Two places, unless they are both zero. A quantile that lands exactly on a
+// whole number is a whole number, and "3.00" is two characters of noise.
+const num2 = v => !has(v) ? '' :
+  (Math.abs(v - Math.round(v)) < 5e-3 ? String(Math.round(v)) : v.toFixed(2));
 // A probability a person can read, at any scale. `toExponential` is correct
 // and useless: "9.8e-1%" was on the Ladder where "0.98%" belonged, and below a
 // tenth of a percent even that stops meaning anything, so it becomes odds
@@ -1776,12 +1780,12 @@ function ouTable(rows, f) {
       title: 'He catches at least this many about 85% of the time — the 15th '
            + 'percentile of the fitted distribution.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
-        text: has(r.lo) ? String(r.lo) : '' })) },
+        text: num2(r.lo) })) },
     { w: '68px', label: 'Ceiling', r: 1, sort: 'hi',
       title: 'He stays under this about 85% of the time — the 85th percentile '
            + 'of the fitted distribution.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
-        text: has(r.hi) ? String(r.hi) : '' })) },
+        text: num2(r.hi) })) },
     { w: '56px', label: 'Model', r: 1, sort: 'modelOnly', hide: 1,
       title: 'The count model\u2019s own chance of the over, before it is shrunk '
            + 'toward the book.',

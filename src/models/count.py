@@ -248,13 +248,36 @@ def count_interval(mu: np.ndarray, dispersion: float,
     board, which says nothing about anybody. Seven games in ten land inside
     the interval returned here.
 
-    Both ends are inclusive counts, so `(2, 6)` means two to six catches.
+    Returned continuously, which needs defending because the thing being
+    counted is not. Nobody catches 3.47 passes, and `3.47` is not a claim that
+    anybody will: it is the level at which the cumulative probability crosses
+    15%, which is a real continuous quantity about the distribution even though
+    every realisation of it is a whole number.
+
+    The reason to interpolate rather than round is resolution. The integer
+    quantile is a step function, so on a board of five hundred receivers most
+    of them floor at 3 and ceiling at 9 and the column stops separating anyone.
+    Interpolated, a 2.6 floor and a 3.4 floor are different players, which is
+    what the column is for.
+
+    Linear interpolation across the step that contains the quantile: find the
+    count `k` where the CDF first reaches `q`, then walk back into the step by
+    however much of `k`'s own mass was not needed.
     """
     mu = np.clip(np.asarray(mu, dtype=float), 1e-6, None)
     r = float(dispersion)
     p = r / (r + mu)
     dist = stats.nbinom(r, p)
-    return dist.ppf(lo).astype(int), dist.ppf(hi).astype(int)
+
+    def q(level: float) -> np.ndarray:
+        k = dist.ppf(level)
+        below = dist.cdf(k - 1)          # mass strictly below the step
+        mass = dist.pmf(k)
+        # A step carrying no mass cannot be walked into; fall back to its edge.
+        frac = np.where(mass > 1e-12, (level - below) / np.where(mass > 1e-12, mass, 1.0), 1.0)
+        return np.clip(k - 1 + np.clip(frac, 0.0, 1.0), 0.0, None)
+
+    return q(lo), q(hi)
 
 
 def fair_two_way(over: np.ndarray, push: np.ndarray) -> np.ndarray:

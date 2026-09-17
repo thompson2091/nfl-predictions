@@ -33,7 +33,8 @@ import sys
 
 sys.path.insert(0, ".")
 
-from src.evaluation.receptions_forward import record, report
+from src.evaluation.receptions_forward import (MIN_BLEND_LINES, record,
+                                               refit_blend, report)
 from src.utils.config import get_config
 from src.utils.paths import get_path
 
@@ -41,11 +42,30 @@ from src.utils.paths import get_path
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--season", type=int, default=None)
+    ap.add_argument("--no-refit", action="store_true",
+                    help="grade without refitting the blend on this season")
     ap.add_argument("--json", action="store_true",
                     help="print the record as JSON instead of a report")
     args = ap.parse_args()
 
     season = args.season or int(get_config()["seasons"]["predict_season"])
+
+    # Refit the blend on the season being played, once enough of it has
+    # settled. The weight shipped with the model was fitted on 2024, and a
+    # weight two seasons old is an assumption about how much the model adds
+    # now. It is fitted on weeks already played and applied to the ones after,
+    # so what it serves is out of sample for the week it serves.
+    if not args.no_refit:
+        fresh = refit_blend(season)
+        if fresh:
+            print(f"Blend refitted on {season} through week {fresh['through_week']}: "
+                  f"keep {fresh['weight']:.0%} of our number "
+                  f"({fresh['n']:,} settled lines)\n")
+        else:
+            print(f"Blend not refitted: {season} has fewer than "
+                  f"{MIN_BLEND_LINES:,} settled lines so far. Serving the "
+                  f"weight fitted at training time.\n")
+
     r = record(season)
     if r is None:
         print(f"RECEPTIONS FORWARD — nothing settled yet for {season}.")

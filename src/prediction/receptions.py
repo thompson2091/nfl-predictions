@@ -78,14 +78,23 @@ def load_blend(model_dir=None) -> float | None:
     """
     import json
 
-    path = (model_dir or get_path("models", "receptions")) / "market_blend.json"
-    if not path.exists():
-        return None
-    try:
-        w = float(json.loads(path.read_text())["weight"])
-    except Exception:                                            # noqa: BLE001
-        return None
-    return w if 0.0 <= w <= 1.0 else None
+    root = model_dir or get_path("models", "receptions")
+    # The live season's own weight where one has been fitted, the shipped one
+    # otherwise. The live file only appears once enough of this season has
+    # settled to carry it (`receptions_forward.MIN_BLEND_LINES`), and it is
+    # fitted on weeks already played, so it is out of sample for the week it
+    # is about to serve.
+    for name in ("market_blend_live.json", "market_blend.json"):
+        path = root / name
+        if not path.exists():
+            continue
+        try:
+            w = float(json.loads(path.read_text())["weight"])
+        except Exception:                                        # noqa: BLE001
+            continue
+        if 0.0 <= w <= 1.0:
+            return w
+    return None
 
 
 def load_model(model_dir=None) -> dict | None:
