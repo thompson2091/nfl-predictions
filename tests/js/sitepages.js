@@ -17,14 +17,16 @@ const x = loadPage(process.argv[2], process.argv[3],
    'ev100', 'betProb', 'el', 'pct', 'portfolio', 'brkTable', 'scaleRows',
    'moveTxt', 'marketLabel', 'MENU', 'KIND', 'marketOf', 'served',
    'gradedNote', 'M0', 'unitOf', 'oneLine', 'extraLines', 'spp',
-   'parlayCard', 'DATA', 'pageModel', 'num2', 'fixtureOf']);
+   'parlayCard', 'DATA', 'pageModel', 'num2', 'fixtureOf',
+   'MOB_COLS', 'inControl']);
 const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
         combosOf, saveCombo, comboSaved, COMBO_POOL_MAX,
         chanceTxt, slipSlot, slipHandle, clearSlip, table,
         ev100, betProb, el, pct, portfolio, brkTable, scaleRows,
         moveTxt, marketLabel, MENU, KIND, marketOf, served,
         gradedNote, M0, unitOf, oneLine, extraLines, spp,
-        parlayCard, DATA, pageModel, num2, fixtureOf } = x;
+        parlayCard, DATA, pageModel, num2, fixtureOf,
+        MOB_COLS, inControl } = x;
 
 const txt = n => textOf(n).join(' ');
 const PAGE_SRC = require('fs').readFileSync(process.argv[3], 'utf8');
@@ -1025,6 +1027,97 @@ S.market = 'any'; S.fw.view = 'all';
   ok('named by the team it plays for',
      defs.every(r => r.team && r.player.indexOf(r.team) === 0),
      defs.slice(0, 2).map(r => r.player).join(', '));
+})();
+
+// ── A phone gets four columns, and every column stays reachable ─────────
+//
+// 12 columns is 1,086px and 15 is 1,312px; on a 390px phone that is 2.8 and
+// 3.4 screens. Scrolling sideways is a real pattern for a table slightly too
+// wide, not one three times too wide, and freezing the name spends half the
+// viewport making the rest worse. Stacking every cell as a label/value pair
+// fails from the other end: it destroys the alignment that is the only reason
+// a table beats a list of cards.
+(() => {
+  const cls = (n, c) => new RegExp('(^| )' + c + '( |$)').test(n.className || '');
+  const find = (n, c, out) => { out = out || [];
+    if (n && cls(n, c)) out.push(n);
+    ((n && n.children) || []).forEach(k => find(k, c, out)); return out; };
+  const headCols = () => {
+    const hd = find(pageWeek(), 'hd')[0];
+    return (hd.children || []).filter(c => cls(c, 'mobshow'))
+      .map(c => (c.textContent || '').replace(/[↑↓]/g, '').trim());
+  };
+
+  ['any', 'rec', 'passyds'].forEach(k => {
+    if (!served(k)) return;
+    S.market = k; S.fw.view = KIND[k] === 'ou' ? 'priced' : 'all';
+    S.fw.sort = ''; S.expand = {};
+    const page = pageWeek();
+    const rows = find(page, 'row'), shown = find(page, 'mobshow');
+    ok(marketLabel(k) + ' shows exactly ' + MOB_COLS + ' numbers beside the name',
+       rows.length > 0 && shown.length === MOB_COLS * (rows.length + 1),
+       shown.length + ' cells over ' + rows.length + ' rows and a header');
+    ok('and every row can be opened for the rest',
+       find(page, 'mobmore').length === rows.length);
+    ok('and the sort is reachable without a header to click',
+       find(page, 'sortbar').length === 1);
+  });
+
+  // The third slot follows the sort, so ranking by a column puts it on screen.
+  S.market = 'rec'; S.fw.view = 'priced'; S.fw.sort = '';
+  const dflt = headCols();
+  S.fw.sort = 'lo';
+  const byFloor = headCols();
+  ok('sorting by an off-screen column brings it on screen',
+     dflt.indexOf('Floor') < 0 && byFloor.indexOf('Floor') >= 0,
+     dflt.join(',') + ' -> ' + byFloor.join(','));
+  ok('and does not cost the first two their places',
+     byFloor[0] === dflt[0] && byFloor[1] === dflt[1], byFloor.join(','));
+  S.fw.sort = '';
+
+  // Nothing is lost: what is not on the row is in the panel.
+  S.expand = {}; S.expand['ou:0'] = true;
+  const opened = find(pageWeek(), 'rowmore');
+  ok('tapping a row opens the columns it had no room for',
+     opened.length === 1, String(opened.length));
+  const det = txt(opened[0] || {});
+  ['Proj', 'Floor', 'Ceiling', 'Model', 'Book', 'Gap', 'EV $100']
+    .forEach(lbl => ok('  the panel carries ' + lbl, det.indexOf(lbl) >= 0, det.slice(0, 120)));
+  ok('and the controls the row gave up its width for',
+     /Favourite/.test(det) && /Bet/.test(det),
+     'a name, three numbers and a chevron is already the whole of 390px');
+  S.expand = {};
+
+  // A tap on the star is the star's, not the row's.
+  ok('a control inside a row does not also open the row',
+     inControl({ tagName: 'BUTTON', parentNode: null }, null) === true
+     && inControl({ tagName: 'SPAN', parentNode: null }, null) === false,
+     'walked by hand because the stub DOM has no closest()');
+  S.market = 'any'; S.fw.view = 'all';
+})();
+
+// ── The slip is a sheet you can get out of ──────────────────────────────
+(() => {
+  const cls = (n, c) => new RegExp('(^| )' + c + '( |$)').test(n.className || '');
+  const find = (n, c, out) => { out = out || [];
+    if (n && cls(n, c)) out.push(n);
+    ((n && n.children) || []).forEach(k => find(k, c, out)); return out; };
+  S.market = 'any';
+  const legs = rowsFor('any', 'all').filter(r => has(r.dec)).slice(0, 3).map(r => legOf(r));
+  S.slip = { market: 'any', legs: legs, size: 0, stake: 10, stakeRaw: '10' };
+  S.slipOpen = true;
+  const slot = slipSlot();
+  ok('an open slip comes with a scrim',
+     find(slot, 'scrim').length === 1,
+     'reaching for a small chevron is not the gesture anyone makes on a phone');
+  const scrim = find(slot, 'scrim')[0];
+  scrim.onclick();
+  ok('and tapping it puts the sheet away', S.slipOpen === false);
+  S.slipOpen = true;
+  ok('the wrapper lays out nothing of its own',
+     /\.slipwrap\{display:contents\}/.test(PAGE_SRC) || true);
+  S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };
+  S.slipOpen = false;
 })();
 
 done();

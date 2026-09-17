@@ -457,70 +457,69 @@ def test_launch_builds_one_file_under_a_name_a_server_will_serve():
     assert "public/" in (REPO / ".gitignore").read_text()
 
 
-def test_narrow_screens_keep_the_table_and_pin_the_name():
-    """A board is for comparing players on one number.
+def test_a_phone_gets_four_aligned_columns_and_no_sideways_scrolling():
+    """Twelve columns is a desktop density and no amount of scrolling saves it.
 
-    Below 680px every row used to become its own card, with the grid dropped
-    and each cell printing its column label from `data-label`. That reads well
-    for one row and badly for forty: comparing two players on a single figure
-    meant scrolling past every other figure they had.
+    The touchdown board is 1,086px wide and the line boards 1,312px. On a 390px
+    phone that is 2.8 and 3.4 screens, and freezing the name spends half the
+    viewport to make the rest worse. Stacking every cell as a label/value pair
+    fails from the other side: it destroys the vertical alignment that is the
+    only reason a table beats a list of cards.
 
-    So the columns stay at their real widths and the table scrolls sideways
-    inside its own card, with the star and the player pinned to the left edge
-    so the name stays put while the numbers move under it.
+    So a phone gets a real table of four columns — the name and three numbers —
+    with the rest reachable two ways: the third numeric column follows whatever
+    you sorted by, and tapping a row opens everything else including the star
+    and the bet control.
 
-    Falsified three ways, each of which breaks it differently: drop the
-    `overflow-x` and the columns squash instead of scrolling; drop the sticky
-    and the name scrolls away, leaving a row of figures belonging to nobody;
-    drop the background on the pinned cells and the columns sliding underneath
-    show through the name.
+    Between 680 and 900 the table is 1.2 to 1.9 screens, which IS the case
+    sideways scrolling is for, and that layout is kept there.
     """
     from src.export import site as d
 
-    # The `.hd` rule itself, not "everything before the first @media" — the
-    # first one in this sheet is the dark-mode block near the top, so that
-    # slice never contained the table header and the assertion below could not
-    # fail however the rule was broken.
-    i = d.CSS.index("\n.hd{")
-    base = d.CSS[i:d.CSS.index("}", i)].replace(" ", "")
     mid = d.CSS[d.CSS.index("@media (max-width:900px)"):
                 d.CSS.index("@media (max-width:680px)")].replace(" ", "")
-    narrow = d.CSS[d.CSS.index("@media (max-width:680px)"):]
-    flat = narrow.replace(" ", "")
+    narrow = d.CSS[d.CSS.index("@media (max-width:680px)"):].replace(" ", "")
 
-    # Pinned under the site header on a wide screen, where that bar is exactly
-    # 64px; pinned to its own scroll pane below 900, where the nav wraps and
-    # the bar's height stops being a number anyone can write down.
-    assert "position:sticky;top:64px" in base, (
-        "a long board must not leave a column of figures with nothing naming "
-        "them")
-    assert ".rows{overflow:auto" in mid and "max-height:76vh" in mid, (
-        "below 900 the table becomes its own pane, so the header pins to that "
-        "rather than to a site header of unpredictable height")
-    assert ".hd{top:0}" in mid
+    # Tablet: scroll, pin the name, pin the header to the pane.
+    assert ".rows{overflow:auto" in mid and "max-height:76vh" in mid
+    assert "position:sticky;left:0" in mid, "the name pins while numbers move"
 
-    assert ".hd{display:none}" not in flat, (
-        "a table that scrolls needs its header; it is the only thing naming "
-        "the columns once the labels are gone")
-    assert "width:max-content" in flat, (
-        "without it the grid compresses to the viewport and the scroll never "
-        "engages")
+    # Phone: no scrolling at all.
+    assert ".rows{padding:0;overflow:visible;max-height:none}" in narrow, (
+        "a 3.4-screen scroll is not a layout, it is a shrug")
+    assert ".hd,.row{display:flex" in narrow, (
+        "a hidden grid cell still holds its track; a hidden flex item does not")
+    assert ".hd>div,.row>div{display:none;padding:0}" in narrow, (
+        "columns are opt-in on a phone, not opt-out")
+    assert ".hd>.mobshow,.row>.mobshow{" in narrow, (
+        "the chosen columns are the ones that show")
+    # `narrow` has had its spaces stripped, so this is `flex:0 0 60px`.
+    assert "flex:0060px" in narrow, (
+        "a fixed width is what holds the numbers in line down the page, which "
+        "is the whole point of keeping it a table")
 
-    # The name pins, and so does its header, or the headings slide out from
-    # over the column they name.
-    pin = flat[flat.index(".hd>.mob-lead"):]
-    assert "position:sticky" in pin and "left:0" in pin
-    assert "background:var(--card)" in pin, (
-        "the columns sliding underneath show through an unpainted cell")
-    assert ".hd>.mob-lead+.mob-title,.row>.mob-lead+.mob-title{left:44px}" in flat, (
-        "the player sits beside the star, not on top of it")
-    assert ".hd>.mob-lead,.hd>.mob-title{z-index:6}" in flat, (
-        "where the two pins cross, the header must outrank the column it "
-        "names or the first column scrolls up over its own heading")
+    # The detail panel, and the controls the row gave up its width for.
+    assert ".rowmore{" in narrow
+    assert ".rowmore.mk.act{grid-column:1/-1" in narrow, (
+        "the star and the bet buttons live in the panel on a phone")
+    assert ".sortbar{display:flex}" in narrow, (
+        "with no header to click, the sort needs somewhere it can be found")
 
-    # And the marker reaches the header cell, not only the body cell.
-    assert "c.mob ? 'mob-' + c.mob + ' ' : ''" in d.JS_SHARED, (
-        "the header cell must carry the same mob- marker as its column")
+
+def test_the_phone_columns_are_declared_and_the_sort_can_replace_one():
+    """Three numbers beside the name, and which three is not arbitrary."""
+    from src.export import site as d
+
+    assert "const MOB_COLS = 3;" in d.JS_SHARED
+    assert "cols.filter(c => c.mobKey).map(keyOf).slice(0, MOB_COLS)" in d.JS_SHARED
+    assert "mobShown.slice(0, MOB_COLS - 1).concat([st.sort])" in d.JS_SHARED, (
+        "sorting by a column that is off screen must bring it on screen, or "
+        "the sort ranks by something you cannot see")
+    # Both boards declare their three.
+    for label in ("'Odds'", "'Adj'", "'EV $100'", "'Line'"):
+        assert f"label: {label}, r: 1" in d.JS_WEEK or f"label: {label}," in d.JS_WEEK
+    assert d.JS_WEEK.count("mobKey: 1") >= 6, (
+        "the touchdown board and the line board each need their own three")
 
 
 def test_the_slip_is_a_sheet_on_narrow_screens_not_a_block_below_the_board():
