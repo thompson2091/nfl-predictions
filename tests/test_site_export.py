@@ -476,13 +476,26 @@ def test_a_phone_gets_four_aligned_columns_and_no_sideways_scrolling():
     """
     from src.export import site as d
 
+    base = d.CSS[:d.CSS.index("@media")].replace(" ", "")
     mid = d.CSS[d.CSS.index("@media (max-width:900px)"):
                 d.CSS.index("@media (max-width:680px)")].replace(" ", "")
     narrow = d.CSS[d.CSS.index("@media (max-width:680px)"):].replace(" ", "")
 
-    # Tablet: scroll, pin the name, pin the header to the pane.
-    assert ".rows{overflow:auto" in mid and "max-height:76vh" in mid
-    assert "position:sticky;left:0" in mid, "the name pins while numbers move"
+    # Every width above the phone: the table is a pane that scrolls inside its
+    # own card. Without it the overflow renders UNDERNEATH the slip — fourteen
+    # columns come to ~1,150px and the board keeps ~1,080 once the slip takes
+    # its 360, so Adj, Gap, EV and the Bet buttons were drawn behind an opaque
+    # panel: in the DOM, reachable by nothing.
+    assert ".rows{" in base and "overflow:auto" in base, (
+        "a table that does not fit must say so by scrolling, not by hiding "
+        "under the panel beside it")
+    assert "max-height:calc(100vh-230px)" in base
+    assert "position:sticky;top:0;z-index:5" in base, (
+        "the pane is what scrolls, so the headings pin to it and need no "
+        "constant for a site header whose height changes")
+    assert "position:sticky;left:0" in base, "the name pins while numbers move"
+    # The tablet range only shortens the pane; it restates nothing.
+    assert "max-height:calc(100vh-280px)" in mid
 
     # Phone: no scrolling at all.
     assert ".rows{padding:0;overflow:visible;max-height:none}" in narrow, (

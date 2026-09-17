@@ -260,23 +260,46 @@ input[type=search]{-webkit-appearance:none}
 .menu button:disabled .tag{font-size:12px;color:var(--mut3);font-weight:400}
 
 /* ── Tables ──────────────────────────────────────────────────────────── */
-.rows{padding:4px 20px}
+/* The table scrolls inside its own card, at every width above the phone
+   layout.
+   Without this it does not fit and does not say so: fourteen columns of fixed
+   width come to about 1,150px, the board keeps roughly 1,080 of a 1,440px
+   window once the slip takes its 360, and the overflow simply renders
+   UNDERNEATH the slip. Adj, Gap, EV and the Bet buttons were being drawn
+   behind an opaque panel — present in the DOM, reachable by nothing.
+   A bounded pane rather than a bare `overflow-x`, because a scroll container
+   is where a sticky header can stick: the column names stay put while five
+   hundred rows go by, and the player's name stays put while the columns move
+   sideways under it. */
+.rows{
+  padding:0 20px;overflow:auto;-webkit-overflow-scrolling:touch;
+  max-height:calc(100vh - 230px);
+}
 .hd,.row{display:grid;grid-template-columns:var(--cols);gap:12px;align-items:center}
 .hd{
   height:40px;font-size:12px;font-weight:600;letter-spacing:.5px;
   text-transform:uppercase;color:var(--mut2);border-bottom:1px solid var(--line2);
-  /* Pinned under the site header, so a long board never leaves you looking at
-     a column of figures with nothing naming them. 64px is `.top`'s height and
-     it is exact at this width; below 900px that bar wraps its nav and grows by
-     an amount no constant can predict, which is why the narrow layout makes
-     the table its own scroll pane and pins the header to that instead. */
-  position:sticky;top:64px;z-index:5;background:var(--card);
+  /* Pinned to the top of the pane, so a long board never leaves you looking
+     at a column of figures with nothing naming them. `top:0` rather than the
+     site header's height, because the pane is what scrolls — which also means
+     this needs no constant, and cannot be wrong at the widths where that bar
+     wraps its nav and stops being 64px tall. */
+  position:sticky;top:0;z-index:5;background:var(--card);
 }
 .sortbar{
   display:none;align-items:center;gap:8px;padding:10px 12px;
   border-bottom:1px solid var(--line2);font-size:13px;color:var(--mut2);
 }
 .sortbar select{flex:1 1 auto;min-width:0;height:36px}
+/* The name stays while the columns move under it. Numbers whose row has
+   scrolled out from under its own name belong to nobody. */
+.hd>.mob-lead,.row>.mob-lead,
+.hd>.mob-title,.row>.mob-title{
+  position:sticky;left:0;z-index:2;background:var(--card);
+}
+.hd>.mob-lead,.hd>.mob-title{z-index:6}
+.hd>.mob-lead+.mob-title,.row>.mob-lead+.mob-title{left:44px}
+.row>.mob-title{box-shadow:6px 0 6px -6px rgba(0,0,0,.10)}
 .hd .s{cursor:pointer;user-select:none}
 .hd .s:hover{color:var(--ink)}
 .row{min-height:56px;border-bottom:1px solid var(--line3)}
@@ -402,23 +425,12 @@ input[type=search]{-webkit-appearance:none}
   .lede{font-size:14px}
   .hidemd{display:none}
   .cards{grid-template-columns:1fr}
-  /* Between here and 680 the table is 1.2 to 1.9 screens wide, which is the
-     case sideways scrolling is actually for. It becomes its own pane — the
-     site header is no longer a known height, so the column headings pin to the
-     top of the pane rather than to a constant nobody can write down — and the
-     name pins to its left edge so the numbers moving under it still belong to
-     somebody.
-     Below 680 none of this applies: the table stops scrolling and drops to
-     four columns instead. See `table`. */
-  .rows{overflow:auto;-webkit-overflow-scrolling:touch;max-height:76vh}
-  .hd{top:0}
-  .hd>.mob-lead,.row>.mob-lead,
-  .hd>.mob-title,.row>.mob-title{
-    position:sticky;left:0;z-index:2;background:var(--card);
-  }
-  .hd>.mob-lead,.hd>.mob-title{z-index:6}
-  .hd>.mob-lead+.mob-title,.row>.mob-lead+.mob-title{left:44px}
-  .row>.mob-title{box-shadow:6px 0 6px -6px rgba(0,0,0,.12)}
+  /* The pane is shorter here because the site header has wrapped its nav and
+     taken another row of the window. Everything else about it — the sticky
+     headings, the pinned name — is declared once at the top and needs no
+     restating. Below 680 the table stops scrolling entirely and drops to four
+     columns; see `table`. */
+  .rows{max-height:calc(100vh - 280px)}
 }
 @media (max-width:680px){
   .hidesm{display:none}

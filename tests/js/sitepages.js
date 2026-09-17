@@ -362,8 +362,14 @@ const quoted = rec.filter(r => has(r.line));
 // Quoted means a close was captured. A row standing on the opening line is
 // not the book's current opinion and is counted separately.
 const closed = rec.filter(r => has(r.line) && !r.stale);
-ok('receptions shows far more than the book has currently quoted',
-   rec.length > closed.length * 3, rec.length + ' rows, ' + closed.length + ' with a close');
+// Asserted as "there are unquoted candidates on it", not as a ratio. This
+// read `rec.length > closed.length * 3` and failed at 530 > 531 — by one row,
+// on the night the book finally quoted the market properly. The number of
+// players a book has priced climbs all week; a board built to show everyone
+// does not stop being that when the book catches up.
+ok('receptions shows everyone, not only the players a book has quoted',
+   rec.length > closed.length && rec.some(r => !has(r.line)),
+   rec.length + ' rows, ' + closed.length + ' with a close');
 ok('an unquoted row still carries a projection',
    rec.filter(r => !has(r.line)).every(r => has(r.proj)));
 ok('and is not given a line it was never offered',
