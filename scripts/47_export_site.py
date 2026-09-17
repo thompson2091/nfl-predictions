@@ -63,6 +63,23 @@ def positions(season: int, week: int) -> dict[str, str]:
     return out
 
 
+def qualified_name(name: str | None, team: str | None) -> str:
+    """A player's name, made unique where the source does not make it so.
+
+    Every team's defence is called "DEF/ST". The board builds a leg id from
+    `<market>|<player>` and the settlement map is keyed the same way, so all
+    32 of them collapsed onto one id and one outcome.
+
+    Used by BOTH sides of that lookup — the board and the results map — from
+    here, because qualifying one and not the other is worse than qualifying
+    neither: the leg would look right, settle against nothing, and read
+    Pending for ever.
+    """
+    if name == "DEF/ST" and team:
+        return f"{team} DEF/ST"
+    return name or ""
+
+
 def results(season: int, week: int) -> dict[str, str]:
     """`<week>|<market>|<player>` -> "hit" or "miss", for this week and last.
 
@@ -99,10 +116,18 @@ def results(season: int, week: int) -> dict[str, str]:
 
     out: dict[str, str] = {}
     for wk in (w for w in (week - 1, week) if w and w > 0):
+        # `team` only where the matrix carries it. It always does in
+        # production and a missing column here must not crash the export —
+        # `qualified_name` leaves a name alone when it has no team to qualify
+        # it with, which is the same answer as before this existed.
+        have = pl.scan_parquet(feats).collect_schema().names()
+        cols = ["player_id", "player_name"] + (["team"] if "team" in have else [])
         pool = (pl.scan_parquet(feats)
                 .filter((pl.col("season") == season) & (pl.col("week") == wk))
-                .select(["player_id", "player_name"]).collect()
+                .select(cols).collect()
                 .unique(subset=["player_id"]))
+        if "team" not in pool.columns:
+            pool = pool.with_columns(pl.lit(None, dtype=pl.Utf8).alias("team"))
         if pool.height == 0:
             continue
         out.update(_week_results(season, wk, pool))
@@ -125,8 +150,9 @@ def _week_results(season: int, week: int, pool: pl.DataFrame) -> dict[str, str]:
             # as a loss on the strength of a missing file.
             continue
         scorers = set(td["td_player_id"].drop_nulls().to_list())
-        for pid, name in pool.iter_rows():
-            out[f"{week}|{key}|{name}"] = "hit" if pid in scorers else "miss"
+        for pid, name, team in pool.iter_rows():
+            out[f"{week}|{key}|{qualified_name(name, team)}"] = (
+                "hit" if pid in scorers else "miss")
     return out
 
 
@@ -560,8 +586,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     # here, where it fixes the identity and the label at once.
     for m in mk:
         for pl_ in m.get("players") or []:
-            if pl_.get("player") == "DEF/ST" and pl_.get("team"):
-                pl_["player"] = f"{pl_['team']} DEF/ST"
+            pl_["player"] = qualified_name(pl_.get("player"), pl_.get("team"))
 
     pos = positions(s, w) if s and w else {}
     for m in mk:

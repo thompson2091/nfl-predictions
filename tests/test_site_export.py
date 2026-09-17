@@ -55,9 +55,10 @@ def test_settlement_joins_on_id_because_the_names_are_not_the_same(site, tmp_pat
     (proc / "anytime_td").mkdir(parents=True)
     (proc / "first_td").mkdir(parents=True)
     pl.DataFrame({
-        "season": [2026, 2026], "week": [1, 1],
-        "player_id": ["00-1", "00-2"],
-        "player_name": ["CeeDee Lamb", "Nobody Scored"],
+        "season": [2026, 2026, 2026], "week": [1, 1, 1],
+        "player_id": ["00-1", "00-2", "00-3"],
+        "player_name": ["CeeDee Lamb", "Nobody Scored", "DEF/ST"],
+        "team": ["DAL", "NYG", "DAL"],
     }).write_parquet(proc / "anytime_td" / "features.parquet")
     pl.DataFrame({
         "season": [2026], "week": [1], "td_player_id": ["00-1"],
@@ -713,3 +714,37 @@ def test_a_row_showing_only_an_opening_line_still_counts_as_a_line():
     assert rows[1]["best_line"] is False
     # A projection with no line anywhere is not part of the count.
     assert "best_line" not in rows[2]
+
+
+def test_the_board_and_the_results_map_name_a_player_the_same_way():
+    """A leg id and a settlement key are the same string or nothing settles.
+
+    Every team's defence is called "DEF/ST", so all 32 shared the id
+    `any|DEF/ST`: starring one starred them all, and the results map resolved
+    32 rows to a single outcome.
+
+    Qualifying by team fixes it only if BOTH sides are qualified. Doing one and
+    not the other is strictly worse than doing neither — the leg looks correct,
+    matches no key, and reads Pending for ever, which is the failure this
+    project treats as the expensive one because nothing errors.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "es_names", REPO / "scripts" / "47_export_site.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    assert mod.qualified_name("DEF/ST", "BUF") == "BUF DEF/ST"
+    assert mod.qualified_name("CeeDee Lamb", "DAL") == "CeeDee Lamb", (
+        "only the ambiguous name is qualified; a real one is left alone")
+    assert mod.qualified_name("DEF/ST", None) == "DEF/ST", (
+        "with no team there is nothing to qualify it with")
+    assert mod.qualified_name(None, "BUF") == ""
+
+    # And it is the same function on both sides, not two spellings of one rule.
+    src = (REPO / "scripts" / "47_export_site.py").read_text()
+    board = src.index('pl_["player"] = qualified_name(')
+    settle = src.index('out[f"{week}|{key}|{qualified_name(')
+    assert board > 0 and settle > 0, (
+        "the board and the results map must call the same helper")
