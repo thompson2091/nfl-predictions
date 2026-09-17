@@ -14,11 +14,13 @@ const x = loadPage(process.argv[2], process.argv[3],
   ['S', 'rowsFor', 'applyFilters', 'slipMath', 'choose', 'settle', 'legOf', 'PAGES', 'has',
    'combosOf', 'saveCombo', 'comboSaved', 'COMBO_POOL_MAX',
    'chanceTxt', 'slipSlot', 'slipHandle', 'clearSlip', 'table',
-   'ev100', 'betProb']);
+   'ev100', 'betProb', 'el', 'pct', 'portfolio', 'brkTable', 'scaleRows',
+   'moveTxt', 'marketLabel']);
 const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
         combosOf, saveCombo, comboSaved, COMBO_POOL_MAX,
         chanceTxt, slipSlot, slipHandle, clearSlip, table,
-        ev100, betProb } = x;
+        ev100, betProb, el, pct, portfolio, brkTable, scaleRows,
+        moveTxt, marketLabel } = x;
 
 const txt = n => textOf(n).join(' ');
 const PAGE_SRC = require('fs').readFileSync(process.argv[3], 'utf8');
@@ -88,10 +90,42 @@ ok('WR is filterable, being the reference level and not a gap',
    applyFilters(all, { ...f, pos: 'WR' }).length > 0);
 ok('priced-only drops the unpriced',
    applyFilters(all, { ...f, priced: 'priced' }).every(r => r.priced));
-ok('sorting is on the value, not the rendered string',
-   (() => { const s = applyFilters(all, { ...f, sort: 'ours', dir: -1 });
-            for (let i = 1; i < s.length; i++) if (s[i - 1].ours < s[i].ours) return false;
-            return true; })());
+// Sorting belongs to `table`, and this used to ask `applyFilters` for it —
+// which does not sort, and says so in a comment. The assertion passed because
+// the fixture happened to be in descending order, so it tested the fixture and
+// not the code. Widening the fixture broke the coincidence and exposed it.
+//
+// Driven through `table` now, with a numeric column deliberately rendered as a
+// string: "12%" and "9%" sort the wrong way as text and the right way as
+// numbers, which is the bug the title names.
+(() => {
+  // 9, 11 and 12 rather than 0.09, 0.11, 0.12. Those three sort the SAME way
+  // as text and as numbers ("0.09" < "0.11" < "0.12"), so a fixture built from
+  // them passes with the comparison forced to a string and proves nothing.
+  // These do not: as text "12" < "9", which is the wrong answer and the one
+  // this assertion exists to catch.
+  const rows = [{ v: 9, name: 'low' }, { v: 12, name: 'high' },
+                { v: null, name: 'missing' }, { v: 11, name: 'mid' }];
+  const cols = [{ w: '1fr', label: 'Name', sort: 'name',
+                  cell: (d, r) => d.appendChild(el('span', { text: r.name })) },
+                { w: '1fr', label: 'V', sort: 'v',
+                  cell: (d, r) => d.appendChild(el('span',
+                    { text: has(r.v) ? r.v + '%' : '' })) }];
+  const order = dir => {
+    S.sort.sorttest = { sort: 'v', dir: dir };
+    return textOf(table(cols, rows, null, { id: 'sorttest' }))
+      .filter(t => /^(low|high|mid|missing)$/.test(t));
+  };
+  const desc = order(-1), asc = order(1);
+  ok('sorting is on the value, not the rendered string',
+     desc.slice(0, 3).join(',') === 'high,mid,low', desc.join(','));
+  ok('and reverses on the other click',
+     asc.slice(0, 3).join(',') === 'low,mid,high', asc.join(','));
+  ok('a missing value sorts last whichever way the column points',
+     desc[3] === 'missing' && asc[3] === 'missing',
+     'a blank that floats to the top is a row you re-sort past to read');
+  delete S.sort.sorttest;
+})();
 
 // ── One slip, shared ────────────────────────────────────────────────────
 S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };

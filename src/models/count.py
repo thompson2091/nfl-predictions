@@ -135,8 +135,13 @@ def fit_dispersion(mu: np.ndarray, y: np.ndarray) -> dict:
 
 
 def fit_market_blend(p_model: np.ndarray, p_book: np.ndarray,
-                     y: np.ndarray) -> dict:
+                     y: np.ndarray, kind: str = "receptions_market_blend") -> dict:
     """How much of our own number to keep, against the book's.
+
+    Shared with `src/models/yards.py`, which is not a count model at all. This
+    function and `blend_to_market` never touch the distribution — they take two
+    probabilities and a settled outcome — so they are reused rather than
+    copied, and `kind` says which market's weight the saved file holds.
 
     The count model does not beat this market on its own and is not close:
     0.690 against 0.673 on 2025. What it does have is information the price
@@ -176,7 +181,7 @@ def fit_market_blend(p_model: np.ndarray, p_book: np.ndarray,
         return float(-np.mean(y * np.log(q) + (1 - y) * np.log(1 - q)))
 
     return {
-        "kind": "receptions_market_blend",
+        "kind": kind,
         "weight": best_w,
         "n": int(len(y)),
         "fit_log_loss": best_ll,

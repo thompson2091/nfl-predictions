@@ -142,6 +142,21 @@ def payload() -> dict:
         player("Charlie End", "CCC", "CCC @ DDD", 0.33, 0.29, 4.0, "TE"),
         player("Delta Deep", "DDD", "CCC @ DDD", 0.18, None, None, "WR"),
     ]
+    # Deep enough that COMBO_POOL_MAX bites, and shaped the way a real board is:
+    # the players we rate highest are the ones books have already quoted, so the
+    # cap alone hides every unpriced one. A four-player fixture cannot show that
+    # — the cap never engages — and the Combinations pool control it justifies
+    # would look like a filter with nothing to filter.
+    _teams = [("AAA", "AAA @ BBB"), ("BBB", "AAA @ BBB"),
+              ("CCC", "CCC @ DDD"), ("DDD", "CCC @ DDD")]
+    for i in range(30):
+        tm, gm = _teams[i % 4]
+        ours = 0.60 - i * 0.015
+        priced = i < 22          # the top of the board, and only the top
+        players.append(player(f"Extra {i:02d}", tm, gm, round(ours, 3),
+                              round(ours - 0.06, 3),
+                              round(1.0 / max(ours - 0.06, 0.05), 3) if priced else None,
+                              ["RB", "WR", "TE", "QB"][i % 4]))
     short = [{"player": "Alpha Back", "team": "AAA", "game": "AAA @ BBB",
               "ours": 0.62, "book": 0.45, "edge_pp": 17.0, "odds": 120,
               "best_odds": 150, "best_book": "Fanatics", "band": "+100 to +200",
@@ -183,6 +198,12 @@ def payload() -> dict:
             "rows": [{"player_name": "Alpha Back", "team": "AAA", "game_id": "AAA @ BBB",
                       "mu": 5.5, "point": 4.5, "odds": -105, "fair_prob": 0.48,
                       "model_only": 0.66, "ours": 0.59, "edge_pp": 11.3,
+                      # Both vigged sides, which is what lets the page price
+                      # the UNDER at its own number instead of the over's.
+                      # -105 over against a 1.0471 overround is a -115 under,
+                      # and a fixture carrying only one side cannot catch a
+                      # leg that takes the wrong one.
+                      "implied_prob": 0.5122, "overround": 1.0471,
                       "open_point": 4.5, "open_odds": -115, "open_implied": 0.535,
                       "lo": 3, "hi": 9, "n_books": 6, "thin": False}]
                     # Floor and ceiling widen with the mean, which is the
@@ -198,7 +219,19 @@ def payload() -> dict:
                         "open_point": round(mu * 2) / 2 if mu > 2 else None,
                         "open_odds": -110 if mu > 2 else None,
                         "open_implied": 0.524 if mu > 2 else None,
-                        "ours": None, "edge_pp": None, "n_books": 0, "thin": False}
+                        # Priced against that opening line by
+                        # `47_export_site._price_open_fallback`, because a row
+                        # carrying a line and no probability is one the
+                        # Combinations page multiplies into a NaN. An
+                        # over/under posts both sides at the open, so the
+                        # de-vigged book number is real here.
+                        "open_fair": 0.501 if mu > 2 else None,
+                        "open_books": 7 if mu > 2 else None,
+                        "fair_prob": 0.501 if mu > 2 else None,
+                        "model_only": 0.55 if mu > 2 else None,
+                        "ours": 0.52 if mu > 2 else None,
+                        "edge_pp": 1.9 if mu > 2 else None,
+                        "n_books": 7 if mu > 2 else 0, "thin": mu <= 2}
                        for n, t, g, mu in [
                            ("Bravo Wide", "BBB", "AAA @ BBB", 4.8),
                            ("Charlie End", "CCC", "CCC @ DDD", 3.9),

@@ -43,10 +43,12 @@ REQUIRED_MODEL_MODULES = (
 )
 
 #: Registered, not active, and not needed to serve. `condlogit` and `xgbrank`
-#: are both tried-and-rejected; `count` serves the receptions page only.
+#: are both tried-and-rejected; `count` serves the receptions page only, and
+#: `yards` the three yardage boards.
 OPTIONAL_MODEL_MODULES = (
     "src.models.ranker",
     "src.models.count",
+    "src.models.yards",
     "src.models.pairwise",
 )
 

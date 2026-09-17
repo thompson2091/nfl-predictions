@@ -6,6 +6,14 @@ models/*.pkl
 # the metrics, config and git SHA that make a version identifiable.
 # `models/*.pkl` above does not cover nested paths.
 models/versions/
+# The three yardage models, for the same reason and more so. A quantile model
+# is one booster per fitted level, so `xgb_quantile.pkl` is 21 of them: 17 MB
+# for passing yards, 31 for receiving, 51 for rushing — 99 MB a retrain,
+# against a 22 MB repository. They are regenerable by
+# `scripts/49_yards.py` in about twenty minutes, and what is NOT regenerable
+# is the fitted blend weight beside them, which is a few hundred bytes of JSON
+# and stays in git.
+models/*_yards/*.pkl
 output/
 __pycache__/
 *.pyc

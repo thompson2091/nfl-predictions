@@ -397,6 +397,22 @@ model:
     reg_alpha: 0.1
     reg_lambda: 1.0
     early_stopping_rounds: 50
+  # The three yardage boards (src/models/yards.py). Held identical to
+  # `xgb_count` above so any difference between a count model and a quantile
+  # one is attributable to the objective rather than to two tuning jobs.
+  # `quantile_levels` is deliberately NOT here: the levels are the model's
+  # output shape, not a knob, and changing them invalidates every saved
+  # artifact rather than re-tuning one.
+  xgb_quantile:
+    n_estimators: 2000
+    learning_rate: 0.02
+    max_depth: 6
+    min_child_weight: 20
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_alpha: 0.1
+    reg_lambda: 1.0
+    early_stopping_rounds: 50
   condlogit:
     n_estimators: 2000
     learning_rate: 0.02

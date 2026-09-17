@@ -61,6 +61,17 @@ MARKET_BY_TARGET: dict[str, str] = {
     # once its prices were actually in the archive — 21,129 closing lines
     # across 2023-2025.
     "receptions": "receptions",
+    # Continuous targets, graded per (player, line) like receptions and
+    # modelled nothing like it — see src/models/yards.py for why a fitted mean
+    # plus one dispersion is the wrong shape here. Registered 2026-09-16, once
+    # their prices were bought: ~103,000 closing lines across 2023-2025, from
+    # an archive that held none of them the day before.
+    #
+    # Named for the weekly-stats column each is graded against, so the label
+    # join IS the market name and cannot drift from it.
+    "rushing_yards": "rushing_yards",
+    "receiving_yards": "receiving_yards",
+    "passing_yards": "passing_yards",
 }
 
 
