@@ -17,14 +17,14 @@ const x = loadPage(process.argv[2], process.argv[3],
    'ev100', 'betProb', 'el', 'pct', 'portfolio', 'brkTable', 'scaleRows',
    'moveTxt', 'marketLabel', 'MENU', 'KIND', 'marketOf', 'served',
    'gradedNote', 'M0', 'unitOf', 'oneLine', 'extraLines', 'spp',
-   'parlayCard', 'DATA', 'pageModel']);
+   'parlayCard', 'DATA', 'pageModel', 'num2']);
 const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
         combosOf, saveCombo, comboSaved, COMBO_POOL_MAX,
         chanceTxt, slipSlot, slipHandle, clearSlip, table,
         ev100, betProb, el, pct, portfolio, brkTable, scaleRows,
         moveTxt, marketLabel, MENU, KIND, marketOf, served,
         gradedNote, M0, unitOf, oneLine, extraLines, spp,
-        parlayCard, DATA, pageModel } = x;
+        parlayCard, DATA, pageModel, num2 } = x;
 
 const txt = n => textOf(n).join(' ');
 const PAGE_SRC = require('fs').readFileSync(process.argv[3], 'utf8');
@@ -815,20 +815,32 @@ S.market = 'rush'; S.fw.view = 'priced'; S.fw.allLines = false;
 // ── Formatting ──────────────────────────────────────────────────────────
 ok('a gap of two probability points reads to two places',
    spp(14.2857) === '+14.29' && spp(-0.4) === '-0.40', spp(14.2857));
-// The fixture's yardage floor and ceiling are 30.72 and 97.41, so the two
-// formatters give visibly different answers: whole yards reads 31 and 97,
-// two places reads 30.72 and 97.41. A fixture carrying round numbers cannot
-// tell them apart, and did not.
-ok('yardage floors and ceilings are whole yards',
+// The fixture's yardage floor and ceiling are 30.72 and 97.41, so a formatter
+// that rounds is visibly different from one that does not. A fixture carrying
+// round numbers cannot tell them apart, and did not.
+//
+// Two places on every market, not only on counts. Rounding yards to whole
+// numbers was an argument about the model's confidence applied to a column
+// that is not reporting confidence — it is separating players, and two
+// receivers who both project 38 are 38.24 and 38.41.
+ok('a yardage projection keeps two places, like a count',
    (() => { S.market = 'rush'; S.fw.view = 'priced';
             const t = textOf(pageWeek()).join(' ');
-            return /\b31\b/.test(t) && !/30\.72/.test(t) && !/97\.41/.test(t); })(),
-   '"174.44 yards" claims a precision the 15th percentile does not have');
-ok('a count keeps two places, where 3.47 and 3.52 are different players',
+            // Taken from the rows rather than typed in. Hard-coding the
+            // fixture's 30.72 passed on the fixture and failed on the live
+            // payload, which has neither of those numbers in it — the same
+            // mistake as asserting a line VALUE instead of a player name.
+            const r = oneLine(rowsFor('rush', 'all').filter(x => x.priced), null)
+              .find(x => has(x.lo) && Math.abs(x.lo - Math.round(x.lo)) > 0.02);
+            return !!r && t.indexOf(r.lo.toFixed(2)) >= 0; })(),
+   'a column printing 38.24 and 38.41 both as 38 has stopped separating the '
+   + 'two players it exists to separate');
+ok('and a count does too',
    (() => { S.market = 'rec'; S.fw.view = 'priced';
             const t = textOf(pageWeek()).join(' ');
-            return /\d\.\d\d/.test(t); })(),
-   'a catch is a unit you can count; a yard at the 15th percentile is not');
+            return /\d\.\d\d/.test(t); })());
+ok('but a whole number is not padded to .00',
+   num2(31) === '31' && num2(30.72) === '30.72', num2(31));
 S.market = 'any'; S.fw.view = 'all';
 
 // ── A pending card does not restate its own breakdown ───────────────────

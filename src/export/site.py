@@ -463,7 +463,6 @@ function moveTxt(row) {
 }
 // Two places, unless they are both zero. A quantile that lands exactly on a
 // whole number is a whole number, and "3.00" is two characters of noise.
-const num0 = v => !has(v) ? '' : String(Math.round(v));
 const num2 = v => !has(v) ? '' :
   (Math.abs(v - Math.round(v)) < 5e-3 ? String(Math.round(v)) : v.toFixed(2));
 // A probability a person can read, at any scale. `toExponential` is correct
@@ -2058,7 +2057,7 @@ function ouTable(rows, f, key) {
            + 'bets.',
       cell: (d, r) =>
         d.appendChild(el('span', { class: 'big',
-          text: has(r.proj) ? (unit === 'yards' ? num0(r.proj) : r.proj.toFixed(1)) : '' })) },
+          text: num2(r.proj) })) },
     // Floor and ceiling as two columns rather than one range, so each can be
     // sorted on its own: "who has the highest floor" and "who has the biggest
     // ceiling" are different questions and a combined cell answers neither.
@@ -2068,18 +2067,25 @@ function ouTable(rows, f, key) {
     // about seven games in ten. Two players can project the same mean and be
     // completely different bets; this is where that shows.
     { w: '58px', label: 'Floor', r: 1, sort: 'lo',
-      // Whole yards, two places on a count. "174.44 yards" claims a precision
-      // the 15th percentile of a distribution this wide does not have, and on
-      // receptions 3.47 against 3.52 is a real difference between two players.
+      // Two places on every market, and `num2` drops them when the value is
+      // whole, so 31 prints as 31 and 30.72 prints as 30.72.
+      //
+      // Rounding yards to whole numbers was a worse idea than it sounded. The
+      // argument for it — that the 15th percentile of a distribution this wide
+      // has no business claiming hundredths — is an argument about the
+      // model's confidence, and this column is not reporting confidence, it is
+      // separating players. Two receivers who both project 38 are 38.24 and
+      // 38.41, and a column that prints both as 38 has stopped doing the one
+      // job it has.
       title: 'He beats this about 85% of the time \u2014 the 15th percentile of '
            + 'the fitted distribution.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
-        text: unit === 'yards' ? num0(r.lo) : num2(r.lo) })) },
+        text: num2(r.lo) })) },
     { w: '68px', label: 'Ceiling', r: 1, sort: 'hi',
       title: 'He stays under this about 85% of the time \u2014 the 85th '
            + 'percentile of the fitted distribution.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
-        text: unit === 'yards' ? num0(r.hi) : num2(r.hi) })) },
+        text: num2(r.hi) })) },
     { w: '56px', label: 'Model', r: 1, sort: 'modelOnly', hide: 1,
       title: 'Our own chance of the over, before it is shrunk toward the book.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
