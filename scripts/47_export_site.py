@@ -157,12 +157,37 @@ def opening_prices(season: int, week: int) -> dict[str, dict]:
         & (pl.col("snapshot") == "open"))
     if h.height == 0:
         return {}
-    h = (h.sort("captured_at")
-          .unique(subset=["market", "player_name_norm", "point"], keep="first")
-          # One row per player per market: the lowest line a book opened at,
-          # which for a yes/no market is the only one there is.
-          .sort("point", nulls_last=False)
-          .unique(subset=["market", "player_name_norm"], keep="first"))
+    h = h.sort("captured_at").unique(
+        subset=["market", "player_name_norm", "point"], keep="first")
+    # One row per player per market: the line the market opened AT, which is
+    # the one the most books drew, ties going to the line nearest the median.
+    #
+    # This used to take the lowest line, which is right for a yes/no market
+    # (there is only one) and nearly harmless for receptions, where books
+    # agree — a median of 1 distinct line per player, 26% of player-weeks
+    # carrying more than one, and the lowest sitting 0.18 below the median.
+    #
+    # It is not harmless on a yardage market. Measured over the archive:
+    #
+    #     market            lines/player   multi-line   lowest below median
+    #     receptions             1            26%             0.18
+    #     rushing yards          3            74%             1.43
+    #     receiving yards        3            75%             1.68
+    #     passing yards          4            89%             4.91
+    #
+    # Taking the lowest of a quarterback's four opening lines hands the over a
+    # five-yard head start, and every number derived from it inherits that: the
+    # Open column reports line dispersion as market movement, and a row with no
+    # close gets priced against the most over-friendly number on the board —
+    # in the same direction the model already leans.
+    n_books = pl.col("n_books").fill_null(0)
+    med = pl.col("point").median().over(["market", "player_name_norm"])
+    h = (h.with_columns([
+            n_books.alias("_nb"),
+            (pl.col("point") - med).abs().fill_null(0.0).alias("_off")])
+          .sort(["_nb", "_off"], descending=[True, False])
+          .unique(subset=["market", "player_name_norm"], keep="first")
+          .drop(["_nb", "_off"]))
     out = {}
     for r in h.iter_rows(named=True):
         # `implied_prob`, not `fair_prob`. A touchdown market is quoted one

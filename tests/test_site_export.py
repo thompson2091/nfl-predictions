@@ -473,3 +473,68 @@ def test_no_layout_property_is_written_inline_where_a_breakpoint_overrides_it():
             f"{prop} is set inline and restyled at a breakpoint")
     assert "!important" not in narrow.split("@media (max-width:680px)")[0], (
         "a breakpoint needing !important is a breakpoint fighting an inline style")
+
+
+def test_the_opening_line_is_the_consensus_not_the_friendliest():
+    """One opening line per player, and which one is not arbitrary.
+
+    `opening_prices` collapses a player's opening quotes to a single row. It
+    used to keep the LOWEST line, which is correct for a yes/no market (there
+    is only one) and nearly harmless for receptions, where books agree.
+
+    On a yardage market books scatter: a quarterback carries a median of four
+    distinct opening lines across the board, 89% of player-weeks have more than
+    one, and the lowest sits 4.9 yards below the median. Keeping the lowest
+    hands the over a five-yard head start, and everything downstream inherits
+    it — the Open column reports dispersion as movement, and a row with no
+    close is priced against the most over-friendly number available.
+
+    So the pick is the line the most books drew, ties to the one nearest the
+    median. Asserted on a frame where those two answers differ.
+    """
+    import importlib.util
+
+    import polars as pl
+
+    spec = importlib.util.spec_from_file_location(
+        "es_open", REPO / "scripts" / "47_export_site.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # One quarterback, four opening lines. 248.5 is the lowest and one book
+    # drew it; 254.5 is where six of them are.
+    rows = []
+    for point, books, odds in ((248.5, 1, -110), (250.5, 2, -112),
+                               (254.5, 6, -115), (258.5, 2, -118)):
+        rows.append({
+            "season": 2026, "week": 1, "market": "passing_yards",
+            "snapshot": "open", "player_name_norm": "test qb",
+            "player_name_raw": "Test QB", "game_id": "2026_01_AAA_BBB",
+            "point": point, "odds": odds, "implied_prob": 0.52,
+            "fair_prob": 0.50, "n_books": books, "overround": 1.05,
+            "captured_at": "2026-09-01T12:00:00+00:00",
+            "book_last_update": "2026-09-01T11:59:00+00:00",
+            "regions": "us,us2", "home_team": "AAA", "away_team": "BBB",
+        })
+    frame = pl.DataFrame(rows)
+
+    def fake_read(_path):
+        return frame
+
+    import src.ingest.odds_history as OH
+    orig = (pl.read_parquet, OH.drop_in_play, OH.resolve_game_ids)
+    pl.read_parquet = fake_read
+    OH.drop_in_play = lambda df: df
+    OH.resolve_game_ids = lambda df: df
+    try:
+        out = mod.opening_prices(2026, 1)
+    finally:
+        pl.read_parquet = orig[0]
+        OH.drop_in_play, OH.resolve_game_ids = orig[1], orig[2]
+
+    got = out.get("passing_yards|test qb")
+    assert got is not None, list(out)
+    assert got["point"] == 254.5, (
+        f"kept the {got['point']} line; the consensus is 254.5, where six "
+        f"books are. 248.5 is the lowest and one book drew it.")
+    assert got["n_books"] == 6, got
