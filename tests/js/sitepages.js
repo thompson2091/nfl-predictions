@@ -13,10 +13,12 @@ const { ok, done } = reporter();
 const x = loadPage(process.argv[2], process.argv[3],
   ['S', 'rowsFor', 'applyFilters', 'slipMath', 'choose', 'settle', 'legOf', 'PAGES', 'has',
    'combosOf', 'saveCombo', 'comboSaved', 'COMBO_POOL_MAX',
-   'chanceTxt', 'slipSlot', 'slipHandle', 'clearSlip', 'table']);
+   'chanceTxt', 'slipSlot', 'slipHandle', 'clearSlip', 'table',
+   'ev100', 'betProb']);
 const { S, rowsFor, applyFilters, slipMath, choose, settle, legOf, PAGES, has,
         combosOf, saveCombo, comboSaved, COMBO_POOL_MAX,
-        chanceTxt, slipSlot, slipHandle, clearSlip, table } = x;
+        chanceTxt, slipSlot, slipHandle, clearSlip, table,
+        ev100, betProb } = x;
 
 const txt = n => textOf(n).join(' ');
 const PAGE_SRC = require('fs').readFileSync(process.argv[3], 'utf8');
@@ -457,5 +459,34 @@ ok('an under flips all three', Math.abs(over.pm + under.pm - 1) < 1e-9
    && Math.abs(over.pb + under.pb - 1) < 1e-9 && Math.abs(over.p + under.p - 1) < 1e-9,
    'otherwise the leg shows the book on the over beside us on the under');
 S.market = 'any';
+
+// ── Expected return on $100 ─────────────────────────────────────────────
+// The basis is the column. A touchdown EV taken from the published number is
+// measured on a different quantity than every profitability figure this
+// project quotes, and would read higher than the backtest it is compared to.
+const evTd = rowsFor('any','all').filter(r => r.priced && has(r.modelOnly) && r.modelOnly !== r.ours);
+ok('the fixture has rows where the two bases differ', evTd.length > 0);
+ok('a touchdown bet is judged on the pre-blend number',
+   evTd.every(r => betProb(r) === r.modelOnly),
+   'the published probability has been pulled toward the price it is compared to');
+ok('and EV follows it', evTd.every(r =>
+   Math.abs(ev100(r) - 100 * (r.modelOnly * r.dec - 1)) < 1e-6));
+
+S.market = 'rec';
+const evOu = rowsFor('rec','all').filter(r => r.priced && has(r.dec));
+ok('a receptions bet is judged on the served number',
+   evOu.every(r => betProb(r) === r.ours),
+   'there the blend is what was measured, and it beats the book');
+S.market = 'any';
+
+// The arithmetic, end to end: an even-money bet we rate at 60% returns $20.
+ok('EV is the return on a flat hundred',
+   Math.abs(ev100({ kind:'td', modelOnly: 0.6, ours: 0.6, dec: 2.0 }) - 20) < 1e-9,
+   String(ev100({ kind:'td', modelOnly: 0.6, ours: 0.6, dec: 2.0 })));
+ok('a fairly priced bet is worth nothing',
+   Math.abs(ev100({ kind:'td', modelOnly: 0.5, ours: 0.5, dec: 2.0 })) < 1e-9);
+ok('an unpriced row has no EV rather than a zero',
+   ev100({ kind:'td', modelOnly: 0.5, ours: 0.5, dec: null }) === null);
+S.market = 'any'; S.fw.view = 'all';
 
 done();

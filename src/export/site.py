@@ -583,6 +583,28 @@ function rowsFor(key, view) {
   return rows;
 }
 
+// The probability a *bet* is judged on, which is not always the one we publish.
+//
+// On the touchdown markets it is the pre-blend model number. `bets.py` is
+// explicit about why: the published probability has already been pulled toward
+// the price it is being compared against, so an EV taken from it is measured
+// on a different quantity than every profitability figure this project quotes,
+// and the threshold would mean something on screen that it did not mean in the
+// backtest.
+//
+// On receptions it is the served number, and for the opposite reason: there
+// the blend is the thing that was measured, and it beats the book where the
+// raw model does not.
+function betProb(row) {
+  if (row.kind === 'ou') return row.ours;
+  return has(row.modelOnly) ? row.modelOnly : row.ours;
+}
+// Expected return on a flat $100, at that probability and the posted price.
+function ev100(row) {
+  const p = betProb(row);
+  return (has(p) && has(row.dec)) ? 100 * (p * row.dec - 1) : null;
+}
+
 // ── Storage ─────────────────────────────────────────────────────────────
 //
 // Everything this page remembers is scoped to one season and week, and a new
@@ -1676,6 +1698,17 @@ function tdTable(rows, f, view) {
       cell: (d, r) => d.appendChild(el('span', {
         class: has(r.edge) ? (r.edge > 0 ? 'pos' : 'neg') : '', text: has(r.edge) ? spp(r.edge) : '' })) },
 
+    { w: '86px', label: 'EV $100', r: 1, sortVal: r => ev100(r),
+      title: 'What a flat $100 returns on average, at our number and the posted '
+           + 'price. Negative is the usual answer. It is not a forecast of this '
+           + 'bet — backing every player we rate above the price returned '
+           + '\u221219.6% a bet over 2024\u201325, which is the figure to weigh a '
+           + 'positive number here against.',
+      cell: (d, r) => {
+        const v = ev100(r);
+        d.appendChild(el('span', { class: has(v) ? (v >= 0 ? 'pos' : 'neg') : 'dim',
+          text: has(v) ? money(v) : '\u2014' }));
+      } },
     { w: '92px', label: 'Read', sort: 'read',
       title: 'The verdict in one word. Strong call and Leans are above the price, '
            + 'Matches book is agreement, Veto is below it.',
@@ -1767,6 +1800,16 @@ function ouTable(rows, f) {
       title: 'Ours minus the book’s. A disagreement, not an edge — on this market the book has been the better estimate.',
       cell: (d, r) => d.appendChild(el('span', {
         class: has(r.edge) ? (r.edge > 0 ? 'pos' : 'neg') : '', text: has(r.edge) ? spp(r.edge) : '' })) },
+    { w: '86px', label: 'EV $100', r: 1, sortVal: r => ev100(r),
+      title: 'What a flat $100 on the over returns on average, at what we serve '
+           + 'and the posted price. On this market we serve 83% the book, so '
+           + 'these are small by construction and mostly negative \u2014 the hold '
+           + 'is about 7%.',
+      cell: (d, r) => {
+        const v = ev100(r);
+        d.appendChild(el('span', { class: has(v) ? (v >= 0 ? 'pos' : 'neg') : 'dim',
+          text: has(v) ? money(v) : '\u2014' }));
+      } },
     { w: '132px', label: 'Bet', nosort: 1, mob: 'act',
       title: 'Add the over or the under to your slip. A count market has two '
            + 'sides, unlike a touchdown.',
@@ -1921,7 +1964,9 @@ function pageCombos() {
     let p = 1, d = 1, priced = true;
     const gs = {};
     ix.forEach(i => {
-      p *= pool[i].ours;
+      // `betProb`, not the published number, so a slip's EV here is measured
+      // on the same quantity as the EV beside each player on the board.
+      p *= betProb(pool[i]);
       if (has(pool[i].dec)) d *= pool[i].dec; else priced = false;
       gs[pool[i].game] = 1;
     });
@@ -1970,7 +2015,9 @@ function pageCombos() {
       cell: (d, s) => d.appendChild(el('span', {
         text: s.dec ? american(decToAm(s.dec)) : '—' })) },
     { w: '100px', label: 'EV on $' + Math.round(stake), r: 1, sortVal: s => s.ev,
-      title: 'At our probability and the posted price. Negative is the usual answer.',
+      title: 'What this slip returns on average per stake, at our numbers and '
+           + 'each leg\u2019s own price. Measured on the same basis as the EV beside '
+           + 'each player on This week. Negative is the usual answer.',
       cell: (d, s) => d.appendChild(el('span', {
         class: s.ev === null ? 'note' : (s.ev >= 0 ? 'pos' : 'neg'),
         text: s.ev === null ? 'unpriced' : money(s.ev) })) },
