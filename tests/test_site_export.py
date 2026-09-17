@@ -456,27 +456,70 @@ def test_launch_builds_one_file_under_a_name_a_server_will_serve():
     assert "public/" in (REPO / ".gitignore").read_text()
 
 
-def test_narrow_screens_get_labelled_rows_rather_than_a_squeezed_grid():
-    """Nine columns on a 360px screen is four characters each.
+def test_narrow_screens_keep_the_table_and_pin_the_name():
+    """A board is for comparing players on one number.
 
-    The first attempt kept the grid and dropped columns, which leaves a row of
-    unlabelled numbers once the header is gone. Each cell now carries its
-    column's label and prints it, so a stacked row names its own values.
+    Below 680px every row used to become its own card, with the grid dropped
+    and each cell printing its column label from `data-label`. That reads well
+    for one row and badly for forty: comparing two players on a single figure
+    meant scrolling past every other figure they had.
 
-    Falsified by removing the `data-label` attribute: the CSS then has nothing
-    to put in `content: attr(data-label)` and every row is a bare column of
-    figures with no way to tell the model's number from the book's.
+    So the columns stay at their real widths and the table scrolls sideways
+    inside its own card, with the star and the player pinned to the left edge
+    so the name stays put while the numbers move under it.
+
+    Falsified three ways, each of which breaks it differently: drop the
+    `overflow-x` and the columns squash instead of scrolling; drop the sticky
+    and the name scrolls away, leaving a row of figures belonging to nobody;
+    drop the background on the pinned cells and the columns sliding underneath
+    show through the name.
     """
     from src.export import site as d
 
-    assert "'data-label': c.label || null" in d.JS_SHARED, (
-        "every body cell must carry its column label")
+    # The `.hd` rule itself, not "everything before the first @media" — the
+    # first one in this sheet is the dark-mode block near the top, so that
+    # slice never contained the table header and the assertion below could not
+    # fail however the rule was broken.
+    i = d.CSS.index("\n.hd{")
+    base = d.CSS[i:d.CSS.index("}", i)].replace(" ", "")
+    mid = d.CSS[d.CSS.index("@media (max-width:900px)"):
+                d.CSS.index("@media (max-width:680px)")].replace(" ", "")
     narrow = d.CSS[d.CSS.index("@media (max-width:680px)"):]
-    assert "content:attr(data-label)" in narrow.replace(" ", "")
-    assert ".hd{display:none}" in narrow.replace(" ", "")
-    # The three cells that are furniture keep their places on the first line.
-    for cls in ("mob-lead", "mob-title", "mob-act"):
-        assert cls in narrow, f"{cls} has no narrow-screen placement"
+    flat = narrow.replace(" ", "")
+
+    # Pinned under the site header on a wide screen, where that bar is exactly
+    # 64px; pinned to its own scroll pane below 900, where the nav wraps and
+    # the bar's height stops being a number anyone can write down.
+    assert "position:sticky;top:64px" in base, (
+        "a long board must not leave a column of figures with nothing naming "
+        "them")
+    assert ".rows{overflow:auto" in mid and "max-height:76vh" in mid, (
+        "below 900 the table becomes its own pane, so the header pins to that "
+        "rather than to a site header of unpredictable height")
+    assert ".hd{top:0}" in mid
+
+    assert ".hd{display:none}" not in flat, (
+        "a table that scrolls needs its header; it is the only thing naming "
+        "the columns once the labels are gone")
+    assert "width:max-content" in flat, (
+        "without it the grid compresses to the viewport and the scroll never "
+        "engages")
+
+    # The name pins, and so does its header, or the headings slide out from
+    # over the column they name.
+    pin = flat[flat.index(".hd>.mob-lead"):]
+    assert "position:sticky" in pin and "left:0" in pin
+    assert "background:var(--card)" in pin, (
+        "the columns sliding underneath show through an unpainted cell")
+    assert ".hd>.mob-lead+.mob-title,.row>.mob-lead+.mob-title{left:44px}" in flat, (
+        "the player sits beside the star, not on top of it")
+    assert ".hd>.mob-lead,.hd>.mob-title{z-index:6}" in flat, (
+        "where the two pins cross, the header must outrank the column it "
+        "names or the first column scrolls up over its own heading")
+
+    # And the marker reaches the header cell, not only the body cell.
+    assert "c.mob ? 'mob-' + c.mob + ' ' : ''" in d.JS_SHARED, (
+        "the header cell must carry the same mob- marker as its column")
 
 
 def test_the_slip_is_a_sheet_on_narrow_screens_not_a_block_below_the_board():

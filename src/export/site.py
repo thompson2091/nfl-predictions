@@ -259,6 +259,12 @@ input[type=search]{-webkit-appearance:none}
 .hd{
   height:40px;font-size:12px;font-weight:600;letter-spacing:.5px;
   text-transform:uppercase;color:var(--mut2);border-bottom:1px solid var(--line2);
+  /* Pinned under the site header, so a long board never leaves you looking at
+     a column of figures with nothing naming them. 64px is `.top`'s height and
+     it is exact at this width; below 900px that bar wraps its nav and grows by
+     an amount no constant can predict, which is why the narrow layout makes
+     the table its own scroll pane and pins the header to that instead. */
+  position:sticky;top:64px;z-index:5;background:var(--card);
 }
 .hd .s{cursor:pointer;user-select:none}
 .hd .s:hover{color:var(--ink)}
@@ -372,6 +378,11 @@ input[type=search]{-webkit-appearance:none}
   .lede{font-size:14px}
   .hidemd{display:none}
   .cards{grid-template-columns:1fr}
+  /* The site header is no longer a known height, so the table stops sticking
+     to the viewport and becomes its own pane. The header then pins to the top
+     of that, which needs no constant at all. */
+  .rows{overflow:auto;-webkit-overflow-scrolling:touch;max-height:76vh}
+  .hd{top:0}
 }
 @media (max-width:680px){
   .hidesm{display:none}
@@ -386,43 +397,34 @@ input[type=search]{-webkit-appearance:none}
   .sliptab{right:12px;bottom:12px}
   .fieldrow .field{flex:1 1 100%}
 
-  /* A table becomes one card per row.
-     The grid columns are dropped entirely — nine of them on a 360px screen is
-     four characters each — and every cell prints its own label instead, which
-     is what `data-label` is for. The header has nothing left to head, so it
-     goes.
-     Three cells are furniture rather than data and keep their places on the
-     first line: the star leads, the player names the row, and the action sits
-     on the right. Everything else stacks under them as label/value pairs. */
+  /* A table stays a table.
+     It used to become one card per row below this width: the grid dropped, the
+     header hidden, and every cell printing its own label from `data-label`.
+     That reads well for one row and badly for forty — comparing two players on
+     one number meant scrolling past every other number they had, which is the
+     one thing a board is for.
+     So the columns stay, at their real widths, and the table scrolls sideways
+     inside its own card. The name stays put while the numbers move under it,
+     which is what makes the scrolling usable rather than disorienting: the
+     star and the player pin to the left edge and everything else slides. */
   .rows{padding:0}
-  .hd{display:none}
-  .row{
-    display:grid;
-    grid-template-columns:44px minmax(0,1fr) auto;
-    gap:2px 10px;
-    padding:12px 12px 14px;
-    align-items:center;
-    min-height:0;
+  .hd,.row{width:max-content;min-width:100%;padding-left:10px;padding-right:10px}
+  .hd{font-size:11px}
+  .row{min-height:52px;font-size:13px}
+  .hd>div,.row>div{padding-right:10px}
+
+  /* Pinned, and the background is load-bearing: without it the columns
+     sliding underneath show through the name. */
+  .hd>.mob-lead,.row>.mob-lead,
+  .hd>.mob-title,.row>.mob-title{
+    position:sticky;left:0;z-index:2;background:var(--card);
   }
-  .row>div{
-    grid-column:2 / -1;
-    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
-    text-align:right;min-height:26px;
-  }
-  .row>div::before{
-    content:attr(data-label);
-    color:var(--mut2);font-size:12px;font-weight:600;
-    letter-spacing:.4px;text-transform:uppercase;text-align:left;flex:0 0 auto;
-  }
-  .row>div:not([data-label])::before,.row>div[data-label=""]::before{content:none}
-  .row>div:empty{display:none}
-  .row .mob-lead{grid-column:1;grid-row:1;justify-content:center;min-height:44px}
-  .row .mob-title{grid-column:2;grid-row:1;justify-content:flex-start;text-align:left}
-  .row .mob-act{grid-column:3;grid-row:1;justify-content:flex-end}
-  .row .mob-title .who b{white-space:normal}
-  /* A row with no lead or action cell — Model, Ladder — has nothing to sit in
-     the first column, so its cells use the full width. */
-  .row>div:first-child:not(.mob-lead){grid-column:1 / -1}
+  /* The corner where the two pins meet has to outrank both of them, or the
+     first column scrolls up over the heading that names it. */
+  .hd>.mob-lead,.hd>.mob-title{z-index:6}
+  .hd>.mob-lead+.mob-title,.row>.mob-lead+.mob-title{left:44px}
+  .row>.mob-title{box-shadow:6px 0 6px -6px rgba(0,0,0,.12)}
+  .row .mob-title .who b{white-space:nowrap}
   .brk{grid-template-columns:1fr 64px 76px}
   .cards article{padding:14px 16px}
 }
@@ -1013,7 +1015,12 @@ function table(cols, rows, f, opts) {
   const hd = el('div', { class: 'hd', style: '--cols:' + tpl });
   cols.forEach(c => {
     const on = sortable(c);
-    const d = el('div', { class: (c.r ? 'r ' : '') + (c.hide ? 'hidesm ' : '') + (on ? 's' : ''),
+    // The `mob-` marker goes on the header cell as well as the body cell.
+    // Below 680px those two columns pin to the left edge while the rest scroll
+    // under them, and a header that does not pin with its column slides out
+    // from over it — the numbers end up under the wrong headings.
+    const d = el('div', { class: (c.r ? 'r ' : '') + (c.hide ? 'hidesm ' : '')
+      + (c.mob ? 'mob-' + c.mob + ' ' : '') + (on ? 's' : ''),
       title: c.title || null, role: on ? 'button' : null, tabindex: on ? '0' : null });
     if (c.head) c.head(d); else d.textContent = c.label || '';
     if (on) {
@@ -1907,7 +1914,7 @@ function tdTable(rows, f, view) {
       title: 'Star a player to keep him in view. Favorites are held in this '
            + 'browser for this week only.',
       cell: (d, r) => d.appendChild(starBtn(r)) },
-    { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', mob: 'title',
+    { w: 'minmax(148px,1fr)', label: 'Player', sort: 'player', mob: 'title',
       title: 'Who, his team, and the fixture. Click the fixture to filter the '
            + 'board to that game.',
       cell: (d, r) => {
@@ -2027,7 +2034,7 @@ function ouTable(rows, f, key) {
       title: 'Star a player to keep him in view. Favorites are held in this '
            + 'browser for this week only.',
       cell: (d, r) => d.appendChild(starBtn(r)) },
-    { w: 'minmax(0,1fr)', label: 'Player', sort: 'player', mob: 'title',
+    { w: 'minmax(148px,1fr)', label: 'Player', sort: 'player', mob: 'title',
       title: 'Who, his team, and the fixture. Click the fixture to filter the '
            + 'board to that game. A book count appears where fewer than three '
            + 'stood behind the line.',
@@ -2372,7 +2379,7 @@ function pageCombos() {
 
   // ── Results ──────────────────────────────────────────────────────────
   const cols = [
-    { w: 'minmax(0,2fr)', label: 'Slip', mob: 'title',
+    { w: 'minmax(180px,2fr)', label: 'Slip', mob: 'title',
       title: 'The players in this combination, and their teams. Slips whose '
            + 'legs share a fixture are marked \u2014 those legs move together.',
       sortVal: s => s.ix.map(i => comboLeg(pool[i])).join(' '),
@@ -2859,17 +2866,17 @@ function pageLadder() {
       title: 'Which bet in the run this is. Every rung assumes the one above it '
            + 'won.',
       cell: (d, r) => d.appendChild(el('span', { text: String(r.rung) })) },
-    { w: 'minmax(0,1fr)', label: 'Balance', r: 1, sort: 'bal',
+    { w: 'minmax(90px,1fr)', label: 'Balance', r: 1, sort: 'bal',
       title: 'What the whole bankroll is worth after this rung, with everything '
            + 'rolled into the next bet.',
       cell: (d, r) =>
         d.appendChild(el('span', { class: 'big', text: money2(r.bal) })) },
-    { w: 'minmax(0,1fr)', label: 'Profit so far', r: 1, sort: 'won',
+    { w: 'minmax(100px,1fr)', label: 'Profit so far', r: 1, sort: 'won',
       title: 'Balance less what you started with \u2014 the winnings, if you stopped '
            + 'here.',
       cell: (d, r) =>
         d.appendChild(el('span', { class: 'pos', text: money2(r.won) })) },
-    { w: 'minmax(0,1fr)', label: 'Chance of getting here', r: 1, sort: 'p',
+    { w: 'minmax(110px,1fr)', label: 'Chance of getting here', r: 1, sort: 'p',
       title: 'The chance every rung up to this one won. Read off the posted '
            + 'price, so it includes the book\u2019s margin and is kinder than the truth.',
       cell: (d, r) =>
@@ -3034,7 +3041,7 @@ function familyPanel(key, r) {
     (has(b.worth_top1) ? Math.abs(b.worth_top1) : -1)
     - (has(a.worth_top1) ? Math.abs(a.worth_top1) : -1));
   const cols = [
-    { w: 'minmax(0,1fr)', label: 'Family', sort: 'name',
+    { w: 'minmax(150px,1fr)', label: 'Family', sort: 'name',
       title: 'A group of related feature columns \u2014 usage, matchup, pace \u2014 '
            + 'and how many columns are in it.',
       cell: (d, f) => d.appendChild(el('div', { class: 'who' }, [
