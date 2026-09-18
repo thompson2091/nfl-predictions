@@ -195,6 +195,10 @@ h2{font-size:18px}
 }
 .chip:hover{border-color:var(--mut3)}
 .chip[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+/* The side the fitted rule takes. An outline rather than a fill, so it cannot
+   be mistaken for the filled "already on your slip" state beside it. */
+.chip.picked{border-color:var(--ours);color:var(--ours);font-weight:600}
+.chip.picked[aria-pressed=true]{color:#fff}
 .chiprow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .seg{display:flex;background:var(--seg);border-radius:10px;padding:3px}
 .seg button{
@@ -375,6 +379,10 @@ input[type=search]{-webkit-appearance:none}
 .funnel .step{padding:6px 12px;border-radius:999px;background:var(--card);border:1px solid var(--line)}
 .funnel .step.last{background:var(--ink);color:#fff;font-weight:600;border-color:var(--ink)}
 .funnel .roi{margin-left:auto}
+/* The over/under funnel's figure is a sentence carrying an interval, not a
+   five-word tag, so it takes its own line rather than being pushed to the far
+   right of the chips and wrapping under them one word at a time. */
+.funnel div.roi{margin-left:0;flex-basis:100%;line-height:1.5;color:var(--mut2)}
 
 /* ── Slip ────────────────────────────────────────────────────────────── */
 .leg{display:flex;align-items:center;justify-content:space-between;gap:8px;
@@ -759,7 +767,7 @@ function fixtureOf(gameId) {
 function rowsFor(key, view) {
   const m = marketOf(key);
   if (KIND[key] === 'ou') {
-    return (m.rows || []).map(r => ({
+    const out = (m.rows || []).map(r => ({
       key: key, kind: 'ou',
       id: key + '|' + r.player_name + '|' + r.point,
       player: r.player_name, team: r.team,
@@ -798,6 +806,20 @@ function rowsFor(key, view) {
       bestLine: r.best_line !== false, nLines: r.n_lines || 1,
       priced: has(r.point) || has(r.open_point),
     }));
+    // The same rows with a rule applied — never a second mapping of a second
+    // payload entry. The touchdown shortlist learned that the hard way: its
+    // figures came from somewhere else and disagreed with the board about the
+    // same man. What the payload carries here is (name, line, side), and every
+    // number on screen still comes off the board.
+    if (view === 'short') {
+      const want = ouShortKeys(m);
+      return out.filter(r => want.has(ouKey(r.player, r.line))).map(r => {
+        const hit = ouShortHit(m, r);
+        return Object.assign({}, r, { take: hit ? hit.side : '',
+                                      takeGap: hit ? hit.gap_pp : null });
+      });
+    }
+    return out;
   }
 
   const rows = (m.players || []).map(r => ({
@@ -1840,10 +1862,20 @@ function pageWeek() {
   const m = marketOf(key);
   // A count market has no fitted shortlist rule, so its views are different:
   // everything, or the rows a book has actually quoted. See `viewSeg`.
-  const view = kind === 'ou' ? (f.view === 'priced' ? 'priced' : 'all') : f.view;
+  const view = kind === 'ou'
+    ? (['priced', 'short'].indexOf(f.view) >= 0 ? f.view : 'all')
+    : f.view;
   let rows = rowsFor(key, view === 'priced' ? 'all' : view);
   if (view === 'priced') rows = rows.filter(r => r.priced);
-  rows = oneLine(rows, f);
+  // One row per player on every view, including this one. The rule is fitted
+  // per line and takes several on the same man — three consecutive receiving
+  // lines on Tucker Kraft in week 2 — and each is a real bet, but a board that
+  // prints him three times is the thing this layout exists to avoid. The
+  // "Every posted line" chip expands it, and the funnel says how many lines
+  // the rule actually took, which is what the graded figure counts.
+  const takenLines = rows.length;
+  rows = view === 'short' ? (f.allLines ? rows : oneTake(rows))
+                          : oneLine(rows, f);
   const out = el('div', { class: 'wrap' });
   const main = el('main');
 
@@ -1855,7 +1887,9 @@ function pageWeek() {
            + 'book, but they are worth keeping off a parlay.'],
   };
   const head = kind === 'ou'
-    ? (view === 'priced'
+    ? (view === 'short'
+        ? [marketLabel(key) + ' shortlist', ouFloorTxt(m)]
+        : view === 'priced'
         ? [marketLabel(key), 'The lines a book has actually posted, against what '
            + 'we project.']
         : [marketLabel(key), 'Every player on the slate with a projection, whether '
@@ -1870,7 +1904,9 @@ function pageWeek() {
   const sticky = el('div', { class: 'stickybar' });
   sticky.appendChild(viewSeg(f, m, kind, rowsFor(key, 'all')));
   main.appendChild(sticky);
-  if (view === 'short') main.appendChild(funnelStrip(m, key, rows.length));
+  if (view === 'short') main.appendChild(
+    kind === 'ou' ? ouFunnel(m, rows.length, takenLines)
+                  : funnelStrip(m, key, rows.length));
 
   (m.problems || []).forEach(p => main.appendChild(el('div', { class: 'badbox', text: String(p) })));
 
@@ -1884,7 +1920,9 @@ function pageWeek() {
     [['', 'Any position']].concat(poss.map(p => [p, p])), v => { f.pos = v; }));
   // Only where books actually scatter. On receptions every player has one
   // line, so a control offering to collapse them would collapse nothing.
-  const dupes = extraLines(rowsFor(key, 'all').filter(r => r.priced));
+  const dupes = view === 'short'
+    ? takenLines - rows.length
+    : extraLines(rowsFor(key, 'all').filter(r => r.priced));
   if (kind === 'ou' && dupes > 0)
     bar.appendChild(el('button', { class: 'chip',
       'aria-pressed': f.allLines ? 'true' : 'false',
@@ -1949,23 +1987,72 @@ function extraLines(rows) {
   return rows.length - oneLine(rows, null).length;
 }
 
+// Which (player, line) pairs the fitted rule took this week.
+//
+// Keyed on the line as well as the name because a player carries several —
+// 4.4 per quarterback on passing yards — and the rule is fitted per line. Two
+// lines on one man are two bets, and a key that is only his name would take
+// whichever the board happened to sort first.
+//
+// `point` is formatted rather than concatenated raw: a line is 4.5 in the
+// payload and 4.5 on the row, but one arrives as a number and the other may
+// have been through a fallback, and '4.5' !== '4.50'.
+const ouKey = (name, point) => String(name) + '|' + Number(point).toFixed(2);
+function ouShortKeys(m) {
+  const sl = (m || {}).shortlist || {};
+  return new Set((sl.rows || []).map(r => ouKey(r.player_name, r.point)));
+}
+// What the rule decided about a row: the side it took and how far we sat from
+// the price, or null where it took nothing.
+function ouShortHit(m, row) {
+  const sl = (m || {}).shortlist || {};
+  return (sl.rows || []).find(r => ouKey(r.player_name, r.point)
+                                   === ouKey(row.player, row.line)) || null;
+}
+
+// One row per player, keeping the line the rule disagreed with hardest.
+//
+// NOT `oneLine`. That keeps the consensus line, and a player whose shortlisted
+// line is not his consensus one would vanish from the view while still being
+// counted in the funnel above it — a table disagreeing with its own heading.
+// This narrows within what the rule took, so every player it picked is still
+// on screen and the one shown is his strongest instance.
+function oneTake(rows) {
+  const best = {};
+  rows.forEach(r => {
+    const cur = best[r.player];
+    if (!cur || (r.takeGap || 0) > (cur.takeGap || 0)) best[r.player] = r;
+  });
+  return rows.filter(r => best[r.player] === r);
+}
+
 function viewSeg(f, m, kind, allRows) {
   const g = el('div', { class: 'seg', role: 'group', 'aria-label': 'View' });
   let opts;
   if (kind === 'ou') {
-    // No Shortlist here, and that is a statement rather than an omission.
-    // The touchdown shortlist is a rule with a floor fitted on the seasons the
-    // market moved our way and a graded return beside it. Nothing equivalent
-    // exists for receptions: what we serve is 83% the book, the disagreements
-    // that remain are one or two points, and they do not survive the vig. A
-    // control called Shortlist would imply a bet list that has not been
-    // measured. Priced is the narrowing that is actually useful — most of this
-    // board has no line on it until close to kickoff.
+    // There IS a Shortlist here now, and it took a measurement to earn.
+    //
+    // It used to say, in this comment, that a control called Shortlist would
+    // imply a bet list that had not been measured. `ou_shortlist` is that
+    // measurement: a floor per side fitted on the disagreement sizes the
+    // close has come toward us in, centered on the market's own open-to-close
+    // drift, with a book-depth gate and the return it made on seasons it was
+    // not fitted on. Nothing about the answer is flattering — every held-out
+    // interval spans zero — which is exactly why the view carries the figure
+    // rather than implying one.
+    //
+    // No Fades. On a touchdown market a player we rate below the price is an
+    // opinion you cannot act on, so it needs a view of its own; here it is a
+    // bet on the under, and the shortlist already takes it.
+    //
     // Counted after the same narrowing the board applies, or the control says
-    // "Priced · 137" above a table showing 31 rows.
+    // "Priced · 137" above a table showing 31 rows. The shortlist is NOT
+    // narrowed: each of its rows is a distinct line the rule took, and two
+    // lines on one player are two bets.
     const shown = oneLine(allRows, f);
     opts = [['all', 'Everyone', shown.length],
-            ['priced', 'Priced', shown.filter(r => r.priced).length]];
+            ['priced', 'Priced', shown.filter(r => r.priced).length],
+            ['short', 'Shortlist', ouShortKeys(m).size]];
   } else {
     const sl = m.shortlist || {};
     opts = [['all', 'Everyone', (m.players || []).length],
@@ -2009,6 +2096,67 @@ function funnelStrip(m, key, n) {
   }
   return strip;
 }
+// What the fitted rule actually does, in a sentence, read off the artifact so
+// the copy above the board cannot quote a threshold that was never applied.
+function ouFloorTxt(m) {
+  const f = ((m || {}).shortlist || {}).floors || {};
+  const say = s => {
+    const b = f[s];
+    if (!b) return null;
+    return (b.hi == null ? b.lo + ' points or more' : b.lo + ' to ' + b.hi + ' points')
+      + ' on the ' + s;
+  };
+  const parts = ['over', 'under'].map(say).filter(Boolean);
+  if (!parts.length) return 'No size of disagreement on this market has had the '
+    + 'closing line come toward us, so this rule takes nothing.';
+  return 'Lines we sit ' + parts.join(', or ') + ' away from, with at least two '
+    + 'books behind them — the bands where the close has come toward us by more '
+    + 'than it came toward everybody.';
+}
+
+// The funnel, and the number that keeps it honest beside it.
+//
+// The graded figure is the held-out one and it carries its interval, because
+// on all four of these markets the interval is the finding: the rule picks
+// bets, the bets return somewhere between -25% and +10%, and a point estimate
+// printed on its own would read as a claim the measurement does not make.
+function ouFunnel(m, n, lines) {
+  const sl = (m || {}).shortlist || {}, dropped = sl.dropped || [];
+  const strip = el('div', { class: 'funnel' });
+  const step = (text, last) => el('span', { class: 'step' + (last ? ' last' : ''), text: text });
+  const arrow = () => { const w = el('span'); w.appendChild(svg(CHEV, { size: 14, stroke: 'var(--mut3)' })); return w; };
+
+  strip.appendChild(step(((m.rows || []).length) + ' on the board'));
+  dropped.forEach((d, i) => {
+    strip.appendChild(arrow());
+    strip.appendChild(step(d.left + (i === dropped.length - 1 ? ' shortlisted' : ' left'),
+      i === dropped.length - 1));
+  });
+  if (!dropped.length) { strip.appendChild(arrow()); strip.appendChild(step(n + ' shortlisted', true)); }
+  // The rule took `lines` bets on `n` players. Both matter: the graded figure
+  // below counts lines, and the table shows players.
+  if (has(lines) && lines > n)
+    strip.appendChild(el('span', { class: 'step',
+      text: lines + ' lines on ' + n + ' players' }));
+
+  const g = (sl.graded || []).filter(x => x.season === 'held out')[0]
+         || (sl.graded || [])[0];
+  if (g && has(g.roi)) {
+    const spans = g.roi_lo < 0 && g.roi_hi > 0;
+    strip.appendChild(el('div', { class: 'roi', html:
+      'Graded on seasons it was not fitted on: <b class="'
+      + (g.roi >= 0 ? 'pos' : 'neg') + '">' + esc(roiTxt(g.roi))
+      + '</b> a bet over ' + g.n + ', with a 95% interval of '
+      + esc(roiTxt(g.roi_lo)) + ' to ' + esc(roiTxt(g.roi_hi))
+      + (spans ? ' — which spans zero, so the honest reading is that this rule '
+               + 'has not been shown to make or lose money.'
+               : '.') }));
+  } else if (sl.note) {
+    strip.appendChild(el('div', { class: 'roi', text: sl.note }));
+  }
+  return strip;
+}
+
 // The rule's own threshold, fitted rather than typed, so the copy above the
 // board quotes what was actually applied.
 function floorTxt(m) {
@@ -2405,8 +2553,16 @@ function ouTable(rows, f, key) {
         const g = el('div', { style: 'display:flex;gap:6px' });
         ['over', 'under'].forEach(side => {
           const on = legIn(r.id + '|' + side);
-          g.appendChild(el('button', { class: 'chip', 'aria-pressed': on ? 'true' : 'false',
-            'aria-label': (on ? 'Remove ' : 'Add ') + r.player + ' ' + side + ' ' + r.line,
+          // `take` is set only on the shortlist view, and only on the side the
+          // fitted rule took. Both buttons stay live: the rule names a side,
+          // it does not disable the other one.
+          const picked = r.take === side;
+          g.appendChild(el('button', {
+            class: 'chip' + (picked ? ' picked' : ''),
+            'aria-pressed': on ? 'true' : 'false',
+            'aria-label': (on ? 'Remove ' : 'Add ') + r.player + ' ' + side + ' ' + r.line
+                        + (picked ? ' (the side the rule takes)' : ''),
+            title: picked ? 'The side the fitted rule takes on this line.' : null,
             style: 'height:36px;padding:0 10px',
             text: side === 'over' ? 'O' : 'U', onclick: () => toggleLeg(r, side) }));
         });

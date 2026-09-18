@@ -275,6 +275,32 @@ def payload() -> dict:
                            ("Echo Slot", "AAA", "AAA @ BBB", 1.6),
                            ("Foxtrot Back", "BBB", "AAA @ BBB", 1.1),
                            ("Golf Tight", "CCC", "CCC @ DDD", 0.9)]],
+            # What the fitted rule took this week, carried as (name, line,
+            # side) and nothing else — every figure on screen still comes off
+            # the board, so the two cannot disagree about the same bet.
+            "shortlist": {
+                "floors": {"over": {"lo": 0.0, "hi": 2.0, "n": 139,
+                                    "mean_move_pp": 0.861},
+                           "under": {"lo": 2.0, "hi": 5.0, "n": 198,
+                                     "mean_move_pp": 0.283}},
+                "rows": [{"player_name": "Alpha Back", "point": 4.5,
+                          "side": "over", "gap_pp": 18.0,
+                          "band_lo": 0.0, "band_hi": 2.0}],
+                "dropped": [{"filter": "no posted line to bet into",
+                             "dropped": 6, "left": 1},
+                            {"filter": "fewer than 2 books behind the line",
+                             "dropped": 0, "left": 1},
+                            {"filter": "disagreement outside the band the "
+                                       "market has come our way in",
+                             "dropped": 0, "left": 1}],
+                # Every held-out interval on all four of these markets spans
+                # zero, and the page has to say so rather than print the point
+                # estimate on its own.
+                "graded": [{"season": "2025", "n": 349, "fixtures": 177,
+                            "roi": 0.54, "roi_lo": -7.71, "roi_hi": 8.85},
+                           {"season": "held out", "n": 380, "fixtures": 190,
+                            "roi": -1.19, "roi_lo": -9.52, "roi_hi": 6.82}],
+            },
             "forward": {"season": 2026, "pushes": 0, "beats_market": False,
                         "note": "Log loss, lower is better.",
                         "pooled": {"n": 283, "over_rate": 0.477,
@@ -337,6 +363,32 @@ def payload() -> dict:
                           "hi": 12.0, "point": None, "odds": None,
                           "fair_prob": None, "model_only": None, "ours": None,
                           "edge_pp": None, "n_books": 0, "thin": False}],
+                # Neither of these is the consensus line — 54.5 is, and the
+                # rule did not take it. A view narrowed with `oneLine` keeps
+                # the consensus row and drops both of these, so Alpha Back
+                # disappears from a shortlist that is still counting him.
+                # That is the bug `oneTake` exists for, and this fixture is
+                # the only thing that can catch it.
+                "shortlist": {
+                    "floors": {"over": {"lo": 2.0, "hi": 5.0, "n": 118,
+                                        "mean_move_pp": 0.090},
+                               "under": None},
+                    "rows": [{"player_name": "Alpha Back", "point": 51.5,
+                              "side": "over", "gap_pp": 8.9,
+                              "band_lo": 2.0, "band_hi": 5.0},
+                             {"player_name": "Alpha Back", "point": 58.5,
+                              "side": "over", "gap_pp": 4.4,
+                              "band_lo": 2.0, "band_hi": 5.0}],
+                    "dropped": [{"filter": "no posted line to bet into",
+                                 "dropped": 1, "left": 4},
+                                {"filter": "fewer than 2 books behind the line",
+                                 "dropped": 1, "left": 3},
+                                {"filter": "disagreement outside the band the "
+                                           "market has come our way in",
+                                 "dropped": 1, "left": 2}],
+                    "graded": [{"season": "held out", "n": 409, "fixtures": 191,
+                                "roi": -0.58, "roi_lo": -12.51, "roi_hi": 10.70}],
+                },
             },
         },
     }
@@ -961,6 +1013,30 @@ def test_adding_a_leg_on_a_phone_does_not_open_the_sheet(page_js, payload, tmp_p
     p = tmp_path / "payload.json"
     p.write_text(json.dumps(payload))
     r = subprocess.run(["node", str(REPO / "tests" / "js" / "sheetslip.js"),
+                        str(p), str(page_js)],
+                       capture_output=True, text=True, cwd=str(REPO))
+    assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_the_over_under_boards_have_a_shortlist_of_their_own(page_js, payload,
+                                                             tmp_path):
+    """Four markets that had no rule, and the one the measurement produced.
+
+    The page used to carry a comment where this view is: "a control called
+    Shortlist would imply a bet list that has not been measured". It is
+    measured now — `src/evaluation/ou_shortlist.py`, fitted per side on the
+    disagreement bands the close has come toward us in, centered on the
+    market's own drift, with a book-depth gate and a held-out return.
+
+    What can only go wrong on the page is asserted in
+    `tests/js/oushortlist.js`: that the view shows the lines the RULE took
+    rather than the lines the board leads with, that it names a side, and that
+    the count on the control is the count of rows under it.
+    """
+    p = tmp_path / "payload.json"
+    p.write_text(json.dumps(payload))
+    r = subprocess.run(["node", str(REPO / "tests" / "js" / "oushortlist.js"),
                         str(p), str(page_js)],
                        capture_output=True, text=True, cwd=str(REPO))
     assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")

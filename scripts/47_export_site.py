@@ -566,6 +566,43 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
     rec["priced_rows"] = len(priced)
 
 
+#: Where each over/under board lives in the payload, and which fitted artifact
+#: belongs to it. Receptions is a block of its own; the three yardage boards
+#: are entries under one.
+OU_BLOCKS = (("receptions", ("receptions",)),
+             ("rushing_yards", ("yards", "rushing_yards")),
+             ("receiving_yards", ("yards", "receiving_yards")),
+             ("passing_yards", ("yards", "passing_yards")))
+
+
+def _attach_ou_shortlists(payload: dict) -> None:
+    """Narrow each over/under board to what its fitted rule would take.
+
+    Runs after the opening-line fallback and before the consensus line is
+    marked, and that order is not arbitrary. After the fallback, because a row
+    showing only an opening line is a bet the rule can take and has no
+    probabilities to take it on until the fallback has priced it. Before the
+    narrowing, because the rule is fitted per (player, line) and a board that
+    has already picked one line per player is a different population from the
+    one it was measured on.
+
+    A market with no fitted artifact gets an empty shortlist carrying the
+    reason, never a missing key — the page reads the reason and says so, which
+    is the difference between "the rule found nothing" and "the rule was never
+    run".
+    """
+    from src.evaluation import ou_shortlist as ous
+
+    for market, path in OU_BLOCKS:
+        blk = payload
+        for k in path:
+            blk = (blk or {}).get(k) or {}
+        if not isinstance(blk, dict):
+            continue
+        blk["shortlist"] = ous.apply_to_board(blk.get("rows") or [],
+                                              ous.load(market))
+
+
 def build(season: int | None, week: int | None, brand: str) -> dict:
     import importlib.util
 
@@ -616,6 +653,10 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     _attach_opens(payload, s, w)
     # After the opens are attached, because it prices against them.
     _price_open_fallback(payload)
+    # And after THAT, because a row showing only an opening line is a bet the
+    # rule can take, and it has no probabilities to take it on until the
+    # fallback has priced it.
+    _attach_ou_shortlists(payload)
     # And after that, because a row showing only an opening line is a line
     # like any other and belongs in the count.
     _mark_consensus_lines(payload)
