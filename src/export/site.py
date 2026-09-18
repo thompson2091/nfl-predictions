@@ -229,11 +229,19 @@ h2{font-size:18px}
   width:44px;height:44px;border:none;background:transparent;cursor:pointer;
   display:flex;align-items:center;justify-content:center;padding:0;color:var(--mut2);
 }
+/* Sized and weighted like the star beside it. It used to carry a border and a
+   card background, which made the same-sized control read as twice the
+   furniture and as a different kind of thing from its neighbour. Filled only
+   once the leg is on the slip, which is the one state worth shouting. */
 .add{
-  width:44px;height:44px;border-radius:10px;cursor:pointer;font-size:18px;font-weight:600;
-  background:var(--card);color:var(--ink);border:1px solid var(--btnline);
+  width:40px;height:40px;border-radius:10px;cursor:pointer;font-size:20px;
+  font-weight:500;line-height:1;background:transparent;color:var(--mut3);
+  border:1px solid transparent;display:flex;align-items:center;justify-content:center;
 }
+.add:hover{background:var(--inset);color:var(--ink)}
 .add[aria-pressed=true]{background:var(--ours);color:#fff;border-color:var(--ours)}
+/* The star matches it, rather than being 44 beside a 40. */
+.mob-lead .icon{width:40px;height:40px}
 /* label / control / hint, always in that order and always the same height, so
    a field carrying a hint does not push its neighbours out of line. The ladder
    had three inputs at three different heights for exactly this reason. */
@@ -336,8 +344,26 @@ input[type=search]{-webkit-appearance:none}
    that pins in BOTH directions cannot come out above the heading that names
    it, whatever order the browser resolves the two stickies in. */
 .hd>.mob-lead,.hd>.mob-title{z-index:16}
-.hd>.mob-lead+.mob-title,.row>.mob-lead+.mob-title{left:44px}
+/* `--lead` is the lead column's own width, declared by the table and set
+   beside `--cols`. It was the constant 44px, which was right only while the
+   lead held nothing but the star — the moment the add button moved in beside
+   it, a constant would have pinned the name straight over the button it sits
+   next to. */
+.hd>.mob-lead+.mob-title,.row>.mob-lead+.mob-title{left:var(--lead,44px)}
 .row>.mob-title{box-shadow:6px 0 6px -6px rgba(0,0,0,.10)}
+/* The two things you do to a row — keep it, bet it — sit together in the cell
+   pinned to the far left, so both are on screen at every width. The add button
+   used to be the last of fourteen columns, reachable only by scrolling past
+   every number you had already read. */
+.hd>.mob-lead,.row>.mob-lead,
+.hd>.mob-title,.row>.mob-title{display:flex;align-items:center;gap:4px}
+.mob-title>.who{flex:1 1 auto;min-width:0}
+.mob-lead>.act,.mob-title>.act{flex:0 0 auto;display:flex;gap:4px;align-items:center}
+.mob-title>.act{margin-left:auto}
+/* `order`, not source position: the heading's sort arrow is a bare text node
+   appended after the label, and a bare text node cannot be ordered. Pushing
+   the label to the end is what keeps "Player ↓" together. */
+.hd>.mob-lead>.act,.hd>.mob-title>.act{order:2;margin-left:auto;font-weight:600}
 .hd .s{cursor:pointer;user-select:none}
 .hd .s:hover{color:var(--ink)}
 .row{min-height:56px;border-bottom:1px solid var(--line3)}
@@ -533,7 +559,12 @@ input[type=search]{-webkit-appearance:none}
      than a heading and are the point of visiting the page. */
   .pagehead.titleonly{display:none}
   .stickybar{
-    position:sticky;top:64px;z-index:19;background:var(--bg);
+    /* Under the header, at whatever height the header turns out to be.
+       `--top` is measured and set by `measureTop`; the 64px is the fallback
+       for the first paint and for a browser that hands back no height. A
+       constant here is a bar that slides under the nav the moment the header
+       grows a line — taking the market switcher with it. */
+    position:sticky;top:var(--top,64px);z-index:19;background:var(--bg);
     margin:0 -12px;padding:8px 12px;
     border-bottom:1px solid var(--line3);
   }
@@ -974,6 +1005,10 @@ const S = {
   // Per-table sort, keyed by the table's id. Lives on S rather than in
   // the table, because the table is rebuilt on every render.
   sort: {},
+  // Where each scroll pane had got to, and how many rows it had drawn to get
+  // there. Both are needed: restoring a scroll position onto a table rebuilt
+  // with only its first screenful has nothing to scroll to.
+  pane: {},
   favs: [],
   parlays: [],
   saved: {},
@@ -1176,6 +1211,11 @@ function sortBar(cols, st, sortable, keyOf) {
   return bar;
 }
 
+//: How many rows a table draws before the pane has been scrolled. Enough to
+//: fill the tallest pane this layout produces twice over, so the first draw
+//: never leaves a short table looking like the whole answer.
+const CHUNK_ROWS = 60;
+
 function table(cols, rows, f, opts) {
   opts = opts || {};
   // Every table sorts, on every column that has a value to sort by.
@@ -1187,6 +1227,8 @@ function table(cols, rows, f, opts) {
   // `opts.id`, and the state lives on S so it survives a re-render.
   const st = (f && 'sort' in f) ? f
     : (S.sort[opts.id || 'x'] = S.sort[opts.id || 'x'] || { sort: '', dir: -1 });
+  const pid = opts.id || 'x';
+  const pane = S.pane[pid] || (S.pane[pid] = { top: 0, drawn: 0 });
   const sortable = c => !c.nosort && (c.sort || c.sortVal);
   const keyOf = c => c.sort || c.label;
   const valOf = (c, r) => c.sortVal ? c.sortVal(r) : r[c.sort];
@@ -1221,9 +1263,31 @@ function table(cols, rows, f, opts) {
   // and `hide` drops the least useful columns on a small screen to shorten the
   // journey. A phone does more scrolling than a desktop because a phone is
   // smaller; it does not get a different set of ideas to learn.
-  const tpl = cols.map(c => c.w).join(' ');
-  const wrap = el('div', { class: 'card rows' });
-  if (opts.id) wrap.appendChild(sortBar(cols, st, sortable, keyOf));
+  // The add control is not a column of its own. It rides beside the star, in
+  // the cell that pins to the very left of the pane, so the two things you do
+  // to a row — keep it, bet it — are the same size, next to each other, and on
+  // screen at every width. It used to be the last of fourteen columns, which
+  // meant scrolling past every number you had already read to reach it.
+  //
+  // Merged here rather than written into each table's column list, so a table
+  // declares `mob: 'act'` and this decides where it goes. The lead cell by
+  // preference; the title cell where a table has no lead, which is the
+  // Combinations table — a slip has no star to sit beside.
+  const act = cols.filter(c => c.mob === 'act')[0] || null;
+  const host = act && (cols.some(c => c.mob === 'lead') ? 'lead'
+                     : cols.some(c => c.mob === 'title') ? 'title' : null);
+  const tracks = host ? cols.filter(c => c !== act) : cols;
+
+  // Where the name pins to, which is the far edge of the lead cell — and the
+  // lead cell is wider on a board whose action is two buttons than on one
+  // whose action is a single `+`. Declared by the table and read here, rather
+  // than the 44px constant this used to be, which was only ever right for a
+  // lead holding nothing but the star.
+  const lead = tracks.filter(c => c.mob === 'lead')[0];
+  const vars = '--cols:' + tracks.map(c => c.w).join(' ')
+             + (lead ? ';--lead:' + lead.w : '');
+  const wrap = el('div', { class: 'card rows', 'data-pane': pid });
+  if (opts.id) wrap.appendChild(sortBar(tracks, st, sortable, keyOf));
   // `--cols`, not `grid-template-columns`.
   //
   // An inline declaration beats every rule in the stylesheet including one
@@ -1231,8 +1295,8 @@ function table(cols, rows, f, opts) {
   // narrow layout unreachable — it was in the sheet, it was correct, and it
   // never applied. A custom property carries the same value while leaving the
   // property itself to the cascade, where a breakpoint can have it.
-  const hd = el('div', { class: 'hd', style: '--cols:' + tpl });
-  cols.forEach(c => {
+  const hd = el('div', { class: 'hd', style: vars });
+  tracks.forEach(c => {
     const on = sortable(c);
     // The `mob-` marker goes on the header cell as well as the body cell.
     // Below 680px those two columns pin to the left edge while the rest scroll
@@ -1256,12 +1320,29 @@ function table(cols, rows, f, opts) {
         d.appendChild(document.createTextNode(st.dir > 0 ? ' \u2191' : ' \u2193'));
       }
     }
+    // "Bet" belongs over the buttons it names. Appended last and ordered last
+    // so it cannot come between a heading and its own sort arrow, and skipped
+    // where the action has no label — which is the touchdown board's bare `+`.
+    if (host && c.mob === host && act.label)
+      d.appendChild(el('span', { class: 'act', text: act.label }));
     hd.appendChild(d);
   });
   wrap.appendChild(hd);
-  rows.forEach(r => {
-    const tr = el('div', { class: 'row', style: '--cols:' + tpl });
-    cols.forEach(c => {
+
+  // A screenful, then more as the pane reaches them.
+  //
+  // The anytime-TD board is 531 players of fourteen cells each, and building
+  // all of it costs about seven thousand elements before the page can paint —
+  // on every filter keystroke as well as on load. Nobody reads row four
+  // hundred without scrolling to it, and the pane is what scrolls, so it is
+  // also what can be asked how far down it has got.
+  //
+  // Appended rather than re-rendered, deliberately: a re-render rebuilds the
+  // table from the top and throws away the scroll position that asked for the
+  // rows in the first place, which reads as the page jumping under you.
+  const rowEl = r => {
+    const tr = el('div', { class: 'row', style: vars });
+    tracks.forEach(c => {
       // `data-label` is what the narrow layout prints beside the value. The
       // header is gone below 680px, so without it a stacked row is a column of
       // unlabelled numbers — which is what the first mobile attempt was.
@@ -1271,10 +1352,40 @@ function table(cols, rows, f, opts) {
         'data-label': c.label || null,
       });
       c.cell(d, r);
+      if (host && c.mob === host) {
+        const a = el('div', { class: 'act', 'data-label': act.label || null,
+                              title: act.title || null });
+        act.cell(a, r);
+        d.appendChild(a);
+      }
       tr.appendChild(d);
     });
-    wrap.appendChild(tr);
-  });
+    return tr;
+  };
+
+  let drawn = 0;
+  const draw = n => {
+    const to = Math.min(rows.length, drawn + n);
+    for (; drawn < to; drawn++) wrap.appendChild(rowEl(rows[drawn]));
+  };
+  // At least a screenful, and at least as many as were on screen before —
+  // otherwise pressing `+` on row two hundred rebuilds a table sixty rows long
+  // and the position it is restored to does not exist.
+  draw(Math.max(CHUNK_ROWS, pane.drawn));
+  pane.drawn = drawn;
+  // `onscroll`, not `addEventListener`: the node is thrown away on the next
+  // render and a property assignment goes with it, where a listener would have
+  // to be removed by hand and is a leak if it is not.
+  wrap.onscroll = () => {
+    pane.top = wrap.scrollTop;
+    if (drawn >= rows.length) return;
+    // A screenful of slack, so the rows are there by the time the scroll
+    // arrives rather than appearing under the thumb.
+    if (wrap.scrollTop + wrap.clientHeight > wrap.scrollHeight - 600) {
+      draw(CHUNK_ROWS);
+      pane.drawn = drawn;
+    }
+  };
   if (!rows.length) {
     wrap.appendChild(el('div', { class: 'empty' }, [
       el('b', { text: opts.emptyTitle || 'Nothing matches' }),
@@ -1312,18 +1423,6 @@ function keyHead(d, ours, book) {
 // mixing an anytime TD with a receptions over is not a thing a book will
 // price, and showing a combined number for it would be inventing a market.
 const legIn = id => S.slip.legs.some(l => l.id === id);
-// Is the slip a sheet at this width, rather than a panel beside the board?
-//
-// It matters because the two answer a tap differently. Beside the board the
-// panel is already on screen and fills in as you go; as a sheet it covers the
-// board you are picking FROM, so opening it on every add means dismissing it
-// before the next pick. The count on the handle in the corner is the feedback
-// a phone needs, and the sheet waits until it is asked for.
-//
-// No `matchMedia` means no layout — a stub DOM, a test — and that gives the
-// desktop answer, which is the one those callers are written against.
-const isSheet = () => !!(typeof window !== 'undefined' && window.matchMedia
-  && window.matchMedia('(max-width:1100px)').matches);
 function toggleLeg(row, side) {
   const id = row.id + (side ? '|' + side : '');
   if (legIn(id)) {
@@ -1339,7 +1438,19 @@ function toggleLeg(row, side) {
   }
   S.slip.market = row.key;
   S.slip.legs = S.slip.legs.concat([legOf(row, side)]);
-  if (!isSheet()) S.slipOpen = true;
+  // Adding a leg does not open the slip, at any width.
+  //
+  // It used to, and then it stopped doing so on a phone because the sheet
+  // covers the board you are picking FROM. The same argument turned out to
+  // hold on a desktop for a different reason: there the panel does not cover
+  // the board, it TAKES 360px from it, so every add reflows the table under
+  // the hand that is picking from it — columns move, the row you were aiming
+  // at shifts, and the pane you had scrolled to gets narrower.
+  //
+  // The handle in the corner carries the count, so the feedback is there
+  // either way, and the slip opens when it is asked for. A market conflict is
+  // the one exception and it is handled in `slipSlot`: that prompt has to be
+  // answered, so it opens the panel whatever else is true.
   persistSlip();
   render(true);
 }
@@ -2282,9 +2393,11 @@ function gameCard(game, key) {
 // ── The two board shapes ─────────────────────────────────────────────────
 function tdTable(rows, f, view) {
   const cols = [
-    { w: '44px', label: '', nosort: 1, mob: 'lead',
-      title: 'Star a player to keep him in view. Favorites are held in this '
-           + 'browser for this week only.',
+    // Two 40px controls, side by side: keep him, bet him. The `+` rides in
+    // here with the star rather than in a column of its own.
+    { w: '88px', label: '', nosort: 1, mob: 'lead',
+      title: 'Star a player to keep him in view, or add him to your slip. '
+           + 'Favorites are held in this browser for this week only.',
       cell: (d, r) => d.appendChild(starBtn(r)) },
     { w: 'minmax(148px,1fr)', label: 'Player', sort: 'player', mob: 'title',
       title: 'Who, his team, and the fixture. Click the fixture to filter the '
@@ -2407,9 +2520,11 @@ function ouTable(rows, f, key) {
     ? Math.round(w * 100) + '% the model, ' + Math.round((1 - w) * 100) + '% the book'
     : 'the model, with the book where one is posted';
   const cols = [
-    { w: '44px', label: '', nosort: 1, mob: 'lead',
-      title: 'Star a player to keep him in view. Favorites are held in this '
-           + 'browser for this week only.',
+    // Wider than the touchdown board's lead, because a line has two sides and
+    // therefore two buttons riding beside the star rather than one.
+    { w: '124px', label: '', nosort: 1, mob: 'lead',
+      title: 'Star a player to keep him in view, or take a side. Favorites are '
+           + 'held in this browser for this week only.',
       cell: (d, r) => d.appendChild(starBtn(r)) },
     { w: 'minmax(148px,1fr)', label: 'Player', sort: 'player', mob: 'title',
       title: 'Who, his team, and the fixture. Click the fixture to filter the '
@@ -2563,7 +2678,7 @@ function ouTable(rows, f, key) {
             'aria-label': (on ? 'Remove ' : 'Add ') + r.player + ' ' + side + ' ' + r.line
                         + (picked ? ' (the side the rule takes)' : ''),
             title: picked ? 'The side the fitted rule takes on this line.' : null,
-            style: 'height:36px;padding:0 10px',
+            style: 'width:38px;height:40px;padding:0;justify-content:center',
             text: side === 'over' ? 'O' : 'U', onclick: () => toggleLeg(r, side) }));
         });
         d.appendChild(g);
@@ -2763,7 +2878,8 @@ function pageCombos() {
 
   // ── Results ──────────────────────────────────────────────────────────
   const cols = [
-    { w: 'minmax(180px,2fr)', label: 'Slip', mob: 'title',
+    // Load and Save ride here now, which is about 130px of chips.
+    { w: 'minmax(312px,2fr)', label: 'Slip', mob: 'title',
       title: 'The players in this combination, and their teams. Slips whose '
            + 'legs share a fixture are marked \u2014 those legs move together.',
       sortVal: s => s.ix.map(i => comboLeg(pool[i])).join(' '),
@@ -3509,6 +3625,16 @@ const VIEWS = { week: pageWeek, combos: pageCombos, saved: pageSaved,
 const MARKET_ROUTES = { week: 1, combos: 1 };
 
 function render(keepFocus) {
+  // `keepFocus` is really "you are still working on the same table".
+  //
+  // Starring a player and adding one to the slip pass it; changing a filter,
+  // a sort or a market does not — and that is exactly the line the scroll
+  // position wants too. Pressing `+` on the two hundredth row used to rebuild
+  // the board from the top and leave you there, which is a page that threw
+  // away what you were doing to acknowledge that you did it. Changing a
+  // filter, on the other hand, gives you a different set of rows, and holding
+  // a scroll position in those is meaningless.
+  if (!keepFocus) S.pane = {};
   const active = keepFocus ? document.activeElement : null;
   // `data-fk` where one is set, the aria-label otherwise. Saved parlays name
   // themselves "3-leg Anytime TD", so two of them collide — and restoring
@@ -3553,6 +3679,16 @@ function render(keepFocus) {
   document.documentElement.setAttribute('data-slip',
     S.slipOpen && S.slip.legs.length ? 'open' : 'shut');
 
+  // How tall the header actually is, handed to the stylesheet.
+  //
+  // The filter bar pins underneath it, and that offset used to be the
+  // constant 64 — correct for the header as designed and wrong the moment it
+  // is not: a long market name, a larger text setting, a second line. Too
+  // small and the bar slides under the nav and takes the market switcher with
+  // it; too large and it floats. Measured, it cannot be wrong, and the market
+  // stays reachable because the nav it lives in is never covered.
+  measureTop();
+
   const root = $('#root');
   root.innerHTML = '';
   if (S.notice) {
@@ -3566,6 +3702,10 @@ function render(keepFocus) {
   const handle = slipHandle();
   if (handle) root.appendChild(handle);
 
+  // Back where it was. After the tree is built, because there is nothing to
+  // scroll until then.
+  if (keepFocus) restorePanes(root);
+
   if (label) {
     const again = root.querySelector('[' + attr + '="' + label.replace(/"/g, '\\"') + '"]');
     if (again && again.focus) {
@@ -3574,6 +3714,35 @@ function render(keepFocus) {
     }
   }
 }
+// Read from the header rather than declared about it. `offsetHeight` is a
+// browser fact and there is none in a stub DOM, so a missing one leaves the
+// stylesheet on its own fallback rather than setting a wrong number.
+// Put every scroll pane back where its state says it was.
+//
+// A function rather than four lines inside `render`, so a test can call the
+// thing the page calls instead of a copy of it kept in the harness — which is
+// a test that passes while the page is broken.
+//
+// Read from `S.pane` rather than from the old nodes, which no longer exist by
+// the time this runs: the tree was rebuilt from nothing a moment ago.
+function restorePanes(root) {
+  if (!root || !root.querySelectorAll) return;
+  const panes = root.querySelectorAll('[data-pane]') || [];
+  for (let i = 0; i < panes.length; i++) {
+    const p = S.pane[panes[i].getAttribute('data-pane')];
+    if (p && p.top) panes[i].scrollTop = p.top;
+  }
+}
+
+function measureTop() {
+  const top = $('#top');
+  const root = document.documentElement;
+  if (!top || !top.offsetHeight || !root || !root.style) return;
+  root.style.setProperty('--top', top.offsetHeight + 'px');
+}
+// A rotation changes the header's height, and the bar has to follow it.
+if (typeof window !== 'undefined' && window.addEventListener)
+  window.addEventListener('resize', measureTop);
 document.addEventListener('DOMContentLoaded', boot);
 """
 

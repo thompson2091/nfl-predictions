@@ -7,6 +7,7 @@
 const fs = require('fs');
 
 const store = new Map();
+const nodes = {};
 
 function mkNode(tag) {
   const n = {
@@ -17,14 +18,38 @@ function mkNode(tag) {
       contains(c) { return n.className.split(/\s+/).includes(c); },
     },
     setAttribute(k, v) { n.attrs[k] = v; },
+    getAttribute(k) { return k in n.attrs ? n.attrs[k] : null; },
+    // A scroll pane's position, which the page both reads and writes. A plain
+    // number is enough: nothing here lays anything out, so the only question
+    // a harness can ask is whether the page put back what it took.
+    scrollTop: 0, scrollHeight: 0, clientHeight: 0,
+    // Only the attribute form, and only over this node's own subtree. Enough
+    // for `[data-pane]`, which is what the page looks for; anything more
+    // would be stubbing a selector engine.
+    querySelectorAll(sel) {
+      const m = /^\[([a-z-]+)\]$/.exec(sel);
+      if (!m) return [];
+      const out = [];
+      (function walk(x) {
+        if (!x) return;
+        if (x.attrs && x.attrs[m[1]] != null) out.push(x);
+        (x.children || []).forEach(walk);
+      })(n);
+      return out;
+    },
     appendChild(c) { n.children.push(c); return c; },
     get textContent() { return n._text; }, set textContent(v) { n._text = v; },
-    get innerHTML() { return n._html; }, set innerHTML(v) { n._html = v; },
+    get innerHTML() { return n._html; },
+    // Clearing a node's HTML clears its children, which is the whole reason
+    // the page does it. A stub that kept them made `#root` accumulate every
+    // render on top of the last one.
+    set innerHTML(v) { n._html = v; if (!v) n.children = []; },
   };
   return n;
 }
 
 function install() {
+  for (const k of Object.keys(nodes)) delete nodes[k];
   globalThis.localStorage = {
     getItem: k => (store.has(k) ? store.get(k) : null),
     setItem: (k, v) => store.set(k, String(v)),
@@ -41,7 +66,13 @@ function install() {
     documentElement: {
       getAttribute: () => null, setAttribute() {}, removeAttribute() {},
     },
-    querySelector: () => mkNode('div'),
+    // The same node for the same selector, because the page believes it is
+    // addressing the same element every time — `$('#root')` is a place it
+    // clears and refills, not a new div each call. Handing back a fresh one
+    // hid a whole class of bug: a test could not see what `render` had built,
+    // so an assertion about the rendered tree passed against a `render` that
+    // built nothing.
+    querySelector: sel => (nodes[sel] || (nodes[sel] = mkNode('div'))),
     querySelectorAll: () => [],
     activeElement: null,
   };

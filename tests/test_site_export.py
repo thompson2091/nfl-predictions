@@ -647,10 +647,16 @@ def test_no_layout_property_is_written_inline_where_a_breakpoint_overrides_it():
     """
     from src.export import site as d
 
-    assert "'--cols:' + tpl" in d.JS_SHARED, (
+    assert "'--cols:' + tracks" in d.JS_SHARED, (
         "the track must be a custom property, not the property itself")
-    assert "grid-template-columns:' + tpl" not in d.JS_SHARED
+    assert "grid-template-columns:" not in d.JS_SHARED, (
+        "nothing may write the property itself into a style attribute")
     assert "grid-template-columns:var(--cols)" in d.CSS.replace(" ", "")
+    # The name pins to the far edge of the lead cell, and that width is now
+    # the lead column's own rather than a constant — so it travels the same
+    # way, as a property the cascade can still reach.
+    assert "';--lead:' + lead.w" in d.JS_SHARED
+    assert "left:var(--lead,44px)" in d.CSS.replace(" ", "")
 
     # And nothing else writes a property inline that the narrow rules restyle.
     narrow = d.CSS[d.CSS.index("@media (max-width:1100px)"):]
@@ -898,9 +904,18 @@ def test_the_phone_pins_one_bar_and_knows_how_tall_it_is():
     assert d.JS_WEEK.count("'pagehead titleonly'") == 1
     assert "top:110px" not in narrow, "there is no head left to sit under"
     bar = narrow[narrow.index(".stickybar{"):]
-    assert "top:64px" in bar[:bar.index("}")], (
-        "the filters pin straight under the site header, which is the one "
-        "offset there is to be right about")
+    bar = bar[:bar.index("}")]
+    # Measured, not declared. 64 is the first-paint fallback; the real number
+    # comes off the header, because a constant here is a bar that slides under
+    # the nav the moment the header grows a line — taking the market switcher
+    # with it, which is the one control that must stay reachable.
+    assert "top:var(--top,64px)" in bar, (
+        "the filters pin under whatever height the header actually is")
+    from src.export import site as e
+    assert "root.style.setProperty('--top'" in e.JS_SHELL, (
+        "and something has to measure it")
+    assert "window.addEventListener('resize', measureTop)" in e.JS_SHELL, (
+        "a rotation changes that height")
 
 
 def test_the_pane_is_measured_against_the_viewport_the_phone_actually_has():
@@ -1000,43 +1015,46 @@ def test_a_verdict_cannot_be_drawn_over_the_button_beside_it():
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
-def test_adding_a_leg_on_a_phone_does_not_open_the_sheet(page_js, payload, tmp_path):
+def test_adding_a_leg_never_opens_the_slip_at_any_width(page_js, payload, tmp_path):
     """Six players, or one player six times.
 
-    Beside the board the slip is already on screen and filling in as you go is
-    the point. As a sheet it covers the board it was picked from, so opening
-    it on every add means dismissing it before the next pick.
+    On a phone the slip is a sheet covering the board it was picked from. On a
+    desktop it is a panel that TAKES 360px from that board, so every add
+    reflows the table under the hand picking from it — columns move and the row
+    being aimed at shifts. Neither is what "add another one" should do.
 
-    Falsified by dropping the `isSheet()` guard in `toggleLeg`: the phone half
-    of `tests/js/sheetslip.js` fails on the first add.
+    The handle in the corner carries the count, so the feedback is there
+    either way. A market conflict is the exception, and it is the one case
+    where a prompt has to be seen to be answered.
+
+    Falsified by restoring `S.slipOpen = true` in `toggleLeg`: both halves of
+    `tests/js/slipopen.js` fail on the first add.
     """
     p = tmp_path / "payload.json"
     p.write_text(json.dumps(payload))
-    r = subprocess.run(["node", str(REPO / "tests" / "js" / "sheetslip.js"),
+    r = subprocess.run(["node", str(REPO / "tests" / "js" / "slipopen.js"),
                         str(p), str(page_js)],
                        capture_output=True, text=True, cwd=str(REPO))
     assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
-def test_the_over_under_boards_have_a_shortlist_of_their_own(page_js, payload,
-                                                             tmp_path):
-    """Four markets that had no rule, and the one the measurement produced.
+def test_pressing_add_does_not_send_you_back_to_the_top(page_js, payload, tmp_path):
+    """The page rebuilds its tree on every state change, and the pane went with it.
 
-    The page used to carry a comment where this view is: "a control called
-    Shortlist would imply a bet list that has not been measured". It is
-    measured now — `src/evaluation/ou_shortlist.py`, fitted per side on the
-    disagreement bands the close has come toward us in, centered on the
-    market's own drift, with a book-depth gate and a held-out return.
+    So starring or adding the two hundredth player scrolled the board back to
+    the first — the act of acknowledging a tap threw away what the tap was part
+    of. Two things have to survive the rebuild and neither is enough alone:
+    where the pane had got to, and how many rows had been drawn to get there.
+    Restoring a position onto a table redrawn with only its first screenful
+    scrolls to somewhere that does not exist.
 
-    What can only go wrong on the page is asserted in
-    `tests/js/oushortlist.js`: that the view shows the lines the RULE took
-    rather than the lines the board leads with, that it names a side, and that
-    the count on the control is the count of rows under it.
+    Changing a filter still starts at the top, on purpose: those are different
+    rows, and a position in them is not a place.
     """
     p = tmp_path / "payload.json"
     p.write_text(json.dumps(payload))
-    r = subprocess.run(["node", str(REPO / "tests" / "js" / "oushortlist.js"),
+    r = subprocess.run(["node", str(REPO / "tests" / "js" / "panescroll.js"),
                         str(p), str(page_js)],
                        capture_output=True, text=True, cwd=str(REPO))
     assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")

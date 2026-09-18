@@ -575,6 +575,30 @@ OU_BLOCKS = (("receptions", ("receptions",)),
              ("passing_yards", ("yards", "passing_yards")))
 
 
+#: Decimal places kept on every float in the payload.
+#:
+#: A probability reaches the page as 0.5796356935535429 and is rendered as
+#: "58%". The seventeen significant figures are what a float prints as, not
+#: what anything means: 18,438 of them carry 169KB of tail, which is 10% of a
+#: payload a phone has to download and parse before it can draw anything.
+#:
+#: Six is chosen against what the page actually shows, with room to spare —
+#: probabilities render to one decimal place of a percent, yardage to two, and
+#: the odds columns are integers. Nothing on screen can move.
+PAYLOAD_DP = 6
+
+
+def _shrink(o):
+    """Round every float in the payload, in place where it can be."""
+    if isinstance(o, float):
+        return round(o, PAYLOAD_DP)
+    if isinstance(o, dict):
+        return {k: _shrink(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_shrink(v) for v in o]
+    return o
+
+
 def _attach_ou_shortlists(payload: dict) -> None:
     """Narrow each over/under board to what its fitted rule would take.
 
@@ -664,7 +688,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     payload["season"] = s
     payload["week"] = w
     payload["results"] = results(s, w) if s and w else {}
-    return mod.clean(payload)
+    return _shrink(mod.clean(payload))
 
 
 def main() -> int:
