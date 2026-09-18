@@ -412,6 +412,22 @@ launch:
 	@echo
 	@echo "Open it locally with:  open public/index.html"
 
+# ── v2: the same board, installable ───────────────────────────────────────
+# Three files into site/v2, and they go up together. The service worker's
+# scope is the directory it is served from, so a page uploaded without its
+# sw.js beside it loads, works, and never goes offline — silently, which is
+# the failure this target's message exists to prevent.
+#
+# Same payload as `launch`, same models, same numbers. What differs is the
+# shell: a manifest, a worker, and the CSS that a window with no browser
+# chrome needs. See src/export/pwa.py.
+app:
+	$(PYTHON) scripts/51_export_app.py --out site/v2 --brand "$(BRAND)" $(if $(WEEK),--week $(WEEK))
+	@echo
+	@ls -la site/v2/
+	@echo
+	@echo "upload all three to the same directory."
+
 # Both pages, in one go. WHEN to run this, in order of how wrong the page is
 # if you do not:
 #
