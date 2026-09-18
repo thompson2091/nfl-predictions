@@ -176,6 +176,37 @@ h1{font-family:var(--serif);font-weight:500;font-size:40px;line-height:1.1}
 h2{font-size:18px}
 .h2s{font-family:var(--serif);font-weight:500;font-size:28px}
 
+/* ── Before the script runs ──────────────────────────────────────────── */
+/*
+ * This page is a megabyte and a half of JSON with a program on the end of it,
+ * and a browser paints what it has as it arrives. The footer used to sit
+ * before the payload in the byte stream — it landed at about 30KB and was
+ * therefore the FIRST thing on screen, alone, at the top of an empty page,
+ * for as long as the other 1.4MB took. It is after the scripts now, so it
+ * arrives last, which is also where it belongs on the screen.
+ *
+ * `#root` holds the height a screen would take, so nothing below it can ride
+ * up into view no matter how long the wait, and carries a sketch of the page
+ * that is coming. The sketch is markup in the document rather than something
+ * the script draws, because the whole problem is the time before the script
+ * runs.
+ */
+#root{min-height:calc(100vh - 64px);min-height:calc(100dvh - 64px)}
+.boot{padding:28px 40px;display:flex;flex-direction:column;gap:14px}
+.bootbar,.bootrow{background:var(--inset);border-radius:8px}
+.bootcard{
+  background:var(--card);border:1px solid var(--line);border-radius:14px;
+  padding:16px 20px;display:flex;flex-direction:column;gap:12px;margin-top:10px;
+}
+.bootrow{height:34px}
+.boot>*,.bootcard>*{animation:bootpulse 1.4s ease-in-out infinite}
+.bootcard>*:nth-child(2){animation-delay:.1s}
+.bootcard>*:nth-child(3){animation-delay:.2s}
+.bootcard>*:nth-child(4){animation-delay:.3s}
+.bootcard>*:nth-child(5){animation-delay:.4s}
+.bootcard>*:nth-child(6){animation-delay:.5s}
+@keyframes bootpulse{0%,100%{opacity:1}50%{opacity:.45}}
+
 /* ── Surfaces ────────────────────────────────────────────────────────── */
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
 .card.pad{padding:20px 24px}
@@ -619,8 +650,12 @@ input[type=search]{-webkit-appearance:none}
   /* The headings are still there to tap, but reaching the far ones means
      scrolling to them first. This is the same control, somewhere findable. */
   .sortbar{display:flex}
+  .boot{padding:16px 12px}
   .brk{grid-template-columns:1fr 64px 76px}
   .cards article{padding:14px 16px}
+}
+@media (prefers-reduced-motion:reduce){
+  .boot>*,.bootcard>*{animation:none}
 }
 @media print{
   .top,aside,.chiprow,.add,.icon{display:none}
@@ -2464,7 +2499,11 @@ function tdTable(rows, f, view) {
            + 'early in the week.',
       cell: (d, r) => d.appendChild(el('span', {
         class: r.priced ? '' : 'dim', text: r.priced ? american(r.odds) : 'no price' })) },
-    { w: '56px', label: 'Model', r: 1, sort: 'modelOnly', hide: 1,
+    // Not hidden on a phone. Model, Book and Adj are one answer read left to
+    // right — what we thought, what the book thinks, what we serve after
+    // being pulled toward it — and dropping the first of the three leaves the
+    // other two with nothing to be a comparison against.
+    { w: '56px', label: 'Model', r: 1, sort: 'modelOnly',
       title: 'The fitted model alone, before any market information.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
         text: has(r.modelOnly) ? pct(r.modelOnly) : '—' })) },
@@ -2645,7 +2684,9 @@ function ouTable(rows, f, key) {
            + 'percentile of the fitted distribution.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
         text: num2(r.hi) })) },
-    { w: '56px', label: 'Model', r: 1, sort: 'modelOnly', hide: 1,
+    // Kept on a phone, for the reason given on the touchdown board: this is
+    // the first of three columns that only mean anything together.
+    { w: '56px', label: 'Model', r: 1, sort: 'modelOnly',
       title: 'Our own chance of the over, before it is shrunk toward the book.',
       cell: (d, r) => d.appendChild(el('span', { class: 'dim',
         text: has(r.modelOnly) ? pct(r.modelOnly) : '\u2014' })) },
@@ -3773,7 +3814,7 @@ SHELL = """<!doctype html>
 <style>__FONTS____CSS__</style>
 </head>
 <body>
-<header class="top" id="top"></header>
+<header class="top" id="top"><div class="brand">__BRAND__</div></header>
 <noscript>
   <div style="max-width:640px;margin:48px auto;padding:0 24px;font:16px/1.5 Georgia,serif">
     <h1 style="font-family:Georgia,serif;font-weight:500">This page needs JavaScript</h1>
@@ -3782,13 +3823,20 @@ SHELL = """<!doctype html>
     Nothing is sent anywhere; that is the same reason it works with no network.</p>
   </div>
 </noscript>
-<div id="root"></div>
-<footer style="padding:24px 40px 40px;color:var(--mut2);font-size:13px;max-width:900px">
-__FOOTER__
-</footer>
+<div id="root"><div class="boot" aria-hidden="true">
+  <div class="bootbar" style="width:220px;height:34px"></div>
+  <div class="bootbar" style="width:min(520px,80%);height:16px"></div>
+  <div class="bootcard">
+    <div class="bootrow"></div><div class="bootrow"></div><div class="bootrow"></div>
+    <div class="bootrow"></div><div class="bootrow"></div><div class="bootrow"></div>
+  </div>
+</div></div>
 <script id="payload" type="application/json">__DATA__</script>
 <script>const DATA = JSON.parse(document.getElementById('payload').textContent);</script>
 <script>__JS__</script>
+<footer style="padding:24px 40px 40px;color:var(--mut2);font-size:13px;max-width:900px">
+__FOOTER__
+</footer>
 </body>
 </html>
 """
@@ -3816,6 +3864,7 @@ def render(payload: dict) -> str:
     return (SHELL
             .replace("__TITLE__", html.escape(
                 f"{brand} — {payload.get('season', '')} week {payload.get('week', '')}"))
+            .replace("__BRAND__", html.escape(brand))
             .replace("__FONTS__", _font_faces())
             .replace("__CSS__", CSS)
             .replace("__FOOTER__", FOOTER

@@ -1091,3 +1091,65 @@ def test_pressing_add_does_not_send_you_back_to_the_top(page_js, payload, tmp_pa
                         str(p), str(page_js)],
                        capture_output=True, text=True, cwd=str(REPO))
     assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")
+
+
+def test_the_footer_is_not_the_first_thing_on_screen():
+    """A browser paints what it has as it arrives, and the footer arrived first.
+
+    This page is a megabyte and a half of JSON with a program on the end of
+    it. The footer used to sit BEFORE the payload in the byte stream — it
+    landed at about 30KB and was therefore the first thing rendered, alone, at
+    the top of an empty page, for as long as the other 1.4MB took to stream.
+
+    Two things fix it and both are about the document rather than the script,
+    because the whole problem is the time before the script runs. The footer
+    moves after the payload, so it arrives last. And `#root` reserves a
+    screen's height with a sketch of the page in it, so nothing below can ride
+    up into view however long the wait.
+
+    Falsified by moving the footer back above the payload: the ordering
+    assertion fails, which is the only signal this gives — it renders
+    correctly in the end either way.
+    """
+    from src.export import site as d
+
+    page = d.render({"season": 2026, "week": 2, "built": "x", "markets": {},
+                     "brand": "Pick Six"})
+    payload = page.index('<script id="payload"')
+    footer = page.index("<footer")
+    assert footer > payload, (
+        "the footer must stream after the payload, or it is the first thing "
+        "on screen and the only thing on screen")
+
+    root = page.index('<div id="root"')
+    assert root < payload, "the sketch has to arrive before the wait, not after"
+    assert 'class="boot"' in page[root:payload], (
+        "an empty root is a white screen for the length of a download")
+    flat = d.CSS.replace(" ", "").replace("\n", "")
+    assert "#root{min-height:calc(100vh-64px);min-height:calc(100dvh-64px)}" in flat, (
+        "without a reserved height, whatever follows rides up into view")
+
+    # The header is not blank for that whole time either. It is replaced by
+    # `render`, so this is a placeholder rather than a second source of truth.
+    assert '<header class="top" id="top"><div class="brand">Pick Six</div>' in page
+    assert "__BRAND__" not in page
+
+
+def test_the_model_column_survives_a_narrow_screen():
+    """Model, Book and Adj are one answer read left to right.
+
+    What we thought, what the book thinks, and what we serve after being
+    pulled toward it. Dropping the first of the three leaves the other two
+    with nothing to be a comparison against — and `hidesm` dropped exactly
+    that one, on both boards.
+
+    Falsified by putting `hide: 1` back on either: the count below moves.
+    """
+    from src.export import site as d
+
+    hidden = d.JS_WEEK.count("label: 'Model', r: 1, sort: 'modelOnly', hide: 1")
+    assert hidden == 0, (
+        f"{hidden} Model column(s) still drop out on a phone; the two beside "
+        f"them stop meaning anything without it")
+    assert d.JS_WEEK.count("label: 'Model', r: 1, sort: 'modelOnly',") == 2, (
+        "both boards carry one, and both keep it")
