@@ -126,7 +126,15 @@ h1,h2,h3{margin:0;font-weight:600}
 }
 .nav a:hover{background:var(--inset);color:var(--ink)}
 .nav a[aria-current=page]{background:var(--navon);color:var(--ink);font-weight:600}
-.when{font-size:14px;color:var(--mut);white-space:nowrap}
+/* The market lives here, not over the board.
+   It is the one control that changes what every page is about, it was being
+   drawn twice (once on This week, once on Combinations) and on a phone it
+   was the reason the chrome above the board needed two pinned rows instead
+   of one. The season and the week that used to sit here are in the footer:
+   they are a fact about the build, not something you act on. */
+.top .menuwrap{margin-left:auto}
+.top .btn{max-width:38vw}
+.top .btn>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wrap{display:flex;align-items:flex-start;min-height:0}
 /* No max-width. The tables are the content and they are wide; a reading
    measure would only push the numbers being compared further apart. */
@@ -280,10 +288,24 @@ input[type=search]{-webkit-appearance:none}
    hundred rows go by, and the player's name stays put while the columns move
    sideways under it. */
 .rows{
-  padding:0 20px;overflow:auto;-webkit-overflow-scrolling:touch;
+  padding:0 20px;overflow:auto;
+  /* The fallback goes first and the browser that understands the second one
+     takes it. iOS reports `100vh` as the viewport with the address bar
+     HIDDEN, so a pane sized in `vh` is taller than the screen it is on, the
+     page scrolls to make up the difference, and the headings — which pin to
+     the PANE, not to the window — ride up out of sight while rows keep
+     coming. That is the row-over-the-header, and it is a units bug.
+     `-webkit-overflow-scrolling:touch` is gone from here for the same
+     reason: it has been a no-op since iOS 13 and is the documented cause of
+     sticky children painting in the wrong order inside a scroller. */
   max-height:calc(100vh - 230px);
+  max-height:calc(100dvh - 230px);
 }
 .hd,.row{display:grid;grid-template-columns:var(--cols);gap:12px;align-items:center}
+/* A grid item defaults to `min-width:auto`, which means "never smaller than
+   my content" — so a cell whose content is wider than its track does not
+   clip or shrink, it OVERFLOWS, and draws on top of the column beside it. */
+.hd>*,.row>*{min-width:0}
 .hd{
   height:40px;font-size:12px;font-weight:600;letter-spacing:.5px;
   text-transform:uppercase;color:var(--mut2);border-bottom:1px solid var(--line2);
@@ -292,7 +314,7 @@ input[type=search]{-webkit-appearance:none}
      site header's height, because the pane is what scrolls — which also means
      this needs no constant, and cannot be wrong at the widths where that bar
      wraps its nav and stops being 64px tall. */
-  position:sticky;top:0;z-index:5;background:var(--card);
+  position:sticky;top:0;z-index:15;background:var(--card);
 }
 .sortbar{
   display:none;align-items:center;gap:8px;padding:10px 12px;
@@ -303,9 +325,13 @@ input[type=search]{-webkit-appearance:none}
    scrolled out from under its own name belong to nobody. */
 .hd>.mob-lead,.row>.mob-lead,
 .hd>.mob-title,.row>.mob-title{
-  position:sticky;left:0;z-index:2;background:var(--card);
+  position:sticky;left:0;z-index:1;background:var(--card);
 }
-.hd>.mob-lead,.hd>.mob-title{z-index:6}
+/* Two tiers, far apart on purpose. Everything in a body row sits at 1, the
+   heading row at 15, and the heading's own pinned cells at 16 — so a cell
+   that pins in BOTH directions cannot come out above the heading that names
+   it, whatever order the browser resolves the two stickies in. */
+.hd>.mob-lead,.hd>.mob-title{z-index:16}
 .hd>.mob-lead+.mob-title,.row>.mob-lead+.mob-title{left:44px}
 .row>.mob-title{box-shadow:6px 0 6px -6px rgba(0,0,0,.10)}
 .hd .s{cursor:pointer;user-select:none}
@@ -329,6 +355,11 @@ input[type=search]{-webkit-appearance:none}
 .key i{width:10px;height:10px;border-radius:2px;background:var(--ours);display:inline-block}
 .key u{width:2px;height:12px;background:var(--ink);display:inline-block}
 .pill{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+/* "Strong call" is the longest verdict and it is wider than its track in iOS
+   Safari's system font, though not in the desktop one — which is why the
+   pill sat over the + button on a phone and looked correct everywhere it was
+   being checked. Bounded to the track, it can only ever be trimmed. */
+.row .pill{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
 .pill.p-ours{background:var(--oursbg);color:var(--ours)}
 .pill.p-good{background:var(--goodbg);color:var(--good)}
 .pill.p-bad{background:var(--badbg);color:var(--bad)}
@@ -406,7 +437,6 @@ input[type=search]{-webkit-appearance:none}
     box-shadow:0 -10px 40px rgba(22,24,29,.24);
     overflow-y:auto;
     padding:16px 20px calc(24px + env(safe-area-inset-bottom));
-    -webkit-overflow-scrolling:touch;
   }
   /* A grab bar, so the sheet reads as something that came up and can go back
      down rather than as content that appeared. */
@@ -428,8 +458,11 @@ input[type=search]{-webkit-appearance:none}
     background:rgba(22,24,29,.38);
   }
   /* The board keeps scrolling under it, so the last rows are not left beneath
-     the sheet with no way to reach them. */
-  main{padding-bottom:180px}
+     the sheet with no way to reach them — but only while it is up. Reserved
+     unconditionally, those 180px are 180px of page that scrolls on every
+     screen, which drags the pinned filters and the pane out of the window
+     for a sheet nobody has opened. */
+  html[data-slip=open] main{padding-bottom:180px}
 }
 @media (max-width:900px){
   /* The header is one line: brand, the menu button, the week. The links drop
@@ -447,7 +480,10 @@ input[type=search]{-webkit-appearance:none}
     border-bottom:1px solid var(--line);box-shadow:0 12px 30px rgba(22,24,29,.14);
   }
   .nav.open a{padding:14px 12px;font-size:16px;border-radius:8px}
-  .when{margin-left:auto;flex-shrink:0;font-size:13px}
+  .top .btn{height:40px;padding:0 10px;font-size:14px;gap:6px}
+  /* The word "Market" goes; the market itself stays. There is one such
+     button on the page, beside the menu that opens it. */
+  .top .btn .note{display:none}
   main{padding:20px 16px 28px}
   h1{font-size:28px}
   .lede{font-size:14px}
@@ -458,7 +494,7 @@ input[type=search]{-webkit-appearance:none}
      headings, the pinned name — is declared once at the top and needs no
      restating. Below 680 the table stops scrolling entirely and drops to four
      columns; see `table`. */
-  .rows{max-height:calc(100vh - 280px)}
+  .rows{max-height:calc(100vh - 280px);max-height:calc(100dvh - 280px)}
 }
 @media (max-width:680px){
   .hidesm{display:none}
@@ -472,16 +508,27 @@ input[type=search]{-webkit-appearance:none}
      reading stay pinned under the header.
      `top:64px` is safe here now: the header stopped wrapping its nav when the
      links went behind the menu button, so it is 64px at this width again. */
-  .pagehead{
-    position:sticky;top:64px;z-index:20;background:var(--bg);
-    padding:10px 0 6px;margin:0 -12px;padding-left:12px;padding-right:12px;
-  }
+  /* One pinned bar, not two.
+     The head used to pin at 64 and the filters at 110, which meant a phone
+     carried two stacked sticky boxes whose combined height was written into
+     a constant. It also meant the top one was pinning nothing: its title and
+     its lede are hidden here, and the market menu that was its only other
+     child now rides in the site header. An empty sticky band is still a
+     band, and iOS jitters the one below it while the address bar animates.
+     So the head goes entirely and the filters pin straight under the
+     header, where there is one offset to be right about. */
   .pagehead h1,.pagehead .lede{display:none}
+  /* A head that is nothing but a title is nothing at all once the title is
+     hidden — an empty box holding the bar below it away from the header.
+     Saved parlays is the exception and says so by not carrying the marker:
+     its head holds the settled/won/staked counts, which are numbers rather
+     than a heading and are the point of visiting the page. */
+  .pagehead.titleonly{display:none}
   .stickybar{
-    position:sticky;top:110px;z-index:19;background:var(--bg);
-    margin:0 -12px;padding:0 12px 8px;
+    position:sticky;top:64px;z-index:19;background:var(--bg);
+    margin:0 -12px;padding:8px 12px;
+    border-bottom:1px solid var(--line3);
   }
-  .pagehead{align-items:flex-start}
   h1{font-size:24px}
   .seg{width:100%}
   .seg button{flex:1 1 0;padding:0 8px;font-size:13px}
@@ -507,7 +554,13 @@ input[type=search]{-webkit-appearance:none}
      thing to learn.
      `hidesm` above has already dropped the least useful columns, which is what
      shortens the journey. */
-  .rows{max-height:calc(100vh - 300px)}
+  /* Header 64, then the pinned bar: a 42px segmented control over a 36px
+     row of filters with 8px of padding either side. 176 is those, and it is
+     the whole of the chrome now that the page head is gone — so the pane
+     ends where the window does and the page itself has nothing left to
+     scroll. A page that does not scroll cannot slide its pinned headings
+     out from over their own rows. */
+  .rows{max-height:calc(100vh - 176px);max-height:calc(100dvh - 176px)}
   .hd,.row{gap:8px;padding-left:10px;padding-right:10px}
   .hd{font-size:11px}
   .row{min-height:52px;font-size:13px}
@@ -1237,6 +1290,18 @@ function keyHead(d, ours, book) {
 // mixing an anytime TD with a receptions over is not a thing a book will
 // price, and showing a combined number for it would be inventing a market.
 const legIn = id => S.slip.legs.some(l => l.id === id);
+// Is the slip a sheet at this width, rather than a panel beside the board?
+//
+// It matters because the two answer a tap differently. Beside the board the
+// panel is already on screen and fills in as you go; as a sheet it covers the
+// board you are picking FROM, so opening it on every add means dismissing it
+// before the next pick. The count on the handle in the corner is the feedback
+// a phone needs, and the sheet waits until it is asked for.
+//
+// No `matchMedia` means no layout — a stub DOM, a test — and that gives the
+// desktop answer, which is the one those callers are written against.
+const isSheet = () => !!(typeof window !== 'undefined' && window.matchMedia
+  && window.matchMedia('(max-width:1100px)').matches);
 function toggleLeg(row, side) {
   const id = row.id + (side ? '|' + side : '');
   if (legIn(id)) {
@@ -1252,7 +1317,7 @@ function toggleLeg(row, side) {
   }
   S.slip.market = row.key;
   S.slip.legs = S.slip.legs.concat([legOf(row, side)]);
-  S.slipOpen = true;
+  if (!isSheet()) S.slipOpen = true;
   persistSlip();
   render(true);
 }
@@ -1796,9 +1861,8 @@ function pageWeek() {
         : [marketLabel(key), 'Every player on the slate with a projection, whether '
            + 'or not a book has drawn a line on him yet.'])
     : HEAD[view];
-  main.appendChild(el('div', { class: 'pagehead' }, [
+  main.appendChild(el('div', { class: 'pagehead titleonly' }, [
     el('div', {}, [el('h1', { text: head[0] }), el('p', { class: 'lede', text: head[1] })]),
-    marketMenu(),
   ]));
 
   // The two rows anyone touches while reading the board, kept together so a
@@ -2158,7 +2222,12 @@ function tdTable(rows, f, view) {
         d.appendChild(el('span', { class: has(v) ? (v >= 0 ? 'pos' : 'neg') : 'dim',
           text: has(v) ? money(v) : '\u2014' }));
       } },
-    { w: '92px', label: 'Read', sort: 'read',
+    // 100, not 92. "Strong call" is 11 characters of 12px semibold and it
+    // measures wider in iOS Safari's system font than in the desktop one, so
+    // it overran a 92px track on a phone and only on a phone. The pill is
+    // bounded to its cell in CSS as well; this is so it does not have to be
+    // trimmed in the ordinary case.
+    { w: '100px', label: 'Read', sort: 'read',
       title: 'The verdict in one word. Strong call and Leans are above the price, '
            + 'Matches book is agreement, Veto is below it.',
       cell: (d, r) => r.read && d.appendChild(
@@ -2413,13 +2482,12 @@ function pageCombos() {
   const out = el('div', { class: 'wrap' });
   const main = el('main');
 
-  main.appendChild(el('div', { class: 'pagehead' }, [
+  main.appendChild(el('div', { class: 'pagehead titleonly' }, [
     el('div', {}, [
       el('h1', { text: 'Combinations' }),
       el('p', { class: 'lede', text: 'Every slip you could build from a pool you choose, '
         + 'ranked. Save one straight to your parlays, or load it to price a round robin.' }),
     ]),
-    marketMenu(),
   ]));
 
   // ── Pool ─────────────────────────────────────────────────────────────
@@ -2970,7 +3038,7 @@ const LADDER_MAX = 50;
 function pageLadder() {
   const L = S.ladder, out = el('div', { class: 'wrap' });
   const main = el('main');
-  main.appendChild(el('div', { class: 'pagehead' }, [el('div', {}, [
+  main.appendChild(el('div', { class: 'pagehead titleonly' }, [el('div', {}, [
     el('h1', { text: 'Ladder' }),
     el('p', { class: 'lede', text: 'Roll the balance into the next bet, and see what the run '
       + 'is worth against how likely it is to survive.' }),
@@ -3081,7 +3149,7 @@ JS_MODEL = r"""
 function pageModel() {
   const out = el('div', { class: 'wrap' });
   const main = el('main');
-  main.appendChild(el('div', { class: 'pagehead' }, [el('div', {}, [
+  main.appendChild(el('div', { class: 'pagehead titleonly' }, [el('div', {}, [
     el('h1', { text: 'How good is the model?' }),
     el('p', { class: 'lede', text: 'Every market this page serves, measured on '
       + 'seasons the model never trained on.' }),
@@ -3279,6 +3347,10 @@ JS_SHELL = r"""
 // ── Shell ───────────────────────────────────────────────────────────────
 const VIEWS = { week: pageWeek, combos: pageCombos, saved: pageSaved,
                 ladder: pageLadder, model: pageModel };
+// Where the market picker is worth carrying. Saved parlays name their own
+// market, the ladder prices whatever the slip holds, and the Model page
+// describes every market at once.
+const MARKET_ROUTES = { week: 1, combos: 1 };
 
 function render(keepFocus) {
   const active = keepFocus ? document.activeElement : null;
@@ -3313,8 +3385,17 @@ function render(keepFocus) {
     href: '#' + id, text: text, 'aria-current': S.route === id ? 'page' : null,
     onclick: () => { S.navOpen = false; } })));
   $('#top').appendChild(nav);
-  $('#top').appendChild(el('div', { class: 'when',
-    text: (DATA.season || '') + ' · Week ' + (DATA.week || '') }));
+  // The market belongs to the whole page, so it sits with the page links
+  // rather than over the board. Only on the two routes that read it: on
+  // Saved, the Ladder and the Model page it would be a control that changes
+  // nothing you can see.
+  if (MARKET_ROUTES[S.route]) $('#top').appendChild(marketMenu());
+
+  // Whether the sheet is up, as an attribute rather than a class, so the
+  // stylesheet can reserve room under the board for it only while it is
+  // there. Reserved always, that room is page the phone has to scroll past.
+  document.documentElement.setAttribute('data-slip',
+    S.slipOpen && S.slip.legs.length ? 'open' : 'shut');
 
   const root = $('#root');
   root.innerHTML = '';
@@ -3371,7 +3452,8 @@ __FOOTER__
 </html>
 """
 
-FOOTER = """<p>Built __BUILT__ from the model each market's registry says it is serving.
+FOOTER = """<p>__SEASON__ week __WEEK__. Built __BUILT__ from the model each market's
+registry says it is serving.
 Every probability is the model's; every price is an archived consensus across books,
 de-vigged. Favorites, the working slip and saved parlays are held in this browser
 only, scoped to this season and week, and clear when the week rolls over.</p>
@@ -3395,7 +3477,9 @@ def render(payload: dict) -> str:
                 f"{brand} — {payload.get('season', '')} week {payload.get('week', '')}"))
             .replace("__FONTS__", _font_faces())
             .replace("__CSS__", CSS)
-            .replace("__FOOTER__", FOOTER.replace(
-                "__BUILT__", html.escape(str(payload.get("built", "")))))
+            .replace("__FOOTER__", FOOTER
+                .replace("__BUILT__", html.escape(str(payload.get("built", ""))))
+                .replace("__SEASON__", html.escape(str(payload.get("season", ""))))
+                .replace("__WEEK__", html.escape(str(payload.get("week", "")))))
             .replace("__JS__", js)
             .replace("__DATA__", data))

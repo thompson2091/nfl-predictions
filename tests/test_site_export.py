@@ -483,14 +483,17 @@ def test_one_table_layout_at_every_width():
     assert "overflow:auto" in base and "max-height:calc(100vh-230px)" in base, (
         "a table that does not fit must say so by scrolling, not by hiding "
         "under the panel beside it")
-    assert "position:sticky;top:0;z-index:5" in base, (
+    assert "position:sticky;top:0;z-index:15" in base, (
         "the pane is what scrolls, so the headings pin to it and need no "
         "constant for a site header whose height changes")
     assert "position:sticky;left:0" in base, "the name pins while numbers move"
 
     # The breakpoints only resize it. Nothing invents a second layout.
     assert "max-height:calc(100vh-280px)" in mid
-    assert "max-height:calc(100vh-300px)" in narrow
+    # 176, not 300: the page head is gone from a phone and the market menu
+    # went to the site header, so the chrome above the board is the 64px
+    # header and one pinned bar.
+    assert "max-height:calc(100vh-176px)" in narrow
     for gone in ("display:flex", "display:none;padding:0", "flex:0060px",
                  ".rowmore{", "mobshow"):
         assert gone not in narrow.replace(".sortbar{display:flex}", ""), (
@@ -781,3 +784,183 @@ def test_the_board_and_the_results_map_name_a_player_the_same_way():
     settle = src.index('out[f"{week}|{key}|{qualified_name(')
     assert board > 0 and settle > 0, (
         "the board and the results map must call the same helper")
+
+
+def test_the_market_is_named_once_and_in_the_header():
+    """It was drawn twice, and both copies were over the board.
+
+    The market changes what every page is about, so it belongs with the page
+    links rather than above one table — and on a phone it was the reason the
+    chrome needed two pinned rows instead of one: the page head existed to
+    carry it, and its own title and lede were hidden there anyway.
+
+    Falsified by putting `marketMenu()` back into either page head: the count
+    below goes to two and the head stops being an empty box that can be
+    dropped.
+    """
+    from src.export import site as d
+
+    # `marketMenu` is DEFINED in JS_WEEK, so counting the name there counts
+    # its own declaration. What must be gone is the call — the page head used
+    # to end with one on both of these pages.
+    assert "marketMenu()," not in d.JS_WEEK, "not over the board"
+    assert "marketMenu()," not in d.JS_COMBOS
+    assert d.JS_SHELL.count("marketMenu()") == 1, "called once, in the header"
+    assert "MARKET_ROUTES[S.route]" in d.JS_SHELL, (
+        "Saved names its own market, the ladder prices the slip and the Model "
+        "page describes all of them — a picker there changes nothing visible")
+
+    # The season and the week it displaced. They are a fact about the build,
+    # not something anyone acts on, so they read as one in the footer.
+    assert "class: 'when'" not in d.JS_SHELL and ".when{" not in d.CSS
+    assert "__SEASON__ week __WEEK__" in d.FOOTER
+    page = d.render({"season": 2026, "week": 2, "built": "x", "markets": {},
+                     "brand": "T"})
+    assert "2026 week 2" in page, "the week must survive the substitution"
+    assert "__SEASON__" not in page and "__WEEK__" not in page
+
+
+def test_the_phone_pins_one_bar_and_knows_how_tall_it_is():
+    """Two stacked sticky boxes, the top one pinning nothing.
+
+    The page head pinned at 64 and the filters at 110, which wrote the head's
+    height into a constant — and the head's title and lede are hidden at this
+    width, so once the market menu moved to the site header it was an empty
+    band holding the bar below it away from the header. iOS jitters exactly
+    that arrangement while the address bar animates.
+
+    Falsified by restoring `.pagehead{position:sticky;top:64px}` and the
+    110px offset: the two assertions below fail together, which is the point
+    — one offset cannot be wrong on its own.
+    """
+    from src.export import site as d
+
+    narrow = d.CSS[d.CSS.index("@media (max-width:680px)"):].replace(" ", "")
+    assert ".pagehead.titleonly{display:none}" in narrow, (
+        "its title and its lede are hidden here and its only control has "
+        "left; what remains is a band")
+    # Not every head is only a title. Saved parlays keeps settled/won/staked
+    # up there, and those are numbers rather than a heading.
+    assert "'pagehead titleonly'" not in d.JS_SAVED, (
+        "the counts on Saved are the point of visiting the page")
+    assert d.JS_WEEK.count("'pagehead titleonly'") == 1
+    assert "top:110px" not in narrow, "there is no head left to sit under"
+    bar = narrow[narrow.index(".stickybar{"):]
+    assert "top:64px" in bar[:bar.index("}")], (
+        "the filters pin straight under the site header, which is the one "
+        "offset there is to be right about")
+
+
+def test_the_pane_is_measured_against_the_viewport_the_phone_actually_has():
+    """`100vh` on iOS is the window with the address bar hidden.
+
+    So a pane sized in `vh` is taller than the screen it is on, the page
+    scrolls to make up the difference, and the headings — which pin to the
+    PANE, not to the window — ride up out of sight while rows keep coming.
+    The row is not drawn over the header; the header has left.
+
+    Falsified by deleting the `dvh` line at any one of the three widths: the
+    pairing below fails there. The `vh` line stays as the fallback and must
+    come first, or a browser that understands both takes the wrong one.
+    """
+    from src.export import site as d
+
+    flat = d.CSS.replace(" ", "").replace("\n", "")
+    vh = flat.count("max-height:calc(100vh-")
+    assert vh == 3, f"three widths declare a pane height; found {vh}"
+    assert flat.count("max-height:calc(100dvh-") == vh, (
+        "every one of them needs its dynamic-viewport twin")
+    for px in ("230px", "280px", "176px"):
+        i = flat.index(f"max-height:calc(100vh-{px})")
+        assert flat[i:].startswith(f"max-height:calc(100vh-{px});"
+                                   f"max-height:calc(100dvh-{px})"), (
+            f"at {px} the fallback must come first and the dvh twin second")
+
+    # Comments out. The reason this is gone is written in the stylesheet and
+    # names the property, so a search over the raw text finds the explanation
+    # and calls it the bug.
+    import re
+    declared = re.sub(r"/\*.*?\*/", "", d.CSS, flags=re.S)
+    assert "-webkit-overflow-scrolling" not in declared, (
+        "a no-op since iOS 13, and the documented cause of sticky children "
+        "painting in the wrong order inside the scroller they belong to")
+
+
+def test_no_row_can_be_drawn_over_the_heading_that_names_it():
+    """A cell that pins in both directions is two stickies on one element.
+
+    The heading row pins to the top of the pane; the star and the name pin to
+    its left edge. Where those meet, the browser has to resolve an order, and
+    the only thing that settles it is the z-index — which was 5 against 6 with
+    a 2 underneath, three numbers close enough that a body cell reached the
+    top tier on iOS.
+
+    Falsified by giving the body cells the heading's z-index: the assertion
+    below fails and the star column scrolls up over its own heading.
+    """
+    from src.export import site as d
+
+    import re
+    flat = d.CSS.replace(" ", "")
+
+    def zof(anchor):
+        """The z-index of the rule that starts at `anchor`, as a number.
+
+        Read as a number and not a character: the first version of this took a
+        one-character slice, so a body cell raised to 15 read as 1 and the test
+        agreed that 1 was under 15. It passed against the bug it names.
+        """
+        rule = flat[flat.index(anchor):]
+        return int(re.search(r"z-index:(\d+)", rule).group(1))
+
+    hd_z = zof(".hd{")
+    body_z = zof(".hd>.mob-lead,.row>.mob-lead,")
+    assert hd_z >= 15, f"the heading row needs a tier of its own; got {hd_z}"
+    assert body_z < hd_z, (
+        f"a body cell at {body_z} must sit under the heading row at {hd_z}")
+    assert ".hd>.mob-lead,.hd>.mob-title{z-index:16}" in flat, (
+        "and the heading's own pinned cells sit above the heading row")
+
+
+def test_a_verdict_cannot_be_drawn_over_the_button_beside_it():
+    """A grid item is `min-width:auto` — never smaller than its content.
+
+    So a cell whose content is wider than its track does not clip and does not
+    shrink: it overflows, and draws on top of the column next to it. "Strong
+    call" measures wider in iOS Safari's system font than in the desktop one,
+    which is why the pill sat over the + button on a phone and looked correct
+    everywhere it was being checked.
+
+    Falsified by removing either half: the track alone is not a guarantee,
+    because the fonts are not ours to measure.
+    """
+    from src.export import site as d
+
+    flat = d.CSS.replace(" ", "")
+    assert ".hd>*,.row>*{min-width:0}" in flat, (
+        "without this a cell is sized by its content, not by its track")
+    pill = flat[flat.index(".row.pill{"):]
+    pill = pill[:pill.index("}")]
+    assert "max-width:100%" in pill and "overflow:hidden" in pill, (
+        "bounded to its cell, the longest verdict can only be trimmed")
+    assert "{ w: '100px', label: 'Read'" in d.JS_WEEK, (
+        "and wide enough that the ordinary case is not trimmed at all")
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_adding_a_leg_on_a_phone_does_not_open_the_sheet(page_js, payload, tmp_path):
+    """Six players, or one player six times.
+
+    Beside the board the slip is already on screen and filling in as you go is
+    the point. As a sheet it covers the board it was picked from, so opening
+    it on every add means dismissing it before the next pick.
+
+    Falsified by dropping the `isSheet()` guard in `toggleLeg`: the phone half
+    of `tests/js/sheetslip.js` fails on the first add.
+    """
+    p = tmp_path / "payload.json"
+    p.write_text(json.dumps(payload))
+    r = subprocess.run(["node", str(REPO / "tests" / "js" / "sheetslip.js"),
+                        str(p), str(page_js)],
+                       capture_output=True, text=True, cwd=str(REPO))
+    assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")
