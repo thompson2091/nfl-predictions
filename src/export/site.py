@@ -401,6 +401,10 @@ input[type=search]{-webkit-appearance:none}
 .empty span{font-size:15px;color:var(--mut);display:block;margin-top:6px}
 
 /* ── Funnel ──────────────────────────────────────────────────────────── */
+/* Market, then the view segment, then the filters. One flow, so a wide screen
+   puts them on a line and a phone wraps them onto two. */
+.stickybar{display:flex;flex-direction:column;gap:10px}
+.stickybar>.chiprow:first-child{gap:10px}
 .funnel{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px;color:var(--mut)}
 .funnel .step{padding:6px 12px;border-radius:999px;background:var(--card);border:1px solid var(--line)}
 .funnel .step.last{background:var(--ink);color:#fff;font-weight:600;border-color:var(--ink)}
@@ -558,18 +562,46 @@ input[type=search]{-webkit-appearance:none}
      its head holds the settled/won/staked counts, which are numbers rather
      than a heading and are the point of visiting the page. */
   .pagehead.titleonly{display:none}
+  /* The one pinned bar on a phone, and it holds the market.
+     Two pinned bars cost ~150px of a ~700px screen before the browser takes
+     its own share, and when a browser does take its share it is the TOPMOST
+     layer that loses — an address bar at the top of the window sits exactly
+     where a pinned nav is. So the nav is not pinned. This is, and it carries
+     the controls you change while reading; the nav is a thing you use once.
+
+     `--top` is the header's measured height while the header is there, and
+     0 once it has slid away, so this bar rises to fill the space rather than
+     leaving a stripe of page showing through where the nav used to be. */
   .stickybar{
-    /* Under the header, at whatever height the header turns out to be.
-       `--top` is measured and set by `measureTop`; the 64px is the fallback
-       for the first paint and for a browser that hands back no height. A
-       constant here is a bar that slides under the nav the moment the header
-       grows a line — taking the market switcher with it. */
     position:sticky;top:var(--top,64px);z-index:19;background:var(--bg);
     margin:0 -12px;padding:8px 12px;
     border-bottom:1px solid var(--line3);
+    transition:top .22s ease;
+  }
+  /* Out of the way going down the board, back on the way up.
+     A transform rather than `display` or a height: it is composited, so it
+     does not reflow the 500-row table underneath it on every frame of the
+     animation — and the header keeps its place in the layout, which is what
+     lets `--top` describe where it will be when it returns. */
+  .top{transition:transform .22s ease;will-change:transform}
+  html[data-nav=away] .top{transform:translateY(-100%)}
+  html[data-nav=away] .stickybar{top:0}
+  /* The pane grows into the space the nav gave back. */
+  html[data-nav=away] .rows{
+    max-height:calc(100vh - 112px);
+    max-height:calc(100dvh - 112px);
+  }
+  /* Nobody wants a header animating past them while they are reading. */
+  @media (prefers-reduced-motion:reduce){
+    .top,.stickybar{transition:none}
   }
   h1{font-size:24px}
-  .seg{width:100%}
+  /* The market sits with the view segment rather than above it, so the bar
+     is one row taller than the segment alone instead of two. */
+  .stickybar .menuwrap{flex:0 0 auto}
+  .stickybar .btn{height:36px;padding:0 10px;font-size:14px;max-width:46vw}
+  .stickybar .btn .note{display:none}
+  .seg{flex:1 1 auto;min-width:0}
   .seg button{flex:1 1 0;padding:0 8px;font-size:13px}
   .chiprow{gap:6px}
   .search{max-width:none;flex:1 1 100%}
@@ -1378,6 +1410,7 @@ function table(cols, rows, f, opts) {
   // to be removed by hand and is a leak if it is not.
   wrap.onscroll = () => {
     pane.top = wrap.scrollTop;
+    navScrolled(pid, wrap.scrollTop);
     if (drawn >= rows.length) return;
     // A screenful of slack, so the rows are there by the time the scroll
     // arrives rather than appearing under the thumb.
@@ -2010,9 +2043,18 @@ function pageWeek() {
     el('div', {}, [el('h1', { text: head[0] }), el('p', { class: 'lede', text: head[1] })]),
   ]));
 
-  // The two rows anyone touches while reading the board, kept together so a
-  // phone can pin them as one thing. On a wide screen this wrapper is inert.
+  // Everything anyone touches while reading the board, kept together so a
+  // phone can pin it as ONE thing.
+  //
+  // The market is in here rather than in the site header, and that is the
+  // whole point of the arrangement. Two pinned bars cost about 150px of a
+  // 700px phone before the browser takes its own share, and when a browser
+  // does take its share it is the topmost layer that loses — which is how the
+  // nav ended up behind an address bar. So one bar is pinned, and it is the
+  // one holding the controls you use WHILE reading. The nav is a thing you
+  // use once; it scrolls away and comes back on a swipe up.
   const sticky = el('div', { class: 'stickybar' });
+  sticky.appendChild(marketMenu());
   sticky.appendChild(viewSeg(f, m, kind, rowsFor(key, 'all')));
   main.appendChild(sticky);
   if (view === 'short') main.appendChild(
@@ -2760,6 +2802,11 @@ function pageCombos() {
         + 'ranked. Save one straight to your parlays, or load it to price a round robin.' }),
     ]),
   ]));
+
+  // The same pinned bar This week has, for the same reason: the market is a
+  // control you change while reading, so it rides in the one thing a phone
+  // keeps on screen rather than in a header that scrolls away.
+  main.appendChild(el('div', { class: 'stickybar' }, [marketMenu()]));
 
   // ── Pool ─────────────────────────────────────────────────────────────
   const sl = m.shortlist || {};
@@ -3619,10 +3666,6 @@ JS_SHELL = r"""
 // ── Shell ───────────────────────────────────────────────────────────────
 const VIEWS = { week: pageWeek, combos: pageCombos, saved: pageSaved,
                 ladder: pageLadder, model: pageModel };
-// Where the market picker is worth carrying. Saved parlays name their own
-// market, the ladder prices whatever the slip holds, and the Model page
-// describes every market at once.
-const MARKET_ROUTES = { week: 1, combos: 1 };
 
 function render(keepFocus) {
   // `keepFocus` is really "you are still working on the same table".
@@ -3634,7 +3677,13 @@ function render(keepFocus) {
   // away what you were doing to acknowledge that you did it. Changing a
   // filter, on the other hand, gives you a different set of rows, and holding
   // a scroll position in those is meaningless.
-  if (!keepFocus) S.pane = {};
+  if (!keepFocus) {
+    S.pane = {};
+    // A different market, a different filter, a different page: you are at the
+    // top of something new, so the nav is back and the panes start over.
+    for (const k in NAV_LAST) delete NAV_LAST[k];
+    navAway(false);
+  }
   const active = keepFocus ? document.activeElement : null;
   // `data-fk` where one is set, the aria-label otherwise. Saved parlays name
   // themselves "3-leg Anytime TD", so two of them collide — and restoring
@@ -3667,12 +3716,6 @@ function render(keepFocus) {
     href: '#' + id, text: text, 'aria-current': S.route === id ? 'page' : null,
     onclick: () => { S.navOpen = false; } })));
   $('#top').appendChild(nav);
-  // The market belongs to the whole page, so it sits with the page links
-  // rather than over the board. Only on the two routes that read it: on
-  // Saved, the Ladder and the Model page it would be a control that changes
-  // nothing you can see.
-  if (MARKET_ROUTES[S.route]) $('#top').appendChild(marketMenu());
-
   // Whether the sheet is up, as an attribute rather than a class, so the
   // stylesheet can reserve room under the board for it only while it is
   // there. Reserved always, that room is page the phone has to scroll past.
@@ -3717,6 +3760,48 @@ function render(keepFocus) {
 // Read from the header rather than declared about it. `offsetHeight` is a
 // browser fact and there is none in a stub DOM, so a missing one leaves the
 // stylesheet on its own fallback rather than setting a wrong number.
+// The nav gets out of the way, and comes back the moment you ask.
+//
+// Pinning the header AND the filter bar costs about 150px of a 700px phone
+// before the browser's own chrome, and when the browser takes its share the
+// topmost layer is the one that goes — which is how the nav ended up behind
+// an address bar. So only the filter bar is pinned. The header slides up out
+// of the way on the way down the board and slides back on any upward
+// movement, which is the pattern every mobile site converged on because it
+// costs nothing to use and nothing to learn.
+//
+// Driven from whatever is actually scrolling. On this page that is usually
+// the table's own pane rather than the window — the board is a bounded
+// scroller — so both report here and each is remembered separately. One
+// shared previous-position would read a pane at row 400 and a window at row 0
+// as a jump of four hundred rows every time the two took turns.
+const NAV_LAST = {};
+//: How far down before hiding is worth it, and how much movement counts as a
+//: deliberate scroll rather than a thumb resting on glass.
+const NAV_AFTER = 80, NAV_STEP = 6;
+let navHidden = false;
+
+function navAway(v) {
+  if (v === navHidden) return;
+  navHidden = v;
+  // On the root rather than on the header, because `render` rebuilds the
+  // header from nothing and a class on it would not survive the next tap.
+  document.documentElement.setAttribute('data-nav', v ? 'away' : 'here');
+}
+
+function navScrolled(key, y) {
+  y = Math.max(0, y || 0);
+  // The top is the top. Whatever else is true, arriving back at the start of
+  // the board shows the nav, or the only way to reach it would be a scroll
+  // gesture in a pane that has nowhere left to go.
+  if (y <= 0) { NAV_LAST[key] = 0; return navAway(false); }
+  const prev = NAV_LAST[key] || 0;
+  if (Math.abs(y - prev) < NAV_STEP) return;
+  const down = y > prev;
+  NAV_LAST[key] = y;
+  navAway(down && y > NAV_AFTER);
+}
+
 // Put every scroll pane back where its state says it was.
 //
 // A function rather than four lines inside `render`, so a test can call the
@@ -3741,8 +3826,12 @@ function measureTop() {
   root.style.setProperty('--top', top.offsetHeight + 'px');
 }
 // A rotation changes the header's height, and the bar has to follow it.
-if (typeof window !== 'undefined' && window.addEventListener)
+if (typeof window !== 'undefined' && window.addEventListener) {
   window.addEventListener('resize', measureTop);
+  // The window scrolls too, on the pages that have no bounded pane.
+  window.addEventListener('scroll',
+    () => navScrolled('window', window.scrollY || window.pageYOffset || 0));
+}
 document.addEventListener('DOMContentLoaded', boot);
 """
 

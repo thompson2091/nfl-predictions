@@ -63,9 +63,21 @@ function install() {
     createElementNS: (ns, tag) => mkNode(tag),
     createTextNode: t => ({ _text: t, children: [] }),
     addEventListener() {},
-    documentElement: {
-      getAttribute: () => null, setAttribute() {}, removeAttribute() {},
-    },
+    // Attributes that are actually kept. They used to be discarded, which
+    // made every `data-` flag the page sets on the root — the slip state, the
+    // nav state — unobservable, so a harness could not tell a page that set
+    // them from one that did not.
+    documentElement: (() => {
+      const a = {};
+      return {
+        attrs: a,
+        style: { props: {}, setProperty(k, v) { this.props[k] = v; },
+                 getPropertyValue(k) { return this.props[k] || ''; } },
+        getAttribute: k => (k in a ? a[k] : null),
+        setAttribute(k, v) { a[k] = String(v); },
+        removeAttribute(k) { delete a[k]; },
+      };
+    })(),
     // The same node for the same selector, because the page believes it is
     // addressing the same element every time — `$('#root')` is a place it
     // clears and refills, not a new div each call. Handing back a fresh one
