@@ -844,37 +844,42 @@ def test_the_board_and_the_results_map_name_a_player_the_same_way():
         "the board and the results map must call the same helper")
 
 
-def test_the_market_rides_in_the_bar_a_phone_keeps_on_screen():
-    """Pin one bar, not a stack — and pin the one you use while reading.
+def test_the_market_is_named_once_and_in_the_header():
+    """It was drawn twice, and both copies were over the board.
 
-    The market went to the site header first, which was right about it being
-    drawn twice over the board and wrong about where it should live. Two
-    pinned bars cost about 150px of a 700px phone before the browser takes its
-    own share, and when a browser takes its share it is the TOPMOST layer that
-    loses: an address bar at the top of the window sits exactly where a pinned
-    nav is. So the nav is not pinned. The filter bar is, and the market is in
-    it, because that is the control you change while reading a board.
+    The market changes what every page is about, so it belongs with the page
+    links. It spent one commit down in the pinned filter bar on the reasoning
+    that a phone cannot afford two pinned bars — sound reasoning, wrong call,
+    and it had a visible cost: `.menuwrap` inside a column flex stretches to
+    the full width of the board, so `right:0` put a 280px panel against the
+    far edge of the page instead of under its own button.
 
-    Falsified by putting `marketMenu()` back into `render`: the header becomes
-    a second pinned bar on a phone and the count below moves.
+    Falsified by putting `marketMenu()` back into either page head, or into
+    the filter bar: the count below moves.
     """
     from src.export import site as d
 
-    assert "marketMenu()" not in d.JS_SHELL, (
-        "the header is the bar that scrolls away; the market cannot ride in it")
-    # Defined in JS_WEEK, so the name appears there once for the declaration
-    # and once for the call that puts it in the bar.
-    assert d.JS_WEEK.count("marketMenu()") == 2, (
-        "declared, and called into This week's pinned bar")
-    assert "marketMenu()" in d.JS_COMBOS, (
-        "Combinations reads the same market and needs the same control — it "
-        "had none at all for one commit, having lost the header copy")
-    sticky = d.JS_WEEK[d.JS_WEEK.index("class: 'stickybar'"):]
-    assert sticky.index("marketMenu()") < sticky.index("viewSeg("), (
-        "the market names what the view segment is a view OF")
+    # Counted, not pattern-matched. The first version of this looked for
+    # `marketMenu(),` — the trailing comma of a page head's child list — and
+    # passed happily against `sticky.appendChild(marketMenu())`, which is the
+    # arrangement it exists to reject. `marketMenu` is DEFINED in JS_WEEK, so
+    # one occurrence is the declaration and any more is a call.
+    assert d.JS_WEEK.count("marketMenu(") == 1, (
+        "declared here, called nowhere here — not over the board and not in "
+        "the filter bar")
+    assert "marketMenu(" not in d.JS_COMBOS
+    assert d.JS_SHELL.count("marketMenu()") == 1, "called once, in the header"
+    assert "MARKET_ROUTES[S.route]" in d.JS_SHELL, (
+        "Saved names its own market, the ladder prices the slip and the Model "
+        "page describes all of them — a picker there changes nothing visible")
+    # And the wrapper cannot be stretched by whatever box it lands in.
+    assert ".menuwrap{position:relative;flex-shrink:0;align-self:flex-start}" \
+        in d.CSS.replace(" ", ""), (
+        "the panel is positioned against this box, so its width is the bug "
+        "surface — not the menu's own rules")
 
-    # The season and week the market displaced from the header. They are a
-    # fact about the build, not something anyone acts on.
+    # The season and week it displaced. They are a fact about the build, not
+    # something anyone acts on, so they read as one in the footer.
     assert "class: 'when'" not in d.JS_SHELL and ".when{" not in d.CSS
     assert "__SEASON__ week __WEEK__" in d.FOOTER
     page = d.render({"season": 2026, "week": 2, "built": "x", "markets": {},
@@ -883,40 +888,27 @@ def test_the_market_rides_in_the_bar_a_phone_keeps_on_screen():
     assert "__SEASON__" not in page and "__WEEK__" not in page
 
 
-def test_the_nav_gets_out_of_the_way_and_comes_back_on_the_way_up():
-    """A header that is always there is a header the browser chrome fights.
+def test_nothing_in_the_chrome_animates_while_you_read():
+    """The board is the thing that should move.
 
-    It slides up on the way down the board and back on any upward movement,
-    which is the pattern every mobile site converged on. Driven from whatever
-    is actually scrolling — on this page usually the table's own pane rather
-    than the window — and each scroller is remembered separately, or a pane at
-    row 400 and a window at row 0 read as a four-hundred-row jump every time
-    the two take turns.
+    A header that slides away going down and back coming up saves 64px and
+    spends it on motion under the reader's thumb, which is a worse trade than
+    the one it was making. Both bars stay put; the table has a scroller of its
+    own and is what moves.
 
-    Falsified by dropping the `data-nav` rules: the header stays put, the bar
-    below it never reclaims the space, and the assertions below fail together.
+    Falsified by restoring the reveal: `data-nav` and a transform on `.top`
+    come back, and the assertions below fail.
     """
     from src.export import site as d
 
+    for gone in ("data-nav", "navScrolled", "NAV_LAST", "navAway",
+                 "translateY(-100%)"):
+        assert gone not in d.CSS and gone not in d.JS_SHELL \
+            and gone not in d.JS_SHARED, (
+            f"{gone!r} belonged to the auto-hiding header, which is gone")
     narrow = d.CSS[d.CSS.index("@media (max-width:680px)"):].replace(" ", "")
-    assert "html[data-nav=away].top{transform:translateY(-100%)}" in narrow, (
-        "a transform, not a height: it is composited, so it does not reflow "
-        "a 500-row table on every frame of the animation")
-    assert "html[data-nav=away].stickybar{top:0}" in narrow, (
-        "and the bar rises into the space, or the nav leaves a stripe of page "
-        "showing through where it used to be")
-
-    assert "navScrolled(pid, wrap.scrollTop)" in d.JS_SHARED, (
-        "the board's pane is the scroller that matters here")
-    assert "window.addEventListener('scroll'" in d.JS_SHELL, (
-        "and the window is the one on pages with no bounded pane")
-    assert "const NAV_LAST = {}" in d.JS_SHELL, (
-        "one previous-position per scroller, or they read each other's jumps")
-    assert "setAttribute('data-nav'" in d.JS_SHELL, (
-        "on the root, because `render` rebuilds the header from nothing and a "
-        "class on it would not survive the next tap")
-    assert "prefers-reduced-motion" in d.CSS, (
-        "nobody wants a header animating past them while they read")
+    assert "transition" not in narrow.split(".rows{")[0], (
+        "nothing in the pinned chrome may animate")
 
 
 def test_the_phone_pins_one_bar_and_knows_how_tall_it_is():
@@ -975,10 +967,10 @@ def test_the_pane_is_measured_against_the_viewport_the_phone_actually_has():
 
     flat = d.CSS.replace(" ", "").replace("\n", "")
     vh = flat.count("max-height:calc(100vh-")
-    assert vh == 4, f"four rules declare a pane height; found {vh}"
+    assert vh == 3, f"three widths declare a pane height; found {vh}"
     assert flat.count("max-height:calc(100dvh-") == vh, (
         "every one of them needs its dynamic-viewport twin")
-    for px in ("230px", "280px", "176px", "112px"):
+    for px in ("230px", "280px", "176px"):
         i = flat.index(f"max-height:calc(100vh-{px})")
         assert flat[i:].startswith(f"max-height:calc(100vh-{px});"
                                    f"max-height:calc(100dvh-{px})"), (
@@ -1096,24 +1088,6 @@ def test_pressing_add_does_not_send_you_back_to_the_top(page_js, payload, tmp_pa
     p = tmp_path / "payload.json"
     p.write_text(json.dumps(payload))
     r = subprocess.run(["node", str(REPO / "tests" / "js" / "panescroll.js"),
-                        str(p), str(page_js)],
-                       capture_output=True, text=True, cwd=str(REPO))
-    assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")
-
-
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
-def test_the_nav_hides_and_reveals_on_the_right_gestures(page_js, payload, tmp_path):
-    """Hiding is cheap; hiding badly is worse than not hiding.
-
-    A header that reappears on every pixel of jitter, or that flaps whenever
-    two scrollers take turns reporting, costs more attention than the 64px it
-    is trying to save. `tests/js/navreveal.js` holds it to the four rules that
-    matter: the top always shows it, a deliberate move down hides it, any move
-    up brings it back, and each scroller is compared with where IT was.
-    """
-    p = tmp_path / "payload.json"
-    p.write_text(json.dumps(payload))
-    r = subprocess.run(["node", str(REPO / "tests" / "js" / "navreveal.js"),
                         str(p), str(page_js)],
                        capture_output=True, text=True, cwd=str(REPO))
     assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")
