@@ -111,7 +111,14 @@ h1,h2,h3{margin:0;font-weight:600}
   border-bottom:1px solid var(--line); background:var(--card);
   position:sticky; top:0; z-index:30;
 }
+/* The menu opens against this, so it needs a positioned ancestor. */
+.top{position:sticky}
 .brand{font-family:var(--serif);font-size:22px;font-weight:600;white-space:nowrap}
+.burger{
+  display:none;align-items:center;gap:8px;height:40px;padding:0 12px;
+  border:1px solid var(--btnline);border-radius:10px;background:var(--card);
+  font-size:15px;font-weight:600;cursor:pointer;color:var(--ink);
+}
 .nav{display:flex;gap:8px;flex-grow:1;flex-wrap:wrap}
 .nav a{
   padding:10px 14px;border-radius:8px;font-size:15px;text-decoration:none;
@@ -256,6 +263,7 @@ input[type=search]{-webkit-appearance:none}
 .menu button:hover:not(:disabled){background:var(--inset)}
 .menu button[aria-checked=true]{background:var(--oursbg);font-weight:600}
 .menu button:disabled{color:var(--mut3);cursor:default}
+.chip[disabled]{color:var(--mut3);border-color:var(--line2);cursor:default}
 .menu .tag{font-size:14px;color:var(--ours);font-weight:700}
 .menu button:disabled .tag{font-size:12px;color:var(--mut3);font-weight:400}
 
@@ -375,7 +383,15 @@ input[type=search]{-webkit-appearance:none}
   .top{padding:0 24px;gap:24px}
 }
 @media (max-width:1100px){
-  .wrap{flex-direction:column}
+  /* Stretch, not flex-start.
+     `align-items` governs the CROSS axis, and turning this column flips which
+     axis that is: side by side it was the vertical one and `flex-start` meant
+     "do not stretch the slip to the board's height". Stacked it becomes the
+     horizontal one, and `flex-start` means "size the board to its content" —
+     so `main` took the table's 1,150px, the page grew past the phone, and the
+     pane inside it never had a narrower width to scroll against. The table was
+     not too wide; its container was. */
+  .wrap{flex-direction:column;align-items:stretch}
   h1{font-size:32px}
   /* The slip becomes a sheet.
      Stacked in the flow it lands underneath a five-hundred-row table, which
@@ -416,10 +432,22 @@ input[type=search]{-webkit-appearance:none}
   main{padding-bottom:180px}
 }
 @media (max-width:900px){
-  .top{height:auto;min-height:64px;flex-wrap:wrap;gap:12px;padding:10px 20px}
-  .nav{order:3;width:100%;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .nav a{padding:8px 12px;font-size:14px}
-  .when{margin-left:auto}
+  /* The header is one line: brand, the menu button, the week. The links drop
+     out of the flow entirely and come back as a sheet under it, so the header
+     costs 64px whether or not the menu is open. It used to wrap the links onto
+     a third row, which is 44px of every screen spent on a jump most readers
+     make once. */
+  .top{height:auto;min-height:64px;gap:12px;padding:10px 16px;flex-wrap:nowrap}
+  .burger{display:inline-flex;flex-shrink:0}
+  .brand{font-size:19px}
+  .nav{display:none}
+  .nav.open{
+    display:flex;position:absolute;left:0;right:0;top:100%;z-index:31;
+    flex-direction:column;gap:0;padding:6px;background:var(--card);
+    border-bottom:1px solid var(--line);box-shadow:0 12px 30px rgba(22,24,29,.14);
+  }
+  .nav.open a{padding:14px 12px;font-size:16px;border-radius:8px}
+  .when{margin-left:auto;flex-shrink:0;font-size:13px}
   main{padding:20px 16px 28px}
   h1{font-size:28px}
   .lede{font-size:14px}
@@ -434,7 +462,25 @@ input[type=search]{-webkit-appearance:none}
 }
 @media (max-width:680px){
   .hidesm{display:none}
-  main{padding:16px 12px 24px}
+  main{padding:0 12px 24px}
+
+  /* The market and the filters ride with you.
+     On a phone the board is the only thing worth the height, and everything
+     above it — a 24px title, a paragraph of lede, the market menu, the view
+     segment, the search and three pickers — is about 260px of a 780px screen.
+     The title and the lede go; the two controls you actually change while
+     reading stay pinned under the header.
+     `top:64px` is safe here now: the header stopped wrapping its nav when the
+     links went behind the menu button, so it is 64px at this width again. */
+  .pagehead{
+    position:sticky;top:64px;z-index:20;background:var(--bg);
+    padding:10px 0 6px;margin:0 -12px;padding-left:12px;padding-right:12px;
+  }
+  .pagehead h1,.pagehead .lede{display:none}
+  .stickybar{
+    position:sticky;top:110px;z-index:19;background:var(--bg);
+    margin:0 -12px;padding:0 12px 8px;
+  }
   .pagehead{align-items:flex-start}
   h1{font-size:24px}
   .seg{width:100%}
@@ -567,6 +613,7 @@ const svg = (d, o) => {
   return s;
 };
 const STAR = 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z';
+const BARS = 'M4 7h16M4 12h16M4 17h16';
 const CHEV = 'M9 18l6-6-6-6';
 const DOWN = 'M6 9l6 6 6-6';
 const MAG = 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3';
@@ -866,6 +913,9 @@ const S = {
         allLines: false, sort: '', dir: -1 },
   fs: { q: '', game: '', pos: '', sort: '', dir: -1 },
   savedFilter: 'all',
+  // Whether the page menu is showing. Narrow screens only — the CSS puts the
+  // links back on one row above 900 and this stops being read.
+  navOpen: false,
   // Which markets' feature tables are unfolded on the Model page.
   fam: {},
   // Combinations has its own filters rather than inheriting This week's.
@@ -1037,10 +1087,17 @@ function sortBar(cols, st, sortable, keyOf) {
     selected: st.sort === keyOf(c) ? 'selected' : null })));
   sel.onchange = () => { st.sort = sel.value; render(); };
   bar.appendChild(sel);
+  // Dead until something is being sorted, and it says so rather than looking
+  // live and doing nothing. Reversing "Default" reverses nothing: the rows are
+  // in the order the board built them and there is no key to turn around.
+  const armed = !!st.sort;
   bar.appendChild(el('button', { class: 'chip',
-    'aria-label': 'Reverse the sort',
+    'aria-label': armed ? 'Reverse the sort' : 'Pick a column to sort by first',
+    disabled: armed ? null : true,
+    title: armed ? null : 'Pick a column first — there is nothing to reverse '
+                        + 'about the default order',
     text: st.dir > 0 ? '\u2191 low first' : '\u2193 high first',
-    onclick: () => { st.dir = -st.dir; render(); } }));
+    onclick: armed ? () => { st.dir = -st.dir; render(); } : null }));
   return bar;
 }
 
@@ -1744,7 +1801,11 @@ function pageWeek() {
     marketMenu(),
   ]));
 
-  main.appendChild(viewSeg(f, m, kind, rowsFor(key, 'all')));
+  // The two rows anyone touches while reading the board, kept together so a
+  // phone can pin them as one thing. On a wide screen this wrapper is inert.
+  const sticky = el('div', { class: 'stickybar' });
+  sticky.appendChild(viewSeg(f, m, kind, rowsFor(key, 'all')));
+  main.appendChild(sticky);
   if (view === 'short') main.appendChild(funnelStrip(m, key, rows.length));
 
   (m.problems || []).forEach(p => main.appendChild(el('div', { class: 'badbox', text: String(p) })));
@@ -1779,7 +1840,7 @@ function pageWeek() {
                                    favOnly: false, allLines: false });
       render();
     } }));
-  main.appendChild(bar);
+  sticky.appendChild(bar);
 
   if (f.game) main.appendChild(gameCard(f.game, key));
 
@@ -3234,9 +3295,23 @@ function render(keepFocus) {
 
   $('#top').innerHTML = '';
   $('#top').appendChild(el('div', { class: 'brand', text: DATA.brand || 'Pick Six' }));
-  const nav = el('nav', { class: 'nav' });
+  // Five page links are a row of tabs on a desktop and a third line of header
+  // on a phone — one that costs vertical space on every screen in order to
+  // offer a jump most readers make once. Behind a button they cost 44px, and
+  // the button says where you are.
+  const burger = el('button', { class: 'burger',
+    'aria-expanded': S.navOpen ? 'true' : 'false',
+    'aria-label': S.navOpen ? 'Close the menu' : 'Open the menu',
+    onclick: () => { S.navOpen = !S.navOpen; render(); } });
+  burger.appendChild(svg(S.navOpen ? EX : BARS, { size: 18 }));
+  burger.appendChild(el('span', {
+    text: (PAGES.find(p => p[0] === S.route) || PAGES[0])[1] }));
+  $('#top').appendChild(burger);
+
+  const nav = el('nav', { class: 'nav' + (S.navOpen ? ' open' : '') });
   PAGES.forEach(([id, text]) => nav.appendChild(el('a', {
-    href: '#' + id, text: text, 'aria-current': S.route === id ? 'page' : null })));
+    href: '#' + id, text: text, 'aria-current': S.route === id ? 'page' : null,
+    onclick: () => { S.navOpen = false; } })));
   $('#top').appendChild(nav);
   $('#top').appendChild(el('div', { class: 'when',
     text: (DATA.season || '') + ' · Week ' + (DATA.week || '') }));

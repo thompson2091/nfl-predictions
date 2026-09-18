@@ -1091,4 +1091,54 @@ S.market = 'any'; S.fw.view = 'all';
   S.slipOpen = false;
 })();
 
+// ── The header is one line, and the links are behind it ─────────────────
+(() => {
+  const cls = (n, c) => new RegExp('(^| )' + c + '( |$)').test(n.className || '');
+  const find = (n, c, out) => { out = out || [];
+    if (n && cls(n, c)) out.push(n);
+    ((n && n.children) || []).forEach(k => find(k, c, out)); return out; };
+
+  S.market = 'any'; S.fw.view = 'all';
+  const page = pageWeek();
+  const bars = find(page, 'stickybar');
+  ok('the controls worth pinning are gathered into one bar',
+     bars.length === 1, String(bars.length));
+  const inBar = txt(bars[0]);
+  // The search box is an input; its placeholder is an attribute, not text.
+  // Asserted on the pickers, which render their options as text.
+  ok('and it holds the view segment and the filters',
+     /Everyone/.test(inBar) && /Any position/.test(inBar)
+     && /Priced and not/.test(inBar),
+     inBar.slice(0, 120));
+  ok('the title and the lede are outside it, so they can be dropped',
+     !/Who scores/.test(inBar));
+})();
+
+// ── A reverse with nothing to reverse ───────────────────────────────────
+(() => {
+  const cls = (n, c) => new RegExp('(^| )' + c + '( |$)').test(n.className || '');
+  const find = (n, c, out) => { out = out || [];
+    if (n && cls(n, c)) out.push(n);
+    ((n && n.children) || []).forEach(k => find(k, c, out)); return out; };
+  const dirBtn = () => {
+    const bar = find(pageWeek(), 'sortbar')[0];
+    return (bar.children || []).filter(c => /first/.test(c.textContent || ''))[0];
+  };
+  S.market = 'any'; S.fw.view = 'all'; S.fw.sort = '';
+  const off = dirBtn();
+  ok('the sort direction is dead while the order is Default',
+     off && off.attrs && off.attrs.disabled !== undefined && !off.onclick,
+     'reversing "Default" reverses nothing, and a live-looking control that '
+     + 'does nothing is the complaint that found this');
+  S.fw.sort = 'ours';
+  const on = dirBtn();
+  ok('and works once a column is chosen',
+     on && typeof on.onclick === 'function'
+     && (!on.attrs || on.attrs.disabled === undefined));
+  const before = S.fw.dir;
+  on.onclick();
+  ok('flipping it flips the order', S.fw.dir === -before);
+  S.fw.sort = ''; S.fw.dir = -1;
+})();
+
 done();

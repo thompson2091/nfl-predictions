@@ -500,6 +500,47 @@ def test_one_table_layout_at_every_width():
         "findable")
 
 
+def test_the_board_never_makes_the_page_wider_than_the_screen():
+    """`align-items` governs the cross axis, and the cross axis moves.
+
+    Side by side, `.wrap` is a row and `align-items:flex-start` means "do not
+    stretch the slip to the board's height". Stacked — which is what it becomes
+    below 1100px — it is a column, the cross axis is now HORIZONTAL, and the
+    same declaration means "size the board to its content". So `main` took the
+    table's 1,150px, the page grew wider than the phone, and the scroll pane
+    inside it never had a narrower width to scroll against.
+
+    The table was never too wide. Its container was.
+    """
+    from src.export import site as d
+
+    block = d.CSS[d.CSS.index("@media (max-width:1100px)"):
+                  d.CSS.index("@media (max-width:900px)")].replace(" ", "")
+    assert ".wrap{flex-direction:column;align-items:stretch}" in block, (
+        "stacked, `flex-start` sizes the board to the widest thing in it")
+
+
+def test_the_page_links_go_behind_a_button_on_a_narrow_screen():
+    """Five tabs are a row on a desktop and a third line of header on a phone.
+
+    That third line costs 44px of every screen to offer a jump most readers
+    make once. Behind a button it costs nothing, and the button names the page
+    you are on.
+    """
+    from src.export import site as d
+
+    block = d.CSS[d.CSS.index("@media (max-width:900px)"):
+                  d.CSS.index("@media (max-width:680px)")].replace(" ", "")
+    assert ".nav{display:none}" in block, "the links come out of the flow"
+    assert ".burger{display:inline-flex" in block, "and the button takes over"
+    assert ".nav.open{" in block and "position:absolute" in block, (
+        "opened, the menu lays over the board rather than pushing it down — "
+        "or the header costs its height again the moment it is used")
+    assert "flex-wrap:nowrap" in block, (
+        "the header must not wrap; that is the row this removes")
+    assert "const BARS" in d.JS_CORE and "S.navOpen" in d.JS_SHELL
+
+
 def test_no_cell_is_rendered_without_a_column_to_put_it_in():
     """The chevron was appended to every row and styled only below 680px.
 
