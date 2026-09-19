@@ -301,6 +301,33 @@ ok('and EV comes straight after Edge',
 ok('with Open the one held back for a wide screen',
    wide.length === 1 && wide[0] === 'Open', wide.join(' · '));
 
+// Every board shows the same five, Model included. A line board used to put
+// the projection where Model goes, so the number that says what we thought on
+// our own was missing from four of the six markets.
+['any', 'rec', 'rush', 'recyds', 'passyds'].forEach(mk => {
+  if (!served(mk)) return;
+  S.market = mk; S.fw.view = 'all'; S.fw.q = '';
+  render();
+  const one = html().slice(html().indexOf('class="row"'));
+  const cut = one.slice(0, one.indexOf('class="row"', 10) + 1 || undefined);
+  const got = [];
+  const re2 = /<span class="metric([^"]*)"><span class="metric__l">([^<]*)</g;
+  let m2;
+  while ((m2 = re2.exec(cut)) !== null) {
+    if (m2[1].indexOf('--wide') < 0) got.push(m2[2]);
+  }
+  ok('  ' + mk + ' shows Model · Book · Adj · Edge · EV $100',
+     got.join(' · ') === 'Model · Book · Adj · Edge · EV $100', got.join(' · '));
+});
+
+// And a line board carries its projection beside the line it is against.
+S.market = 'rec'; S.fw.view = 'priced';
+render();
+const ouRow = html().slice(html().indexOf('class="row"'));
+ok('the line and the projection are one pill',
+   /class="odds num">[^<]*\u2192[^<]*</.test(ouRow),
+   (ouRow.match(/class="odds num">[^<]*</) || ['none'])[0]);
+
 
 
 // ── Load, from Combinations into the slip ───────────────────────────────

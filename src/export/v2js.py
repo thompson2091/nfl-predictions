@@ -289,15 +289,28 @@ function vSortbar(f) {
 function vRow(r, kind) {
   const fav = isFav(r.id), inSlip = legIn(r.id) || legIn(r.id + '|over');
   const priced = r.priced;
-  const line = kind === 'ou' && has(r.line)
-    ? '<span class="odds num">' + num2(r.line) + '</span>' : '';
+  // The line and what we make it, in one pill. They were a pill and a metric
+  // in different halves of the cell, which split the only comparison a
+  // yardage row exists to make — and it cost the metrics strip a sixth
+  // column, which does not fit: six need 269px of the 254px a 390px screen
+  // leaves, and five need 218.
+  const line = kind === 'ou' && (has(r.line) || has(r.proj))
+    ? '<span class="odds num">'
+      + (has(r.line) ? num2(r.line) : '—')
+      + (has(r.proj) ? ' \u2192 ' + num2(r.proj) : '')
+      + '</span>'
+    : '';
   const odds = priced && has(r.odds)
     ? '<span class="odds num">' + american(r.odds) + '</span>'
     : '<span class="odds odds--none">No price</span>';
   const ev = ev100(r);
+  // The same five on every board. Model is the fitted number before the
+  // market blend, and a line board had no column for it at all — it carried
+  // the projection there instead, so the one figure that says what we thought
+  // on our own was missing from four of the six markets.
   const metrics = [
-    kind === 'ou' ? met('Proj', has(r.proj) ? num2(r.proj) : '—')
-                  : met('Model', has(r.modelOnly) ? pct(r.modelOnly) : '—'),
+    met('Model', has(r.modelOnly) ? pct(r.modelOnly) : '—',
+        has(r.modelOnly) ? '' : 'v-none'),
     met('Book', has(r.book) ? pct(r.book) : '—', has(r.book) ? '' : 'v-none'),
     met('Adj', pct(r.ours), '', true),
     met('Edge', has(r.edge) ? spp(r.edge) : '—',

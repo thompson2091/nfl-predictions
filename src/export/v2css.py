@@ -183,6 +183,13 @@ EXTRA_CSS = """
   .metrics{gap:10px}
   .metric{min-width:34px}
 }
+/* Under about 340px the five no longer fit on one line, and a strip that
+   overflows makes the whole row wider than the screen. Wrapping costs a
+   taller row on the smallest phones still in use and costs nothing anywhere
+   else. */
+@media (max-width:340px){
+  .metrics{flex-wrap:wrap;row-gap:6px}
+}
 
 /* ---------- six destinations ---------- */
 /*

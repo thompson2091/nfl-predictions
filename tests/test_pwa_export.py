@@ -550,10 +550,21 @@ def test_ev_is_on_the_board_and_open_is_the_one_held_back():
     row = v2js.js()
     row = row[row.index("function vRow("):]
     row = row[:row.index("\nconst met")]
-    assert "met('EV $100'" in row and "met('EV $100', has(ev) ? money(ev) : '—',\n        has(ev) ? (ev >= 0 ? 'v-good' : 'v-bad') : 'v-none')," in row, (
+    assert "met('EV $100', has(ev) ? money(ev) : '—',\n        has(ev) ? (ev >= 0 ? 'v-good' : 'v-bad') : 'v-none')," in row, (
         "EV must not carry the `wide` flag")
     assert row.index("met('Edge'") < row.index("met('EV $100'") < row.index("met('Open'")
     assert "met('Open', has(r.openOdds) ? american(r.openOdds) : '—', '', false, true)" in row
+
+    # Five, and the same five whatever the market. A line board used to put
+    # the projection in Model's place, so the number saying what we thought on
+    # our own was absent from four of the six markets. Six does not fit: they
+    # need 269px of the 254 a 390px screen leaves a row's middle, where five
+    # need 218 — so the projection moved up beside the line instead, which is
+    # the comparison it was always meant to be read against.
+    assert "met('Proj'" not in row, "the projection is a pill, not a metric"
+    assert row.count("met('") == 6, "five narrow and one wide"
+    assert "kind === 'ou' && (has(r.line) || has(r.proj))" in row, (
+        "and the pill appears for either of them")
     narrow = v2css.css()
     narrow = narrow[narrow.index("@media (max-width:480px)"):]
     assert "gap:10px" in narrow[:200]
