@@ -11,7 +11,7 @@ const { ok, done } = reporter();
 const x = loadPage(process.argv[2], process.argv[3],
   ['S', 'render', 'route', 'go', 'V2TABS', 'vBoard', 'vSlip', 'vSheet', 'SHEETS',
    'rowsFor', 'toggleLeg', 'marketLabel', 'served', 'KIND', 'boot', 'DATA',
-   'patchBoard', 'clearSlip', 'saveSlip', 'settle', 'wire']);
+   'patchBoard', 'clearSlip', 'saveSlip', 'settle', 'wire', 'patchTotals']);
 const { S, render, V2TABS, vBoard, vSlip, vSheet, SHEETS, rowsFor,
         toggleLeg, marketLabel, served, KIND, DATA } = x;
 
@@ -353,5 +353,47 @@ const keys = (html().match(/keystat__l">([^<]*)</g) || [])
   .map(k => k.slice(k.indexOf('>') + 1, -1));
 ok('the ladder is headed Payout · Chance · At risk',
    keys.slice(0, 3).join(' · ') === 'Payout · Chance · At risk', keys.join(' · '));
+
+
+
+// ── The stake moves everything it decides ───────────────────────────────
+// EV and every Net in the breakdown are functions of the stake. The three
+// totals were patched when it changed and the breakdown was not, so the slip
+// disagreed with its own table until something else forced a render.
+S.route = 'week';
+x.clearSlip();
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[0]);
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[1]);
+S.slip.stake = 10; S.slip.stakeRaw = '10';
+S.route = 'slip';
+render();
+const nets = () => (document.getElementById('slipbrk').innerHTML
+  .match(/num (?:pos|neg)">([^<]*)</g) || []).map(t => t.slice(t.indexOf('>') + 1, -1));
+const evOf = () => (document.getElementById('sliptotals').innerHTML
+  .match(/total__v num[^>]*>([^<]*)</g) || []).map(t => t.slice(t.indexOf('>') + 1, -1))[2];
+
+// The box exists in the rendered markup; the stub keeps `innerHTML` as a
+// string rather than parsing it, so it is only a readable node once
+// `patchTotals` has written into it. A browser has no such gap.
+ok('the breakdown is in a box that can be repatched',
+   html().indexOf('id="slipbrk"') >= 0, 'nothing to patch');
+x.patchTotals();
+const netsAt10 = nets(), evAt10 = evOf();
+ok('and that box holds the curve', netsAt10.length > 0, netsAt10.join(' '));
+
+S.slip.stake = 40; S.slip.stakeRaw = '40';
+x.patchTotals();
+const netsAt40 = nets(), evAt40 = evOf();
+ok('the EV follows the stake', evAt40 !== evAt10, evAt10 + ' -> ' + evAt40);
+ok('and so does every Net in the breakdown',
+   netsAt40.join() !== netsAt10.join(),
+   netsAt10.join(' ') + '  ->  ' + netsAt40.join(' '));
+// Four times the stake is four times the money, because net is linear in it.
+ok('four times the stake, four times the net',
+   Math.abs(parseFloat(netsAt40[0].replace(/[^0-9.]/g, ''))
+            - 4 * parseFloat(netsAt10[0].replace(/[^0-9.]/g, ''))) < 0.02,
+   netsAt10[0] + ' -> ' + netsAt40[0]);
+ok('and the EV label says which stake it is on',
+   document.getElementById('sliptotals').innerHTML.indexOf('EV on $40') >= 0);
 
 done();

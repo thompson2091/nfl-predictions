@@ -466,12 +466,16 @@ function vSlip() {
   // How often each number of legs lands, and what that pays. The reason the
   // slip is worth reading rather than just adding up: a four-leg parlay is
   // mostly the three-of-four branch, and that branch pays nothing.
-  if (m.rows && m.rows.length) {
-    // The table brings its own headings. A `secthead` over them said the
-    // same three words again, one line higher and in a different typeface.
-    h += '<div class="sect"><div class="card" style="padding:16px">'
-      + vBrk(m.rows, m.n, m.slips) + '</div></div>';
-  }
+  // The table brings its own headings. A `secthead` over them said the same
+  // three words again, one line higher and in a different typeface.
+  //
+  // In a box of its own because every Net in it is a function of the stake,
+  // so it has to be repatched when the stake box is typed into — the three
+  // totals above were, and this was not, so the slip disagreed with its own
+  // breakdown until something else caused a render.
+  h += '<div class="sect" id="slipbrk"><div class="card" style="padding:16px">'
+    + (m.rows && m.rows.length ? vBrk(m.rows, m.n, m.slips) : '')
+    + '</div></div>';
   const g = gradedNote(S.slip.market);
   if (g) h += '<div class="sect"><div class="prose" style="border:0;padding:0 4px">'
     + '<b>Graded:</b> ' + esc(g) + '</div></div>';
@@ -869,16 +873,23 @@ const num = v => parseFloat(String(v).replace(/[^0-9.]/g, ''));
 
 // The slip's three totals, and the ladder's whole answer. Same rule as the
 // board: replace what changed, never the field being typed into.
+// Everything on the slip that the stake decides: the expected value, and
+// every Net in the breakdown. `slipMath` re-runs the whole portfolio from
+// `S.slip.stake`, so both come back correct from one call — what they cannot
+// do is come back at all unless each is put somewhere it can be replaced
+// without touching the field being typed into.
 function patchTotals() {
-  const host = document.getElementById('sliptotals');
-  if (!host) return;
   const m = slipMath();
   const dec = parlayDec(m.legs);
-  host.innerHTML = tot('All hit', chanceTxt(m.all))
+  const host = document.getElementById('sliptotals');
+  if (host) host.innerHTML = tot('All hit', chanceTxt(m.all))
     + tot('Pays', allPriced(m.legs) ? american(decToAm(dec)) : '—')
     + tot('EV on $' + (S.slip.stake || 0),
           has(m.ev) ? (m.ev >= 0 ? '+' : '') + money(m.ev) : '—',
           has(m.ev) ? (m.ev >= 0 ? 'good' : 'bad') : null);
+  const brk = document.getElementById('slipbrk');
+  if (brk) brk.innerHTML = '<div class="card" style="padding:16px">'
+    + (m.rows && m.rows.length ? vBrk(m.rows, m.n, m.slips) : '') + '</div>';
 }
 function patchLadder() {
   const host = document.getElementById('ladderout');

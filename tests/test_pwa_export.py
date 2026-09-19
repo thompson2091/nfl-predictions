@@ -629,3 +629,29 @@ def test_the_ladder_is_headed_in_words_not_sentences():
     src = v2js.js()
     assert "keystat('Payout'" in src and "keystat('Chance'" in src
     assert "If every rung wins" not in src and "Chance of the run" not in src
+
+
+def test_the_stake_moves_everything_it_decides():
+    """The totals were patched and the breakdown was not.
+
+    Expected value and every Net in the curve are functions of the stake, so
+    changing it left the slip disagreeing with its own table until something
+    else forced a render. `slipMath` re-runs the whole portfolio from
+    `S.slip.stake`, so both come back correct from one call — what they
+    cannot do is come back at all unless each sits somewhere it can be
+    replaced without touching the field being typed into.
+
+    Falsified by taking the breakdown out of its box: it stops being
+    patchable and the harness catches a curve that does not move.
+    """
+    from src.export import v2js
+
+    src = v2js.js()
+    assert 'id="slipbrk"' in src, "the curve needs a box of its own"
+    patch = src[src.index("function patchTotals()"):]
+    patch = patch[:patch.index("\nfunction ")]
+    assert "getElementById('sliptotals')" in patch
+    assert "getElementById('slipbrk')" in patch, (
+        "or the Net column keeps the stake it was first drawn at")
+    assert "render(" not in patch, (
+        "patching is the point; a render would replace the stake field")
