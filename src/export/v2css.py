@@ -145,6 +145,45 @@ EXTRA_CSS = """
 .brk tr:first-child td{border-top:0}
 .brk .pos{color:var(--good)} .brk .neg{color:var(--bad)}
 
+/* ---------- count ---------- */
+/*
+ * "147 of 530 shown", under every list. It was written with no class at all
+ * and inherited the body's 14px sans at full ink, which put it at the weight
+ * of the rows it was counting — the one line on the screen that is furniture
+ * reading like content. It is the same 10px uppercase the metric labels use,
+ * because it is the same kind of thing: a label on a number.
+ */
+.count{
+  padding:var(--space-3) var(--space-4) var(--space-2);text-align:center;
+  font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-faint);font-variant-numeric:tabular-nums;
+}
+
+/* ---------- swipe to clear ---------- */
+/*
+ * The slip bar, pulled left to show what is under it. A phone pattern and
+ * only a phone pattern — it is driven by touch events, which a mouse does not
+ * send, and the button behind it is hidden at the widths where the slip has
+ * somewhere better to live.
+ *
+ * The bar moves and the button does not: the button is already there, at the
+ * right-hand edge, with the bar sitting on top of it. That is why the
+ * movement can follow a finger rather than play an animation at the end of
+ * one.
+ */
+.slipwrap{position:relative;flex:none;overflow:hidden}
+.slipdel{
+  position:absolute;right:0;top:0;bottom:0;width:112px;border:0;
+  background:var(--bad);color:#fff;font-size:15px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  padding-right:env(safe-area-inset-right);
+}
+.slipwrap .slipbar{position:relative;z-index:1;transition:transform .18s ease}
+.slipwrap[data-swipe=open] .slipbar{transform:translateX(-112px)}
+/* While a finger is on it there is no transition, or the bar lags the thumb
+   by the length of the animation and feels stuck to the glass. */
+.slipwrap[data-swipe=dragging] .slipbar{transition:none}
+
 /* ---------- graded ---------- */
 /* The rule's own record, printed wherever the rule is offered. Never the
    point estimate alone: on all four line markets the interval spans zero, and
@@ -170,10 +209,27 @@ DESKTOP_CSS = """
  * strip exists to make easy.
  */
 @media (min-width:700px){
-  .scroll>.inner{max-width:680px;margin:0 auto}
-  .appbar{max-width:none}
-  .appbar__inner,.slipbar__inner{max-width:680px;margin:0 auto;width:100%;
-    display:flex;align-items:center;gap:var(--space-3)}
+  .scroll>.inner,.slipwrap .slipbar{max-width:760px;margin-left:auto;margin-right:auto}
+}
+@media (min-width:1000px){
+  .scroll>.inner,.slipwrap .slipbar{max-width:940px}
+  /* The room is there, so the row stops hiding two of its numbers. Rendered
+     on every row at every width and hidden below this one, rather than
+     rebuilt when the window changes — a resize does not re-render. */
+  .metric--wide{display:flex}
+  /* And the name gets the space the extra metrics do not need. */
+  .row__name{font-size:17px}
+}
+@media (min-width:1280px){
+  .scroll>.inner,.slipwrap .slipbar{max-width:1100px}
+}
+/* Two of a row's six metrics are for screens with room for them. */
+.metric--wide{display:none}
+/* Swiping is a touch gesture; a mouse never sends one, and above this width
+   the slip is a tab away rather than a bar to be dismissed. */
+@media (min-width:900px){
+  .slipdel{display:none}
+  .slipwrap[data-swipe=open] .slipbar{transform:none}
 }
 /*
  * The tab bar comes up into the header. Five destinations at the bottom of a

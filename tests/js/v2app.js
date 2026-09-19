@@ -10,7 +10,8 @@ const { loadPage, textOf, reporter } = require('/Users/mthompson/projects/person
 const { ok, done } = reporter();
 const x = loadPage(process.argv[2], process.argv[3],
   ['S', 'render', 'route', 'go', 'V2TABS', 'vBoard', 'vSlip', 'vSheet', 'SHEETS',
-   'rowsFor', 'toggleLeg', 'marketLabel', 'served', 'KIND', 'boot', 'DATA']);
+   'rowsFor', 'toggleLeg', 'marketLabel', 'served', 'KIND', 'boot', 'DATA',
+   'patchBoard', 'clearSlip']);
 const { S, render, V2TABS, vBoard, vSlip, vSheet, SHEETS, rowsFor,
         toggleLeg, marketLabel, served, KIND, DATA } = x;
 
@@ -102,14 +103,72 @@ S.route = 'slip';
 render();
 ok('and is not shown on the slip itself', bars().indexOf('slipbar__count') < 0);
 
-// ── The screens still to convert say so ─────────────────────────────────
+// ── The other three screens ─────────────────────────────────────────────
 ['combos', 'ladder', 'model'].forEach(r => {
   S.route = r;
   let e5 = null;
   try { render(); } catch (e) { e5 = e; }
-  ok(r + ' renders rather than throwing', !e5, e5 && e5.message);
-  ok('  ' + r + ' says it is not converted yet',
-     html().indexOf('not converted yet') >= 0);
+  ok(r + ' renders', !e5, e5 && e5.message);
+  ok('  ' + r + ' is converted, not a placeholder',
+     html().indexOf('not converted yet') < 0);
 });
+
+S.route = 'combos'; S.market = 'any'; S.cb.pool = 'all'; S.cb.legs = 3;
+render();
+ok('combos builds slips', html().indexOf('class="combo"') >= 0, html().slice(0, 200));
+ok('and each offers to load itself', html().indexOf('data-load="0"') >= 0);
+ok('and says how many it searched', html().indexOf('slips of 3') >= 0);
+
+S.route = 'ladder';
+render();
+ok('the ladder draws its rungs', (html().match(/class="rung"/g) || []).length > 1);
+ok('with its three fields', ['f-start', 'f-odds', 'f-bets']
+   .every(id => html().indexOf('id="' + id + '"') >= 0));
+ok('and an answer box that can be patched without them',
+   html().indexOf('id="ladderout"') >= 0,
+   'typing into a field must not replace the field');
+
+S.route = 'model';
+render();
+ok('the model page reports every served market',
+   (html().match(/class="keystats"/g) || []).length >= 2);
+ok('and puts the features behind a tap', html().indexOf('data-fam=') >= 0);
+
+// ── The count line is a component, not a bare div ───────────────────────
+S.route = 'week'; S.market = 'any'; S.fw.view = 'all'; S.fw.q = '';
+render();
+ok('the count under the board is styled', html().indexOf('class="count"') >= 0);
+
+// ── Typing never replaces the input ─────────────────────────────────────
+// Which is the whole of the iOS zoom fix: the system scrolls and scales to a
+// newly focused element, and re-rendering the screen per keystroke focused a
+// brand-new one every time.
+const before = document.getElementById('scroll').innerHTML;
+ok('the board list is a box of its own', before.indexOf('id="boardlist"') >= 0);
+S.fw.q = 'alpha';
+x.patchBoard();
+// Read the patched node, not the screen: the stub keeps `innerHTML` as a
+// string rather than parsing it into children, so writing into `#boardlist`
+// cannot show up inside `#scroll`'s string. A browser has no such gap.
+const list = () => document.getElementById('boardlist').innerHTML;
+ok('patching narrows the board',
+   list().indexOf('Alpha Back') >= 0 && list().indexOf('Bravo') < 0,
+   list().slice(0, 160));
+ok('and never redraws the search input', list().indexOf('id="q"') < 0,
+   'the input lives above the box that gets patched, which is the iOS fix');
+S.fw.q = '';
+x.patchBoard();
+
+// ── Swipe to clear ──────────────────────────────────────────────────────
+S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[0]);
+S.route = 'week';
+render();
+const bar = document.getElementById('slipbarHost').innerHTML;
+ok('the slip bar has something under it to swipe to',
+   bar.indexOf('class="slipdel"') >= 0);
+ok('and that something clears the slip',
+   bar.indexOf('data-act="clearslip"') >= 0);
+ok('the bar is the thing that moves', bar.indexOf('id="slipwrap"') >= 0);
 
 done();

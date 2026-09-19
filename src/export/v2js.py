@@ -43,6 +43,7 @@ const I = {
   check: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
   x: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>',
   chev: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  bin: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>',
   mag: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>',
 };
 const tabIcon = k => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" '
@@ -69,7 +70,10 @@ function screenHTML() {
   switch (S.route) {
     case 'week': return vBoard();
     case 'slip': return vSlip();
-    default: return vSoon(S.route);
+    case 'combos': return vCombos();
+    case 'ladder': return vLadder();
+    case 'model': return vModel();
+    default: return vBoard();
   }
 }
 
@@ -104,12 +108,19 @@ function vSlipbar() {
   const m = slipMath();
   if (!m || S.route === 'slip') return '';
   const names = S.slip.legs.map(l => esc(surname(l.label || ''))).join(' · ');
-  return '<div class="slipbar"><span class="slipbar__count num">'
+  const dec = parlayDec(m.legs);
+  // The button is behind the bar rather than revealed by it, so the movement
+  // can follow a thumb instead of playing an animation after one.
+  return '<div class="slipwrap" id="slipwrap">'
+    + '<button class="slipdel" data-act="clearslip" aria-label="Clear the slip">'
+    + I.bin + ' Clear</button>'
+    + '<div class="slipbar"><span class="slipbar__count num">'
     + S.slip.legs.length + '</span>'
     + '<span class="slipbar__main"><span class="slipbar__price num">'
-    + (has(m.dec) ? american(decToAm(m.dec)) : '—') + '</span>'
+    + (allPriced(m.legs) ? american(decToAm(dec)) : '—') + '</span>'
     + '<span class="slipbar__legs">' + names + '</span></span>'
-    + '<button class="btn btn--primary btn--sm" data-tab="slip">Open</button></div>';
+    + '<button class="btn btn--primary btn--sm" data-tab="slip">Open</button></div>'
+    + '</div>';
 }
 const surname = n => {
   const b = String(n).split(' ');
@@ -139,12 +150,43 @@ function vBoard() {
     h += '<div class="sect"><div class="banner banner--bad">' + esc(String(p)) + '</div></div>';
   });
   if (view === 'short') h += vFunnel(m, key, kind, rows.length);
-  h += '<div class="sect"><div class="card">' + vSortbar(f)
-     + (rows.length ? rows.map(r => vRow(r, kind)).join('') : vEmptyFor(f, view))
-     + '</div>'
-     + '<div class="count">' + rows.length + ' of ' + all.length + ' shown</div>'
+  // The list is in a box of its own so that typing can replace it without
+  // replacing the search input above it. See `patchBoard`.
+  h += '<div class="sect" id="boardlist">' + boardList(rows, all, f, view, kind)
      + '</div>';
   return h;
+}
+
+// The rows, the sort bar above them and the count under them — everything
+// that changes when you type, and nothing that does not.
+function boardList(rows, all, f, view, kind) {
+  return '<div class="card">' + vSortbar(f)
+    + (rows.length ? rows.map(r => vRow(r, kind)).join('') : vEmptyFor(f, view))
+    + '</div><div class="count">' + rows.length + ' of ' + all.length
+    + ' shown</div>';
+}
+
+// Typing replaces the list and leaves the input alone.
+//
+// It used to re-render the screen and put focus back on the new input, once
+// per keystroke. On a desktop that is invisible. On iOS every one of those is
+// a fresh focus on a fresh node, and the system answers a fresh focus by
+// scrolling and scaling to bring it into view — so the page ended up zoomed,
+// and stayed zoomed after the keyboard went away. The input is never replaced
+// now, so there is nothing to focus and nothing to zoom to.
+function patchBoard() {
+  const host = document.getElementById('boardlist');
+  if (!host) return render(true);
+  const f = S.fw, key = S.market, kind = KIND[key] || 'td';
+  const m = marketOf(key);
+  const view = kind === 'ou'
+    ? (['priced', 'short'].indexOf(f.view) >= 0 ? f.view : 'all')
+    : f.view;
+  let rows = rowsFor(key, view === 'priced' ? 'all' : view);
+  if (view === 'priced') rows = rows.filter(r => r.priced);
+  rows = view === 'short' && kind === 'ou' ? oneTake(rows) : oneLine(rows, f);
+  const all = rows;
+  host.innerHTML = boardList(v2sort(applyFilters(rows, f), f), all, f, view, kind);
 }
 
 function v2sort(rows, f) {
@@ -197,6 +239,11 @@ function vChips(f, key, kind, rows) {
     + '" data-act="favonly">' + (f.favOnly ? I.starOn : I.star)
       .replace('width="22" height="22"', 'width="15" height="15"')
     + ' Favourites <span class="c num">' + nFav + '</span></button>';
+  // Game first, because it is the filter anyone actually reaches for — you
+  // watch a fixture, you do not watch a position. It used to sit last, after
+  // three chips that are narrowings of a board you have already got.
+  if (games.length) h += vChip('game',
+    f.game || ('All ' + games.length + ' games'), !!f.game);
   if (poss.length) h += vChip('pos', f.pos || 'Any position', !!f.pos);
   if (kind === 'td') h += vChip('priced',
     f.priced === 'all' ? 'Priced and not'
@@ -206,8 +253,6 @@ function vChips(f, key, kind, rows) {
   if (dupes > 0) h += '<button class="chip" aria-pressed="'
     + (f.allLines ? 'true' : 'false') + '" data-act="alllines">Every posted line'
     + (f.allLines ? '' : ' <span class="c num">+' + dupes + '</span>') + '</button>';
-  if (games.length) h += vChip('game',
-    f.game || ('All ' + games.length + ' games'), !!f.game);
   if (dirty) h += '<button class="chip chip--clear" data-act="clearfilters">Clear</button>';
   return h + '</div>';
 }
@@ -237,17 +282,22 @@ function vRow(r, kind) {
   const odds = priced && has(r.odds)
     ? '<span class="odds num">' + american(r.odds) + '</span>'
     : '<span class="odds odds--none">No price</span>';
-  const metrics = kind === 'ou'
-    ? [met('Proj', has(r.proj) ? num2(r.proj) : '—'),
-       met('Book', has(r.book) ? pct(r.book) : '—', has(r.book) ? '' : 'v-none'),
-       met('Adj', pct(r.ours), '', true),
-       met('Edge', has(r.edge) ? spp(r.edge) : '—',
-           has(r.edge) ? (r.edge >= 0 ? 'v-good' : 'v-bad') : 'v-none')]
-    : [met('Model', has(r.modelOnly) ? pct(r.modelOnly) : '—'),
-       met('Book', has(r.book) ? pct(r.book) : '—', has(r.book) ? '' : 'v-none'),
-       met('Adj', pct(r.ours), '', true),
-       met('Edge', has(r.edge) ? spp(r.edge) : '—',
-           has(r.edge) ? (r.edge >= 0 ? 'v-good' : 'v-bad') : 'v-none')];
+  const ev = ev100(r);
+  const metrics = [
+    kind === 'ou' ? met('Proj', has(r.proj) ? num2(r.proj) : '—')
+                  : met('Model', has(r.modelOnly) ? pct(r.modelOnly) : '—'),
+    met('Book', has(r.book) ? pct(r.book) : '—', has(r.book) ? '' : 'v-none'),
+    met('Adj', pct(r.ours), '', true),
+    met('Edge', has(r.edge) ? spp(r.edge) : '—',
+        has(r.edge) ? (r.edge >= 0 ? 'v-good' : 'v-bad') : 'v-none'),
+    // Drawn on every row and shown only where there is room for them. A
+    // resize does not re-render, so deciding this in JavaScript would leave
+    // the board showing a phone's four columns on a window someone had just
+    // widened.
+    met('Open', has(r.openOdds) ? american(r.openOdds) : '—', '', false, true),
+    met('EV $100', has(ev) ? money(ev) : '—',
+        has(ev) ? (ev >= 0 ? 'v-good' : 'v-bad') : 'v-none', false, true),
+  ];
   return '<div class="row">'
     + '<button class="ib' + (fav ? ' ib--on' : '') + '" data-fav="' + esc(r.id)
       + '" aria-label="' + (fav ? 'Remove' : 'Add') + ' favourite ' + esc(r.player)
@@ -265,9 +315,10 @@ function vRow(r, kind) {
       + (inSlip ? I.check : I.plus) + '</button>'
     + '</div>';
 }
-const met = (l, v, cls, ours) => '<span class="metric'
-  + (ours ? ' metric--ours' : '') + '"><span class="metric__l">' + l
-  + '</span><span class="metric__v num ' + (cls || '') + '">' + v + '</span></span>';
+const met = (l, v, cls, ours, wide) => '<span class="metric'
+  + (ours ? ' metric--ours' : '') + (wide ? ' metric--wide' : '')
+  + '"><span class="metric__l">' + l + '</span>'
+  + '<span class="metric__v num ' + (cls || '') + '">' + v + '</span></span>';
 
 // The rule's funnel, and its record. Both belong to the shortlist view and
 // to nothing else: "27 shortlisted" means nothing without the 530 it came
@@ -322,13 +373,6 @@ function vEmpty(t, b, action, act) {
     + (action ? '<div style="height:4px"></div><button class="btn btn--secondary '
       + 'btn--sm" data-act="' + act + '">' + action + '</button>' : '') + '</div>';
 }
-function vSoon(route) {
-  const label = (V2TABS.find(t => t[0] === route) || V2TABS[0])[1];
-  return '<div class="sect"><div class="card">' + vEmpty(label + ' is not converted yet',
-    'This screen still lives in the classic board while its components are '
-    + 'built against the new design. Everything it does is there and working.')
-    + '</div></div>';
-}
 """
 
 
@@ -363,7 +407,7 @@ function vSlip() {
     + '<button class="ib" data-drop="' + esc(l.id) + '" aria-label="Remove '
     + esc(l.label) + '">' + I.x + '</button></div>').join('');
 
-  h += '<div class="totals">'
+  h += '<div class="totals" id="sliptotals">'
     + tot('All hit', chanceTxt(m.all))
     + tot('Pays', priced ? american(decToAm(dec)) : '—')
     + tot('EV on $' + (S.slip.stake || 0),
@@ -376,9 +420,14 @@ function vSlip() {
     + '<input class="num" id="f-stake" inputmode="decimal" value="'
     + esc(S.slip.stakeRaw) + '"></span></label>';
 
+  // Clear, not Ladder. The ladder is a tab of its own and prices a repeated
+  // bet rather than this one, so sending the slip there was an answer to a
+  // question nobody had asked. Emptying it is the thing you actually want
+  // next to Save, and it goes back to the board because an empty slip is not
+  // a screen worth standing on.
   h += '<div style="display:flex;gap:12px;margin-top:16px">'
-    + '<button class="btn btn--secondary" style="flex:1" data-act="ladderthis">'
-    + 'Ladder this</button>'
+    + '<button class="btn btn--secondary" style="flex:1" data-act="clearslip">'
+    + 'Clear slip</button>'
     + '<button class="btn btn--primary" style="flex:1" data-act="saveslip">'
     + (S.saved[slipSignature()] ? 'Saved' : 'Save slip') + '</button></div>';
   h += '</div></div>';
@@ -477,6 +526,16 @@ const SHEETS = {
       + games.map(g => opt(g, S.fw.game === g,
           rows.filter(r => r.game === g).length, 'game', g)).join(''));
   },
+
+  cblegs: () => sheetHTML('Legs per slip', [2, 3, 4, 5, 6].map(n =>
+    opt(n + ' legs', S.cb.legs === n, '', 'cblegs', n)).join('')),
+
+  cbrank: () => sheetHTML('Rank by', [['likely', 'Most likely'],
+    ['price', 'Longest price'], ['ev', 'Expected value']]
+    .map(o => opt(o[1], S.cb.rank === o[0], '', 'cbrank', o[0])).join('')),
+
+  cbshow: () => sheetHTML('How many to show', [10, 25, 50, 100].map(n =>
+    opt('Top ' + n, S.cb.show === n, '', 'cbshow', n)).join('')),
 
   // The row, opened. Everything the four visible metrics left out, plus a
   // sentence saying what the row means — which is the thing a column of
@@ -627,12 +686,17 @@ function wire() {
       // expected to answer. Not while a conflict is up — that one is a
       // question and has to be answered.
       if (SHEET && !S.conflict) { SHEET = null; vSheet(); }
+      closeSwipe();
       return;
     }
+    if (SWIPE.open && !(t.dataset || {}).act) closeSwipe();
     const d = t.dataset || {};
 
     if (d.tab) { SHEET = null; go(d.tab); return; }
     if (d.view) { S.fw.view = d.view; S.fw.sort = ''; render(); return; }
+    if (d.cbpool) { S.cb.pool = d.cbpool; render(); return; }
+    if (d.fam) { S.fam[d.fam] = !S.fam[d.fam]; render(true); return; }
+    if (d.load !== undefined) { loadCombo(+d.load); return; }
     if (d.sheet) { SHEET = { kind: d.sheet }; vSheet(); return; }
     if (d.detail) { SHEET = { kind: 'detail', arg: d.detail }; vSheet(); return; }
     if (d.fav) { toggleFav(d.fav); return; }
@@ -651,6 +715,11 @@ function wire() {
     if (d.set) {
       const i = d.set.indexOf(':');
       const k = d.set.slice(0, i), v = d.set.slice(i + 1);
+      if (k.slice(0, 2) === 'cb') {
+        const key = k.slice(2);
+        S.cb[key] = (key === 'rank') ? v : +v;
+        SHEET = null; render(); return;
+      }
       if (k === 'market') { S.market = v; S.fw.game = ''; }
       else if (k === 'sort') {
         // Tapping the column you are already sorted by reverses it, which is
@@ -675,7 +744,10 @@ function wire() {
         render();
         break;
       case 'goboard': go('week'); break;
-      case 'ladderthis': go('ladder'); break;
+      case 'samegame': S.cb.sameGame = !S.cb.sameGame; render(true); break;
+      // Emptied, and back to where you fill it. An empty slip is not a screen
+      // worth standing on.
+      case 'clearslip': closeSwipe(); clearSlip(); go('week'); break;
       case 'saveslip': saveSlip(); render(true); break;
       case 'conflictkeep': S.conflict = null; render(true); break;
       case 'conflictswap': {
@@ -694,23 +766,98 @@ function wire() {
   // Typing must not cost the caret. A re-render replaces the input, so the
   // value and the selection are put back by hand — v1 does the same thing
   // through `data-fk`, and this is the one input on the board.
+  // Every text field patches the part of the screen it changes and leaves
+  // itself where it is. Nothing here calls `render`, and that is the whole
+  // point: a re-render replaces the input, and replacing a focused input on
+  // iOS makes the system scroll and scale to the new one.
   document.addEventListener('input', e => {
-    const id = e.target && e.target.id;
+    const t = e.target;
+    const id = t && t.id;
+    if (!id) return;
     if (id === 'q') {
-      S.fw.q = e.target.value;
-      render(true);
-      const again = document.getElementById('q');
-      if (again && again.focus) {
-        again.focus();
-        try { again.setSelectionRange(again.value.length, again.value.length); }
-        catch (err) {}
-      }
+      S.fw.q = t.value;
+      patchBoard();
     } else if (id === 'f-stake') {
-      S.slip.stakeRaw = e.target.value;
-      const x = parseFloat(String(e.target.value).replace(/[^0-9.]/g, ''));
-      if (isFinite(x) && x > 0) { S.slip.stake = x; persistSlip(); }
+      S.slip.stakeRaw = t.value;
+      const x = num(t.value);
+      if (isFinite(x) && x > 0) { S.slip.stake = x; persistSlip(); patchTotals(); }
+    } else if (id === 'f-start') {
+      S.ladder.startRaw = t.value;
+      const x = num(t.value);
+      if (isFinite(x) && x > 0) { S.ladder.start = x; patchLadder(); }
+    } else if (id === 'f-odds') {
+      S.ladder.oddsRaw = t.value;
+      const a = parseFloat(String(t.value).replace(/[−–]/g, '-').trim());
+      if (isFinite(a) && Math.abs(a) >= 100) { S.ladder.dec = amToDec(a); patchLadder(); }
+      else if (isFinite(a) && a > 1 && a < 100) { S.ladder.dec = a; patchLadder(); }
+    } else if (id === 'f-bets') {
+      S.ladder.betsRaw = t.value;
+      const n2 = parseInt(String(t.value).replace(/[^0-9]/g, ''), 10);
+      if (isFinite(n2) && n2 > 0) { S.ladder.bets = Math.min(LADDER_MAX, n2); patchLadder(); }
     }
   });
+}
+
+const num = v => parseFloat(String(v).replace(/[^0-9.]/g, ''));
+
+// The slip's three totals, and the ladder's whole answer. Same rule as the
+// board: replace what changed, never the field being typed into.
+function patchTotals() {
+  const host = document.getElementById('sliptotals');
+  if (!host) return;
+  const m = slipMath();
+  const dec = parlayDec(m.legs);
+  host.innerHTML = tot('All hit', chanceTxt(m.all))
+    + tot('Pays', allPriced(m.legs) ? american(decToAm(dec)) : '—')
+    + tot('EV on $' + (S.slip.stake || 0),
+          has(m.ev) ? (m.ev >= 0 ? '+' : '') + money(m.ev) : '—',
+          has(m.ev) ? (m.ev >= 0 ? 'good' : 'bad') : null);
+}
+function patchLadder() {
+  const host = document.getElementById('ladderout');
+  if (!host) return;
+  host.innerHTML = ladderOut();
+}
+
+// A combination, into the slip. Rebuilt rather than remembered: the list is
+// re-derived on every render, so the index only means anything right now.
+function loadCombo(i) {
+  const c = S.cb, key = S.market, kind = KIND[key] || 'td';
+  const eligible = r => kind === 'ou' ? r.priced : true;
+  const board = oneLine(rowsFor(key, 'all'), null).filter(eligible);
+  const pools = kind === 'ou'
+    ? { all: board, fav: board.filter(r => isFav(r.id)) }
+    : { short: rowsFor(key, 'short').filter(eligible),
+        fav: board.filter(r => isFav(r.id)), all: board };
+  const pool = (pools[c.pool] || board).slice()
+    .sort((a, b) => b.ours - a.ours).slice(0, COMBO_POOL_MAX);
+  const k = Math.min(c.legs, pool.length);
+  let sets = pool.length >= 2 && choose(pool.length, k) <= COMBO_SETS_MAX
+    ? combosOf(pool.length, k) : [];
+  let slips = sets.map(ix => {
+    let p = 1, d = 1, priced = true;
+    const gs = {};
+    ix.forEach(j => {
+      p *= betProb(pool[j]);
+      if (has(pool[j].dec)) d *= pool[j].dec; else priced = false;
+      gs[pool[j].game] = 1;
+    });
+    return { ix: ix, p: p, dec: priced ? d : null,
+             ev: priced ? p * ((S.slip.stake || 10) * d - (S.slip.stake || 10))
+                        - (1 - p) * (S.slip.stake || 10) : null,
+             sameGame: Object.keys(gs).length < ix.length };
+  });
+  if (!c.sameGame) slips = slips.filter(x => !x.sameGame);
+  const rank = { likely: (a, b) => b.p - a.p,
+                 price: (a, b) => (b.dec || 0) - (a.dec || 0),
+                 ev: (a, b) => (b.ev === null ? -Infinity : b.ev)
+                             - (a.ev === null ? -Infinity : a.ev) };
+  const s = slips.sort(rank[c.rank] || rank.likely)[i];
+  if (!s) return;
+  S.slip.market = key;
+  S.slip.legs = s.ix.map(j => legOf(pool[j], kind === 'ou' ? 'over' : null));
+  persistSlip();
+  go('slip');
 }
 
 function dropLeg(id) {
@@ -719,10 +866,358 @@ function dropLeg(id) {
   render(true);
 }
 
-document.addEventListener('DOMContentLoaded', () => { wire(); boot(); });
+// ── Swipe the slip bar away ─────────────────────────────────────────────
+//
+// Drag it left and a Clear button comes out from under it. The pattern every
+// phone list uses for "get rid of this", and it belongs to the slip bar for
+// the same reason it belongs to a mail row: the bar is a thing you are
+// carrying around, and the way to put a thing down should not be to open it
+// first.
+//
+// Touch only, by construction. A mouse sends no touch events, and above 900px
+// the button is hidden and the transform is neutralised — so this is inert on
+// a desktop rather than conditional on one.
+const SWIPE = { x: 0, y: 0, dx: 0, live: false, open: false };
+//: How far before it counts as a swipe rather than a tap that moved, and how
+//: far the bar travels when it is open.
+const SWIPE_MIN = 8, SWIPE_OPEN = 112, SWIPE_TAKE = 45;
+
+function wireSwipe() {
+  const wrap = () => document.getElementById('slipwrap');
+
+  document.addEventListener('touchstart', e => {
+    const w = wrap();
+    if (!w || !e.target.closest || !e.target.closest('#slipwrap')) return;
+    // A tap on the Clear button is not a drag of the bar over it.
+    if (e.target.closest('.slipdel')) return;
+    const t = e.touches[0];
+    SWIPE.x = t.clientX; SWIPE.y = t.clientY; SWIPE.dx = 0; SWIPE.live = true;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    if (!SWIPE.live) return;
+    const w = wrap();
+    if (!w) return;
+    const t = e.touches[0];
+    const dx = t.clientX - SWIPE.x, dy = t.clientY - SWIPE.y;
+    // A vertical drag is the page being scrolled, and taking it would make
+    // the board impossible to scroll past the bar.
+    if (Math.abs(dy) > Math.abs(dx)) { SWIPE.live = false; return; }
+    if (Math.abs(dx) < SWIPE_MIN) return;
+    SWIPE.dx = dx;
+    w.setAttribute('data-swipe', 'dragging');
+    // Follows the thumb, and does not follow it past either end.
+    const base = SWIPE.open ? -SWIPE_OPEN : 0;
+    const at = Math.max(-SWIPE_OPEN, Math.min(0, base + dx));
+    const bar = w.querySelector('.slipbar');
+    if (bar) bar.style.transform = 'translateX(' + at + 'px)';
+  }, { passive: true });
+
+  document.addEventListener('touchend', () => {
+    const w = wrap();
+    if (!SWIPE.live || !w) { SWIPE.live = false; return; }
+    SWIPE.live = false;
+    const bar = w.querySelector('.slipbar');
+    if (bar) bar.style.transform = '';
+    // Past the halfway mark it settles open, short of it it springs back —
+    // so a small accidental drag never leaves a delete button showing.
+    if (SWIPE.dx < -SWIPE_TAKE) SWIPE.open = true;
+    else if (SWIPE.dx > SWIPE_TAKE) SWIPE.open = false;
+    w.setAttribute('data-swipe', SWIPE.open ? 'open' : 'shut');
+    SWIPE.dx = 0;
+  }, { passive: true });
+}
+
+// Opened, then left alone: any other tap closes it. A delete button that
+// stays out is one you eventually hit by accident.
+function closeSwipe() {
+  SWIPE.open = false;
+  const w = document.getElementById('slipwrap');
+  if (w) w.setAttribute('data-swipe', 'shut');
+}
+
+document.addEventListener('DOMContentLoaded', () => { wire(); wireSwipe(); boot(); });
 """
 
 
 def js() -> str:
     """The v2 view layer, in the order it has to be declared in."""
-    return JS + JS_SLIP + JS_SHEETS + JS_ROUTE + JS_EVENTS
+    return JS + JS_SLIP + JS_SCREENS + JS_SHEETS + JS_ROUTE + JS_EVENTS
+
+
+JS_SCREENS = r"""
+// ── Combinations ────────────────────────────────────────────────────────
+//
+// Every slip you could build from a pool you choose, ranked. The pool control
+// is a segmented control because the pools are readings of the same board;
+// legs, ranking and how many to show are sheets, because they are lists.
+function vCombos() {
+  const c = S.cb, key = S.market, kind = KIND[key] || 'td';
+  if (!served(key)) return vEmpty('Not served yet',
+    marketLabel(key) + ' has no model behind it in this build.');
+
+  // Only a row that can actually be backed belongs in a pool, and on a line
+  // market only one line per player — a pool holding all six of a
+  // quarterback's passing lines builds slips pairing him with himself.
+  const eligible = r => kind === 'ou' ? r.priced : true;
+  const board = oneLine(rowsFor(key, 'all'), null).filter(eligible);
+  const pools = kind === 'ou'
+    ? { all: { label: 'Priced', rows: board },
+        fav: { label: 'Favourites', rows: board.filter(r => isFav(r.id)) } }
+    : { short: { label: 'Shortlist', rows: rowsFor(key, 'short').filter(eligible) },
+        fav: { label: 'Favourites', rows: board.filter(r => isFav(r.id)) },
+        all: { label: 'Everyone', rows: board } };
+  if (!pools[c.pool]) c.pool = kind === 'ou' ? 'all' : 'short';
+
+  let h = '<div class="sect"><div class="seg" role="tablist">'
+    + Object.keys(pools).map(k => '<button role="tab" aria-selected="'
+      + (c.pool === k ? 'true' : 'false') + '" data-cbpool="' + k + '">'
+      + pools[k].label + ' <span class="c">' + pools[k].rows.length
+      + '</span></button>').join('') + '</div></div>';
+
+  h += '<div class="chiprow">'
+    + vChip('cblegs', c.legs + ' legs', false)
+    + vChip('cbrank', c.rank === 'likely' ? 'Most likely'
+        : c.rank === 'price' ? 'Longest price' : 'Expected value', false)
+    + vChip('cbshow', 'Top ' + c.show, false)
+    + '<button class="chip" aria-pressed="' + (c.sameGame ? 'true' : 'false')
+    + '" data-act="samegame">Allow same game</button></div>';
+
+  // Capped, and the cap is stated. Every subset of 24 players taken 6 at a
+  // time is 134,596 slips, which the browser will enumerate and no one will
+  // read.
+  let pool = pools[c.pool].rows.slice().sort((a, b) => b.ours - a.ours);
+  const poolFull = pool.length;
+  pool = pool.slice(0, COMBO_POOL_MAX);
+
+  const k = Math.min(c.legs, pool.length);
+  const sets = pool.length >= 2 && choose(pool.length, k) <= COMBO_SETS_MAX
+    ? combosOf(pool.length, k) : [];
+  const stake = S.slip.stake || 10;
+  let slips = sets.map(ix => {
+    let p = 1, d = 1, priced = true;
+    const gs = {};
+    ix.forEach(i => {
+      // `betProb`, not the published number, so a slip's EV here is measured
+      // on the same quantity as the EV beside each player on the board.
+      p *= betProb(pool[i]);
+      if (has(pool[i].dec)) d *= pool[i].dec; else priced = false;
+      gs[pool[i].game] = 1;
+    });
+    return { ix: ix, p: p, dec: priced ? d : null,
+             ev: priced ? p * (stake * d - stake) - (1 - p) * stake : null,
+             sameGame: Object.keys(gs).length < ix.length };
+  });
+  if (!c.sameGame) slips = slips.filter(s => !s.sameGame);
+  const rank = { likely: (a, b) => b.p - a.p,
+                 price: (a, b) => (b.dec || 0) - (a.dec || 0),
+                 ev: (a, b) => (b.ev === null ? -Infinity : b.ev)
+                             - (a.ev === null ? -Infinity : a.ev) };
+  const total = slips.length;
+  slips = slips.sort(rank[c.rank] || rank.likely).slice(0, c.show);
+
+  h += '<div class="sect"><div class="card">';
+  if (!slips.length) {
+    h += vEmpty('No combinations',
+      pool.length < 2 ? 'The pool needs at least two players in it.'
+                      : 'Allow same-game slips, or widen the pool.');
+  } else {
+    h += slips.map((s, i) => vCombo(s, i, pool)).join('');
+  }
+  h += '</div><div class="count">'
+    + total.toLocaleString() + ' slips of ' + c.legs + ' from the '
+    + pool.length + ' we rate highest'
+    + (poolFull > pool.length ? ' (of ' + poolFull + ' eligible)' : '')
+    + ' · showing ' + slips.length + '</div></div>';
+  return h + '<div style="height:24px"></div>';
+}
+
+function vCombo(s, i, pool) {
+  const names = s.ix.map(j => esc(comboLeg(pool[j]))).join(' · ');
+  const teams = s.ix.map(j => esc(pool[j].team || '')).join(', ');
+  return '<div class="combo"><div class="combo__l">' + names + '</div>'
+    + '<div class="combo__t">' + teams
+    + (s.sameGame ? ' <span class="badge badge--warn" style="height:18px">'
+        + 'Same game</span>' : '') + '</div>'
+    + '<div class="combo__f">'
+    + met('All hit', chanceTxt(s.p))
+    + met('Pays', has(s.dec) ? american(decToAm(s.dec)) : '—')
+    + met('EV $' + (S.slip.stake || 10), has(s.ev)
+        ? (s.ev >= 0 ? '+' : '') + money(s.ev) : '—',
+        has(s.ev) ? (s.ev >= 0 ? 'v-good' : 'v-bad') : 'v-none')
+    + '<span style="flex:1"></span>'
+    + '<button class="btn btn--secondary btn--sm" data-load="' + i + '">Load</button>'
+    + '</div></div>';
+}
+
+// ── Ladder ──────────────────────────────────────────────────────────────
+function vLadder() {
+  const L = S.ladder;
+  let h = '<div class="sect"><div class="card" style="padding:16px;display:flex;'
+    + 'flex-direction:column;gap:16px">'
+    + field('Starting bankroll', 'f-start', L.startRaw, 'Dollars', '$')
+    + field('Price each rung', 'f-odds', L.oddsRaw, 'American (−170) or decimal (1.59)')
+    + field('Rungs', 'f-bets', L.betsRaw, 'Up to ' + LADDER_MAX)
+    + '</div></div><div id="ladderout">' + ladderOut() + '</div>';
+  return h + '<div style="height:24px"></div>';
+}
+
+// Everything the three fields decide, in a box the fields are not inside.
+function ladderOut() {
+  const L = S.ladder;
+  const rows = [];
+  let bal = L.start, p = 1;
+  for (let i = 1; i <= Math.min(L.bets, LADDER_MAX); i++) {
+    bal *= L.dec; p /= L.dec;
+    rows.push({ rung: i, bal: bal, p: p, won: bal - L.start });
+  }
+  const last = rows[rows.length - 1];
+  const max = rows.length ? rows[0].p : 1;
+  let h = '<div class="sect"><div class="card"><div class="keystats">'
+    + keystat('If every rung wins', last ? money(last.bal) : '—', 'good')
+    + keystat('Chance of the run', last ? chanceTxt(last.p) : '—', null, true)
+    + keystat('At risk', money(L.start), 'bad', true)
+    + '</div></div></div>';
+
+  h += '<div class="sect"><div class="card">'
+    + '<div class="secthead"><span>Rung · Balance</span><span>Chance</span></div>'
+    + rows.map(r => '<div class="rung"><span class="rung__n num">' + r.rung + '</span>'
+      + '<span class="rung__b num">' + money(r.bal) + '</span>'
+      + '<span class="rung__p num">+' + money(r.won) + '</span>'
+      + '<span class="rung__r"><span class="rung__c num">' + chanceTxt(r.p) + '</span>'
+      + '<span class="rung__track"><span class="rung__bar" style="width:'
+      + Math.max(2, (r.p / max) * 100).toFixed(1) + '%"></span></span></span></div>').join('')
+    + '<div class="prose">Every row assumes the one above it won. The branch '
+    + 'where it did not is a single row saying zero, and it is the likelier '
+    + 'branch from about the third rung on. The chance column is read off the '
+    + 'price, so it carries the book’s margin and is kinder than the truth.</div>'
+    + '</div></div>';
+  return h + '<div style="height:24px"></div>';
+}
+const field = (label, id, raw, hint, prefix) =>
+  '<label class="field"><span class="field__l">' + label + '</span>'
+  + '<span class="field__b">' + (prefix ? '<span class="field__p">' + prefix
+    + '</span>' : '') + '<input class="num" id="' + id + '" inputmode="decimal" '
+  + 'value="' + esc(raw) + '" aria-label="' + label + '"></span>'
+  + (hint ? '<span class="field__h">' + esc(hint) + '</span>' : '') + '</label>';
+const keystat = (l, v, tone, small) => '<div class="keystat">'
+  + '<span class="keystat__l">' + l + '</span>'
+  + '<span class="keystat__v num' + (small ? ' keystat__v--sm' : '') + '"'
+  + (tone ? ' style="color:var(--' + tone + ')"' : '') + '>' + v + '</span></div>';
+
+// ── Model ───────────────────────────────────────────────────────────────
+//
+// Top-level numbers for every market that is served, and the features behind
+// each one a tap away. No alert boxes and no red: what this page reports is
+// measured, and a market that loses to its book says so in a sentence rather
+// than in a colour.
+function vModel() {
+  let h = '';
+  const rec = ((marketOf('any').shortlist || {}).record) || {};
+  const f = rec.fade;
+  if (f && has(f.roi)) {
+    h += '<div class="sect"><div class="card" style="padding:16px">'
+      + '<div class="secthead" style="padding:0 0 8px"><span>What it is best at</span></div>'
+      + '<div class="keystats" style="padding:0">'
+      + keystat('Fading a player', roiTxt(f.roi), f.roi >= 0 ? 'good' : 'bad')
+      + keystat('Interval', roiTxt(f.lo) + ' to ' + roiTxt(f.hi), null, true)
+      + '</div>'
+      + '<div class="prose" style="padding:12px 0 0">The model is better at '
+      + 'naming who will NOT score than who will. You cannot lay a player at a '
+      + 'sportsbook, so this is a reason to keep those players off a parlay '
+      + 'rather than a bet you can place.</div></div></div>';
+  }
+  MENU.forEach(g => g.items.forEach(it => {
+    const k = it[0];
+    if (!served(k)) return;
+    h += (KIND[k] === 'ou' ? vOuModel(k) : vTdModel(k));
+  }));
+  return h + '<div style="height:24px"></div>';
+}
+
+function vTdModel(key) {
+  const m = marketOf(key), r = m.recipe;
+  if (!r || !r.seasons || !r.seasons.length) return '';
+  const ss = r.seasons.slice().sort((a, b) => a.season - b.season);
+  const games = ss.reduce((a, s) => a + s.games, 0);
+  const span = lo => lo.length < 2 ? pct(lo[0])
+    : pct(Math.min.apply(null, lo)) + '–' + pct(Math.max.apply(null, lo));
+  return '<div class="sect"><div class="card" style="padding:16px">'
+    + '<div class="secthead" style="padding:0 0 8px"><span>'
+    + esc(marketLabel(key)) + '</span><span>' + games.toLocaleString()
+    + ' games</span></div>'
+    + '<div class="keystats" style="padding:0">'
+    + keystat('Top pick scored', span(ss.map(s => s.top1)))
+    + keystat('One of the top three', span(ss.map(s => s.top3)), null, true)
+    + '</div>' + vFamilies(key, r) + '</div></div>';
+}
+
+function vOuModel(key) {
+  const m = marketOf(key);
+  let n = null, ours = null, book = null, span = '';
+  const f = m.forward;
+  if (f && f.pooled) {
+    n = f.pooled.n; ours = f.pooled.model_log_loss;
+    book = f.pooled.market_log_loss; span = 'this season so far';
+  } else if (m.graded && (m.graded.seasons || []).length) {
+    const oos = m.graded.seasons.filter(s => !s.in_sample);
+    const s0 = oos[oos.length - 1] || m.graded.seasons[0];
+    n = s0.n; ours = has(s0.blend) ? s0.blend : s0.model;
+    book = s0.market; span = String(s0.season);
+  }
+  const mix = has(m.blend)
+    ? Math.round(m.blend * 100) + '% / ' + Math.round((1 - m.blend) * 100) + '%'
+    : '—';
+  const cal = has(ours) && has(book) ? book - ours : null;
+  return '<div class="sect"><div class="card" style="padding:16px">'
+    + '<div class="secthead" style="padding:0 0 8px"><span>'
+    + esc(marketLabel(key)) + '</span><span>' + span + '</span></div>'
+    + '<div class="keystats" style="padding:0">'
+    + keystat('Served as', mix, null, true)
+    + keystat('Lines graded', has(n) ? n.toLocaleString() : '—', null, true)
+    + keystat('Calibration', has(cal) ? (cal >= 0 ? '+' : '') + cal.toFixed(4) : '—',
+              has(cal) ? (cal >= 0 ? 'good' : 'bad') : null, true)
+    + '</div>'
+    + '<div class="prose" style="padding:12px 0 0">' + esc(ouModelNote(m, cal))
+    + '</div></div></div>';
+}
+function ouModelNote(m, cal) {
+  const w = has(m.blend) ? Math.round(m.blend * 100) : null;
+  const mix = w === null ? 'the model'
+    : w + '% of our number and ' + (100 - w) + '% of the book’s';
+  if (!has(cal)) return 'Served as ' + mix + '. Not yet graded out of sample.';
+  return 'Served as ' + mix + '. Calibration is the book’s log loss minus ours, '
+    + 'so a negative number means the market is better calibrated than we are — '
+    + 'which is what a 7% hold market looks like when you bring a model to it.';
+}
+
+// The features, behind a tap. They are worth showing and they are not the
+// headline: what a model leans on is not what causes a touchdown.
+function vFamilies(key, r) {
+  if (!r.families || !r.families.length) return '';
+  const open = !!S.fam[key];
+  if (!open) return '<button class="btn btn--secondary btn--sm" '
+    + 'style="margin-top:12px" data-fam="' + esc(key) + '">Show '
+    + r.families.length + ' feature families</button>';
+  const fam = r.families.slice().sort((a, b) =>
+    (has(b.worth_top1) ? Math.abs(b.worth_top1) : -1)
+    - (has(a.worth_top1) ? Math.abs(a.worth_top1) : -1));
+  const max = fam.reduce((a, x) => Math.max(a, has(x.worth_top1)
+    ? Math.abs(x.worth_top1) : 0), 0) || 1;
+  return '<div style="margin-top:12px">' + fam.map(x =>
+    '<div class="feat" style="padding-left:0;padding-right:0">'
+    + '<div class="feat__h"><span class="feat__n">' + esc(x.name) + '</span>'
+    + '<span class="feat__v num">' + (has(x.worth_top1)
+        ? spp(x.worth_top1) + ' pp' : 'not measured') + '</span></div>'
+    + '<div class="feat__t"><span class="feat__f" style="width:'
+    + (has(x.worth_top1) ? (Math.abs(x.worth_top1) / max * 100).toFixed(1) : 0)
+    + '%"></span></div>'
+    + '<div class="feat__d">' + x.n + ' columns'
+    + (has(x.p_value) ? ' · p ' + x.p_value.toFixed(3) : '') + '</div></div>').join('')
+    + '<button class="btn btn--secondary btn--sm" style="margin-top:12px" '
+    + 'data-fam="' + esc(key) + '">Hide</button>'
+    + '<div class="prose" style="padding:12px 0 0">Worth is the drop in '
+    + 'out-of-sample top-1 accuracy when the family is shuffled. It says which '
+    + 'inputs the model leans on, not which ones cause a touchdown.</div></div>';
+}
+"""

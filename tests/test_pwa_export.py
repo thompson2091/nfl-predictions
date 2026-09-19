@@ -307,3 +307,105 @@ def test_v2_replaces_the_views_and_keeps_every_calculation():
     # And the three v1 owns that v2 must take over, declared exactly once.
     for fn in ("function render(", "function route(", "function go("):
         assert src.count(fn) == 1, f"{fn} must be declared once in the v2 layer"
+
+
+def test_typing_never_replaces_the_field_being_typed_into():
+    """iOS scrolls and scales to a newly focused element, and keeps the scale.
+
+    The board re-rendered the whole screen on every keystroke and then put
+    focus back on the new input. On a desktop that is invisible; on a phone
+    each keystroke is a fresh focus on a fresh node, so the page zoomed in and
+    stayed zoomed after the keyboard went away.
+
+    Every text field now patches the part of the screen it changes and leaves
+    itself alone. Falsified by calling `render` from the input handler: the
+    assertion below fails, and so does the harness's check that the search box
+    is outside the patched box.
+    """
+    from src.export import v2js
+
+    src = v2js.js()
+    handler = src[src.index("document.addEventListener('input'"):]
+    handler = handler[:handler.index("\n  });")]
+    assert "render(" not in handler, (
+        "a re-render replaces the focused input, which is the bug")
+    for patcher in ("patchBoard()", "patchTotals()", "patchLadder()"):
+        assert patcher in handler, f"{patcher} is how that field updates instead"
+    # And the fields themselves are large enough not to trigger the other,
+    # better-known zoom.
+    from src.export.v2css import css
+    import re
+    for rule in re.finditer(r'([^{}]*\binput\b[^{}]*)\{([^}]*)\}', css()):
+        size = re.search(r'font-size:\s*(\d+)px', rule.group(2))
+        if size:
+            assert int(size.group(1)) >= 16, (
+                f"{rule.group(1).strip()} is {size.group(1)}px; iOS zooms into "
+                f"anything under 16")
+
+
+def test_the_slip_bar_can_be_swiped_away_on_a_phone_and_only_there():
+    """The way to put a thing down should not be to open it first.
+
+    A touch gesture, by construction: a mouse sends none, and above 900px the
+    button is hidden and the transform neutralised, so this is inert on a
+    desktop rather than conditional on one.
+    """
+    from src.export import v2css, v2js
+
+    src, c = v2js.js(), v2css.css()
+    assert "addEventListener('touchstart'" in src
+    assert "addEventListener('touchmove'" in src
+    assert "addEventListener('touchend'" in src
+    assert "Math.abs(dy) > Math.abs(dx)" in src, (
+        "a vertical drag is the page scrolling, and taking it would make the "
+        "board impossible to scroll past the bar")
+    assert "SWIPE_TAKE" in src, (
+        "past halfway it settles open, short of it it springs back — or a "
+        "small accidental drag leaves a delete button showing")
+    flat = c.replace(" ", "").replace("\n", "")
+    assert ".slipwrap[data-swipe=open].slipbar{transform:translateX(-112px)}" in flat
+    assert ".slipwrap[data-swipe=dragging].slipbar{transition:none}" in flat, (
+        "with a finger on it there is no transition, or the bar lags the thumb")
+    wide = c[c.index("@media (min-width:900px)"):]
+    assert ".slipdel{display:none}" in wide.replace(" ", ""), (
+        "there is no swiping with a mouse")
+
+
+def test_the_count_line_is_a_component():
+    """"147 of 530 shown" was a bare div inheriting the body's type.
+
+    Which put the one line on the screen that is furniture at the weight of
+    the rows it was counting. It is the same 10px uppercase the metric labels
+    use, because it is the same kind of thing: a label on a number.
+    """
+    from src.export import v2css
+
+    flat = v2css.css().replace(" ", "")
+    assert ".count{" in flat
+    block = flat[flat.index(".count{"):]
+    block = block[:block.index("}")]
+    for prop in ("text-transform:uppercase", "color:var(--ink-faint)",
+                 "text-align:center", "font-variant-numeric:tabular-nums"):
+        assert prop in block, f"the count line needs {prop}"
+
+
+def test_a_wider_screen_gets_more_board_and_not_more_margin():
+    """Mobile first, and this is the half that reads as "also works here".
+
+    The column grows in three steps and the row stops hiding two of its six
+    metrics once there is room. Rendered at every width and hidden by CSS
+    rather than decided in JavaScript: a resize does not re-render, so a
+    window someone had just widened would keep a phone's four columns.
+    """
+    from src.export import v2css, v2js
+
+    c = v2css.css()
+    for width, measure in (("700px", "760px"), ("1000px", "940px"),
+                           ("1280px", "1100px")):
+        block = c[c.index("@media (min-width:" + width + ")"):]
+        block = block[:block.index("}\n}") + 1]
+        assert "max-width:" + measure in block.replace(" ", ""), (
+            f"at {width} the column should reach {measure}")
+    assert "metric--wide" in v2js.js(), "the extra metrics have to be drawn"
+    assert ".metric--wide{display:none}" in c.replace(" ", ""), (
+        "and hidden where there is no room, by the stylesheet")
