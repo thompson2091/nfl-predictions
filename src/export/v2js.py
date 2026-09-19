@@ -229,20 +229,6 @@ function patchBoard() {
   host.innerHTML = boardList(v2sort(applyFilters(rows, f), f), all, f, view, kind);
 }
 
-function v2sort(rows, f) {
-  if (!f.sort) return rows;
-  const dir = f.dir > 0 ? 1 : -1;
-  return rows.slice().sort((a, b) => {
-    const x = f.sort === 'player' ? a.player : a[f.sort];
-    const y = f.sort === 'player' ? b.player : b[f.sort];
-    if (!has(x) && !has(y)) return 0;
-    if (!has(x)) return 1;
-    if (!has(y)) return -1;
-    return typeof x === 'string' ? dir * String(x).localeCompare(String(y))
-                                 : dir * (x - y);
-  });
-}
-
 function vSeg(key, kind, m) {
   const f = S.fw, allRows = rowsFor(key, 'all');
   const shown = oneLine(allRows, f);
@@ -300,16 +286,47 @@ const vChip = (k, label, on) => '<button class="chip" aria-pressed="'
   + (on ? 'true' : 'false') + '" data-sheet="' + k + '">' + esc(label) + ' '
   + I.chev + '</button>';
 
-const SORTS = [['', 'Default'], ['player', 'Player'], ['ours', 'Adj'],
-               ['modelOnly', 'Model'], ['book', 'Book'], ['edge', 'Edge'],
+// Model leads because it is the default (see `DEFAULT_BOARD_SORT`), and the
+// list's first entry is also what `vSortbar` falls back to when `f.sort` holds
+// something this build does not offer — so the label on screen and the order
+// on screen agree even then.
+//
+// There is no 'Default' entry any more. It sorted by nothing, which left the
+// direction button beside it permanently disabled and the board in an order
+// the page could not name.
+const SORTS = [['modelOnly', 'Model'], ['player', 'Player'], ['ours', 'Adj'],
+               ['book', 'Book'], ['edge', 'Edge'], ['ev', 'EV $100'],
                ['odds', 'Odds'], ['proj', 'Projection'], ['line', 'Line']];
+
+// Sort keys are row properties, with two exceptions that have no property to
+// read: `player` is the name, and `ev` is computed from the bet probability
+// and the posted price. `ev100` stays the single definition of that number —
+// copying it onto every row at map time would be a second one to keep in step,
+// and the v1 board already sorts its EV $100 column through the same function.
+const SORTVAL = { player: r => r.player, ev: r => ev100(r) };
+
+function v2sort(rows, f) {
+  // Defensive only: every path now sets a real key. A board with no key falls
+  // back to payload order rather than throwing.
+  if (!f.sort) return rows;
+  const dir = f.dir > 0 ? 1 : -1;
+  const val = SORTVAL[f.sort] || (r => r[f.sort]);
+  return rows.slice().sort((a, b) => {
+    const x = val(a), y = val(b);
+    if (!has(x) && !has(y)) return 0;
+    if (!has(x)) return 1;
+    if (!has(y)) return -1;
+    return typeof x === 'string' ? dir * String(x).localeCompare(String(y))
+                                 : dir * (x - y);
+  });
+}
+
 function vSortbar(f) {
   const cur = (SORTS.find(s => s[0] === f.sort) || SORTS[0])[1];
   return '<div class="sortbar"><span class="sortbar__label">Sorted by</span>'
     + '<button class="sortbar__value" data-sheet="sort">' + cur + ' ' + I.chev + '</button>'
-    + '<button class="sortbar__dir num" data-act="dir"' + (f.sort ? '' : ' disabled')
-    + ' title="' + (f.sort ? '' : 'Pick a column first — there is nothing to reverse')
-    + '">' + (f.dir > 0 ? '↑ Low first' : '↓ High first') + '</button></div>';
+    + '<button class="sortbar__dir num" data-act="dir">'
+    + (f.dir > 0 ? '↑ Low first' : '↓ High first') + '</button></div>';
 }
 
 // A player, as a row. Four numbers always visible and the rest a tap away —
@@ -808,7 +825,10 @@ function wire() {
       } else go(d.tab);
       return;
     }
-    if (d.view) { S.fw.view = d.view; S.fw.sort = ''; render(); return; }
+    if (d.view) {
+      S.fw.view = d.view; S.fw.sort = DEFAULT_BOARD_SORT; S.fw.dir = -1;
+      render(); return;
+    }
     if (d.cbpool) { S.cb.pool = d.cbpool; render(); return; }
     if (d.pcard) { S.pcard[d.pcard] = !S.pcard[d.pcard]; render(true); return; }
     if (d.del) { dropParlay(d.del); return; }

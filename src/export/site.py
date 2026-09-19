@@ -1030,6 +1030,21 @@ function save(what, value) {
 }
 
 // ── State ───────────────────────────────────────────────────────────────
+//
+// What the board opens on, and what switching its view falls back to. It used
+// to be '' — no key, so the rows stayed in the order the payload was built in,
+// which is descending `ours`. That order was not wrong, but nothing on screen
+// said what it was: the control read "Default" and the direction button beside
+// it was permanently dead, because there is no key to reverse. Naming the
+// column the board is actually sorted by costs nothing and answers the
+// question the old label raised.
+//
+// `modelOnly` is populated on every row of both touchdown markets including
+// the unpriced ones (534/534 on 2026 week 2), so nothing sinks to the bottom
+// for want of a value — which is the failure that would make this a bad
+// default.
+const DEFAULT_BOARD_SORT = 'modelOnly';
+
 const S = {
   route: 'week',
   market: 'any',
@@ -1066,7 +1081,7 @@ const S = {
   // players within the shortlist.
   fw: { view: 'all', q: '', game: '', pos: '', priced: 'all', favOnly: false,
         // Off means one row per player. See `oneLine`.
-        allLines: false, sort: '', dir: -1 },
+        allLines: false, sort: DEFAULT_BOARD_SORT, dir: -1 },
   fs: { q: '', game: '', pos: '', sort: '', dir: -1 },
   savedFilter: 'all',
   // Whether the page menu is showing. Narrow screens only — the CSS puts the
@@ -2220,7 +2235,7 @@ function viewSeg(f, m, kind, allRows) {
   opts.forEach(([k, label, n]) => {
     g.appendChild(el('button', { type: 'button', 'aria-pressed': cur === k ? 'true' : 'false',
       text: label + ' · ' + n,
-      onclick: () => { f.view = k; f.sort = ''; render(); } }));
+      onclick: () => { f.view = k; f.sort = DEFAULT_BOARD_SORT; render(); } }));
   });
   return el('div', { class: 'chiprow' }, [g]);
 }
