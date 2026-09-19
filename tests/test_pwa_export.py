@@ -20,6 +20,27 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="module")
+def v2_js(tmp_path_factory):
+    """The v2 bundle, assembled exactly as `pwa.render` assembles it."""
+    from src.export import site as v1, v2js
+
+    js = "\n".join([v1.JS_CORE, v1.JS_SHARED, v1.JS_SLIPVIEW, v1.JS_WEEK,
+                    v1.JS_COMBOS, v1.JS_SAVED, v1.JS_LADDER, v1.JS_MODEL,
+                    v2js.js()])
+    p = tmp_path_factory.mktemp("v2") / "app.js"
+    p.write_text(js)
+    return p
+
+
+@pytest.fixture(scope="module")
+def payload_v2():
+    """The site exporter's fixture, which already covers all six markets."""
+    import tests.test_site_export as T
+
+    return T.payload.__wrapped__()
+
+
+@pytest.fixture(scope="module")
 def built() -> dict:
     from src.export.pwa import render
 
@@ -246,3 +267,43 @@ def test_the_build_script_writes_all_three_or_says_which(tmp_path):
     assert "--out" in mk and "site/v2" in mk
     assert "upload all three" in mk, (
         "the recipe has to say that the worker travels with its page")
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_every_v2_screen_renders(payload_v2, v2_js, tmp_path):
+    """The failure mode of a generated app is a blank screen and one console line.
+
+    `node --check` proves the syntax and nothing else — a bad reference parses
+    fine and throws on load. So every board, every sheet and every screen is
+    actually built, against a payload carrying all six markets.
+    """
+    p = tmp_path / "payload.json"
+    p.write_text(json.dumps(payload_v2))
+    r = subprocess.run(["node", str(REPO / "tests" / "js" / "v2app.js"),
+                        str(p), str(v2_js)],
+                       capture_output=True, text=True, cwd=str(REPO))
+    assert r.returncode == 0, (r.stdout or "") + (r.stderr or "")
+
+
+def test_v2_replaces_the_views_and_keeps_every_calculation():
+    """106KB of views out, 44KB of calculation in — and not one number moved.
+
+    Every probability, parlay, combination and settlement on screen is v1's:
+    `rowsFor`, `applyFilters`, `slipMath`, `combosOf`, `portfolio`, `settle`,
+    `betProb`, `ev100`, the storage layer. What v2 writes is the DOM.
+
+    Falsified by reimplementing any of them here: the names below would stop
+    coming from `site` and the bundle would carry two answers to the same
+    question, which is how the touchdown shortlist once disagreed with its own
+    board about the same player.
+    """
+    from src.export import v2js
+
+    src = v2js.js()
+    for fn in ("function rowsFor", "function slipMath", "function portfolio",
+               "function combosOf", "function settle", "function applyFilters",
+               "function ev100", "function betProb"):
+        assert fn not in src, f"{fn} is v1's and must not be rewritten here"
+    # And the three v1 owns that v2 must take over, declared exactly once.
+    for fn in ("function render(", "function route(", "function go("):
+        assert src.count(fn) == 1, f"{fn} must be declared once in the v2 layer"

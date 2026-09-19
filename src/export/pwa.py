@@ -309,7 +309,22 @@ SHELL = """<!doctype html>
 <style>__FONTS____CSS__</style>
 </head>
 <body>
-<header class="top" id="top"><div class="brand">__BRAND__</div></header>
+<!-- The app shell, in the document rather than drawn by the script: these
+     five boxes are the layout, and the layout must not wait for 1.4MB of
+     payload to arrive before it exists. -->
+<header class="appbar" id="appbar"><span class="appbar__mark">__BRAND__</span></header>
+<div class="scroll" id="scroll"><div class="inner"><div class="boot" aria-hidden="true">
+  <div class="bootbar" style="width:220px;height:34px"></div>
+  <div class="bootbar" style="width:min(520px,80%);height:16px"></div>
+  <div class="bootcard">
+    <div class="bootrow"></div><div class="bootrow"></div><div class="bootrow"></div>
+    <div class="bootrow"></div><div class="bootrow"></div><div class="bootrow"></div>
+  </div>
+</div></div></div>
+<div id="slipbarHost"></div>
+<nav class="tabbar" id="tabbar"></nav>
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet"></div>
 <noscript>
   <div style="max-width:640px;margin:48px auto;padding:0 24px;font:16px/1.5 Georgia,serif">
     <h1 style="font-family:Georgia,serif;font-weight:500">This page needs JavaScript</h1>
@@ -318,14 +333,6 @@ SHELL = """<!doctype html>
     Nothing is sent anywhere; that is the same reason it works with no network.</p>
   </div>
 </noscript>
-<div id="root"><div class="boot" aria-hidden="true">
-  <div class="bootbar" style="width:220px;height:34px"></div>
-  <div class="bootbar" style="width:min(520px,80%);height:16px"></div>
-  <div class="bootcard">
-    <div class="bootrow"></div><div class="bootrow"></div><div class="bootrow"></div>
-    <div class="bootrow"></div><div class="bootrow"></div><div class="bootrow"></div>
-  </div>
-</div></div>
 <script id="payload" type="application/json">__DATA__</script>
 <script>const DATA = JSON.parse(document.getElementById('payload').textContent);</script>
 <script>__JS__</script>
@@ -344,9 +351,6 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
   });
 }
 </script>
-<footer style="padding:24px 40px 40px;color:var(--mut2);font-size:13px;max-width:900px">
-__FOOTER__
-</footer>
 </body>
 </html>
 """
@@ -354,19 +358,31 @@ __FOOTER__
 
 def render(payload: dict) -> dict[str, str]:
     """The three files, keyed by the name each has to be uploaded under."""
-    from src.export.site import FOOTER, _font_faces
+    from src.export.site import _font_faces
     from src.export import site as v1
+    from src.export import v2js
 
+    # Every module but JS_SHELL, which owns v1's `render`, `route` and `go`.
+    # Those three are what v2 replaces; everything else is the calculation
+    # layer — `rowsFor`, `applyFilters`, `slipMath`, `combosOf`, `settle`,
+    # `portfolio`, the storage and the icons — and it comes across untouched.
+    #
+    # v1's own page builders come with it and are never called. That is dead
+    # weight, about 100KB before compression, and it is deliberate for now:
+    # splitting them out means refactoring v1 while v2's needs are still
+    # being learnt, and a refactor of the tested thing to serve the untested
+    # one is the wrong way round.
     js = "\n".join([v1.JS_CORE, v1.JS_SHARED, v1.JS_SLIPVIEW, v1.JS_WEEK,
                     v1.JS_COMBOS, v1.JS_SAVED, v1.JS_LADDER, v1.JS_MODEL,
-                    v1.JS_SHELL])
+                    v2js.js()])
     # `</` inside the JSON would close the script tag early and render the
     # rest of the payload as text.
     data = (json.dumps(payload, separators=(",", ":"), allow_nan=False)
             .replace("</", "<\\/"))
     brand = payload.get("brand") or "Pick Six"
     short = brand.split()[0] if len(brand) > 12 else brand
-    css = tokens_css() + component_css() + APP_CSS
+    from src.export.v2css import css as v2_css
+    css = v2_css()
     stamp = str(payload.get("built", "")).replace(":", "").replace("-", "")
 
     page = (SHELL
@@ -379,10 +395,6 @@ def render(payload: dict) -> dict[str, str]:
             .replace("__BRAND__", html.escape(brand))
             .replace("__FONTS__", _font_faces())
             .replace("__CSS__", css)
-            .replace("__FOOTER__", FOOTER
-                .replace("__BUILT__", html.escape(str(payload.get("built", ""))))
-                .replace("__SEASON__", html.escape(str(payload.get("season", ""))))
-                .replace("__WEEK__", html.escape(str(payload.get("week", "")))))
             .replace("__JS__", js)
             .replace("__DATA__", data))
 

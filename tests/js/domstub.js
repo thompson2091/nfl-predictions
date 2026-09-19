@@ -85,6 +85,9 @@ function install() {
     // so an assertion about the rendered tree passed against a `render` that
     // built nothing.
     querySelector: sel => (nodes[sel] || (nodes[sel] = mkNode('div'))),
+    // Same memoisation, same reason: the page addresses `#scroll` and
+    // `#tabbar` as places it clears and refills, not as new divs each call.
+    getElementById: id => (nodes['#' + id] || (nodes['#' + id] = mkNode('div'))),
     querySelectorAll: () => [],
     activeElement: null,
   };
