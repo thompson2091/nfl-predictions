@@ -11,7 +11,8 @@ const { ok, done } = reporter();
 const x = loadPage(process.argv[2], process.argv[3],
   ['S', 'render', 'route', 'go', 'V2TABS', 'vBoard', 'vSlip', 'vSheet', 'SHEETS',
    'rowsFor', 'toggleLeg', 'marketLabel', 'served', 'KIND', 'boot', 'DATA',
-   'patchBoard', 'clearSlip', 'saveSlip', 'settle', 'wire', 'patchTotals']);
+   'patchBoard', 'clearSlip', 'saveSlip', 'settle', 'wire', 'patchTotals',
+   'saveSlipOnce', 'slipKey', 'toast', 'TOAST_MS']);
 const { S, render, V2TABS, vBoard, vSlip, vSheet, SHEETS, rowsFor,
         toggleLeg, marketLabel, served, KIND, DATA } = x;
 
@@ -181,7 +182,7 @@ S.fw.q = '';
 x.patchBoard();
 
 // ── Saved ───────────────────────────────────────────────────────────────
-S.route = 'saved'; S.parlays = []; S.savedFilter = 'all';
+S.route = 'saved'; S.parlays = []; S.pcard = {};
 render();
 ok('an empty Saved page says so', html().indexOf('Nothing saved yet') >= 0);
 ok('Saved has a tab of its own',
@@ -195,11 +196,29 @@ toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[1]);
 x.saveSlip();
 S.route = 'saved';
 render();
-ok('a saved slip appears', (html().match(/data-open=/g) || []).length === 1,
+ok('a saved slip appears', (html().match(/data-pcard=/g) || []).length === 1,
    html().slice(0, 200));
-ok('with a way to delete it', html().indexOf('data-del=') >= 0);
-ok('and the filters over it', html().indexOf('data-sf="pending"') >= 0);
-ok('and a record at the top', html().indexOf('class="keystats"') >= 0);
+// Collapsed is the resting state, so everything the card holds is behind the
+// header until the header is pressed.
+ok('and it starts collapsed', html().indexOf('data-del=') < 0
+   && html().indexOf('data-open=') < 0, 'the body is on screen unasked');
+ok('its header says which slip it is', html().indexOf('3-leg') >= 0
+   || html().indexOf('2-leg') >= 0, html().slice(0, 300));
+// Both were built on settling slips against results, which is not what this
+// tab reports any more.
+ok('no Pending/Won/Lost filters over it', html().indexOf('data-sf=') < 0);
+ok('no running record at the top', html().indexOf('class="keystats"') < 0,
+   'a scoreboard is back over the list');
+ok('and no status pill on the card', html().indexOf('badge--neutral') < 0
+   && html().indexOf('Pending') < 0, html().slice(0, 400));
+
+// Pressing the header opens that card and nothing else.
+const pid = S.parlays[0].id;
+clickData('pcard', pid);
+ok('pressing the header opens the card', html().indexOf('data-del=') >= 0);
+ok('and the curve is in there', html().indexOf('class="brk"') >= 0);
+clickData('pcard', pid);
+ok('and pressing it again shuts it', html().indexOf('data-del=') < 0);
 
 // ── Swipe to clear ──────────────────────────────────────────────────────
 S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };
@@ -209,8 +228,11 @@ render();
 const bar = document.getElementById('slipbarHost').innerHTML;
 ok('the slip bar has something under it to swipe to',
    bar.indexOf('class="slipdel"') >= 0);
+// Its own action, not the slip screen's. The screen's Clear goes back to
+// where the slip was filled; the bar is on every tab but the slip's own, so
+// there is nowhere for it to go back from.
 ok('and that something clears the slip',
-   bar.indexOf('data-act="clearslip"') >= 0);
+   bar.indexOf('data-act="clearbar"') >= 0);
 ok('the bar is the thing that moves', bar.indexOf('id="slipwrap"') >= 0);
 
 
@@ -246,7 +268,8 @@ x.clearSlip();
 toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[0]);
 toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[1]);
 x.saveSlip();
-S.route = 'saved'; S.savedFilter = 'all';
+S.route = 'saved';
+S.pcard = {}; S.pcard[S.parlays[S.parlays.length - 1].id] = true;
 render();
 const card = html();
 ok('the saved card carries All hit', card.indexOf('All hit') >= 0);
@@ -437,5 +460,102 @@ scrollEl().scrollTop = 500;
 clickData('tab', 'week');
 ok('tapping the current tab returns to the top', scrollEl().scrollTop === 0,
    String(scrollEl().scrollTop));
+
+// ── Saving says so, once, and files it once ─────────────────────────────
+// Saving was the only control in the app with nothing to show for it: the
+// slip did not move, the button did not move, and the parlay landed on a tab
+// you were not looking at.
+//
+// The stub's `setTimeout` is node's, which would fire after this file has
+// finished. Holding the callback makes both halves observable: what the toast
+// says, and that it takes it back.
+let TIMER = null;
+const realTimeout = globalThis.setTimeout, realClear = globalThis.clearTimeout;
+globalThis.setTimeout = fn => { TIMER = fn; return 1; };
+globalThis.clearTimeout = () => { TIMER = null; };
+const toastEl = () => document.getElementById('toast');
+const toastTxt = () => toastEl().textContent;
+const toastUp = () => toastEl().className.indexOf('toast--open') >= 0;
+
+S.parlays = []; S.pcard = {};
+location.hash = '#week';
+x.clearSlip();
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[0]);
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[1]);
+location.hash = '#slip';
+ok('the Save button has no saved state to get wrong',
+   html().indexOf('Save slip') >= 0 && html().indexOf('>Saved<') < 0);
+
+clickData('act', 'saveslip');
+ok('saving files the slip', S.parlays.length === 1, String(S.parlays.length));
+ok('and says it did', toastUp() && /Saved to your slips/.test(toastTxt()),
+   JSON.stringify(toastTxt()));
+ok('and lands you on Saved', S.route === 'saved', S.route);
+// Closing the drawer: the legs are not lost, they are on the card.
+ok('and the slip is put away', S.slip.legs.length === 0,
+   String(S.slip.legs.length));
+ok('so the bar over the other tabs is gone',
+   document.getElementById('slipbarHost').innerHTML === '');
+
+// The receipt is taken back on its own.
+TIMER();
+ok('the toast puts itself away', !toastUp(), toastEl().className);
+
+// ── One slip, saved once ────────────────────────────────────────────────
+// `saveSlip` appends whatever it is handed, so pressing Save twice filed the
+// same parlay twice and the list filled with copies of one bet.
+const legA = rowsFor('any', 'all').filter(r => r.priced)[0];
+const legB = rowsFor('any', 'all').filter(r => r.priced)[1];
+location.hash = '#week';
+toggleLeg(legA);
+toggleLeg(legB);
+location.hash = '#slip';
+clickData('act', 'saveslip');
+ok('the same slip again is not a second record', S.parlays.length === 1,
+   String(S.parlays.length));
+ok('and it says so rather than saying nothing',
+   toastUp() && /Already saved/.test(toastTxt()), JSON.stringify(toastTxt()));
+ok('and still takes you to where it is', S.route === 'saved', S.route);
+ok('and still puts the slip away', S.slip.legs.length === 0);
+
+// A different set of legs is a different slip.
+location.hash = '#week';
+toggleLeg(legA);
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[2]);
+location.hash = '#slip';
+clickData('act', 'saveslip');
+ok('a different slip is a second record', S.parlays.length === 2,
+   String(S.parlays.length));
+
+// The stake is a size, not a selection: it does not make a new slip.
+ok('and the key is the market and the legs, not the stake',
+   x.slipKey('any', [{ id: 'b' }, { id: 'a' }])
+   === x.slipKey('any', [{ id: 'a' }, { id: 'b' }]));
+
+// ── Newest first ────────────────────────────────────────────────────────
+// Saving brings you here, so the slip you just saved has to be the one you
+// land on rather than the one you scroll to.
+location.hash = '#saved'; S.pcard = {};
+render();
+const order = (html().match(/data-pcard="([^"]+)"/g) || [])
+  .map(t => t.slice(t.indexOf('"') + 1, -1));
+ok('the newest saved slip is at the top',
+   order[0] === S.parlays[S.parlays.length - 1].id,
+   order.join(' ') + '  parlays: ' + S.parlays.map(q => q.id).join(' '));
+
+// ── Clearing from the bar stays where you are ───────────────────────────
+// The slip screen's Clear goes back to where the slip was filled. The bar is
+// on every tab but the slip's own, so it has nowhere to go back from —
+// clearing a slip while reading Saved used to move you to the board.
+location.hash = '#week';
+toggleLeg(legA);
+location.hash = '#saved';
+ok('the bar is up on Saved', document.getElementById('slipbarHost')
+   .innerHTML.indexOf('slipdel') >= 0);
+clickData('act', 'clearbar');
+ok('clearing from the bar empties the slip', S.slip.legs.length === 0);
+ok('and leaves you on the tab you were reading', S.route === 'saved', S.route);
+
+globalThis.setTimeout = realTimeout; globalThis.clearTimeout = realClear;
 
 done();

@@ -112,6 +112,59 @@ EXTRA_CSS = """
 .banner--bad{background:var(--bad-soft);color:var(--bad)}
 .banner b{font-weight:600}
 
+/* ---------- toast ---------- */
+/*
+ * A banner says something that has to be read before the screen under it means
+ * anything, and stays until it stops being true. This says something that was
+ * true for one moment — a slip filed — and then takes it back. A receipt, not
+ * a state, which is why nothing on the page reserves room for it.
+ *
+ * Above the tab bar rather than over it, and clear of the home indicator,
+ * because the bottom 34px of an installed app is not the app's to draw in.
+ * Under the scrim's z-index so an open sheet covers it: a sheet is a question
+ * being asked, and nothing may float over the answer to one.
+ */
+.toast{
+  position:fixed;z-index:19;left:50%;
+  bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--space-4));
+  max-width:min(92vw,420px);
+  display:flex;align-items:center;gap:var(--space-2);
+  padding:var(--space-3) var(--space-4);border-radius:var(--radius-pill);
+  background:var(--good-soft);color:var(--good);
+  font-size:14px;line-height:19px;font-weight:600;
+  box-shadow:var(--shadow-sheet);
+  opacity:0;pointer-events:none;
+  /* The resting position is the travelled-to one offset downward, so the
+     open state is a plain `translate(-50%,0)` and the centring survives. */
+  transform:translate(-50%,6px);
+  transition:opacity .18s ease,transform .18s ease;
+}
+.toast--open{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- saved card ---------- */
+/*
+ * A saved slip's header, which is the whole card until it is opened. A button
+ * rather than a row with a chevron in it: the target is the line you read, not
+ * the 16px arrow at the end of it, and 44px of it at that.
+ */
+.pcard{
+  display:flex;align-items:center;gap:var(--space-3);width:100%;
+  min-height:var(--tap-target);
+  background:none;border:0;padding:0;margin:0;
+  color:inherit;font:inherit;text-align:left;cursor:pointer;
+}
+.pcard__m{flex:1;min-width:0}
+.pcard__m>*{display:block}
+.pcard__chev{
+  flex:none;display:flex;color:var(--ink-faint);
+  transition:transform .18s ease;
+}
+.pcard__chev--open{transform:rotate(180deg)}
+
+@media (prefers-reduced-motion:reduce){
+  .toast,.pcard__chev{transition:none}
+}
+
 /* ---------- funnel ---------- */
 /*
  * What the shortlist rule removed, in the order it removed it. The counts are

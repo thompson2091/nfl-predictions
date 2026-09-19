@@ -74,6 +74,34 @@ function render(keep) {
   scroll.scrollTop = y;
 }
 
+//: Said once, and then taken back.
+//:
+//: Saving was the only control in the app with nothing to show for it. The
+//: slip did not move, the button did not move, and the parlay landed on a tab
+//: you were not looking at — so "did that work?" was answered by leaving the
+//: screen to go and check, which is the question a receipt exists to stop you
+//: asking.
+//:
+//: It lives in the shell beside the bars rather than inside `#scroll`, because
+//: `render` replaces everything in there and a receipt that the next keystroke
+//: erases is worse than none. And it is written straight into its own box
+//: rather than through `render`, for the same reason every field on the slip
+//: patches what it decides: re-rendering replaces the input being typed into,
+//: and iOS answers a fresh focus by scrolling and scaling to it.
+const TOAST_MS = 2600;
+let TOASTING = null;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.className = 'toast toast--open';
+  // Saying a second thing restarts the clock rather than letting the first
+  // message's timer cut the second one short.
+  if (TOASTING) clearTimeout(TOASTING);
+  TOASTING = setTimeout(() => { t.className = 'toast'; TOASTING = null; },
+                        TOAST_MS);
+}
+
 function screenHTML() {
   switch (S.route) {
     case 'week': return vBoard();
@@ -124,7 +152,7 @@ function vSlipbar() {
   // The button is behind the bar rather than revealed by it, so the movement
   // can follow a thumb instead of playing an animation after one.
   return '<div class="slipwrap" id="slipwrap">'
-    + '<button class="slipdel" data-act="clearslip" aria-label="Clear the slip">'
+    + '<button class="slipdel" data-act="clearbar" aria-label="Clear the slip">'
     + I.bin + ' Clear</button>'
     + '<div class="slipbar"><span class="slipbar__count num">'
     + S.slip.legs.length + '</span>'
@@ -459,8 +487,14 @@ function vSlip() {
   h += '<div style="display:flex;gap:12px;margin-top:16px">'
     + '<button class="btn btn--secondary" style="flex:1" data-act="clearslip">'
     + 'Clear slip</button>'
+    // No "Saved" state on the button. It read `S.saved[slipSignature()]`,
+    // which was never true — `saveSlip` records one slip as `{sig, id}` rather
+    // than a map keyed by signature, so the lookup could only ever be
+    // undefined and the label never changed. It has nothing to say now
+    // anyway: saving files the slip, empties it and moves to Saved, so there
+    // is no saved slip left on this screen for a button to describe.
     + '<button class="btn btn--primary" style="flex:1" data-act="saveslip">'
-    + (S.saved[slipSignature()] ? 'Saved' : 'Save slip') + '</button></div>';
+    + 'Save slip</button></div>';
   h += '</div></div>';
 
   // How often each number of legs lands, and what that pays. The reason the
@@ -695,6 +729,11 @@ const MARKET_ROUTES = { week: 1, combos: 1 };
 //: emptying it should put you back in the list you loaded it from.
 const SCROLLS = {};
 let BACK = 'week';
+//: Which saved cards are open. Collapsed is the resting state: the Saved tab
+//: is a list you read by name and date, and a card's numbers are opened when
+//: that card is the one being asked about. Keyed by id rather than by index,
+//: so deleting one does not open its neighbour.
+S.pcard = {};
 
 function route() {
   const prev = S.route;
@@ -741,7 +780,7 @@ JS_EVENTS = r"""
 //:
 //: `pstake` is deliberately absent: it is an input, and the input listener
 //: has it. A test holds this list against what the views actually emit.
-const CLICKS = ['tab', 'view', 'cbpool', 'sf', 'del', 'open', 'fam', 'load',
+const CLICKS = ['tab', 'view', 'cbpool', 'pcard', 'del', 'open', 'fam', 'load',
                 'sheet', 'act', 'fav', 'fav2', 'add', 'add2', 'detail',
                 'set', 'drop'];
 const CLICK_SEL = CLICKS.map(k => '[data-' + k + ']').join(',');
@@ -771,7 +810,7 @@ function wire() {
     }
     if (d.view) { S.fw.view = d.view; S.fw.sort = ''; render(); return; }
     if (d.cbpool) { S.cb.pool = d.cbpool; render(); return; }
-    if (d.sf) { S.savedFilter = d.sf; render(true); return; }
+    if (d.pcard) { S.pcard[d.pcard] = !S.pcard[d.pcard]; render(true); return; }
     if (d.del) { dropParlay(d.del); return; }
     if (d.open) {
       const p2 = S.parlays.map(settle).filter(x => x.id === d.open)[0];
@@ -843,7 +882,15 @@ function wire() {
       // renders, so the hop has to come after it or `go` navigates and the
       // render puts you back on an empty slip.
       case 'clearslip': closeSwipe(); clearSlip(); go(BACK); break;
-      case 'saveslip': saveSlip(); render(true); break;
+      // The same emptying, from the button behind the slip bar — and without
+      // the hop, which is the whole difference. `go(BACK)` is right for the
+      // button on the slip screen, where an empty slip is not worth standing
+      // on. The bar is on every tab but the slip's own, so there is nowhere
+      // to go back from: swiping a slip away while reading Saved cleared it
+      // and then moved you to the board, which reads as the button having
+      // done something else entirely.
+      case 'clearbar': closeSwipe(); clearSlip(); break;
+      case 'saveslip': saveSlipOnce(); break;
       case 'conflictkeep': S.conflict = null; render(true); break;
       case 'conflictswap': {
         const c = S.conflict;
@@ -916,6 +963,38 @@ const num = v => parseFloat(String(v).replace(/[^0-9.]/g, ''));
 // `S.slip.stake`, so both come back correct from one call — what they cannot
 // do is come back at all unless each is put somewhere it can be replaced
 // without touching the field being typed into.
+// What makes two slips the same slip: the market and the legs it holds.
+//
+// Not the stake. A stake is a size rather than a selection, it is editable on
+// the saved card afterwards, and two records of one bet at $10 and $40 are two
+// copies of the same opinion — which is the thing worth having only once.
+function slipKey(market, legs) {
+  return JSON.stringify([market, (legs || []).map(l => l.id).sort()]);
+}
+
+// Saved once, and said so either way.
+//
+// `saveSlip` is v1's and appends whatever it is handed, so pressing Save twice
+// filed the same parlay twice and the list filled with copies of one bet. Last
+// week's slips are read from their own key and are not candidates: the same
+// legs in a new week are a new bet, which is why `week` is on the record.
+function saveSlipOnce() {
+  if (!S.slip.legs.length) return;
+  const key = slipKey(S.slip.market, S.slip.legs);
+  const already = S.parlays.some(p => !p.last && slipKey(p.market, p.legs) === key);
+  // Not an error, and not a second copy. The answer to "save this" when it is
+  // already saved is to show you where it is.
+  if (!already) saveSlip();
+  // Filed, so the slip is put away — which is what takes the bar off every
+  // other tab. The legs are not lost: the card's own button loads them back.
+  //
+  // `clearSlip` and `saveSlip` both render, so the hop comes last or `go`
+  // navigates and their render puts the board back underneath it.
+  clearSlip();
+  go('saved');
+  toast(already ? 'Already saved to your slips' : 'Saved to your slips');
+}
+
 function patchTotals() {
   const m = slipMath();
   const dec = parlayDec(m.legs);
@@ -1352,49 +1431,24 @@ JS_SAVED = r"""
 // `any|Derrick Henry` is a different bet in week 3 than in week 2 and a
 // shared key would settle a live parlay from a result it never had.
 function vSaved() {
-  const all = S.parlays.map(settle);
+  // Newest first, so the slip you have just saved is the one you land on when
+  // saving brings you here. Last week's are read from their own key and sit
+  // under this week's rather than being interleaved by time — they are a
+  // record to look back at, not a list you are still working in.
+  const all = S.parlays.map(settle).sort((a, b) => (!a.last === !b.last)
+    ? String(b.savedAt || '').localeCompare(String(a.savedAt || ''))
+    : (a.last ? 1 : -1));
+
   if (!all.length) return '<div class="sect"><div class="card">'
     + vEmpty('Nothing saved yet',
-             'Build a slip and press Save, and it lands here to settle itself.',
+             'Build a slip and press Save, and it lands here.',
              'Go to the board', 'goboard') + '</div></div>';
 
-  const settled = all.filter(p => p.status !== 'Pending');
-  const won = settled.filter(p => p.status === 'Won');
-  const net = settled.reduce((a, p) => a + p.net, 0);
-  const staked = settled.reduce((a, p) => a + (p.outlay || 0), 0);
-
-  let h = '<div class="sect"><div class="card"><div class="keystats">'
-    + keystat('Settled', String(settled.length), null, true)
-    + keystat('Won', String(won.length), null, true)
-    + keystat('Net', settled.length ? money(net) : '—',
-              settled.length ? (net >= 0 ? 'good' : 'bad') : null, true)
-    + '</div>'
-    + (staked ? '<div class="prose">' + money(staked) + ' staked across '
-        + settled.length + ' settled slip' + (settled.length === 1 ? '' : 's')
-        + ', for ' + money(net) + '. Saved slips are held in this browser only.'
-        + '</div>' : '')
-    + '</div></div>';
-
-  const counts = { all: all.length, pending: all.length - settled.length,
-                   won: won.length, lost: settled.length - won.length };
-  h += '<div class="chiprow">' + [['all', 'All'], ['pending', 'Pending'],
-    ['won', 'Won'], ['lost', 'Lost']].map(o =>
-    '<button class="chip" aria-pressed="'
-    + (S.savedFilter === o[0] ? 'true' : 'false') + '" data-sf="' + o[0] + '">'
-    + o[1] + ' <span class="c num">' + counts[o[0]] + '</span></button>').join('')
-    + '</div>';
-
-  const keep = p => S.savedFilter === 'all'
-    || (S.savedFilter === 'pending' && p.status === 'Pending')
-    || (S.savedFilter === 'won' && p.status === 'Won')
-    || (S.savedFilter === 'lost' && p.status === 'Lost');
-  const shown = all.filter(keep);
-  if (!shown.length) return h + '<div class="sect"><div class="card">'
-    + vEmpty('Nothing is ' + S.savedFilter,
-             'Every saved slip is under one of the other filters.') + '</div></div>';
-
-  h += shown.map(vParlay).join('');
-  return h + '<div style="height:24px"></div>';
+  // No running record over the list, and no Pending/Won/Lost filters under it.
+  // Both were built on settling slips against results, which is not what this
+  // tab is for: it is where the slips you built are kept, and a scoreboard
+  // over them answers a question nobody opened this tab to ask.
+  return all.map(vParlay).join('') + '<div style="height:24px"></div>';
 }
 
 const STATE_TONE = { hit: 'good', miss: 'bad', pending: 'neutral' };
@@ -1412,20 +1466,29 @@ const STATE_TONE = { hit: 'good', miss: 'bad', pending: 'neutral' };
 // is saved beside it and never moves.
 function vParlay(p) {
   const pend = p.status === 'Pending';
-  const tone = pend ? 'neutral' : (p.status === 'Won' ? 'good' : 'bad');
+  const open = !!S.pcard[p.id];
   const dec = parlayDec(p.legs);
   const ratio = p.rowStake > 0 ? (p.stake || 0) / p.rowStake : 1;
   const rows = scaleRows(p.rows, ratio);
   const ev = has(p.ev) ? p.ev * ratio : null;
 
+  // The header is the whole card until you ask for the rest. A saved list is
+  // read by name and week; the legs, the totals and the payout curve are what
+  // you open when this is the one you are asking about, and six cards each
+  // three screens tall is a list you scroll rather than a list you read.
+  //
+  // No status pill beside the name. It said Pending on everything that had not
+  // been graded, which on this tab is most things most of the time, and it is
+  // the same settling this page no longer reports.
   let h = '<div class="sect"><div class="card" style="padding:16px">'
-    + '<div style="display:flex;justify-content:space-between;align-items:flex-start;'
-    + 'gap:12px"><div style="min-width:0">'
-    + '<div class="leg__n">' + esc(p.name) + '</div>'
-    + '<div class="row__meta">' + esc(p.marketLabel || '') + ' · Week ' + p.week
-    + (p.last ? ' · last week' : '') + '</div></div>'
-    + '<span class="badge badge--' + tone + '"><span class="dot"></span>'
-    + esc(p.status) + '</span></div>';
+    + '<button class="pcard" data-pcard="' + esc(p.id) + '" aria-expanded="'
+    + (open ? 'true' : 'false') + '"><span class="pcard__m">'
+    + '<span class="leg__n">' + esc(p.name) + '</span>'
+    + '<span class="row__meta">' + esc(p.marketLabel || '') + ' · Week ' + p.week
+    + (p.last ? ' · last week' : '') + '</span></span>'
+    + '<span class="pcard__chev' + (open ? ' pcard__chev--open' : '') + '" '
+    + 'aria-hidden="true">' + I.chev + '</span></button>';
+  if (!open) return h + '</div></div>';
 
   // Each leg with the state the results map gave it. A dot rather than a
   // word, because the status above already says the answer and these are how

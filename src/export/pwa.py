@@ -323,6 +323,10 @@ SHELL = """<!doctype html>
 </div></div></div>
 <div id="slipbarHost"></div>
 <nav class="tabbar" id="tabbar"></nav>
+<!-- Said once and then taken back, so it belongs to the shell rather than to
+     the screen: a render replaces everything inside `scroll`, and a receipt
+     the next keystroke erases is worse than none. -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="scrim" id="scrim"></div>
 <div class="sheet" id="sheet"></div>
 <noscript>

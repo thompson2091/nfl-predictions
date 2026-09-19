@@ -697,3 +697,130 @@ def test_clearing_the_slip_goes_back_to_wherever_it_was_opened_from():
     assert "case 'clearslip': closeSwipe(); clearSlip(); go(BACK); break;" in src
     assert "if (S.route === 'slip' && prev !== 'slip') BACK = prev;" in src, (
         "and arriving at the slip FROM the slip must not overwrite it")
+
+
+def test_the_shell_carries_a_box_for_the_receipt():
+    """Outside `#scroll`, because a render replaces everything inside it.
+
+    Saving was the only control in the app with nothing to show for it, and a
+    receipt the next keystroke erases is worse than none. Falsified by putting
+    the box in the screen: `render` rewrites `scroll.innerHTML` on every tab
+    change, keystroke and toggle, and the message would go with it.
+    """
+    from src.export.pwa import render
+
+    built = render({"season": 2026, "week": 2, "brand": "Pick Six",
+                    "built": "2026-09-18T01:19:25+00:00", "markets": [],
+                    "results": {}})
+    page = built["index.html"]
+    assert 'id="toast"' in page, "no box to write the receipt into"
+    # Announced to a screen reader as a status rather than read as a heading:
+    # it is something that just happened, not part of the page's structure.
+    assert 'role="status"' in page and 'aria-live="polite"' in page
+    # In the shell beside the bars, not in the scrolling screen.
+    assert page.index('id="tabbar"') < page.index('id="toast"')
+    assert page.index('id="toast"') < page.index('id="scrim"'), (
+        "the sheet and its scrim must stack over the toast, not under it")
+
+
+def test_the_toast_is_written_without_a_render():
+    """The same rule every field on the slip follows, for the same reason.
+
+    A render replaces the input being typed into, and iOS answers a fresh
+    focus by scrolling and scaling to it. Falsified by calling `render` from
+    `toast`: the name would appear between the function and its brace.
+    """
+    from src.export import v2css, v2js
+
+    src = v2js.js()
+    body = src[src.index("function toast(msg) {"):]
+    body = body[:body.index("\nfunction ")]
+    assert "render(" not in body, "a receipt must not redraw the screen"
+    assert "getElementById('toast')" in body
+    # Saying a second thing restarts the clock rather than letting the first
+    # message's timer cut the second one short.
+    assert "clearTimeout(TOASTING)" in body
+
+    css = v2css.css()
+    assert ".toast{" in css and ".toast--open{" in css
+    # Under the scrim, so an open sheet covers it.
+    assert "z-index:19" in css
+
+
+def test_saving_files_the_slip_once_and_says_which_it_did():
+    """`saveSlip` is v1's and appends whatever it is handed.
+
+    So pressing Save twice filed the same parlay twice and the list filled
+    with copies of one bet. What makes two slips the same is the market and
+    the legs — not the stake, which is a size rather than a selection and is
+    editable on the card afterwards.
+
+    Falsified by keying on the whole slip: the same legs at a different stake
+    would file a second copy of one opinion.
+    """
+    from src.export import v2js
+
+    src = v2js.js()
+    assert "case 'saveslip': saveSlipOnce(); break;" in src
+    body = src[src.index("function saveSlipOnce() {"):]
+    body = body[:body.index("\nfunction ")]
+    assert "slipKey(S.slip.market, S.slip.legs)" in body
+    assert "if (!already) saveSlip();" in body, "a second press must not append"
+    # Filed, so the slip is put away and you are taken to where it went.
+    assert "clearSlip();" in body and "go('saved');" in body
+    assert body.index("clearSlip();") < body.index("go('saved');"), (
+        "`clearSlip` renders, so the hop comes last or its render lands on top"
+    )
+    # The stake is not part of what makes a slip that slip.
+    key = src[src.index("function slipKey("):]
+    key = key[:key.index("\n}")]
+    assert "stake" not in key
+
+
+def test_clearing_from_the_bar_does_not_move_you():
+    """The slip screen's Clear goes back to where the slip was filled.
+
+    The bar is on every tab but the slip's own, so it has nowhere to go back
+    from — and clearing a slip while reading Saved moved you to the board,
+    which reads as the button having done something else entirely.
+
+    Falsified by giving the bar the screen's action again: the two would share
+    `go(BACK)` and the hop would come back.
+    """
+    from src.export import v2js
+
+    src = v2js.js()
+    assert 'data-act="clearbar"' in src, "the bar needs its own action"
+    assert "case 'clearbar': closeSwipe(); clearSlip(); break;" in src
+    assert "go(BACK)" not in src[src.index("case 'clearbar':"):
+                                 src.index("case 'saveslip':")]
+
+
+def test_saved_cards_start_collapsed_and_say_nothing_about_settling():
+    """A saved list is read by name and week.
+
+    Six cards each three screens tall is a list you scroll rather than one you
+    read, so a card's legs, totals and payout curve are opened when that card
+    is the one being asked about. The running record over the list and the
+    Pending/Won/Lost filters under it both reported settling, which is not
+    what this tab is for.
+    """
+    from src.export import v2css, v2js
+
+    src = v2js.js()
+    assert "if (!open) return h + '</div></div>';" in src, "nothing collapses"
+    assert "if (d.pcard) { S.pcard[d.pcard] = !S.pcard[d.pcard];" in src
+    assert "'pcard'" in src[src.index("const CLICKS = "):
+                            src.index("const CLICK_SEL")]
+
+    saved = src[src.index("function vSaved() {"):]
+    saved = saved[:saved.index("\nfunction ")]
+    assert "keystat('Settled'" not in saved, "the scoreboard is back"
+    assert "data-sf=" not in saved, "the filters are back"
+    assert "savedAt" in saved, "newest first is what saving into here needs"
+
+    card = src[src.index("function vParlay(p) {"):]
+    card = card[:card.index("\nfunction ")]
+    assert "esc(p.status)" not in card, "the status pill is back on the card"
+
+    assert ".pcard{" in v2css.css()
