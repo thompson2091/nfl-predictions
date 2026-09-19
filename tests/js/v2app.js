@@ -11,7 +11,7 @@ const { ok, done } = reporter();
 const x = loadPage(process.argv[2], process.argv[3],
   ['S', 'render', 'route', 'go', 'V2TABS', 'vBoard', 'vSlip', 'vSheet', 'SHEETS',
    'rowsFor', 'toggleLeg', 'marketLabel', 'served', 'KIND', 'boot', 'DATA',
-   'patchBoard', 'clearSlip']);
+   'patchBoard', 'clearSlip', 'saveSlip', 'settle']);
 const { S, render, V2TABS, vBoard, vSlip, vSheet, SHEETS, rowsFor,
         toggleLeg, marketLabel, served, KIND, DATA } = x;
 
@@ -158,6 +158,27 @@ ok('and never redraws the search input', list().indexOf('id="q"') < 0,
    'the input lives above the box that gets patched, which is the iOS fix');
 S.fw.q = '';
 x.patchBoard();
+
+// ── Saved ───────────────────────────────────────────────────────────────
+S.route = 'saved'; S.parlays = []; S.savedFilter = 'all';
+render();
+ok('an empty Saved page says so', html().indexOf('Nothing saved yet') >= 0);
+ok('Saved has a tab of its own',
+   bars().indexOf('data-tab="saved"') >= 0);
+ok('and the tab bar carries all six', (bars().match(/data-tab=/g) || []).length >= 6);
+
+// One saved slip, settled from the fixture's results map.
+S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[0]);
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[1]);
+x.saveSlip();
+S.route = 'saved';
+render();
+ok('a saved slip appears', (html().match(/data-open=/g) || []).length === 1,
+   html().slice(0, 200));
+ok('with a way to delete it', html().indexOf('data-del=') >= 0);
+ok('and the filters over it', html().indexOf('data-sf="pending"') >= 0);
+ok('and a record at the top', html().indexOf('class="keystats"') >= 0);
 
 // ── Swipe to clear ──────────────────────────────────────────────────────
 S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };

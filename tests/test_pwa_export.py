@@ -409,3 +409,46 @@ def test_a_wider_screen_gets_more_board_and_not_more_margin():
     assert "metric--wide" in v2js.js(), "the extra metrics have to be drawn"
     assert ".metric--wide{display:none}" in c.replace(" ", ""), (
         "and hidden where there is no room, by the stylesheet")
+
+
+def test_saved_parlays_are_a_destination_not_a_section():
+    """They have a life after you build them.
+
+    A saved slip goes pending, then won or lost, and the record at the top is
+    something you come back to rather than glance at on the way somewhere
+    else. Folding it into the Slip screen would have put a history under a
+    working draft.
+
+    Six tabs is the cost, and it is paid in the stylesheet: `min-width:0` is
+    what lets a flex item be narrower than its label, and without it the sixth
+    tab is off the edge of a 320px screen.
+    """
+    from src.export import v2css, v2js
+
+    src, c = v2js.js(), v2css.css()
+    assert "['saved', 'Saved']" in src, "Saved is a tab"
+    assert src.count("case 'saved': return vSaved()") == 1
+    assert "function dropParlay" in src, "and you can get rid of one"
+    # Only this week's list is ours to write; last week's is read from its own
+    # key and shown for reference.
+    drop = src[src.index("function dropParlay"):]
+    assert "filter(p => !p.last)" in drop[:drop.index("\n}")], (
+        "deleting must not write the key the week rollover owns")
+    assert ".tab{min-width:0" in c.replace(" ", ""), (
+        "six tabs overflow the bar without it")
+
+
+def test_a_notice_is_said_once(payload_v2):
+    """`loadParlay` sets one when a saved slip has legs the board has dropped.
+
+    That is a fact about the load rather than a state of the page, so it is
+    cleared as it is drawn — otherwise it reappears on every render until
+    something else happens to replace it.
+    """
+    from src.export import v2js
+
+    src = v2js.js()
+    r = src[src.index("function render("):]
+    r = r[:r.index("\nfunction ")]
+    assert "S.notice = null;" in r, "drawn, then forgotten"
+    assert "banner banner--warn" in r

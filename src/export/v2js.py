@@ -23,7 +23,7 @@ from __future__ import annotations
 JS = r"""
 // ── The shell ───────────────────────────────────────────────────────────
 const V2TABS = [['week', 'Board'], ['combos', 'Combos'], ['slip', 'Slip'],
-                ['ladder', 'Ladder'], ['model', 'Model']];
+                ['saved', 'Saved'], ['ladder', 'Ladder'], ['model', 'Model']];
 
 //: Which sheet is up, and what it is about. One at a time, by construction:
 //: a sheet over a sheet on a phone is a thing you cannot get out of.
@@ -33,6 +33,7 @@ const TABICON = {
   week: '<path d="M4 6h16M4 12h16M4 18h10"/>',
   combos: '<circle cx="9" cy="9" r="4.5"/><circle cx="15" cy="15" r="4.5"/>',
   slip: '<path d="M5 4h14v16l-3.5-2-3.5 2-3.5-2L5 20z"/>',
+  saved: '<path d="M4 7.5A2.5 2.5 0 016.5 5H12l2 2h4a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2z"/>',
   ladder: '<path d="M5 19h4V9H5zM10 19h4V5h-4zM15 19h4v-6h-4z"/>',
   model: '<path d="M4 16l5-6 4 3 6-8"/>',
 };
@@ -59,7 +60,14 @@ function render(keep) {
   const y = keep && scroll ? scroll.scrollTop : 0;
 
   el('appbar').innerHTML = vAppbar();
-  scroll.innerHTML = '<div class="inner">' + screenHTML() + '</div>';
+  // A notice is said once and then gone: `loadParlay` sets one when a saved
+  // slip has legs this week's board no longer carries, and that is a fact
+  // about the load rather than a state of the page.
+  const notice = S.notice
+    ? '<div class="sect"><div class="banner banner--warn">' + esc(S.notice)
+      + '</div></div>' : '';
+  S.notice = null;
+  scroll.innerHTML = '<div class="inner">' + notice + screenHTML() + '</div>';
   el('slipbarHost').innerHTML = vSlipbar();
   el('tabbar').innerHTML = V2TABS.map(vTab).join('');
   vSheet();
@@ -72,6 +80,7 @@ function screenHTML() {
     case 'slip': return vSlip();
     case 'combos': return vCombos();
     case 'ladder': return vLadder();
+    case 'saved': return vSaved();
     case 'model': return vModel();
     default: return vBoard();
   }
@@ -695,6 +704,13 @@ function wire() {
     if (d.tab) { SHEET = null; go(d.tab); return; }
     if (d.view) { S.fw.view = d.view; S.fw.sort = ''; render(); return; }
     if (d.cbpool) { S.cb.pool = d.cbpool; render(); return; }
+    if (d.sf) { S.savedFilter = d.sf; render(true); return; }
+    if (d.del) { dropParlay(d.del); return; }
+    if (d.open) {
+      const p2 = S.parlays.map(settle).filter(x => x.id === d.open)[0];
+      if (p2) loadParlay(p2);
+      return;
+    }
     if (d.fam) { S.fam[d.fam] = !S.fam[d.fam]; render(true); return; }
     if (d.load !== undefined) { loadCombo(+d.load); return; }
     if (d.sheet) { SHEET = { kind: d.sheet }; vSheet(); return; }
@@ -942,7 +958,7 @@ document.addEventListener('DOMContentLoaded', () => { wire(); wireSwipe(); boot(
 
 def js() -> str:
     """The v2 view layer, in the order it has to be declared in."""
-    return JS + JS_SLIP + JS_SCREENS + JS_SHEETS + JS_ROUTE + JS_EVENTS
+    return JS + JS_SLIP + JS_SCREENS + JS_SAVED + JS_SHEETS + JS_ROUTE + JS_EVENTS
 
 
 JS_SCREENS = r"""
@@ -1219,5 +1235,113 @@ function vFamilies(key, r) {
     + '<div class="prose" style="padding:12px 0 0">Worth is the drop in '
     + 'out-of-sample top-1 accuracy when the family is shuffled. It says which '
     + 'inputs the model leans on, not which ones cause a touchdown.</div></div>';
+}
+"""
+
+
+JS_SAVED = r"""
+// ── Saved ───────────────────────────────────────────────────────────────
+//
+// The slips you kept, settling on their own as results land. A destination
+// rather than a section of the Slip screen: these have a life after you build
+// them — they go pending, then won or lost, and the summary at the top is a
+// record you come back to rather than something you glance at on the way
+// somewhere else.
+//
+// `settle` is v1's and keys results by week as well as by player, because
+// `any|Derrick Henry` is a different bet in week 3 than in week 2 and a
+// shared key would settle a live parlay from a result it never had.
+function vSaved() {
+  const all = S.parlays.map(settle);
+  if (!all.length) return '<div class="sect"><div class="card">'
+    + vEmpty('Nothing saved yet',
+             'Build a slip and press Save, and it lands here to settle itself.',
+             'Go to the board', 'goboard') + '</div></div>';
+
+  const settled = all.filter(p => p.status !== 'Pending');
+  const won = settled.filter(p => p.status === 'Won');
+  const net = settled.reduce((a, p) => a + p.net, 0);
+  const staked = settled.reduce((a, p) => a + (p.outlay || 0), 0);
+
+  let h = '<div class="sect"><div class="card"><div class="keystats">'
+    + keystat('Settled', String(settled.length), null, true)
+    + keystat('Won', String(won.length), null, true)
+    + keystat('Net', settled.length ? money(net) : '—',
+              settled.length ? (net >= 0 ? 'good' : 'bad') : null, true)
+    + '</div>'
+    + (staked ? '<div class="prose">' + money(staked) + ' staked across '
+        + settled.length + ' settled slip' + (settled.length === 1 ? '' : 's')
+        + ', for ' + money(net) + '. Saved slips are held in this browser only.'
+        + '</div>' : '')
+    + '</div></div>';
+
+  const counts = { all: all.length, pending: all.length - settled.length,
+                   won: won.length, lost: settled.length - won.length };
+  h += '<div class="chiprow">' + [['all', 'All'], ['pending', 'Pending'],
+    ['won', 'Won'], ['lost', 'Lost']].map(o =>
+    '<button class="chip" aria-pressed="'
+    + (S.savedFilter === o[0] ? 'true' : 'false') + '" data-sf="' + o[0] + '">'
+    + o[1] + ' <span class="c num">' + counts[o[0]] + '</span></button>').join('')
+    + '</div>';
+
+  const keep = p => S.savedFilter === 'all'
+    || (S.savedFilter === 'pending' && p.status === 'Pending')
+    || (S.savedFilter === 'won' && p.status === 'Won')
+    || (S.savedFilter === 'lost' && p.status === 'Lost');
+  const shown = all.filter(keep);
+  if (!shown.length) return h + '<div class="sect"><div class="card">'
+    + vEmpty('Nothing is ' + S.savedFilter,
+             'Every saved slip is under one of the other filters.') + '</div></div>';
+
+  h += shown.map(vParlay).join('');
+  return h + '<div style="height:24px"></div>';
+}
+
+const STATE_TONE = { hit: 'good', miss: 'bad', pending: 'neutral' };
+function vParlay(p) {
+  const pend = p.status === 'Pending';
+  const tone = pend ? 'neutral' : (p.status === 'Won' ? 'good' : 'bad');
+  let h = '<div class="sect"><div class="card" style="padding:16px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:flex-start;'
+    + 'gap:12px"><div style="min-width:0">'
+    + '<div class="leg__n">' + esc(p.name) + '</div>'
+    + '<div class="row__meta">' + esc(p.marketLabel || '') + ' · Week ' + p.week
+    + (p.last ? ' · last week' : '') + '</div></div>'
+    + '<span class="badge badge--' + tone + '"><span class="dot"></span>'
+    + esc(p.status) + '</span></div>';
+
+  // Each leg with the state the results map gave it. A dot rather than a
+  // word, because the status above already says the answer and these are
+  // how it was arrived at.
+  h += '<div style="margin-top:12px">' + p.legs.map(l =>
+    '<div class="leg"><div class="leg__m"><div class="leg__s">'
+    + '<span class="badge badge--' + (STATE_TONE[l.state] || 'neutral')
+    + '" style="height:18px;padding:0 6px"><span class="dot"></span></span> '
+    + esc(l.label) + '</div></div>'
+    + '<span class="odds num">' + (has(l.odds) ? american(l.odds) : '—')
+    + '</span></div>').join('') + '</div>';
+
+  if (!pend) h += '<div class="keystats" style="padding:16px 0 0">'
+    + keystat('Pays', p.priced ? american(decToAm(p.dec)) : '—', null, true)
+    + keystat('Legs in', p.hits + ' of ' + p.legs.length, null, true)
+    + keystat('Result', money(p.net), p.net >= 0 ? 'good' : 'bad', true)
+    + '</div>';
+
+  h += '<div style="display:flex;gap:12px;margin-top:16px">'
+    + '<button class="btn btn--secondary" style="flex:1" data-del="' + esc(p.id)
+    + '">Delete</button>'
+    + '<button class="btn btn--primary" style="flex:1" data-open="' + esc(p.id)
+    + '">' + (pend ? 'Load into slip' : 'Rebuild for this week') + '</button>'
+    + '</div>';
+  return h + '</div></div>';
+}
+
+function dropParlay(id) {
+  S.parlays = S.parlays.filter(p => p.id !== id);
+  // Only this week's list is ours to write. Last week's is read from its own
+  // key and shown for reference, so deleting from it would write a key the
+  // rollover owns.
+  saveParlays(S.parlays.filter(p => !p.last));
+  render(true);
 }
 """

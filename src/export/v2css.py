@@ -159,6 +159,18 @@ EXTRA_CSS = """
   color:var(--ink-faint);font-variant-numeric:tabular-nums;
 }
 
+/* ---------- six destinations ---------- */
+/*
+ * Saved earned a tab of its own, which makes six. At 390px that is 65px each
+ * and at 320px it is 53px — enough for an 11px label, but only if the label
+ * cannot push the tab wider than its share. `min-width:0` is what lets a flex
+ * item be smaller than its content; without it six tabs overflow the bar and
+ * the last one is off the screen.
+ */
+.tab{min-width:0;padding:0 2px}
+.tab span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:360px){ .tab{font-size:10px} }
+
 /* ---------- swipe to clear ---------- */
 /*
  * The slip bar, pulled left to show what is under it. A phone pattern and
