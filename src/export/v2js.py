@@ -115,7 +115,10 @@ function vTab(t) {
 // already there.
 function vSlipbar() {
   const m = slipMath();
-  if (!m || S.route === 'slip') return '';
+  // `slipMath` answers an empty slip with a real object rather than null —
+  // zero legs, zero outlay, an all-hit of 1 — so truthiness is not the
+  // question. The legs are.
+  if (!m.legs.length || S.route === 'slip') return '';
   const names = S.slip.legs.map(l => esc(surname(l.label || ''))).join(' · ');
   const dec = parlayDec(m.legs);
   // The button is behind the bar rather than revealed by it, so the movement
@@ -299,13 +302,16 @@ function vRow(r, kind) {
     met('Adj', pct(r.ours), '', true),
     met('Edge', has(r.edge) ? spp(r.edge) : '—',
         has(r.edge) ? (r.edge >= 0 ? 'v-good' : 'v-bad') : 'v-none'),
-    // Drawn on every row and shown only where there is room for them. A
-    // resize does not re-render, so deciding this in JavaScript would leave
-    // the board showing a phone's four columns on a window someone had just
-    // widened.
-    met('Open', has(r.openOdds) ? american(r.openOdds) : '—', '', false, true),
+    // EV earns a place on the phone. Edge is the disagreement and this is
+    // what the disagreement is worth at the posted price, which is the
+    // question the row is actually being read for — and five of these fit a
+    // 390px screen once the gap comes down to 10.
     met('EV $100', has(ev) ? money(ev) : '—',
-        has(ev) ? (ev >= 0 ? 'v-good' : 'v-bad') : 'v-none', false, true),
+        has(ev) ? (ev >= 0 ? 'v-good' : 'v-bad') : 'v-none'),
+    // Drawn on every row and shown only where there is room for it. A resize
+    // does not re-render, so deciding this in JavaScript would leave a window
+    // someone had just widened showing a phone's columns.
+    met('Open', has(r.openOdds) ? american(r.openOdds) : '—', '', false, true),
   ];
   return '<div class="row">'
     + '<button class="ib' + (fav ? ' ib--on' : '') + '" data-fav="' + esc(r.id)
@@ -393,7 +399,10 @@ JS_SLIP = r"""
 // not cosmetic: a screen can be as long as it needs to be, so the breakdown
 // and the round robin stop being things you scroll a panel to find.
 const parlayDec = legs => legs.reduce((d, l) => has(l.dec) ? d * l.dec : d, 1);
-const allPriced = legs => legs.every(l => has(l.dec));
+// `every` over nothing is true, so an empty slip read as fully priced and was
+// handed to `decToAm` at a decimal of 1 — which is `-100 / 0`, and the bar
+// said "-Infinity". All of nothing is not priced; it is nothing.
+const allPriced = legs => legs.length > 0 && legs.every(l => has(l.dec));
 
 function vSlip() {
   const m = slipMath();
@@ -445,9 +454,10 @@ function vSlip() {
   // slip is worth reading rather than just adding up: a four-leg parlay is
   // mostly the three-of-four branch, and that branch pays nothing.
   if (m.rows && m.rows.length) {
+    // The table brings its own headings. A `secthead` over them said the
+    // same three words again, one line higher and in a different typeface.
     h += '<div class="sect"><div class="card" style="padding:16px">'
-      + '<div class="secthead" style="padding:0 0 8px"><span>If this many land</span>'
-      + '<span>Chance · Net</span></div>' + vBrk(m) + '</div></div>';
+      + vBrk(m.rows, m.n, m.slips) + '</div></div>';
   }
   const g = gradedNote(S.slip.market);
   if (g) h += '<div class="sect"><div class="prose" style="border:0;padding:0 4px">'
@@ -458,11 +468,11 @@ const tot = (l, v, tone) => '<div class="total"><span class="total__l">' + l
   + '</span><span class="total__v num"' + (tone ? ' style="color:var(--' + tone + ')"' : '')
   + '>' + v + '</span></div>';
 
-function vBrk(m) {
+function vBrk(rows, n, slips) {
   return '<table class="brk"><thead><tr><th>Legs in</th><th>Chance</th>'
     + '<th>Net</th></tr></thead><tbody>'
-    + (m.rows || []).map(r => '<tr><td>' + r.hit + ' of ' + m.n
-      + (r.slipsWon ? ' · ' + r.slipsWon + '/' + m.slips : '') + '</td>'
+    + (rows || []).map(r => '<tr><td>' + r.hit + ' of ' + n
+      + (r.slipsWon ? ' · ' + r.slipsWon + '/' + slips : '') + '</td>'
       + '<td class="num">' + (has(r.chance) ? chanceTxt(r.chance) : '—') + '</td>'
       + '<td class="num ' + (r.net >= 0 ? 'pos' : 'neg') + '">' + money(r.net)
       + '</td></tr>').join('') + '</tbody></table>';
@@ -685,11 +695,25 @@ JS_EVENTS = r"""
 // would be attached to nodes that no longer exist — and the ones that do get
 // re-created are re-created for a reason. A `data-` attribute survives that
 // because it is data rather than a binding.
+//: Every `data-` attribute a click has to reach, in one list.
+//:
+//: It was a string literal inside `closest`, and six controls were added
+//: after it without being added to it: the Combinations pool switch and its
+//: Load, the Saved filters, Delete and Load, and the Model page's feature
+//: toggle. `closest` returned null, the handler bailed on the first line, and
+//: every one of those buttons did nothing at all — silently, because a
+//: button that is never reached throws nothing.
+//:
+//: `pstake` is deliberately absent: it is an input, and the input listener
+//: has it. A test holds this list against what the views actually emit.
+const CLICKS = ['tab', 'view', 'cbpool', 'sf', 'del', 'open', 'fam', 'load',
+                'sheet', 'act', 'fav', 'fav2', 'add', 'add2', 'detail',
+                'set', 'drop'];
+const CLICK_SEL = CLICKS.map(k => '[data-' + k + ']').join(',');
+
 function wire() {
   document.addEventListener('click', e => {
-    const t = e.target.closest && e.target.closest('[data-tab],[data-view],'
-      + '[data-sheet],[data-act],[data-fav],[data-fav2],[data-add],[data-add2],'
-      + '[data-detail],[data-set],[data-drop]');
+    const t = e.target.closest && e.target.closest(CLICK_SEL);
     if (!t) {
       // A tap anywhere else closes the sheet, which is the gesture a sheet is
       // expected to answer. Not while a conflict is up — that one is a
@@ -788,6 +812,20 @@ function wire() {
   // iOS makes the system scroll and scale to the new one.
   document.addEventListener('input', e => {
     const t = e.target;
+    if (!t) return;
+    // A saved slip's own stake box, which is keyed by the slip rather than by
+    // a document id — there is one per card.
+    const ps = t.getAttribute && t.getAttribute('data-pstake');
+    if (ps) {
+      const x = num(t.value);
+      const p2 = S.parlays.filter(q => q.id === ps)[0];
+      if (p2 && isFinite(x) && x > 0) {
+        p2.stake = x;
+        saveParlays(S.parlays.filter(q => !q.last));
+        patchParlay(ps);
+      }
+      return;
+    }
     const id = t && t.id;
     if (!id) return;
     if (id === 'q') {
@@ -1090,8 +1128,8 @@ function ladderOut() {
   const last = rows[rows.length - 1];
   const max = rows.length ? rows[0].p : 1;
   let h = '<div class="sect"><div class="card"><div class="keystats">'
-    + keystat('If every rung wins', last ? money(last.bal) : '—', 'good')
-    + keystat('Chance of the run', last ? chanceTxt(last.p) : '—', null, true)
+    + keystat('Payout', last ? money(last.bal) : '—', 'good')
+    + keystat('Chance', last ? chanceTxt(last.p) : '—', null, true)
     + keystat('At risk', money(L.start), 'bad', true)
     + '</div></div></div>';
 
@@ -1298,9 +1336,26 @@ function vSaved() {
 }
 
 const STATE_TONE = { hit: 'good', miss: 'bad', pending: 'neutral' };
+
+// A saved slip says what the slip said, and then what happened to it.
+//
+// The same three figures the Slip screen leads with — All hit, Pays, EV — and
+// the same payout curve underneath, because a saved slip you cannot read is a
+// name and a date. `dec` is computed from the legs rather than read off the
+// record: `saveSlip` never wrote one, so v1's own card renders
+// `decToAm(undefined)` and prints NaN where the price should be.
+//
+// Net is linear in the stake, so the stored curve can be re-read at any other
+// one — but only against the stake that produced it, which is why `rowStake`
+// is saved beside it and never moves.
 function vParlay(p) {
   const pend = p.status === 'Pending';
   const tone = pend ? 'neutral' : (p.status === 'Won' ? 'good' : 'bad');
+  const dec = parlayDec(p.legs);
+  const ratio = p.rowStake > 0 ? (p.stake || 0) / p.rowStake : 1;
+  const rows = scaleRows(p.rows, ratio);
+  const ev = has(p.ev) ? p.ev * ratio : null;
+
   let h = '<div class="sect"><div class="card" style="padding:16px">'
     + '<div style="display:flex;justify-content:space-between;align-items:flex-start;'
     + 'gap:12px"><div style="min-width:0">'
@@ -1311,8 +1366,8 @@ function vParlay(p) {
     + esc(p.status) + '</span></div>';
 
   // Each leg with the state the results map gave it. A dot rather than a
-  // word, because the status above already says the answer and these are
-  // how it was arrived at.
+  // word, because the status above already says the answer and these are how
+  // it was arrived at.
   h += '<div style="margin-top:12px">' + p.legs.map(l =>
     '<div class="leg"><div class="leg__m"><div class="leg__s">'
     + '<span class="badge badge--' + (STATE_TONE[l.state] || 'neutral')
@@ -1321,10 +1376,28 @@ function vParlay(p) {
     + '<span class="odds num">' + (has(l.odds) ? american(l.odds) : '—')
     + '</span></div>').join('') + '</div>';
 
+  h += '<div class="totals" id="ptot-' + esc(p.id) + '">'
+    + tot('All hit', has(p.chance) ? chanceTxt(p.chance) : '—')
+    + tot('Pays', allPriced(p.legs) ? american(decToAm(dec)) : '—')
+    + tot('EV on $' + (p.stake || 0), has(ev) ? (ev >= 0 ? '+' : '') + money(ev) : '—',
+          has(ev) ? (ev >= 0 ? 'good' : 'bad') : null)
+    + '</div>';
+
   if (!pend) h += '<div class="keystats" style="padding:16px 0 0">'
-    + keystat('Pays', p.priced ? american(decToAm(p.dec)) : '—', null, true)
     + keystat('Legs in', p.hits + ' of ' + p.legs.length, null, true)
-    + keystat('Result', money(p.net), p.net >= 0 ? 'good' : 'bad', true)
+    + keystat('Result', money(p.net * ratio), p.net >= 0 ? 'good' : 'bad', true)
+    + '</div>';
+
+  // Only while it can still be changed. A settled slip's stake is what was
+  // staked, and an input on it would invite editing history.
+  if (pend) h += '<label class="field" style="margin-top:16px">'
+    + '<span class="field__l">Stake per slip</span><span class="field__b">'
+    + '<span class="field__p">$</span><input class="num" inputmode="decimal" '
+    + 'data-pstake="' + esc(p.id) + '" value="' + esc(String(p.stake))
+    + '" aria-label="Stake per slip"></span></label>';
+
+  h += '<div id="pbrk-' + esc(p.id) + '" style="margin-top:16px">'
+    + (rows && rows.length ? vBrk(rows, p.legs.length, p.slips || 1) : '')
     + '</div>';
 
   h += '<div style="display:flex;gap:12px;margin-top:16px">'
@@ -1334,6 +1407,28 @@ function vParlay(p) {
     + '">' + (pend ? 'Load into slip' : 'Rebuild for this week') + '</button>'
     + '</div>';
   return h + '</div></div>';
+}
+
+// A saved slip's stake, changed on its own card. The figures it decides are
+// patched where they sit — the same rule the board and the ladder follow, and
+// for the same reason: re-rendering would replace the field being typed into,
+// and iOS answers a fresh focus by scaling to it.
+function patchParlay(id) {
+  const p = S.parlays.map(settle).filter(x => x.id === id)[0];
+  if (!p) return;
+  const ratio = p.rowStake > 0 ? (p.stake || 0) / p.rowStake : 1;
+  const ev = has(p.ev) ? p.ev * ratio : null;
+  const dec = parlayDec(p.legs);
+  const tots = document.getElementById('ptot-' + id);
+  if (tots) tots.innerHTML =
+    tot('All hit', has(p.chance) ? chanceTxt(p.chance) : '—')
+    + tot('Pays', allPriced(p.legs) ? american(decToAm(dec)) : '—')
+    + tot('EV on $' + (p.stake || 0), has(ev) ? (ev >= 0 ? '+' : '') + money(ev) : '—',
+          has(ev) ? (ev >= 0 ? 'good' : 'bad') : null);
+  const brk = document.getElementById('pbrk-' + id);
+  const rows = scaleRows(p.rows, ratio);
+  if (brk) brk.innerHTML = rows && rows.length
+    ? vBrk(rows, p.legs.length, p.slips || 1) : '';
 }
 
 function dropParlay(id) {

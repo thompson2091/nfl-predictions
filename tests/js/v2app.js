@@ -11,11 +11,32 @@ const { ok, done } = reporter();
 const x = loadPage(process.argv[2], process.argv[3],
   ['S', 'render', 'route', 'go', 'V2TABS', 'vBoard', 'vSlip', 'vSheet', 'SHEETS',
    'rowsFor', 'toggleLeg', 'marketLabel', 'served', 'KIND', 'boot', 'DATA',
-   'patchBoard', 'clearSlip', 'saveSlip', 'settle']);
+   'patchBoard', 'clearSlip', 'saveSlip', 'settle', 'wire']);
 const { S, render, V2TABS, vBoard, vSlip, vSheet, SHEETS, rowsFor,
         toggleLeg, marketLabel, served, KIND, DATA } = x;
 
 const html = () => document.getElementById('scroll').innerHTML;
+
+// A click on a control carrying `data-<attr>="<val>"`, through the page's own
+// delegated handler. `closest` is the thing under test: it is given the real
+// selector the page builds and answers only if this control is in it.
+x.wire();
+// What `boot` does that matters here: put `route` on hashchange, so `go()`
+// actually navigates instead of setting a string nobody reads.
+window.addEventListener('hashchange', x.route);
+function clickData(attr, val) {
+  const node = {
+    dataset: { [attr]: val },
+    getAttribute: k => (k === 'data-' + attr ? val : null),
+    closest(sel) {
+      return sel.split(',').indexOf('[data-' + attr + ']') >= 0 ? node : null;
+    },
+  };
+  let reached = false;
+  const spy = { closest: sel => { const r = node.closest(sel); reached = !!r; return r; } };
+  fireDoc('click', { target: spy });
+  return reached;
+}
 const bars = () => [document.getElementById('appbar').innerHTML,
                     document.getElementById('tabbar').innerHTML,
                     document.getElementById('slipbarHost').innerHTML].join(' ');
@@ -191,5 +212,119 @@ ok('the slip bar has something under it to swipe to',
 ok('and that something clears the slip',
    bar.indexOf('data-act="clearslip"') >= 0);
 ok('the bar is the thing that moves', bar.indexOf('id="slipwrap"') >= 0);
+
+
+
+// ── An empty slip has no bar ────────────────────────────────────────────
+// `slipMath` answers an empty slip with a real object, so the bar tested it
+// for truthiness and got one. Then `allPriced([])` — an `every` over nothing
+// — said the slip was fully priced, `parlayDec([])` handed back 1, and
+// `decToAm(1)` is -100/0. The bar sat at the bottom of the screen saying
+// "-Infinity" with nothing in it.
+S.route = 'week';
+x.clearSlip();
+S.route = 'week';
+render();
+ok('an empty slip shows no bar at all',
+   document.getElementById('slipbarHost').innerHTML === '',
+   document.getElementById('slipbarHost').innerHTML);
+ok('and nothing anywhere says Infinity',
+   [html(), bars()].join(' ').indexOf('Infinity') < 0);
+
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[0]);
+S.route = 'week';
+render();
+ok('one leg brings it back', bars().indexOf('slipbar__count') >= 0);
+ok('priced, and saying so', bars().indexOf('Infinity') < 0
+   && /slipbar__price num">[+−-]/.test(bars()), bars().slice(0, 300));
+
+
+
+// ── A saved slip says what the slip said ────────────────────────────────
+S.route = 'week';
+x.clearSlip();
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[0]);
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[1]);
+x.saveSlip();
+S.route = 'saved'; S.savedFilter = 'all';
+render();
+const card = html();
+ok('the saved card carries All hit', card.indexOf('All hit') >= 0);
+// The VALUE, not the absence of the word "NaN". `has(NaN)` is false and
+// `american('')` returns an empty string, so reading a `dec` that was never
+// saved renders a blank where the price goes — silently, which is why the
+// first version of this assertion passed against exactly that bug.
+const totals = (card.match(/total__v num[^>]*>([^<]*)</g) || [])
+  .map(t => t.slice(t.indexOf('>') + 1, -1));
+ok('and a real price where Pays is',
+   /^[+\u2212-]?\d+$/.test(totals[1] || ''),
+   'Pays rendered ' + JSON.stringify(totals[1]) + ' — v1 stores no `dec`, so '
+   + 'reading one off the record leaves this blank');
+ok('and the EV at its own stake', card.indexOf('EV on $') >= 0);
+ok('and the payout curve underneath', card.indexOf('class="brk"') >= 0);
+ok('with its own stake box', card.indexOf('data-pstake=') >= 0);
+ok('and boxes the stake can patch without redrawing itself',
+   card.indexOf('id="ptot-') >= 0 && card.indexOf('id="pbrk-') >= 0);
+
+// ── The breakdown is headed once ────────────────────────────────────────
+S.route = 'slip';
+render();
+const slip = html();
+ok('the breakdown has one set of headings',
+   (slip.match(/Legs in/g) || []).length === 1, 'a secthead said it again');
+ok('which are the table’s own', slip.indexOf('<thead>') >= 0);
+
+
+
+// ── EV on the board ─────────────────────────────────────────────────────
+S.route = 'week'; S.market = 'any'; S.fw.view = 'all'; S.fw.q = '';
+render();
+// ONE row. Sliced to the first and cut at the second, or the counts below
+// are every row on the board at once — which still has the right ratio and
+// none of the right numbers.
+const rowsHTML = html().slice(html().indexOf('class="row"'));
+const row = rowsHTML.slice(0, rowsHTML.indexOf('class="row"', 10));
+// Each metric cell, with the classes it carries. Split on `<span
+// class="metric` and every cell comes apart, because `metric__l` starts the
+// same way — the first version of this produced sixteen empty labels and
+// said so in the failure message, which is the only reason I noticed.
+const cells = [];
+const re = /<span class="metric([^"]*)"><span class="metric__l">([^<]*)</g;
+let mm;
+while ((mm = re.exec(row)) !== null) cells.push({ cls: mm[1], label: mm[2] });
+const narrow = cells.filter(c => c.cls.indexOf('--wide') < 0).map(c => c.label);
+const wide = cells.filter(c => c.cls.indexOf('--wide') >= 0).map(c => c.label);
+
+ok('a phone gets five metrics', narrow.length === 5, narrow.join(' · '));
+ok('and EV comes straight after Edge',
+   narrow.indexOf('EV $100') === narrow.indexOf('Edge') + 1, narrow.join(' · '));
+ok('with Open the one held back for a wide screen',
+   wide.length === 1 && wide[0] === 'Open', wide.join(' · '));
+
+
+
+// ── Load, from Combinations into the slip ───────────────────────────────
+// Through the real handler, by dispatching a click at the button — not by
+// calling `loadCombo` directly. Six controls were drawn correctly and were
+// unreachable, and every test that called the function behind them passed.
+S.route = 'combos'; S.market = 'any'; S.cb.pool = 'all'; S.cb.legs = 3;
+x.clearSlip();
+S.route = 'combos';
+render();
+ok('Combinations draws a Load button', html().indexOf('data-load="0"') >= 0);
+const fired = clickData('load', '0');
+ok('clicking it is reachable by the handler', fired, 'closest() found nothing');
+ok('it fills the slip', S.slip.legs.length === 3, String(S.slip.legs.length));
+ok('and shows it', S.route === 'slip', S.route);
+
+
+
+// ── The ladder's headline reads as three words, not three sentences ─────
+S.route = 'ladder';
+render();
+const keys = (html().match(/keystat__l">([^<]*)</g) || [])
+  .map(k => k.slice(k.indexOf('>') + 1, -1));
+ok('the ladder is headed Payout · Chance · At risk',
+   keys.slice(0, 3).join(' · ') === 'Payout · Chance · At risk', keys.join(' · '));
 
 done();

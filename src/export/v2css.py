@@ -76,9 +76,21 @@ body{
   padding-bottom:env(safe-area-inset-bottom);
 }
 /* The sheet is fixed to the window now rather than to a phone mock, so it
-   needs the same treatment at its bottom edge. */
+   needs the same treatment at its bottom edge.
+
+   `min-height:0` is the one that matters. `.sheet` is a flex column with a
+   max-height, and a flex item will not shrink below its own content unless
+   told to — so a body taller than the sheet did not scroll, it overflowed,
+   and the sheet's `overflow:hidden`-by-radius clipped whatever was at the
+   bottom. On a player's detail that is the two buttons, cut in half.
+
+   The padding underneath them is the home indicator's, which sits over the
+   last 34px of an installed app and would otherwise take the same bite. */
 .sheet{max-height:82dvh}
-.sheet__body{padding-bottom:calc(var(--space-5) + env(safe-area-inset-bottom))}
+.sheet__body{
+  flex:1;min-height:0;
+  padding-bottom:calc(var(--space-5) + env(safe-area-inset-bottom));
+}
 """
 
 
@@ -159,6 +171,19 @@ EXTRA_CSS = """
   color:var(--ink-faint);font-variant-numeric:tabular-nums;
 }
 
+/* ---------- five metrics on a phone ---------- */
+/*
+ * Model · Book · Adj · Edge · EV, in the 290px a row's middle has on a 390px
+ * screen. Five 40px minimums and four 12px gaps is 248, which fits — until a
+ * value is wider than its minimum, and "−$16.86" is. The gap comes down to
+ * 10 and the minimum goes with it; the labels are 10px uppercase and were
+ * never the constraint.
+ */
+@media (max-width:480px){
+  .metrics{gap:10px}
+  .metric{min-width:34px}
+}
+
 /* ---------- six destinations ---------- */
 /*
  * Saved earned a tab of its own, which makes six. At 390px that is 65px each
@@ -167,6 +192,17 @@ EXTRA_CSS = """
  * item be smaller than its content; without it six tabs overflow the bar and
  * the last one is off the screen.
  */
+/*
+ * A line where the tab bar meets whatever is above it.
+ *
+ * Both bars carry `--shadow-bar`, which is a 10%-opacity hairline — enough to
+ * lift a single bar off a scrolling list and not enough to separate two bars
+ * stacked on each other. Against the slip bar, which shares its background,
+ * the two read as one tall footer. This is the separator the rest of the
+ * design uses between things that are genuinely different, and it replaces
+ * the shadow rather than joining it: two lines a pixel apart is a seam.
+ */
+.tabbar{box-shadow:none;border-top:var(--hairline) solid var(--separator)}
 .tab{min-width:0;padding:0 2px}
 .tab span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:360px){ .tab{font-size:10px} }

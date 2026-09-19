@@ -8,6 +8,7 @@ const fs = require('fs');
 
 const store = new Map();
 const nodes = {};
+const docListeners = {};
 
 function mkNode(tag) {
   const n = {
@@ -50,6 +51,13 @@ function mkNode(tag) {
 
 function install() {
   for (const k of Object.keys(nodes)) delete nodes[k];
+  for (const k of Object.keys(docListeners)) delete docListeners[k];
+  // Fire what the page registered on `document`, the way a browser would.
+  globalThis.fireDoc = (type, event) => {
+    const fns = docListeners[type] || [];
+    fns.forEach(fn => fn(event));
+    return fns.length > 0;
+  };
   globalThis.localStorage = {
     getItem: k => (store.has(k) ? store.get(k) : null),
     setItem: (k, v) => store.set(k, String(v)),
@@ -62,7 +70,11 @@ function install() {
     // the whole pane down, which is a stub gap reported as a page bug.
     createElementNS: (ns, tag) => mkNode(tag),
     createTextNode: t => ({ _text: t, children: [] }),
-    addEventListener() {},
+    // Recorded rather than swallowed. The page delegates every click to one
+    // document listener, so a harness that cannot fire that listener can only
+    // check that a button was DRAWN — which is how six controls shipped
+    // correct, unreachable, and green.
+    addEventListener(type, fn) { (docListeners[type] || (docListeners[type] = [])).push(fn); },
     // Attributes that are actually kept. They used to be discarded, which
     // made every `data-` flag the page sets on the root — the slip state, the
     // nav state — unobservable, so a harness could not tell a page that set
@@ -92,6 +104,19 @@ function install() {
     activeElement: null,
   };
   globalThis.window = globalThis;
+  // Window-level listeners, recorded like the document's.
+  const winListeners = {};
+  globalThis.addEventListener = (type, fn) =>
+    (winListeners[type] || (winListeners[type] = [])).push(fn);
+  globalThis.fireWin = (type, event) =>
+    (winListeners[type] || []).forEach(fn => fn(event));
+  // A hash that routes when it is set, which is the only thing `go()` does
+  // and the only reason the page has a router at all.
+  let hash = '';
+  globalThis.location = {
+    get hash() { return hash; },
+    set hash(v) { hash = v; globalThis.fireWin('hashchange', {}); },
+  };
   globalThis.scrollTo = () => {};
   globalThis.scrollX = 0; globalThis.scrollY = 0;
   globalThis.setTimeout = globalThis.setTimeout || (fn => fn());

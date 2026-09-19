@@ -452,3 +452,169 @@ def test_a_notice_is_said_once(payload_v2):
     r = r[:r.index("\nfunction ")]
     assert "S.notice = null;" in r, "drawn, then forgotten"
     assert "banner banner--warn" in r
+
+
+def test_an_empty_slip_has_no_bar_and_no_infinity():
+    """`every` over nothing is true, which made an empty slip fully priced.
+
+    Two bugs on one line. `slipMath` answers an empty slip with a real object
+    rather than null — zero legs, an all-hit of 1 — so testing it for
+    truthiness kept the bar on screen with nothing in it. Then `allPriced([])`
+    said the nothing was priced, `parlayDec([])` handed back a decimal of 1,
+    and `decToAm(1)` is -100/0: the bar read "-Infinity".
+
+    Falsified by restoring either half.
+    """
+    from src.export import v2js
+
+    src = v2js.js()
+    assert "if (!m.legs.length || S.route === 'slip') return '';" in src, (
+        "the legs are the question, not whether slipMath answered")
+    assert "legs.length > 0 && legs.every(l => has(l.dec))" in src, (
+        "all of nothing is not priced; it is nothing")
+
+
+def test_a_saved_slip_shows_what_the_slip_showed():
+    """A saved slip you cannot read is a name and a date.
+
+    The same three figures the Slip screen leads with, and the same payout
+    curve under them. `dec` is computed from the legs rather than read off the
+    record: `saveSlip` never writes one, so v1's own card calls
+    `decToAm(undefined)` — and because `has(NaN)` is false, `american` returns
+    an empty string. The price is not wrong there, it is absent, which is why
+    looking for the word "NaN" would not have found it.
+    """
+    from src.export import site as v1, v2js
+
+    saved = v1.JS_SLIPVIEW[v1.JS_SLIPVIEW.index("function saveSlip"):]
+    saved = saved[:saved.index("\n}")]
+    # The parlay's own field, at the object's own indent. Each LEG carries a
+    # `dec:` and always has — that is where the price actually survives, and
+    # it is what v2 reads.
+    assert "\n    dec:" not in saved, (
+        "if saveSlip ever starts storing one, read it instead of deriving it")
+    assert "dec: l.dec" in saved, "the legs keep theirs, and that is the source"
+
+    src = v2js.js()
+    card = src[src.index("function vParlay"):]
+    card = card[:card.index("\nfunction ")]
+    assert "parlayDec(p.legs)" in card, "derived from the legs that were saved"
+    assert "p.dec" not in card, "never from a field that was never written"
+    # Net is linear in the stake, so the stored curve can be re-read at any
+    # other one — against the stake that produced it, and no other.
+    assert "p.rowStake" in card and "scaleRows(p.rows, ratio)" in card
+
+
+def test_the_breakdown_is_headed_once():
+    """The table brings its own headings.
+
+    A `secthead` above them said the same three words again, one line higher
+    and in a different typeface.
+    """
+    from src.export import v2js
+
+    src = v2js.js()
+    assert "If this many land" not in src
+    assert src.count("<th>Legs in</th>") == 1
+
+
+def test_a_sheet_that_is_taller_than_the_sheet_scrolls_rather_than_clipping():
+    """A flex item will not shrink below its content unless it is told to.
+
+    `.sheet` is a flex column with a max-height, so a body taller than it did
+    not scroll — it overflowed, and was clipped. On a player's detail that is
+    the two buttons at the bottom, cut in half.
+
+    Falsified by removing `min-height:0`: nothing errors, nothing logs, and
+    the buttons are half there.
+    """
+    from src.export import v2css
+
+    flat = v2css.css().replace(" ", "").replace("\n", "")
+    body = flat[flat.rindex(".sheet__body{"):]
+    body = body[:body.index("}")]
+    assert "min-height:0" in body, "or it overflows instead of scrolling"
+    assert "flex:1" in body
+    assert "env(safe-area-inset-bottom)" in body, (
+        "the home indicator takes the last 34px of an installed app")
+
+
+def test_ev_is_on_the_board_and_open_is_the_one_held_back():
+    """Edge is the disagreement; EV is what the disagreement is worth.
+
+    Which is the question the row is read for, so it earns a place on the
+    phone. Five fit a 390px screen once the gap comes down to 10.
+    """
+    from src.export import v2css, v2js
+
+    row = v2js.js()
+    row = row[row.index("function vRow("):]
+    row = row[:row.index("\nconst met")]
+    assert "met('EV $100'" in row and "met('EV $100', has(ev) ? money(ev) : '—',\n        has(ev) ? (ev >= 0 ? 'v-good' : 'v-bad') : 'v-none')," in row, (
+        "EV must not carry the `wide` flag")
+    assert row.index("met('Edge'") < row.index("met('EV $100'") < row.index("met('Open'")
+    assert "met('Open', has(r.openOdds) ? american(r.openOdds) : '—', '', false, true)" in row
+    narrow = v2css.css()
+    narrow = narrow[narrow.index("@media (max-width:480px)"):]
+    assert "gap:10px" in narrow[:200]
+
+
+def test_every_control_the_views_draw_can_actually_be_clicked():
+    """Six buttons did nothing at all, and nothing said so.
+
+    The delegated handler starts with `closest` over a list of attributes, and
+    that list was a string literal that six controls were added after: the
+    Combinations pool switch and its Load, the Saved filters, Delete and Load,
+    and the Model page's feature toggle. `closest` returned null, the handler
+    bailed on its first line, and the buttons were inert — silently, because a
+    button that is never reached throws nothing.
+
+    The list is a constant now and this holds it against what the views emit.
+    Falsified by drawing a `data-` control and not listing it, which is
+    precisely how the bug arrived.
+    """
+    import re
+
+    from src.export import v2js
+
+    src = v2js.js()
+    listed = set(re.findall(r"'([a-z0-9]+)'", src[src.index("const CLICKS = ["):
+                                                 src.index("const CLICK_SEL")]))
+    emitted = set(re.findall(r"data-([a-z0-9]+)=", src))
+    # An input rather than a button: the input listener reads this one, and a
+    # click on it must not be swallowed by the click handler.
+    emitted.discard("pstake")
+    missing = sorted(emitted - listed)
+    assert not missing, f"drawn but unreachable: {['data-' + m for m in missing]}"
+    assert "e.target.closest(CLICK_SEL)" in src, (
+        "built from the list, or the list is decoration")
+
+
+def test_the_tab_bar_is_ruled_off_from_what_sits_on_it():
+    """Two bars sharing a background read as one tall footer.
+
+    Both carry `--shadow-bar`, a 10%-opacity hairline — enough to lift a
+    single bar off a scrolling list, not enough to separate two stacked on
+    each other. The tab bar takes the separator the rest of the design uses
+    between things that are genuinely different, and it replaces the shadow
+    rather than joining it: two lines a pixel apart is a seam.
+    """
+    from src.export import v2css
+
+    # The exact declaration. `rindex` finds the desktop override, where the
+    # bar becomes a row of pills in the header and has no border at all.
+    flat = v2css.css().replace(" ", "").replace("\n", "")
+    assert ".tabbar{box-shadow:none;border-top:var(--hairline)solidvar(--separator)}" \
+        in flat, "the shadow is replaced, not joined — two lines a pixel apart is a seam"
+
+
+def test_the_ladder_is_headed_in_words_not_sentences():
+    """"If every rung wins" is a caption, not a label.
+
+    A keystat label is 10px uppercase with .07em tracking; it holds a word.
+    """
+    from src.export import v2js
+
+    src = v2js.js()
+    assert "keystat('Payout'" in src and "keystat('Chance'" in src
+    assert "If every rung wins" not in src and "Chance of the run" not in src
