@@ -396,4 +396,46 @@ ok('four times the stake, four times the net',
 ok('and the EV label says which stake it is on',
    document.getElementById('sliptotals').innerHTML.indexOf('EV on $40') >= 0);
 
+
+
+// ── Coming back to where you were ───────────────────────────────────────
+// A tab bar is a set of places you keep, not five links you follow once.
+const scrollEl = () => document.getElementById('scroll');
+
+location.hash = '#week';
+scrollEl().scrollTop = 420;
+location.hash = '#combos';
+ok('leaving a tab is leaving it at a place', scrollEl().scrollTop === 0,
+   'a new tab starts at the top');
+location.hash = '#week';
+ok('and coming back puts you there again', scrollEl().scrollTop === 420,
+   String(scrollEl().scrollTop));
+
+// Clear goes back to wherever the slip was opened from.
+S.market = 'any'; S.cb.pool = 'all'; S.cb.legs = 3;
+location.hash = '#combos';
+scrollEl().scrollTop = 260;
+clickData('load', '0');
+ok('Load from Combinations lands on the slip', S.route === 'slip', S.route);
+ok('with legs on it', S.slip.legs.length === 3);
+clickData('act', 'clearslip');
+ok('clearing it goes back to Combinations, not the board',
+   S.route === 'combos', S.route);
+ok('at the place it was left', scrollEl().scrollTop === 260,
+   String(scrollEl().scrollTop));
+
+// From the board, Clear still goes to the board.
+location.hash = '#week';
+toggleLeg(rowsFor('any', 'all').filter(r => r.priced)[0]);
+location.hash = '#slip';
+clickData('act', 'clearslip');
+ok('and from the board it still goes to the board', S.route === 'week', S.route);
+
+// Tapping the tab you are on is "take me to the top".
+location.hash = '#week';
+scrollEl().scrollTop = 500;
+clickData('tab', 'week');
+ok('tapping the current tab returns to the top', scrollEl().scrollTop === 0,
+   String(scrollEl().scrollTop));
+
 done();

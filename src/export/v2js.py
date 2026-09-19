@@ -685,12 +685,30 @@ JS_ROUTE = r"""
 // whatever the slip holds, and the Model page describes every market at once.
 const MARKET_ROUTES = { week: 1, combos: 1 };
 
+//: Where each tab had got to, and which tab the slip was opened from.
+//:
+//: A tab bar is a set of places you keep, not a set of pages you visit once,
+//: and coming back to the board a hundred rows down is the difference between
+//: a tab bar and five links. `BACK` is the same idea over one hop: Clear went
+//: to the board from wherever it was called, which is right from the board
+//: and wrong from Combinations — you loaded a slip there to look at it, and
+//: emptying it should put you back in the list you loaded it from.
+const SCROLLS = {};
+let BACK = 'week';
+
 function route() {
+  const prev = S.route;
+  const leaving = document.getElementById('scroll');
+  if (leaving) SCROLLS[prev] = leaving.scrollTop;
+
   const h = (location.hash || '').replace(/^#\/?/, '').split('?')[0];
   S.route = V2TABS.some(t => t[0] === h) ? h : 'week';
+  if (S.route === 'slip' && prev !== 'slip') BACK = prev;
+
   render();
   const s = document.getElementById('scroll');
-  if (s) s.scrollTop = 0;
+  // `render` starts a screen at the top; this puts it back where it was.
+  if (s) s.scrollTop = SCROLLS[S.route] || 0;
 }
 function go(page) {
   // Setting the hash fires `hashchange`, which routes and renders. Setting it
@@ -742,7 +760,15 @@ function wire() {
     if (SWIPE.open && !(t.dataset || {}).act) closeSwipe();
     const d = t.dataset || {};
 
-    if (d.tab) { SHEET = null; go(d.tab); return; }
+    if (d.tab) {
+      SHEET = null;
+      if (d.tab === S.route) {
+        const sc = document.getElementById('scroll');
+        if (sc) sc.scrollTop = 0;
+        SCROLLS[S.route] = 0;
+      } else go(d.tab);
+      return;
+    }
     if (d.view) { S.fw.view = d.view; S.fw.sort = ''; render(); return; }
     if (d.cbpool) { S.cb.pool = d.cbpool; render(); return; }
     if (d.sf) { S.savedFilter = d.sf; render(true); return; }
@@ -801,10 +827,22 @@ function wire() {
         render();
         break;
       case 'goboard': go('week'); break;
+      // A tab tapped while you are on it is "take me to the top", which is
+      // what every tab bar does and the one time a remembered position is
+      // not what you want.
+      case 'totop': {
+        const sc = document.getElementById('scroll');
+        if (sc) sc.scrollTop = 0;
+        SCROLLS[S.route] = 0;
+        break;
+      }
       case 'samegame': S.cb.sameGame = !S.cb.sameGame; render(true); break;
       // Emptied, and back to where you fill it. An empty slip is not a screen
       // worth standing on.
-      case 'clearslip': closeSwipe(); clearSlip(); go('week'); break;
+      // Back where the slip was opened from, not to the board. `clearSlip`
+      // renders, so the hop has to come after it or `go` navigates and the
+      // render puts you back on an empty slip.
+      case 'clearslip': closeSwipe(); clearSlip(); go(BACK); break;
       case 'saveslip': saveSlip(); render(true); break;
       case 'conflictkeep': S.conflict = null; render(true); break;
       case 'conflictswap': {

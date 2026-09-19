@@ -655,3 +655,45 @@ def test_the_stake_moves_everything_it_decides():
         "or the Net column keeps the stake it was first drawn at")
     assert "render(" not in patch, (
         "patching is the point; a render would replace the stake field")
+
+
+def test_a_tab_bar_keeps_the_place_each_tab_was_left_at():
+    """Five links you follow once, or five places you keep.
+
+    Coming back to the board a hundred rows down is the whole difference.
+    `route` records the outgoing tab's position before it changes screens and
+    restores the incoming one's after it renders — `render` starts a screen at
+    the top, so the order matters.
+
+    Tapping the tab you are already on is the one time a remembered position
+    is not what you want: that is "take me to the top", which is what every
+    tab bar does.
+    """
+    from src.export import v2js
+
+    src = v2js.js()
+    r = src[src.index("function route() {"):]
+    r = r[:r.index("\nfunction ")]
+    assert "SCROLLS[prev] = leaving.scrollTop" in r, "record before leaving"
+    assert "s.scrollTop = SCROLLS[S.route] || 0" in r, "restore after rendering"
+    assert r.index("SCROLLS[prev]") < r.index("render()") < r.index("SCROLLS[S.route]")
+    assert "if (d.tab === S.route)" in src, "the same tab means the top"
+
+
+def test_clearing_the_slip_goes_back_to_wherever_it_was_opened_from():
+    """Right from the board, wrong from Combinations.
+
+    You loaded a slip there to look at it, and emptying it should put you back
+    in the list you loaded it from rather than on a board you were not
+    reading. One hop is enough: `BACK` is set when the slip is arrived at from
+    somewhere else.
+
+    Falsified by sending it to the board again: the harness loads a
+    combination, clears it, and finds itself somewhere it did not come from.
+    """
+    from src.export import v2js
+
+    src = v2js.js()
+    assert "case 'clearslip': closeSwipe(); clearSlip(); go(BACK); break;" in src
+    assert "if (S.route === 'slip' && prev !== 'slip') BACK = prev;" in src, (
+        "and arriving at the slip FROM the slip must not overwrite it")
