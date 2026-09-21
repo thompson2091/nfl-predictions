@@ -3451,3 +3451,43 @@ def test_team_season_averages_are_populated_for_every_built_predict_week():
             f"{predict_season} week {wk}: {len(empty)} of {len(cols)} team "
             f"season-average features are 100% null and will be filled with "
             f"0.0 at score time — e.g. {empty[:3]}")
+
+
+def test_player_games_observed_counts_only_games_already_played():
+    """The sample-size column must not see the week it labels.
+
+    It is built from `cum_count()` inside the same lag convention as every
+    rolling mean around it, so a row for week w must count games strictly
+    before w. Added 2026-09-21 with the column itself: a count that included
+    the current game would make every debutant look like a one-game veteran
+    and would be invisible, because the number would still be small and still
+    look plausible.
+    """
+    import polars as pl
+
+    from src.utils.paths import get_path
+
+    path = get_path("processed", "anytime_td") / "features.parquet"
+    if not path.exists():
+        pytest.skip("no feature matrix on disk")
+    df = (pl.scan_parquet(path)
+          .select(["season", "week", "player_id", "player_games_observed"])
+          .collect())
+    assert df.height, "feature matrix is empty"
+
+    # A player's first appearance can never have seen a game.
+    first = (df.filter(pl.col("player_id").is_not_null())
+             .sort(["player_id", "season", "week"])
+             .group_by("player_id").first())
+    assert first["player_games_observed"].min() == 0, (
+        "a player's first row claims to have observed games already — the "
+        "count is including the current week")
+
+    # And it must never fall as time moves forward for one player.
+    d = (df.filter(pl.col("player_id").is_not_null())
+         .sort(["player_id", "season", "week"])
+         .with_columns(pl.col("player_games_observed").diff()
+                       .over("player_id").alias("_d")))
+    assert d.filter(pl.col("_d") < 0).height == 0, (
+        "games observed decreases for some player — the frame is not ordered "
+        "the way the cumulative count assumes")

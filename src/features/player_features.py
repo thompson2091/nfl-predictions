@@ -50,6 +50,27 @@ def build_player_rolling_features(weekly_stats: pl.DataFrame,
                 (base.cum_sum().over("player_id") / base.cum_count().over("player_id"))
                 .alias(f"player_{col}_szn_avg")
             )
+        # How many games those averages are built from.
+        #
+        # The denominator above is already computed and then thrown away, which
+        # is how a player with one game came to be projected at 5.33 receptions
+        # — 12th of 502, between Travis Kelce and Sam LaPorta — off a single
+        # week of 7 targets. A mean of one observation and a mean of fifty are
+        # the same number to every consumer downstream, and nothing on the
+        # board said which it was looking at.
+        #
+        # Counted on row presence rather than a stat column's nullness: after
+        # `densify` the stat columns are zero-filled for a week the player was
+        # in the candidate pool without recording usage, so counting non-nulls
+        # on one of them would answer a different question depending on which
+        # column happened to be picked. The lag follows the same convention as
+        # everything above it — lag=1 excludes the current game, lag=0 includes
+        # it, which is what a carried-forward row wants.
+        # `pl.lit(1).shift().cum_sum()` does NOT work here: a literal is one
+        # value, not one per row, so it shifts to null and every row reads 0.
+        # `player_id` is never null, so counting it counts rows.
+        games = pl.col("player_id").cum_count().over("player_id").cast(pl.Int32)
+        out.append((games - 1 if lag else games).alias("player_games_observed"))
         return out
 
     return build_with_carry_forward(df, _exprs, spine=spine, zero_cols=available)

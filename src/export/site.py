@@ -876,6 +876,14 @@ function rowsFor(key, view) {
       // Priced means a book has quoted this player, not that the row exists.
       // Most of this board is a projection with no line against it.
       thin: !!r.thin, nBooks: r.n_books,
+      // How many games the projection is built from. Published as context,
+      // not as a warning: measured over 2024-2026 the model is about as
+      // accurate on thin-history players as on established ones (bias +0.16
+      // against +0.12), and `fit_shrinkage` fits its correction to zero. What
+      // it fixes is that a mean of one game and a mean of fifty read
+      // identically, which is how a player with a single career game came to
+      // sit 12th of 502 with nothing on screen saying so.
+      games: has(r.games_observed) ? r.games_observed : null,
       // Which of this player's posted lines to lead with, and how many he has.
       // Books scatter on a yardage line — 4.4 rows per quarterback on passing
       // yards against 1.0 on receptions — so a board showing every one of them
@@ -1039,11 +1047,22 @@ function save(what, value) {
 // column the board is actually sorted by costs nothing and answers the
 // question the old label raised.
 //
-// `modelOnly` is populated on every row of both touchdown markets including
-// the unpriced ones (534/534 on 2026 week 2), so nothing sinks to the bottom
-// for want of a value — which is the failure that would make this a bad
-// default.
-const DEFAULT_BOARD_SORT = 'modelOnly';
+// `ours`, not `modelOnly`. This defaulted to Model for two days and that was a
+// mistake: `model_only` is the raw number BEFORE the shrink toward the market,
+// and the repo's own measurement is that it loses to this market — log loss
+// 0.690 against 0.673 on 2025 for receptions. Leading with it put the least
+// reliable of the two probabilities first. On 2026 week 2 a receptions row
+// read 83.5% on Model where `ours` said 63.7% and the book's de-vigged price
+// said 58.5%; the blend had already corrected most of the way and the default
+// sort was showing the number it corrected away from.
+//
+// Both are still on the row and both are still sortable. What changes is which
+// one the board opens on.
+//
+// `ours` is populated on every row of both touchdown markets including the
+// unpriced ones (534/534 on 2026 week 2), so nothing sinks to the bottom for
+// want of a value — which is the failure that would make this a bad default.
+const DEFAULT_BOARD_SORT = 'ours';
 
 const S = {
   route: 'week',

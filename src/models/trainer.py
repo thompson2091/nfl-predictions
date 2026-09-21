@@ -163,6 +163,14 @@ def get_feature_cols(df: pl.DataFrame,
         # excluded from model training (context-only, not predictive signals)
         "is_new_team", "is_revenge_game", "is_role_change",
         "weeks_since_last_game", "career_seasons",
+        # How many games the rolling means are built from. Display and
+        # shrinkage context, deliberately NOT a model input: letting it in
+        # would change the feature set of every served model the next time
+        # anything retrains, which is the silent feature-set drift that
+        # `test_retraining_today_would_produce_the_feature_set_that_is_served`
+        # exists to catch. Add it as a feature on purpose, with a gate, or not
+        # at all.
+        "player_games_observed",
         "rest_advantage", "is_post_bye", "is_season_opener",
         # Exact duplicates of other features
         "week_right", "is_divisional_gf", "snap_pct_filled", "is_dome_right",

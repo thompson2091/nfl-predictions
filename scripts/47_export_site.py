@@ -561,6 +561,7 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
             "lo": float(row["lo"]), "hi": float(row["hi"]),
             "point": None, "odds": None, "fair_prob": None, "ours": None,
             "model_only": None, "edge_pp": None, "n_books": 0, "thin": False,
+            "games_observed": row.get("games_observed"),
         })
     rec["rows"] = (rec.get("rows") or []) + extra
     rec["priced_rows"] = len(priced)

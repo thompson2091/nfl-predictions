@@ -939,7 +939,12 @@ def receptions(season: int | None, week: int | None) -> dict:
         keep = ["player_name", "team", "game_id", "mu", "point", "odds",
                 "implied_prob", "overround",
                 "fair_prob", "model_only", "ours", "edge_pp", "ev",
-                "n_books", "thin"]
+                "n_books", "thin",
+                # How many games the projection is built from. A rolling mean
+                # of one game and of fifty are the same number on screen
+                # otherwise, which is how a player with a single career game
+                # came to sit 12th of 502 with nothing saying so.
+                "games_observed"]
         out["rows"] = board.select([c for c in keep if c in board.columns]
                                    ).to_dicts()
     try:

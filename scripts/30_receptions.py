@@ -39,7 +39,11 @@ from src.utils.paths import get_path
 #: matchup, pace) answer the receptions question as directly as the touchdown
 #: one, and a second copy of an 80MB matrix would only drift from the first.
 ID_COLS = {"game_id", "season", "week", "home_team", "away_team", "game_type",
-           "player_id", "player_name", "team", "target", "receptions"}
+           "player_id", "player_name", "team", "target", "receptions",
+           # Context for the board and the input to `fit_shrinkage`, not a
+           # model feature — see the matching note in `trainer.get_feature_cols`.
+           # Left in, it silently makes the served model a 370-feature model.
+           "player_games_observed"}
 
 
 def _frame() -> tuple[pl.DataFrame, list[str]]:
@@ -213,6 +217,28 @@ def main() -> int:
 
     blend = fit_blend(m, df, fcols, cfg["splits"]["val_season"], model_dir)
 
+    # How much to pull a thin-history projection back toward a debutant's base
+    # rate. Fitted every run rather than chosen, and it currently fits to
+    # ZERO — measured over 2024-2026 the model is about as accurate on players
+    # with <= 3 games as on established ones (bias +0.16 against +0.12), so
+    # there is nothing to correct. That is the answer, not a missing fit, and
+    # it is written down so a later season that disagrees changes the board on
+    # its own. See `src/models/count.py:fit_shrinkage`.
+    from src.models.count import fit_shrinkage, position_labels
+    va_rows = df.filter(pl.col("season") == cfg["splits"]["val_season"])
+    shrink = None
+    if va_rows.height and "player_games_observed" in va_rows.columns:
+        mu_va = m.predict_mu(design_matrix(va_rows, fcols))
+        shrink = fit_shrinkage(
+            mu_va, va_rows["receptions"].to_numpy().astype(float),
+            va_rows["player_games_observed"].fill_null(0).to_numpy().astype(float),
+            position_labels(va_rows),
+            seasons_used=[cfg["splits"]["val_season"]])
+        (model_dir / "shrinkage.json").write_text(json.dumps(shrink, indent=1))
+        print(f"Shrinkage k = {shrink['k_games']} games "
+              f"({'no correction' if not shrink['k_games'] else 'applied'}) "
+              f"-> {model_dir / 'shrinkage.json'}")
+
     results = []
     for season in (cfg["splits"]["val_season"], cfg["splits"]["test_season"]):
         r = backtest(m, df, fcols, season, blend)
@@ -232,6 +258,7 @@ def main() -> int:
         "beats_market": bool(results) and all(
             r["model"]["log_loss"] < r["market"]["log_loss"] for r in results),
         "blend": blend,
+        "shrinkage": shrink,
         # The number that is actually served. On its own the model loses to
         # this market; blended toward it, it wins by a little. Both are stated
         # so no screen has to infer which claim is being made.

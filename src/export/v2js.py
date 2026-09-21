@@ -294,7 +294,7 @@ const vChip = (k, label, on) => '<button class="chip" aria-pressed="'
 // There is no 'Default' entry any more. It sorted by nothing, which left the
 // direction button beside it permanently disabled and the board in an order
 // the page could not name.
-const SORTS = [['modelOnly', 'Model'], ['player', 'Player'], ['ours', 'Adj'],
+const SORTS = [['ours', 'Adj'], ['modelOnly', 'Model'], ['player', 'Player'],
                ['book', 'Book'], ['edge', 'Edge'], ['ev', 'EV $100'],
                ['odds', 'Odds'], ['proj', 'Projection'], ['line', 'Line']];
 
@@ -648,14 +648,25 @@ const SHEETS = {
       met('Line', has(r.line) ? num2(r.line) : '—'),
       met('Proj', has(r.proj) ? num2(r.proj) : '—'),
       met('Floor', has(r.lo) ? num2(r.lo) : '—'),
-      met('Ceiling', has(r.hi) ? num2(r.hi) : '—'));
+      met('Ceiling', has(r.hi) ? num2(r.hi) : '—'),
+      // Beside the projection, because it is the thing that says how much the
+      // projection is worth. Not toned as good or bad: a short history is not
+      // a fault, and measured over three seasons it is not even much of a
+      // penalty — it is simply a fact the other four numbers hide.
+      met('Games', has(r.games) ? String(r.games) : '—'));
 
     const badges = (r.read ? '<span class="badge badge--'
         + readTone(r.read) + '"><span class="dot"></span>' + esc(r.read)
         + '</span>' : '')
       + (r.pos ? '<span class="badge badge--neutral">' + esc(r.pos) + '</span>' : '')
       + (r.thin ? '<span class="badge badge--warn">' + (r.nBooks || 0)
-        + ' book' + (r.nBooks === 1 ? '' : 's') + '</span>' : '');
+        + ' book' + (r.nBooks === 1 ? '' : 's') + '</span>' : '')
+      // Neutral, not warn: the projection is about as accurate here as
+      // anywhere, so this states the sample size rather than disputing the
+      // number. Three games is where a rolling mean stops being one week.
+      + (has(r.games) && r.games <= 3
+        ? '<span class="badge badge--neutral">' + r.games + ' game'
+          + (r.games === 1 ? '' : 's') + '</span>' : '');
 
     const buttons = kind === 'ou'
       ? '<button class="btn btn--secondary" style="flex:1" data-add2="' + esc(r.id)

@@ -156,9 +156,24 @@ def expected_counts(season: int, week: int, art: dict | None = None
     mu = np.clip(art["model"].predict(design_matrix(df, list(art["feature_names"]))),
                  1e-6, None)
 
+    # How many games that projection is built from, carried to the board.
+    #
+    # `mu` reads a rolling mean without saying how many observations are behind
+    # it, so one good week and a full season look identical on screen. On 2026
+    # week 2 that put a player with a single career game at 5.33 receptions,
+    # 12th of 502. Measured over 2024-2026 the model turns out to be RIGHT
+    # about such players more often than not (bias +0.16 on 49 cases, and
+    # `fit_shrinkage` fits its correction to zero) — so this is published as
+    # context, not as a warning. It is the number that lets the question be
+    # asked.
+    games = (pl.col("player_games_observed").fill_null(0).cast(pl.Int32)
+             if "player_games_observed" in df.columns
+             else pl.lit(None, dtype=pl.Int32))
+
     return df.select([
         "season", "week", "game_id", "player_id", "player_name", "team",
         _norm_name_expr("player_name").alias("player_name_norm"),
+        games.alias("games_observed"),
     ]).with_columns(pl.Series("mu", mu))
 
 

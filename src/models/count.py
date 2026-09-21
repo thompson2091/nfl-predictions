@@ -191,6 +191,139 @@ def fit_market_blend(p_model: np.ndarray, p_book: np.ndarray,
     }
 
 
+#: Positions the shrinkage fits a separate prior for. Anything else — and the
+#: reference level of the one-hot, which is WR — falls into "OTHER".
+_SHRINK_POSITIONS = ("RB", "TE", "QB", "FB")
+
+#: A player at or below this many observed games is "no track record", and the
+#: prior is the mean outcome of exactly that population. Not a modelling knob:
+#: it selects the rows the prior is *measured on*, and the shrinkage strength
+#: `k` is fitted separately against it.
+_DEBUT_GAMES = 1
+
+
+def position_labels(df) -> np.ndarray:
+    """One position string per row, from the one-hot columns.
+
+    The encoder drops a named reference level, so a row with every one-hot at
+    zero is that level rather than an unknown — see the note in
+    `src/features/assembler.py` about never letting an encoder pick its own.
+    """
+    n = df.height
+    out = np.full(n, "OTHER", dtype=object)
+    for pos in _SHRINK_POSITIONS:
+        col = f"position_{pos}"
+        if col in df.columns:
+            hit = np.asarray(df[col].fill_null(0).to_numpy(), dtype=float) > 0.5
+            out[hit] = pos
+    return out
+
+
+def fit_shrinkage(mu: np.ndarray, y: np.ndarray, games: np.ndarray,
+                  positions: np.ndarray, *, seasons_used=None,
+                  kind: str = "receptions_shrinkage") -> dict:
+    """How far to pull a projection back toward a debutant's base rate.
+
+    The count model reads a rolling mean without knowing how many games it is
+    built from, so a player with one good week is indistinguishable from one
+    with a season of them. On 2026 week 2 that put Caleb Douglas — 1 career
+    game, 7 targets, 5 catches — at 5.33 expected receptions, 12th of 502,
+    between Travis Kelce and Sam LaPorta. He drew 3 targets.
+
+    The correction is the standard one and it has a single free parameter:
+
+        mu_shrunk = (n * mu + k * prior) / (n + k)
+
+    where `n` is games observed and `prior` is the mean outcome among players
+    who had no track record either. `k` is in units of games — how many games
+    of evidence it takes before the model's own number carries half the weight
+    — and it is FITTED by Poisson deviance on seasons the count model did not
+    train on, not chosen.
+
+    The prior is measured on debutants rather than on the whole population on
+    purpose. Shrinking a rookie toward the average *board* player would pull
+    him toward men with established roles, which is a different and wrong
+    claim.
+
+    `k = 0` is a real answer and is returned rather than floored: it says the
+    model needs no shrinking, which is worth knowing.
+    """
+    mu = np.clip(np.asarray(mu, dtype=float), 1e-6, None)
+    y = np.asarray(y, dtype=float)
+    games = np.asarray(games, dtype=float)
+    positions = np.asarray(positions, dtype=object)
+
+    debut = games <= _DEBUT_GAMES
+    global_prior = float(np.mean(y[debut])) if debut.any() else float(np.mean(y))
+    prior_by_pos, prior_n = {}, {}
+    for pos in set(positions.tolist()):
+        m = debut & (positions == pos)
+        # Under 30 debut rows is not a prior, it is a rumour; fall back.
+        prior_by_pos[str(pos)] = (float(np.mean(y[m])) if m.sum() >= 30
+                                  else global_prior)
+        prior_n[str(pos)] = int(m.sum())
+
+    prior = np.array([prior_by_pos.get(str(p), global_prior) for p in positions])
+
+    def deviance(shrunk: np.ndarray, actual: np.ndarray) -> float:
+        s = np.clip(shrunk, 1e-6, None)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            term = np.where(actual > 0, actual * np.log(actual / s), 0.0)
+        return float(2.0 * np.mean(term - (actual - s)))
+
+    def shrink(k: float) -> np.ndarray:
+        return (games * mu + k * prior) / (games + k) if k > 0 else mu
+
+    grid = np.concatenate([np.arange(0.0, 5.0, 0.1), np.arange(5.0, 31.0, 0.5)])
+    best_k, best_d = 0.0, None
+    for k in grid:
+        d = deviance(shrink(float(k)), y)
+        if best_d is None or d < best_d:
+            best_d, best_k = d, float(k)
+
+    thin = games <= 3
+    sh = shrink(best_k)
+    return {
+        "kind": kind,
+        "k_games": round(best_k, 3),
+        "prior_by_position": {a: round(b, 4) for a, b in prior_by_pos.items()},
+        "prior_debut_rows": prior_n,
+        "global_prior": round(global_prior, 4),
+        "debut_games_threshold": _DEBUT_GAMES,
+        "n": int(len(y)),
+        "fit_deviance": best_d,
+        "unshrunk_deviance": deviance(mu, y),
+        # What it actually changes. The population it is for is small, so a
+        # gain averaged over everybody hides whether it worked.
+        "thin_rows": int(thin.sum()),
+        "thin_deviance_before": deviance(mu[thin], y[thin]) if thin.any() else None,
+        "thin_deviance_after": deviance(sh[thin], y[thin]) if thin.any() else None,
+        "thin_mean_mu_before": float(np.mean(mu[thin])) if thin.any() else None,
+        "thin_mean_mu_after": float(np.mean(sh[thin])) if thin.any() else None,
+        "thin_mean_actual": float(np.mean(y[thin])) if thin.any() else None,
+        "seasons_used": list(seasons_used or []),
+        "source": "weekly_stats.parquet receptions, via the candidate matrix",
+        "fit_date": date.today().isoformat(),
+    }
+
+
+def apply_shrinkage(mu: np.ndarray, games: np.ndarray, positions: np.ndarray,
+                    art: dict | None) -> np.ndarray:
+    """`mu` pulled toward the debutant prior by the fitted `k`.
+
+    A missing or zero-`k` artifact returns `mu` untouched, so a board built
+    before the fit exists is the old board rather than a broken one.
+    """
+    if not art or not art.get("k_games"):
+        return np.asarray(mu, dtype=float)
+    k = float(art["k_games"])
+    by_pos = art.get("prior_by_position") or {}
+    gp = float(art.get("global_prior", 0.0))
+    prior = np.array([float(by_pos.get(str(p), gp)) for p in positions])
+    g = np.asarray(games, dtype=float)
+    return (g * np.asarray(mu, dtype=float) + k * prior) / (g + k)
+
+
 def blend_to_market(p_model: np.ndarray, p_book: np.ndarray,
                     weight: float) -> np.ndarray:
     """Our probability shrunk toward the book's, in log-odds space.

@@ -1,0 +1,32 @@
+{
+ "kind": "receptions_shrinkage",
+ "k_games": 0.0,
+ "prior_by_position": {
+  "RB": 1.2857,
+  "QB": 1.2857,
+  "TE": 1.2857,
+  "OTHER": 1.7317
+ },
+ "prior_debut_rows": {
+  "RB": 26,
+  "QB": 6,
+  "TE": 11,
+  "OTHER": 41
+ },
+ "global_prior": 1.2857,
+ "debut_games_threshold": 1,
+ "n": 6236,
+ "fit_deviance": 1.21997246325732,
+ "unshrunk_deviance": 1.21997246325732,
+ "thin_rows": 172,
+ "thin_deviance_before": 1.3860861377470797,
+ "thin_deviance_after": 1.3860861377470797,
+ "thin_mean_mu_before": 1.5357290177909269,
+ "thin_mean_mu_after": 1.5357290177909269,
+ "thin_mean_actual": 1.436046511627907,
+ "seasons_used": [
+  2024
+ ],
+ "source": "weekly_stats.parquet receptions, via the candidate matrix",
+ "fit_date": "2026-09-21"
+}
