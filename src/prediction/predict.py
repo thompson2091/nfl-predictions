@@ -180,9 +180,49 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
     # construction, so there is no level to anchor afterwards and nothing for
     # the blend to undo. Falls back to the log-odds shift when the team rate
     # has not been fitted, so an older model directory still predicts.
-    from src.models.joint import apply_joint, load_team_rate, load_conversion
+    from src.models.joint import (UNPRICED_COL, apply_joint, load_conversion,
+                                  load_team_rate)
     team_model = load_team_rate(model_dir / "team_td_rate.json")
     conversion = load_conversion(model_dir / "td_conversion.json")
+
+    # Which rows the split conversion level applies to.
+    #
+    # The split serves unpriced rows at ~0.07 against ~0.94, so a board whose
+    # market join has quietly failed would be deflated thirteenfold. "Some row
+    # matched" is not enough of a check: loading a past week matched 50 of 500
+    # rows and published a board summing to 1.10 expected scorers a game
+    # against a true 4.15. The guard is `min_priced_share`, fitted in
+    # `trainer.refit_conversion` as the weakest priced share any week in the
+    # fit actually had (0.736 over 44 weeks, median 0.822). A real week does
+    # not go under what real weeks have gone under; a broken join goes far
+    # under it.
+    #
+    # Below the floor the column is simply not set, which `combine` treats as
+    # "all priced" — the behaviour before the split existed. Loud, because a
+    # board served without it is the old over-predicting board and nothing else
+    # would say so.
+    conv = conversion or {}
+    priced_share = (float(result["market_prob"].is_not_null().mean())
+                    if result.height else 0.0)
+    floor = conv.get("min_priced_share")
+    if conv.get("unpriced_level") is None:
+        pass
+    elif floor is not None and priced_share < float(floor):
+        print(f"  !! Market join looks broken: only {100 * priced_share:.1f}% "
+              f"of candidates carry a price, against a fitted floor of "
+              f"{100 * float(floor):.1f}% (half the median real week).")
+        print(f"     Serving ONE conversion level to every row rather than "
+              f"deflating {int((1 - priced_share) * result.height)} of "
+              f"{result.height} of them. The board will over-predict in "
+              f"aggregate, which is the lesser error.")
+    else:
+        result = result.with_columns(
+            pl.col("market_prob").is_null().alias(UNPRICED_COL))
+        n_un = int(result[UNPRICED_COL].sum())
+        print(f"  Unpriced players: {n_un} of {result.height} "
+              f"({100 * priced_share:.1f}% priced) served at conversion level "
+              f"{conv.get('unpriced_level')}")
+
     if team_model is not None:
         result = apply_joint(result, week_df, team_model,
                              score_col="raw_prob", out_col="prob_calibrated",

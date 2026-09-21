@@ -258,6 +258,13 @@ def player_shares(rates: np.ndarray, df: pl.DataFrame,
     ).drop("_rate")
 
 
+#: Marks a row no sportsbook quoted, for the split conversion level. Set by
+#: the caller — `predict` knows who was priced because it has just joined the
+#: market, and the trainer knows from the graded archive. Absent, every row is
+#: treated as priced, which is the behaviour before the split existed.
+UNPRICED_COL = "_unpriced"
+
+
 def combine(df: pl.DataFrame, share_col: str = "share",
             lambda_col: str = "team_lambda",
             out_col: str = "probability",
@@ -298,7 +305,17 @@ def combine(df: pl.DataFrame, share_col: str = "share",
 
     mu = pl.col(lambda_col) * pl.col(share_col)
     if conversion:
-        mu = mu * float(conversion.get("level", 1.0))
+        # One level for players a book quoted and another for the rest, when
+        # the fit produced one and the caller marked the rows. A book declining
+        # to quote a man is most of what is known about him: priced players
+        # score at 16.1%, unpriced at 0.41%, and serving the priced level to
+        # both put ~0.35 phantom scorers a game on the board — the whole of the
+        # model's 7.6% aggregate over-prediction. See `fit_conversion`.
+        lvl = pl.lit(float(conversion.get("level", 1.0)))
+        u = conversion.get("unpriced_level")
+        if u is not None and UNPRICED_COL in df.columns:
+            lvl = pl.when(pl.col(UNPRICED_COL)).then(pl.lit(float(u))).otherwise(lvl)
+        mu = mu * lvl
         r = float(conversion.get("dispersion", 0.0))
         if r > 0:
             q = (mu / r).clip(0.0, 1.0 - 1e-12)
@@ -321,12 +338,35 @@ def combine(df: pl.DataFrame, share_col: str = "share",
     return out.drop("_score_in") if "_score_in" in out.columns else out
 
 
-def fit_conversion(df: pl.DataFrame, mu_col: str, target_col: str = "target") -> dict:
+def fit_conversion(df: pl.DataFrame, mu_col: str, target_col: str = "target",
+                   unpriced: pl.DataFrame | None = None) -> dict:
     """Fit the level and dispersion that turn expected touchdowns into P(>=1).
 
     Two parameters, both with a physical reading, fitted by log loss on games
     the model did not train on. Needs no odds — only the model's own expected
     counts and what happened.
+
+    `unpriced`, when given, fits a THIRD parameter: the same level again for
+    the players no book quoted. It is a separate number because those players
+    are a separate population, and the gap is not small. Measured over
+    2023-2025, with the level fitted here on priced players only and served to
+    everyone:
+
+        priced players      14,067 rows   2288.4 predicted   2303 actual   -0.6%
+        unpriced players     4,145 rows    197.2 predicted     24 actual   +722%
+
+    Priced players are 16.1% to score and unpriced players are 0.41%, and a
+    book declining to quote a man is most of what is known about him. Serving
+    one level to both put ~0.35 phantom scorers a game on the board, which is
+    the whole of its 7.6% aggregate over-prediction. Fitted separately the
+    unpriced level comes out at 0.07 against 0.94 by log loss and 0.074 by
+    calibration — two methods that do not have to agree, agreeing.
+
+    **The caller must pass only seasons the odds archive covers.** Before 2023
+    there are no archived prices at all, so every row reads as unpriced and the
+    population means "no data existed" rather than "no book would quote him":
+    fitted over 2015-2024 the unpriced group scores at 13.19% and the level
+    comes back 0.83, which is the wrong answer to a different question.
     """
     mu = df[mu_col].to_numpy()
     y = df[target_col].to_numpy().astype(float)
@@ -343,7 +383,7 @@ def fit_conversion(df: pl.DataFrame, mu_col: str, target_col: str = "target") ->
             if v < best[2]:
                 best = (round(float(level), 2), round(float(r), 2), v)
     level, r, ll = best
-    return {
+    out = {
         "kind": "td_conversion",
         "level": level,
         "dispersion": r,
@@ -352,6 +392,30 @@ def fit_conversion(df: pl.DataFrame, mu_col: str, target_col: str = "target") ->
         "n": int(len(y)),
         "fit_date": date.today().isoformat(),
     }
+
+    # The same level again for the players no book quoted, at the dispersion
+    # already fitted above — one free parameter, not three. Too few events to
+    # re-fit a shape on: 13 scorers over 3,153 rows in 2023-2024.
+    if unpriced is not None and unpriced.height:
+        mu_u = unpriced[mu_col].to_numpy()
+        y_u = unpriced[target_col].to_numpy().astype(float)
+
+        def nll_u(level_u: float) -> float:
+            q = np.clip(level_u * mu_u / r, 0.0, 1.0 - 1e-12)
+            p = np.clip(1.0 - (1.0 - q) ** r, 1e-7, 1 - 1e-7)
+            return float(-np.mean(y_u * np.log(p) + (1 - y_u) * np.log(1 - p)))
+
+        grid = np.arange(0.01, 1.01, 0.01)
+        best_u = min((nll_u(float(L)), float(L)) for L in grid)
+        out.update({
+            "unpriced_level": round(best_u[1], 3),
+            "unpriced_log_loss": best_u[0],
+            "unpriced_log_loss_at_priced_level": nll_u(level),
+            "unpriced_n": int(len(y_u)),
+            "unpriced_events": int(y_u.sum()),
+            "unpriced_rate": float(y_u.mean()),
+        })
+    return out
 
 
 def _game_lines(features: pl.DataFrame) -> pl.DataFrame:

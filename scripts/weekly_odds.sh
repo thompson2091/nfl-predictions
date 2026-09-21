@@ -172,6 +172,33 @@ if [ "$STATUS" -eq 0 ] && [ "$SNAPSHOT" = "open" ]; then
     } 2>&1 | tee -a "$LOG"
 fi
 
+# Rebuild the published board after a closing capture.
+#
+# The market-movement features are null until a closing price exists. Measured
+# on `book_last_update`, the archive's two quote times per player-game sit at
+# ~72h before kickoff and ~0.3-1.2h before it, with nothing between — so a
+# board built on Saturday has the open and nothing else, and every movement
+# feature on it is legitimately empty. Only a board built AFTER a close carries
+# them.
+#
+# Close only, and only when the capture actually fetched: the window guard at
+# the top exits before this on a slot with no kickoff in range, so reaching
+# here means a real snapshot landed. `site/v2` is rebuilt alongside `site/`
+# because the two are the same payload and a stale one of them is worse than
+# neither — that is the failure the `--out` pairing exists to prevent.
+#
+# Never allowed to fail the capture, for the reason above it: the prices are
+# the irreplaceable half, and a board is one `make board` away.
+if [ "$STATUS" -eq 0 ] && [ "$SNAPSHOT" = "close" ]; then
+    {
+        echo "--- rebuilding the board on the closing prices"
+        "$PY" scripts/47_export_site.py \
+            || echo "  board rebuild failed (exit $?) — prices are archived, run \`make board\`"
+        "$PY" scripts/51_export_app.py --out site/v2 --brand "${BRAND:-Pick Six}" \
+            || echo "  v2 rebuild failed (exit $?) — run \`make app\`"
+    } 2>&1 | tee -a "$LOG"
+fi
+
 # Keep the last 40 logs; this runs twice a week forever.
 ls -1t "$LOG_DIR"/odds_*.log 2>/dev/null | tail -n +41 | xargs -r rm -f
 exit "$STATUS"

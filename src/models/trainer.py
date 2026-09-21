@@ -304,6 +304,146 @@ def _filter_low_activity(df: pl.DataFrame) -> pl.DataFrame:
     return df.filter(keep)
 
 
+def refit_conversion(df, train_seasons, splits, feature_cols, model_dir,
+                     target_type, team_model) -> dict:
+    """Fit and save the count -> probability conversion the joint model serves.
+
+    Extracted from `train` so it can be re-run against an existing model
+    without retraining one. The level and dispersion describe how the trained
+    ranker's expected counts turn into probabilities; nothing about them
+    requires the ranker to be refitted, and making a correction to them cost a
+    full retrain is how a correction goes unmade.
+
+    Poisson thinning understated the top of the board by 5-7 points because a
+    lead back's goal-line carries are not independent arrivals. Fit the
+    dispersion, and a level term that absorbs the scoring environment drifting
+    away from the seasons the team rate was fitted on. Fitted on train+val
+    only, like the calibrator, so the held-out season stays held out.
+    """
+    from src.models.joint import apply_joint, fit_conversion, save_conversion
+    from src.models.scoring import score as _score
+
+    conv_src = _filter_low_activity(df.filter(
+        pl.col("season").is_in(list(train_seasons) + [splits["val_season"]])
+        & pl.col("target").is_not_null()
+    ))
+    Xc, _ = prepare_data(conv_src, feature_cols)
+    conv_src = conv_src.with_columns(
+        pl.Series("_s", _score(production_model(target_type), Xc,
+                               feature_cols, model_dir))
+    )
+    conv_src = apply_joint(conv_src, conv_src, team_model,
+                           score_col="_s", out_col="_p")
+    conv_src = conv_src.with_columns(
+        (pl.col("team_lambda") * pl.col("share")).alias("_mu")
+    )
+    # Fit on the players we publish for. Over the full candidate pool thousands
+    # of near-zero rows, where every conversion agrees, swamp the top of the
+    # board where they differ by 5-7 points: the dispersion came out 3.05 on
+    # all candidates against 1.15 on the priced ones, i.e. almost back to the
+    # Poisson it was correcting.
+    #
+    # Split the population before fitting, and keep only the seasons the odds
+    # archive covers. `_priced_only` is an inner join, so everything it drops
+    # is "unpriced" — but before 2023 there are no archived prices at all, and
+    # a season with no coverage would contribute its whole candidate pool as
+    # though every book had declined to quote them. Fitted over 2015-2024 that
+    # population scores at 13.19% and the level comes back 0.83; over the
+    # covered seasons alone it scores at 0.41% and comes back 0.07.
+    covered = _odds_covered_seasons(target_type)
+    priced = _priced_only(conv_src, target_type)
+    unpriced = None
+    if covered:
+        key = ["game_id", "player_id"]
+        unpriced = (conv_src.filter(pl.col("season").is_in(covered))
+                    .join(priced.select(key), on=key, how="anti"))
+        # DEF/ST is unpriced and never reaches this formula: `combine` hands
+        # it back the calibrated classifier's own number instead, because a
+        # defence is not a share of its offence. Leaving it in the fit lets a
+        # population the level cannot move set the level — and it is the worst
+        # possible member of it, scoring at ~10% where a real unpriced player
+        # scores at 0.41%. It dragged the fit population from 0.41% to 3.03%.
+        # `combine` drops `_is_defst` on its way out, so ask the same
+        # predicate again rather than depending on a column that may not have
+        # survived.
+        from src.models.joint import _defst_mask
+        unpriced = unpriced.filter(~_defst_mask(unpriced))
+        print(f"  conversion population: {priced.height:,} priced, "
+              f"{unpriced.height:,} unpriced (DEF/ST excluded) over "
+              f"seasons {covered}")
+    conv = fit_conversion(priced, "_mu", unpriced=unpriced)
+
+    # The floor under which a board must NOT be split, fitted rather than
+    # chosen. The split serves unpriced rows at ~0.07 against ~0.94, so a week
+    # whose market join has silently failed would have most of its board
+    # deflated thirteenfold. That is not hypothetical: loading a past week's
+    # market matched 50 of 500 rows and published a board summing to 1.10
+    # scorers a game against a true 4.15.
+    #
+    # The guard is the weakest priced share any week in the fit actually had.
+    # A real week never goes below what real weeks have gone below; a broken
+    # join goes far below it.
+    if unpriced is not None and unpriced.height and "week" in priced.columns:
+        per = (pl.concat([
+            priced.select(["season", "week"]).with_columns(pl.lit(True).alias("_p")),
+            unpriced.select(["season", "week"]).with_columns(pl.lit(False).alias("_p")),
+        ]).group_by(["season", "week"])
+          .agg((pl.col("_p").sum() / pl.len()).alias("share")))
+        if per.height:
+            med = float(per["share"].median())
+            # HALF the median, and it is a catastrophe rail rather than a
+            # tuned threshold — which is why the halving is stated here rather
+            # than fitted. The two sides do not measure "priced" the same way:
+            # this fit asks the settled archive (`_priced_only` ->
+            # `load_graded_history`), while serving asks the live odds cache
+            # (`_load_market`), and the live path runs a little thinner because
+            # the cache can miss a player the archive later graded. On the one
+            # live slate available to compare, serving saw 71.5% where this fit
+            # sees a 73.6% minimum and a 82.2% median.
+            #
+            # So the floor must separate "a slightly thin real week" from "the
+            # join returned nothing", and those differ by an order of
+            # magnitude, not a few points. Half the median does that: 71.5%
+            # passes, and the 10.0% a finished week produced does not. A floor
+            # set at the fitted minimum would have rejected a healthy board.
+            conv["min_priced_share"] = round(med / 2.0, 4)
+            conv["min_priced_share_basis"] = (
+                "half the median weekly priced share in the fit; a rail "
+                "against a failed market join, not a tuned threshold")
+            conv["observed_min_priced_share"] = round(float(per["share"].min()), 4)
+            conv["median_priced_share"] = round(med, 4)
+            conv["priced_share_weeks"] = int(per.height)
+    save_conversion(conv, model_dir / "td_conversion.json")
+    print(f"TD conversion: level {conv['level']}, dispersion "
+          f"{conv['dispersion']} (log loss {conv['poisson_log_loss']:.5f} "
+          f"Poisson -> {conv['log_loss']:.5f})")
+    if conv.get("unpriced_level") is not None:
+        print(f"  unpriced level {conv['unpriced_level']} over "
+              f"{conv['unpriced_n']:,} rows ({conv['unpriced_events']} scorers, "
+              f"{100 * conv['unpriced_rate']:.2f}%); log loss on them "
+              f"{conv['unpriced_log_loss_at_priced_level']:.5f} at the priced "
+              f"level -> {conv['unpriced_log_loss']:.5f}")
+    print(f"  -> {model_dir / 'td_conversion.json'}")
+    return conv
+
+
+def _odds_covered_seasons(target_type: str) -> list[int]:
+    """Seasons the archived market actually covers, for the unpriced split.
+
+    Outside these, "no price" means "no data", not "no book would quote him" —
+    and the two populations score at 13.19% and 0.41%. Anything fitting on the
+    difference between priced and unpriced must ask this first.
+    """
+    try:
+        from src.ingest.odds_history import load_graded_history
+        graded = load_graded_history(target_type)
+    except Exception:                                            # noqa: BLE001
+        return []
+    if graded is None or graded.height == 0 or "season" not in graded.columns:
+        return []
+    return sorted(int(s) for s in graded["season"].unique().to_list())
+
+
 def _priced_only(df: pl.DataFrame, target_type: str) -> pl.DataFrame:
     """Rows a sportsbook priced — the population production actually shows.
 
@@ -707,36 +847,9 @@ def train_all(target_type: str = None, splits: dict | None = None,
     # only, like the calibrator, so the held-out season stays held out.
     if team_model is not None:
         try:
-            from src.models.joint import (apply_joint, fit_conversion,
-                                          save_conversion)
-            conv_src = _filter_low_activity(df.filter(
-                pl.col("season").is_in(train_seasons + [splits["val_season"]])
-                & pl.col("target").is_not_null()
-            ))
-            Xc, _ = prepare_data(conv_src, feature_cols)
-            prod_name = production_model(target_type)
-            from src.models.scoring import score as _score
-            conv_src = conv_src.with_columns(
-                pl.Series("_s", _score(prod_name, Xc, feature_cols, model_dir))
-            )
-            conv_src = apply_joint(conv_src, conv_src, team_model,
-                                   score_col="_s", out_col="_p")
-            conv_src = conv_src.with_columns(
-                (pl.col("team_lambda") * pl.col("share")).alias("_mu")
-            )
-            # Fit on the players we publish for. Over the full candidate pool
-            # thousands of near-zero rows, where every conversion agrees,
-            # swamp the top of the board where they differ by 5-7 points: the
-            # dispersion came out 3.05 on all candidates against 1.15 on the
-            # priced ones, i.e. almost back to the Poisson it was correcting.
-            conv_src = _priced_only(conv_src, target_type)
-            conv = fit_conversion(conv_src, "_mu")
-            save_conversion(conv, model_dir / "td_conversion.json")
-            print(f"TD conversion: level {conv['level']}, dispersion "
-                  f"{conv['dispersion']} (log loss {conv['poisson_log_loss']:.5f} "
-                  f"Poisson -> {conv['log_loss']:.5f}) -> "
-                  f"{model_dir / 'td_conversion.json'}")
-        except Exception as e:
+            refit_conversion(df, train_seasons, splits, feature_cols,
+                             model_dir, target_type, team_model)
+        except Exception as e:                                   # noqa: BLE001
             print(f"TD conversion NOT fitted ({e}) — falling back to Poisson.")
 
     # --- Fit the positional (per-rank) correction ---

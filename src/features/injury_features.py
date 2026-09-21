@@ -33,19 +33,52 @@ def build_injury_features(
         pl.col("team").cast(pl.Utf8),
         pl.col("position").cast(pl.Utf8),
         pl.col("report_status").cast(pl.Utf8),
+        # The Wed/Thu/Fri practice report, which this builder ignored until
+        # 2026-09-21 while reading only the game-status column beside it.
+        #
+        # It is the denser of the two by a long way: `practice_status` is set
+        # on 61,175 of 61,221 rows and `report_status` on 32,055 — so **29,163
+        # rows carry a practice report and no game status at all**, and every
+        # one of them is currently invisible to the model. 2,949 of those are
+        # "Did Not Participate" and 3,560 "Limited", which is a real injury
+        # signal reaching the matrix as nothing.
+        #
+        # It also discriminates INSIDE a status. "Questionable" covers 3,195
+        # player-weeks who practised fully and 2,581 who did not practise at
+        # all; today those are the same number to the model.
+        (pl.col("practice_status").cast(pl.Utf8).str.strip_chars()
+         if "practice_status" in injuries.columns
+         else pl.lit(None, dtype=pl.Utf8)).alias("practice_status"),
     ]).filter(pl.col("player_id").is_not_null())
 
     # --- Player-level injury status ---
+    # Three indicators rather than one ordinal: the gap between full and
+    # limited is not the gap between limited and DNP, and a tree should not be
+    # told it is. All three are 0 where a practice report exists and says
+    # otherwise, and null where none exists — never zero-filled here, because
+    # on a sparse frame "no report" and "practised fully" are opposite claims
+    # and `prepare_data` will collapse them if this builder does it first.
+    dnp = pl.col("practice_status").str.starts_with("Did Not Participate")
+    lim = pl.col("practice_status").str.starts_with("Limited Participation")
+    full = pl.col("practice_status").str.starts_with("Full Participation")
+    known = pl.col("practice_status").is_not_null() & (dnp | lim | full)
     player_inj = inj.with_columns([
         (pl.col("report_status") == "Out").cast(pl.Float64).alias("is_out"),
         pl.col("report_status").is_in(["Questionable", "Doubtful"]).cast(pl.Float64).alias("is_questionable"),
-    ]).select(["player_id", "season", "week", "team", "position", "is_out", "is_questionable"])
+        pl.when(known).then(dnp.cast(pl.Float64)).alias("practice_dnp"),
+        pl.when(known).then(lim.cast(pl.Float64)).alias("practice_limited"),
+        pl.when(known).then(full.cast(pl.Float64)).alias("practice_full"),
+    ]).select(["player_id", "season", "week", "team", "position", "is_out",
+               "is_questionable", "practice_dnp", "practice_limited",
+               "practice_full"])
 
     # Deduplicate (player may appear multiple times per week)
     player_inj = player_inj.unique(subset=["player_id", "season", "week"], keep="last")
 
     # Player-level output
-    player_feats = player_inj.select(["player_id", "season", "week", "is_out", "is_questionable"])
+    player_feats = player_inj.select(["player_id", "season", "week", "is_out",
+                                      "is_questionable", "practice_dnp",
+                                      "practice_limited", "practice_full"])
 
     # --- Teammate out boost: count same-position teammates who are OUT ---
     out_players = player_inj.filter(pl.col("is_out") == 1)

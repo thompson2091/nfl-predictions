@@ -15,8 +15,8 @@
     ]
   },
   "anytime_td": {
-    "version": "2026.08.19-lean-24-families",
-    "promoted_at": "2026-08-19T18:49:17+00:00",
+    "version": "2026.09.21-unpriced-conversion",
+    "promoted_at": "2026-09-21T18:43:52+00:00",
     "history": [
       "2026.08.12-baseline",
       "2026.08.12-baseline-remeasured",
@@ -28,7 +28,10 @@
       "2026.08.18-play-gate-fix",
       "2026.08.19-clean-matrix",
       "2026.08.19-lean-25-families",
-      "2026.08.19-lean-24-families"
+      "2026.08.19-lean-24-families",
+      "2026.09.21-unpriced-conversion-level",
+      "2026.09.21-unpriced-conversion-guard",
+      "2026.09.21-unpriced-conversion"
     ]
   }
 }
