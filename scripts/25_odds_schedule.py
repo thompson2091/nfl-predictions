@@ -53,16 +53,23 @@ def _hhmm(total: int) -> str:
     return f"{total // 60:02d}:{total % 60:02d}"
 
 
-def kickoff_waves(season: int | None = None) -> dict[str, list[str]]:
+def kickoff_waves(season: int | None = None,
+                  lead: int | None = None) -> dict[str, list[str]]:
     """Capture times per weekday, one per cluster of kickoffs.
 
-    Each wave sits `lead_minutes` before the earliest kickoff it covers, so no
+    Each wave sits `lead` minutes before the earliest kickoff it covers, so no
     game in a merged cluster is ever captured after it has started. Merging is
     what keeps the credit cost proportional to the number of *waves* rather than
     the number of distinct kickoff times.
+
+    `lead` is a parameter because a second job needs the same waves at a
+    different distance: the inactives re-check wants ~75 minutes, where a price
+    capture wants 30. Deriving both from one function means a flexed game moves
+    both schedules, which is the whole reason these times are computed rather
+    than written down.
     """
     cfg = get_config().get("odds_capture", {})
-    lead = int(cfg.get("lead_minutes", 30))
+    lead = int(cfg.get("lead_minutes", 30)) if lead is None else int(lead)
     merge = int(cfg.get("merge_minutes", 45))
 
     schedule = pl.read_parquet(get_path("raw") / "schedules.parquet")

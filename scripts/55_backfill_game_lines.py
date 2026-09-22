@@ -110,22 +110,25 @@ def _already(season: int, week: int, snapshot: str) -> bool:
 def _rows_from(payload, season, week, allowed, snapshot) -> list[dict]:
     """Flatten one historical snapshot, keeping only games in `allowed`.
 
-    `allowed` is the set of kickoff instants (to the minute) that belong to the
-    week being written. The bulk endpoint returns EVERY game live at that
-    timestamp, not just the next one — an open snapshot taken 72h before week
-    1 also carries weeks 2 and 3, already posted. Without this filter week 1
-    wrote 5,422 quotes against a normal week's 1,678 and the surplus was other
-    weeks' games filed under week 1, which nothing downstream would have
-    questioned.
+    `allowed` is a set of (away, home) team pairs, NOT kickoff times. The bulk
+    endpoint returns every game live at that timestamp — an open taken 72h
+    before week 1 also carries weeks 2 and 3 — so it has to be filtered, and
+    the first attempt filtered on the schedule's kickoff to the minute. That
+    silently dropped most of the archive: the schedule records a clean 13:00 ET
+    while the API records the ACTUAL kickoff, so a 17:00:00Z in one is
+    17:01:00Z or 17:04:00Z in the other. 70 of 143 slots came back empty and
+    three seasons yielded 231 games out of ~800.
+
+    Team pairs are exact and cannot drift by a minute.
     """
     captured = payload.get("timestamp")
     out = []
     for ev in payload.get("data", []):
         ct = ev.get("commence_time")
-        if allowed is not None and (not ct or ct[:16] not in allowed):
-            continue
         h = TEAM_ABBREV.get(ev.get("home_team", ""))
         a = TEAM_ABBREV.get(ev.get("away_team", ""))
+        if allowed is not None and (a, h) not in allowed:
+            continue
         for bk in ev.get("bookmakers", []):
             for m in bk.get("markets", []):
                 if m.get("key") not in GAME_MARKETS:
@@ -162,20 +165,22 @@ def main() -> int:
 
     sched = (pl.read_parquet(get_path("raw") / "schedules.parquet")
              .filter(pl.col("season").is_in(a.seasons) & (pl.col("game_type") == "REG"))
-             .select(["season", "week", "gameday", "gametime"])
+             .select(["season", "week", "gameday", "gametime",
+                      "home_team", "away_team"])
              .drop_nulls("gameday"))
 
     # One call per distinct kickoff time, not per game: the bulk endpoint
     # returns every game live at that instant.
-    slots = []
+    # kickoff -> the team pairs playing at it, per season-week. The kickoff
+    # still decides WHEN to ask; the team pairs decide what to keep.
+    by_week: dict[tuple, dict] = {}
     for r in sched.iter_rows(named=True):
         k = _kickoff(str(r["gameday"])[:10], r.get("gametime"))
-        if k:
-            slots.append((int(r["season"]), int(r["week"]), k))
-    slots = sorted(set(slots))
-    by_week: dict[tuple, list] = {}
-    for s, w, k in slots:
-        by_week.setdefault((s, w), []).append(k)
+        if not k:
+            continue
+        pair = (r["away_team"], r["home_team"])
+        by_week.setdefault((int(r["season"]), int(r["week"])), {}) \
+               .setdefault(k, set()).add(pair)
 
     calls = sum(len(set(v)) for v in by_week.values()) * len(
         [x for x in a.snapshots if x == "close"]) + len(by_week) * len(
@@ -188,7 +193,8 @@ def main() -> int:
         return 0
 
     budget, key, wrote = Budget(a.max_credits), _get_api_key(), 0
-    for (season, week), kicks in sorted(by_week.items()):
+    for (season, week), kickmap in sorted(by_week.items()):
+        kicks = sorted(kickmap)
         for snap in a.snapshots:
             if _already(season, week, snap):
                 continue
@@ -206,12 +212,10 @@ def main() -> int:
                 time.sleep(a.sleep)
                 if not data:
                     continue
-                # A close is filed against its own kickoff; an open is taken
-                # once for the week and must accept every kickoff in it.
-                allowed = ({k.strftime("%Y-%m-%dT%H:%M:%SZ")[:16]}
-                           if snap == "close"
-                           else {t.strftime("%Y-%m-%dT%H:%M:%SZ")[:16]
-                                 for t in kicks})
+                # A close keeps only the games kicking off at k; an open is
+                # taken once for the week and keeps every game in it.
+                allowed = (kickmap[k] if snap == "close"
+                           else {p for v in kickmap.values() for p in v})
                 rows += _rows_from(data, season, week, allowed, snap)
             if rows:
                 append_snapshot(rows, season=season, week=week, snapshot=snap)
