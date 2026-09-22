@@ -3,10 +3,16 @@
 NFL touchdown prediction engine with calibrated probabilities, plus a Streamlit
 app for exploring predictions, model performance, and parlays.
 
-Two prediction targets are supported:
+**New here? Read [`docs/OVERVIEW.md`](docs/OVERVIEW.md)** — what the models
+actually are, what they do and do not beat, and where everything lives.
+
+Six markets are served. The two touchdown markets are the original pair and
+share a ranker:
 
 - **First TD scorer** — who scores the game's first touchdown
 - **Anytime TD scorer** — who scores at any point in the game
+- **Receptions** — a count model, priced at any line a book posts
+- **Rushing / receiving / passing yards** — a fitted quantile curve each
 
 ## Requirements
 
