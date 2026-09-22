@@ -140,6 +140,19 @@ run_capped() {
     return "$capture_rc"
 }
 
+# The season the week belongs to. Derived here rather than inside the game-line
+# script so both captures file under one answer: `53_game_lines.py` has its own
+# fallback that compares against today's date, and every hour of a Monday
+# resolves that to the week which is ending.
+SEASON=$("$PY" -c "
+import polars as pl
+from src.utils.paths import get_path
+print(int(pl.read_parquet(get_path('raw') / 'schedules.parquet')['season'].max()))
+" 2>/dev/null)
+if [ -z "${SEASON:-}" ]; then
+    echo "could not derive the season — game lines will be skipped"
+fi
+
 {
     echo "=== $(date -u +%FT%TZ)  week=$WEEK  snapshot=$SNAPSHOT ==="
     if [ -z "${ODDS_API_KEY:-}" ]; then
@@ -147,6 +160,22 @@ run_capped() {
         exit 1
     fi
     run_capped "$PY" scripts/07_odds.py --week "$WEEK" --snapshot "$SNAPSHOT" ${FORCE:+--force-refresh}
+
+    # Game lines on the same firing, and deliberately AFTER the props.
+    #
+    # The props are the irreplaceable half — a player price the API has stopped
+    # serving cannot be bought back, and this project has already lost three
+    # seasons of book-level history to a write that threw it away. Game lines
+    # are the cheapest markets the API sells and they are far tighter (best
+    # price beats consensus by 1.23pp on moneyline against 2.31pp on anytime
+    # TD), so they are worth collecting and not worth risking the props for.
+    # Failure here is reported and does not change the exit status.
+    if [ -n "${SEASON:-}" ]; then
+        if ! run_capped "$PY" scripts/53_game_lines.py --snapshot "$SNAPSHOT" \
+                --season "$SEASON" --week "$WEEK"; then
+            echo "  game lines failed (exit $?) — props are archived, which is what matters"
+        fi
+    fi
 } 2>&1 | tee -a "$LOG"
 
 STATUS=${PIPESTATUS[0]}
