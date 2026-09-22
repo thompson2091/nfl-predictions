@@ -75,3 +75,54 @@ def test_every_clickable_data_attribute_is_handled():
     missing = {e for e in emitted if e not in handled and e in {
         "betseg", "cbpool", "view", "tab", "fam", "set", "drop"}}
     assert not missing, f"emitted but never handled: {sorted(missing)}"
+
+
+def test_every_route_has_a_screen_function_in_the_emitted_js():
+    """A route whose view function is missing is a blank tab.
+
+    Editing `v2js.py` by splicing on a `\"\"\"` boundary once deleted nine
+    functions at a stroke — the whole of Combos, Ladder and Model — and left
+    an orphan triple-quote that made the module unparseable. The build still
+    produced a page, from stale bytecode, so nothing anywhere said no.
+    """
+    import re
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1] / "src/export/v2js.py"
+    # Parseable at all — the orphan quote made this false while the build
+    # carried on running from __pycache__.
+    compile(src.read_text(), str(src), "exec")
+
+    import importlib
+
+    v2js = importlib.import_module("src.export.v2js")
+    js = "".join(getattr(v2js, n) for n in dir(v2js) if n.startswith("JS"))
+
+    routes = re.findall(r"case '(\w+)': return (\w+)\(", js)
+    assert routes, "no routes found in screenHTML"
+    for route, fn in routes:
+        assert f"function {fn}(" in js, (
+            f"route {route!r} calls {fn}() and nothing defines it")
+
+    # Helpers every screen leans on. `keystat` went with the nine and took
+    # the Bets tab down with it.
+    for helper in ("keystat", "field"):
+        assert f"const {helper}" in js or f"function {helper}(" in js, (
+            f"{helper} is referenced by the screens and is not defined")
+
+
+def test_v2js_string_constants_are_balanced():
+    """Every JS_* constant holds JavaScript, not a fragment of Python.
+
+    The orphan `\"\"\"` swallowed `JS_SAVED = r\"\"\"` into a string literal,
+    so the name survived import and its contents did not.
+    """
+    import importlib
+
+    v2js = importlib.import_module("src.export.v2js")
+    names = [n for n in dir(v2js) if n.startswith("JS")]
+    assert len(names) >= 6, f"expected the JS constants, found {names}"
+    for n in names:
+        v = getattr(v2js, n)
+        assert isinstance(v, str) and len(v) > 200, f"{n} is {len(v)} chars"
+        assert "= r" not in v[:40], f"{n} begins with a Python assignment"

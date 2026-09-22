@@ -196,32 +196,59 @@ def evaluate(seasons: list[int] | None = None,
         hits = int(s["won"].sum())
         lo, hi = _wilson(hits, n)
         rate = hits / n
-        # What the market charged for exactly these bets. Vigged, because that
-        # is the number on the ticket.
-        implied = float(s["close_prob"].mean())
-        # Flat stake at the median closing price. Nobody can bet a median, so
-        # this understates by roughly the 1.2pp a best-price beats it by.
-        dec = s.with_columns((1.0 / pl.col("close_prob")).alias("_d"))
-        roi = float((dec.filter(pl.col("won"))["_d"].sum() - n) / n) * 100
-        clears = lo > implied
-        # Three outcomes, not two. "Interval spans it" was printed for every
-        # row that did not clear, including one whose interval sits ENTIRELY
-        # below its price — "moved toward the under" hits 35.5% against 53.5%
-        # with an interval of [28.0, 43.6], which touches 53.5% nowhere. That
-        # is a different and stronger statement than an inconclusive one, and
-        # printing the weaker wording for it was simply false.
-        loses = hi < implied
+
+        # THE VERDICT IS ABOUT MONEY, AND SO IS ITS INTERVAL.
+        #
+        # An earlier version compared the hit-rate interval to an average
+        # break-even and reported two definitions as clearing — one returning
+        # +$0.18 per $100 and one LOSING $3.78. Both readings were defensible
+        # and neither was useful, because a hit rate cannot be compared to an
+        # average price when the prices run from -450 to +381: the same 52%
+        # is a fortune on longshots and a catastrophe on favourites.
+        #
+        # So the unit is the return on one flat stake. Each bet pays `dec - 1`
+        # when it wins and -1 when it loses; the definition's edge is the mean
+        # of that, and its uncertainty is the ordinary standard error of that
+        # mean. "Returns between -9% and +2% per $100" is one statement, in
+        # the unit the reader is betting in, and it needs no reconciliation.
+        per_bet = (s.with_columns(
+            pl.when(pl.col("won")).then(1.0 / pl.col("close_prob") - 1.0)
+              .otherwise(-1.0).alias("_r"))["_r"])
+        roi = float(per_bet.mean()) * 100
+        # Standard error of the mean. Normal rather than Wilson: this is a
+        # mean of a bounded-below but unbounded-above quantity, not a
+        # proportion, and at n in the hundreds the CLT is the right tool.
+        sd = float(per_bet.std(ddof=1)) if n > 1 else 0.0
+        se = (sd / (n ** 0.5)) * 100 if n > 1 else 0.0
+        roi_lo, roi_hi = roi - 1.96 * se, roi + 1.96 * se
+
+        # Kept as description, never as the verdict: it is what a reader wants
+        # to see and cannot be acted on by itself.
+        dec_all = 1.0 / s["close_prob"]
+        implied = float(1.0 / dec_all.mean())
+        won_dec = 1.0 / s.filter(pl.col("won"))["close_prob"]
+        mean_dec_won = float(won_dec.mean()) if won_dec.len() else None
+        # Beating the average break-even while losing money means the bets it
+        # wins are priced shorter than the ones it loses. That is a fact about
+        # the definition, so it is surfaced rather than reconciled away.
+        price_bias = (rate > implied) != (roi > 0)
+
+        clears = roi_lo > 0
+        loses = roi_hi < 0
         if clears:
-            verdict = "beats its own price"
+            verdict = f"returns {roi_lo:+.1f}% to {roi_hi:+.1f}% per $100"
         elif loses:
-            verdict = (f"loses to its price ({implied:.1%}) — the whole "
-                       f"interval sits below it")
+            verdict = (f"loses money at every plausible rate "
+                       f"({roi_lo:+.1f}% to {roi_hi:+.1f}% per $100)")
         else:
-            verdict = (f"does not beat its price ({implied:.1%}) — "
-                       f"interval spans it")
+            verdict = (f"not measurably different from break-even "
+                       f"({roi_lo:+.1f}% to {roi_hi:+.1f}% per $100)")
         out.append({
             "definition": name, "n": n, "hits": hits, "hit_rate": rate,
-            "lo": lo, "hi": hi, "implied": implied, "roi_pct": roi,
+            "lo": lo, "hi": hi, "implied": implied,
+            "roi_pct": roi, "roi_lo": roi_lo, "roi_hi": roi_hi,
             "clears": clears, "loses": loses, "verdict": verdict,
+            "price_bias": price_bias, "mean_dec_won": mean_dec_won,
+            "mean_dec_all": float(dec_all.mean()),
         })
     return out

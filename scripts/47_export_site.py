@@ -696,11 +696,62 @@ def games(season: int | None, week: int | None) -> dict:
     except Exception:                                            # noqa: BLE001
         pass
 
+    # De-vig, so the page can print a probability rather than a price.
+    #
+    # The two sides of a line sum to more than 1 — that excess IS the book's
+    # margin — and the fair number is each side's share of the total. The three
+    # markets pair their sides DIFFERENTLY, which is the only subtle part:
+    # a moneyline has one null point, a total has Over and Under on the same
+    # point, and a spread has SF -8.5 against ARI +8.5, whose points are
+    # negatives of each other. Grouping all three on `point` would pair a total
+    # correctly, leave a moneyline alone, and silently fail to pair any spread
+    # at all — every spread would then read as fair at its vigged price.
+    def _pairkey(r):
+        if r["market"] == "spreads" and r["point"] is not None:
+            return (r["game_id"], "spreads", abs(r["point"]))
+        return (r["game_id"], r["market"], r["point"])
+
+    book_rows = b.to_dicts()
+    totals_by_key: dict = {}
+    for r in book_rows:
+        k = _pairkey(r)
+        totals_by_key.setdefault(k, []).append(r)
+
+    def _profit(american):
+        """Profit on a $100 stake, which is what an American price means."""
+        if american is None:
+            return None
+        a = float(american)
+        return a if a > 0 else 10000.0 / -a
+
     rows = []
-    for r in b.iter_rows(named=True):
+    for r in book_rows:
         k = (r["game_id"], r["market"], str(r["outcome"]), r["point"])
         m = moves.get(k)
+        pair = totals_by_key.get(_pairkey(r), [])
+        # Only a genuine two-sided pair can be de-vigged. A line quoted by
+        # enough books on one side and not the other is left with no fair
+        # number rather than being given its vigged one, which would read as
+        # an edge that is entirely the margin.
+        fair = None
+        if len(pair) == 2:
+            tot = sum(x["consensus_prob"] for x in pair)
+            if tot > 0:
+                fair = r["consensus_prob"] / tot
+        # EV of $100 at the BEST price, taking the de-vigged consensus as
+        # truth. That assumption is the whole caveat and the page states it:
+        # this measures beating the median book, not beating the market. It is
+        # also why it can go negative — a favourite whose best price is still
+        # short of fair is a bet that shopping does not rescue.
+        pb = _profit(r["best_odds"])
+        pc = _profit(r["consensus_odds"])
+        ev = None if (fair is None or pb is None) else fair * pb - (1 - fair) * 100
         rows.append({
+            "fair": fair,
+            "ev100": ev,
+            # The same gain in money rather than probability points. "+2.74pp"
+            # is not a quantity anyone can act on; "+$56 per $100" is.
+            "shop": None if (pb is None or pc is None) else pb - pc,
             "game_id": r["game_id"], "home": r["home_team"],
             "away": r["away_team"], "market": r["market"],
             "outcome": str(r["outcome"]), "point": r["point"],
@@ -713,7 +764,49 @@ def games(season: int | None, week: int | None) -> dict:
             "move_pp": (m or {}).get("move_pp"),
             "open_odds": (m or {}).get("open_odds"),
         })
+    # One summary per fixture: the market's own projected score and each
+    # team's chance of winning, which is what a matchup card is actually for.
+    #
+    # The score is ARITHMETIC, not a model. A total of 47.5 with the home side
+    # favoured by 8.5 is the two numbers T/2 +/- S/2, and it is the market's
+    # projection restated rather than a second opinion about it. Labelled as
+    # the market's on the page, and the slot a no-vegas model would fill.
+    cards = {}
+    by_game: dict = {}
+    for r in rows:
+        by_game.setdefault(r["game_id"], []).append(r)
+    for gid, rs in by_game.items():
+        a = rs[0]
+        # The MAIN line of each market is the one the most books quote. An
+        # alternate total of 33.5 exists on some games and would otherwise be
+        # as likely to be picked as the real one.
+        def _main(mkt):
+            sel = [x for x in rs if x["market"] == mkt and x["point"] is not None]
+            return max(sel, key=lambda x: x["n_books"]) if sel else None
+
+        tot, spr = _main("totals"), _main("spreads")
+        total_pt = abs(tot["point"]) if tot else None
+        # Signed toward the HOME side, which is the convention the rest of the
+        # project uses for `spread_line`.
+        home_spread = None
+        if spr:
+            home_spread = (spr["point"] if spr["outcome"] == a["home"]
+                           else -spr["point"])
+        ph = pa = None
+        if total_pt is not None and home_spread is not None:
+            ph = round(total_pt / 2 - home_spread / 2, 1)
+            pa = round(total_pt / 2 + home_spread / 2, 1)
+        wins = {x["outcome"]: x["fair"] for x in rs
+                if x["market"] == "h2h" and x["fair"] is not None}
+        cards[gid] = {
+            "game_id": gid, "home": a["home"], "away": a["away"],
+            "total": total_pt, "spread": home_spread,
+            "proj_home": ph, "proj_away": pa,
+            "win_home": wins.get(a["home"]), "win_away": wins.get(a["away"]),
+        }
+
     return {"season": season, "week": week, "rows": rows,
+            "cards": [cards[k] for k in sorted(cards)],
             "min_books": MIN_BOOKS,
             "games": int(b["game_id"].n_unique()),
             # Not `bool(moves)`: a week holding two copies of the same capture
@@ -764,7 +857,8 @@ def bets(season: int | None) -> dict:
     except Exception:                                            # noqa: BLE001
         pass
     return {"rows": rows, "min_move_pp": MIN_MOVE_PP, "seasons": seasons,
-            "clearing": sum(1 for r in rows if r.get("clears"))}
+            "clearing": sum(1 for r in rows if r.get("clears")),
+            "losing": sum(1 for r in rows if r.get("loses"))}
 
 
 def build(season: int | None, week: int | None, brand: str) -> dict:

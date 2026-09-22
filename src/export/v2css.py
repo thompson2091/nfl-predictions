@@ -309,26 +309,64 @@ EXTRA_CSS = """
    column is a book name of unpredictable length and has to be allowed to
    truncate rather than push the numbers off the right edge of a phone. */
 .gmk{
+  display:flex;align-items:baseline;
   padding:var(--space-3) var(--space-4) var(--space-1);
   font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
   color:var(--ink-faint);
 }
+/* Four columns and a bar, not six columns. The book name moved UNDER the
+   outcome: at 375px a fifth column of "hardrockbet_oh" either truncated to
+   nothing or pushed the money off the right edge. */
 .bl{
-  display:grid;grid-template-columns:minmax(0,1fr) 52px 52px 62px minmax(0,72px);
-  gap:var(--space-2);align-items:center;
-  padding:var(--space-2) var(--space-4);
+  display:grid;grid-template-columns:minmax(0,1fr) 46px 84px 62px;
+  gap:var(--space-2);align-items:baseline;
+  padding:var(--space-2) var(--space-4) var(--space-3);
   font-size:14px;line-height:19px;
 }
 .bl + .bl{border-top:var(--hairline) solid var(--separator)}
-.bl__o{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bl__c{color:var(--ink-muted);text-align:right}
-.bl__b{text-align:right;font-weight:600}
-.bl__g{text-align:right;color:var(--ink-faint);font-size:13px}
-.bl__g.good{color:var(--good)}
+.bl__o{overflow:hidden;display:flex;flex-direction:column;gap:1px}
 .bl__w{
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:12px;color:var(--ink-faint);text-align:right;
+  font-size:11px;color:var(--ink-faint);
 }
+.bl__f{text-align:right;font-weight:600}
+.bl__p{text-align:right;font-weight:600}
+/* The consensus, beside the best it is being beaten by. Muted and small: it
+   is context for the price, not a second price. */
+.bl__c{font-weight:400;font-size:12px;color:var(--ink-faint)}
+.bl__e{text-align:right;font-size:13px}
+.bl__e.good{color:var(--good)} .bl__e.bad{color:var(--bad)}
+/* The chance, drawn. Spans every column so a ladder of alternate lines reads
+   as a shape rather than as numbers four tenths of a point apart. */
+.blbar{
+  grid-column:1/-1;height:4px;margin-top:var(--space-1);
+  background:var(--bg-inset);border-radius:var(--radius-pill);overflow:hidden;
+}
+.blbar__f{display:block;height:4px;background:var(--border);border-radius:var(--radius-pill)}
+
+/* ---------- matchup card ---------- */
+.gcard{padding:var(--space-4) var(--space-4) var(--space-3)}
+.gcard__t{display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-2)}
+.gcard__t > span:first-child{font-size:17px;font-weight:600}
+.gcard__k{font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.04em}
+.gcard__s{display:flex;align-items:baseline;gap:var(--space-2);margin-top:var(--space-1)}
+.gcard__s .num{font-size:26px;font-weight:600;letter-spacing:-.01em}
+.gcard__d{color:var(--ink-faint);font-size:20px}
+.gcard__l{margin-left:auto;font-size:12px;color:var(--ink-muted);text-align:right}
+/* Both sides of one question, so one bar. Two numbers side by side invite
+   the reader to compare them to 50 rather than to each other. */
+.split{
+  display:flex;height:26px;margin-top:var(--space-3);
+  border-radius:var(--radius-sm);overflow:hidden;font-size:12px;
+}
+.split span{
+  display:flex;align-items:center;gap:4px;padding:0 var(--space-2);
+  overflow:hidden;white-space:nowrap;
+}
+.split__a{background:var(--bg-segment);color:var(--ink-muted)}
+.split__h{background:var(--accent-soft);color:var(--accent);justify-content:flex-end}
+.split b{font-weight:600}
+.gmk__h{margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0}
 /* Movement drops the book column: the mover is the market, not one book. */
 .bl--mv{grid-template-columns:minmax(0,1fr) 52px 52px 68px}
 .bl--mv .bl__g.good{color:var(--good)} .bl--mv .bl__g.bad{color:var(--bad)}
@@ -337,14 +375,19 @@ EXTRA_CSS = """
 /* Hit rate, the price it is measured against, and the interval drawn over
    that price. The bar straddling the marker IS the finding, so it is drawn
    rather than described — a reader who skips the verdict line still sees it. */
+/* The headline result, stated once at the top. "No edge" is a finding and
+   reads as one here; six red rows read as six things being broken. */
+.verdict{padding:var(--space-4)}
+.verdict__t{font-size:17px;font-weight:600;line-height:23px}
+.verdict__b{margin-top:var(--space-2);font-size:14px;line-height:20px;color:var(--ink-muted)}
 .def{padding:var(--space-3) var(--space-4)}
 .def + .def{border-top:var(--hairline) solid var(--separator)}
-.def__t{display:flex;gap:var(--space-2);align-items:baseline;font-size:14px;line-height:19px}
-.def__n{margin-left:auto;font-size:12px;color:var(--ink-faint);flex:none}
-.def__r{display:flex;gap:var(--space-2);align-items:baseline;margin-top:2px;font-size:15px}
-.def__r .good{color:var(--good)} .def__r .bad{color:var(--bad)}
-.def__v{font-size:12px;color:var(--ink-faint)}
-.def__w{margin-top:var(--space-1);font-size:12px;line-height:17px;color:var(--ink-muted)}
+.def__t{display:flex;gap:var(--space-2);align-items:baseline;font-size:15px;line-height:20px;font-weight:600}
+.def__n{margin-left:auto;font-size:12px;color:var(--ink-faint);flex:none;font-weight:400}
+/* Neutral. A measurement that came back "no" is not an error, and toning it
+   red made the page read as a list of faults. */
+.def__s{margin-top:2px;font-size:14px;line-height:20px;color:var(--ink-muted)}
+.def__s b{font-weight:600;color:var(--ink)}
 .ci{
   position:relative;height:6px;margin:var(--space-2) 0 var(--space-1);
   background:var(--bg-inset);border-radius:var(--radius-pill);
@@ -355,6 +398,8 @@ EXTRA_CSS = """
 }
 /* The price the interval has to clear. A 2px rule, full height, so it reads
    as a threshold rather than as another value on the bar. */
+.ci__bar--good{background:var(--good)}
+.ci__bar--bad{background:var(--bad)}
 .ci__mark{position:absolute;top:-3px;width:2px;height:12px;background:var(--ink)}
 """
 

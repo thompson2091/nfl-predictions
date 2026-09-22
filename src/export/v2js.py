@@ -909,7 +909,7 @@ JS_EVENTS = r"""
 //: has it. A test holds this list against what the views actually emit.
 const CLICKS = ['tab', 'view', 'cbpool', 'betseg', 'pcard', 'del', 'open',
                 'fam', 'load', 'sheet', 'act', 'fav', 'fav2', 'add', 'add2',
-                'detail', 'set', 'drop'];
+                'detail', 'set', 'drop', 'betgame'];
 const CLICK_SEL = CLICKS.map(k => '[data-' + k + ']').join(',');
 
 function wire() {
@@ -941,6 +941,9 @@ function wire() {
     }
     if (d.cbpool) { S.cb.pool = d.cbpool; render(); return; }
     if (d.betseg) { S.bets = d.betseg; render(); return; }
+    // Empty string is a real value here — it is the "All games" chip —
+    // so this tests for the ATTRIBUTE, not for a truthy value.
+    if ('betgame' in d) { S.betsGame = d.betgame || null; render(); return; }
     if (d.pcard) { S.pcard[d.pcard] = !S.pcard[d.pcard]; render(true); return; }
     if (d.del) { dropParlay(d.del); return; }
     if (d.open) {
@@ -1308,64 +1311,126 @@ function vBets() {
   return h + vBetsDefs(b);
 }
 
-// One card per fixture, three rows: spread, total, moneyline. Each row shows
-// the consensus and the best price beside it, because the gap between them is
-// the only edge on this page that needs no model — and it is real money.
+// One card per fixture: the market's projected score, each side's chance, and
+// then every line it quotes.
+//
+// **The projected score is arithmetic, not a forecast.** A total of 47.5 with
+// the home side favoured by 8.5 IS 28.0 and 19.5 — the same two numbers the
+// market already published, rearranged. It is labelled as the market's for
+// that reason. A model that could disagree with it has to be trained without
+// the vegas feature family, which does not exist yet.
 function vBetsGames(g) {
   if (!g.rows || !g.rows.length) return vEmpty('No games this week',
     'The archive holds no lines for ' + (g.season || '') + ' week ' + (g.week || '') + '.');
 
-  const by = {};
-  g.rows.forEach(r => { (by[r.game_id] = by[r.game_id] || []).push(r); });
-  const gaps = g.rows.map(r => r.gap_pp).filter(has).sort((a, b) => a - b);
-  const med = gaps.length ? gaps[Math.floor(gaps.length / 2)] : null;
+  const cards = (g.cards || []);
+  const pick = S.betsGame;
+  const shown = pick ? cards.filter(c => c.game_id === pick) : cards;
 
-  let h = '<div class="sect"><div class="card"><div class="keystats">'
-    + keystat('Games', String(g.games || Object.keys(by).length))
-    + keystat('Best beats consensus', has(med) ? '+' + med.toFixed(2) + 'pp' : '—', 'good', true)
-    + keystat('Books', '≥ ' + (g.min_books || 4), null, true)
-    + '</div>'
-    + '<div class="prose">' + esc(g.no_model || '') + '</div></div></div>';
-
-  Object.keys(by).sort().forEach(id => {
-    const rows = by[id];
-    const a = rows[0];
-    h += '<div class="sect"><div class="card">'
-      + '<div class="secthead"><span>' + esc(a.away) + ' @ ' + esc(a.home)
-      + '</span><span>consensus → best</span></div>';
-    ['spreads', 'totals', 'h2h'].forEach(mk => {
-      const sel = rows.filter(r => r.market === mk);
-      if (!sel.length) return;
-      // By how many books quote it, not by probability. Books hang different
-      // points on the same game, so ordering by probability interleaves the
-      // alternates with the main line — ARI @ SF showed SF -8, ARI +8.5,
-      // SF -8.5, ARI +8 in that order. The line the most books agree on IS
-      // the market's line, so it leads, and the two sides of it stay adjacent.
-      sel.sort((x, y) => (y.n_books || 0) - (x.n_books || 0)
-                      || (x.point || 0) - (y.point || 0)
-                      || (y.consensus_prob || 0) - (x.consensus_prob || 0));
-      h += '<div class="gmk">' + esc(MKLABEL[mk] || mk) + '</div>';
-      sel.forEach(r => { h += betLine(r); });
-    });
-    h += '</div></div>';
-  });
+  let h = vBetsFilter(cards, g);
+  shown.forEach(c => { h += gameCard(c, g); });
+  if (!shown.length) h += vEmpty('No game selected', 'Clear the filter to see them all.');
   return h;
 }
 
-// A single priced outcome. `gap_pp` is toned only when it is worth the second
-// account it would take to collect — below a point the best price and the
-// consensus are the same number with rounding between them.
+// The game filter, and the one number worth putting above it: what shopping
+// is worth this week, in money rather than probability points.
+function vBetsFilter(cards, g) {
+  const evs = (g.rows || []).map(r => r.ev100).filter(has);
+  const best = evs.length ? Math.max.apply(null, evs) : null;
+  let h = '<div class="sect"><div class="card"><div class="keystats">'
+    + keystat('Games', String(cards.length))
+    + keystat('Best value found', best == null ? '—' : '+' + best.toFixed(2),
+              best != null && best > 0 ? 'good' : null, true)
+    + keystat('Books', '≥ ' + (g.min_books || 4), null, true)
+    + '</div>'
+    + '<div class="prose">Chances are the market’s, with the book’s margin '
+    + 'divided out. <b>EV</b> is what $100 returns at the best price if that '
+    + 'chance is right — so it measures beating the median book, not beating '
+    + 'the market. Nothing on this page is a model.</div></div></div>';
+
+  h += '<div class="chiprow">'
+    + '<button class="chip" aria-pressed="' + (S.betsGame ? 'false' : 'true')
+    + '" data-betgame="">All games</button>'
+    + cards.map(c => '<button class="chip" aria-pressed="'
+      + (S.betsGame === c.game_id ? 'true' : 'false') + '" data-betgame="'
+      + esc(c.game_id) + '">' + esc(c.away) + ' @ ' + esc(c.home)
+      + '</button>').join('') + '</div>';
+  return h;
+}
+
+function gameCard(c, g) {
+  const rows = (g.rows || []).filter(r => r.game_id === c.game_id);
+  let h = '<div class="sect"><div class="card">'
+    + '<div class="gcard">'
+    + '<div class="gcard__t"><span>' + esc(c.away) + ' @ ' + esc(c.home)
+    + '</span><span class="gcard__k">market’s projection</span></div>';
+
+  if (c.proj_home != null && c.proj_away != null) {
+    h += '<div class="gcard__s"><span class="num">' + c.proj_away.toFixed(1)
+      + '</span><span class="gcard__d">–</span><span class="num">'
+      + c.proj_home.toFixed(1) + '</span>'
+      + '<span class="gcard__l">' + (c.total != null ? 'total ' + c.total : '')
+      + (c.spread != null ? ' · ' + esc(c.home) + ' '
+         + (c.spread > 0 ? '+' : '') + c.spread : '') + '</span></div>';
+  }
+  // The two chances as one bar. Both sides of the same question, so one bar
+  // rather than two numbers side by side — the split IS the reading.
+  if (c.win_home != null && c.win_away != null) {
+    const aw = Math.round(c.win_away * 100), hm = Math.round(c.win_home * 100);
+    h += '<div class="split" role="img" aria-label="' + esc(c.away) + ' ' + aw
+      + ' percent, ' + esc(c.home) + ' ' + hm + ' percent">'
+      + '<span class="split__a" style="width:' + (c.win_away * 100).toFixed(1) + '%">'
+      + '<b>' + esc(c.away) + '</b> ' + aw + '%</span>'
+      + '<span class="split__h" style="width:' + (c.win_home * 100).toFixed(1) + '%">'
+      + '<b>' + esc(c.home) + '</b> ' + hm + '%</span></div>';
+  }
+  h += '</div>';
+
+  ['spreads', 'totals', 'h2h'].forEach(mk => {
+    const sel = rows.filter(r => r.market === mk);
+    if (!sel.length) return;
+    // By how many books quote it: the line the most books agree on IS the
+    // market's line, and ordering by probability interleaves the alternates.
+    sel.sort((x, y) => (y.n_books || 0) - (x.n_books || 0)
+                    || (x.point || 0) - (y.point || 0)
+                    || (y.fair || 0) - (x.fair || 0));
+    h += '<div class="gmk">' + esc(MKLABEL[mk] || mk)
+      + '<span class="gmk__h">chance · price · EV $100</span></div>';
+    sel.forEach(r => { h += betLine(r); });
+  });
+  return h + '</div></div>';
+}
+
+// One priced outcome. EV carries the tone, not the shopping gain: the gain is
+// positive on BOTH sides of every line by construction — the best price beats
+// the median on each — which made two opposing bets look good at once.
 function betLine(r) {
   const pt = has(r.point) ? (r.point > 0 ? '+' : '') + r.point : '';
-  const gap = has(r.gap_pp) ? r.gap_pp : null;
+  const ev = has(r.ev100) ? r.ev100 : null;
   return '<div class="bl">'
-    + '<span class="bl__o">' + esc(r.outcome) + (pt ? ' <span class="num">'
-      + pt + '</span>' : '') + '</span>'
-    + '<span class="bl__c num">' + american(r.consensus) + '</span>'
-    + '<span class="bl__b num">' + american(r.best) + '</span>'
-    + '<span class="bl__g num' + (gap != null && gap >= 1 ? ' good' : '') + '">'
-      + (gap == null ? '' : '+' + gap.toFixed(2) + 'pp') + '</span>'
-    + '<span class="bl__w">' + esc(r.best_book || '') + '</span>'
+    + '<span class="bl__o">' + esc(r.outcome)
+      + (pt ? ' <span class="num">' + pt + '</span>' : '')
+      + '<span class="bl__w">' + esc(r.best_book || '') + '</span></span>'
+    + '<span class="bl__f num">' + (has(r.fair)
+        ? (r.fair * 100).toFixed(1) + '%' : '—') + '</span>'
+    + '<span class="bl__p num"><span class="bl__c">' + american(r.consensus)
+      + '</span> ' + american(r.best) + '</span>'
+    + '<span class="bl__e num ' + (ev == null ? '' : ev > 0 ? 'good' : 'bad') + '">'
+      + (ev == null ? '' : (ev > 0 ? '+' : '−') + '$' + Math.abs(ev).toFixed(2))
+    + '</span>'
+    // The chance as a bar, so a ladder of alternates reads as a shape rather
+    // than as a column of numbers four tenths of a point apart. Scaled to the
+    // full 0-100 because these ARE probabilities — squeezing the axis to the
+    // range present would make a 49%/51% pair look like a landslide.
+    //
+    // One bar today, from the market. A model trained without the vegas family
+    // would draw a second marker on this same track, and the gap between them
+    // would be the edge. There is no such model yet, so there is one bar.
+    + (has(r.fair)
+        ? '<span class="blbar"><span class="blbar__f" style="width:'
+          + (r.fair * 100).toFixed(1) + '%"></span></span>'
+        : '')
     + '</div>';
 }
 
@@ -1417,80 +1482,101 @@ function vBetsMove(g) {
   return h;
 }
 
-// The definitions, each against the price it would be taken at.
+// The definitions, in sentences.
 //
-// This is the screen the whole archive was built for, and it says no. Every
-// row carries n, the interval and the implied price BECAUSE a hit rate on its
-// own reads as a system: the first version of this table compared everything
-// to a flat 52.38% and reported "moneyline moved toward this side" as
-// clearing at 62.3%. Those sides were favourites priced at 56.8%.
+// **The finding here is "no", and a page of red minus signs reports that as
+// six failures rather than as one useful result.** It is not a fault list: it
+// is four seasons of archived lines saying that following the market's move
+// does not beat the market's price. That saves money, so it is written as a
+// finding and toned neutrally. Colour is reserved for a row that ever clears.
 function vBetsDefs(b) {
   if (!b.rows || !b.rows.length) return vEmpty('No definitions scored',
     'The archive needs both ends of at least one completed week.');
 
   const yrs = (b.seasons || []).filter(y => y);
-  let h = '<div class="sect"><div class="card"><div class="keystats">'
-    + keystat('Definitions', String(b.rows.length))
-    + keystat('Clearing their price', String(b.clearing || 0),
-              b.clearing ? 'good' : 'bad', true)
-    + keystat('Seasons', yrs.length ? yrs[0] + '–' + yrs[yrs.length - 1] : '—', null, true)
-    + '</div>'
-    + '<div class="prose">Each row is scored against the closing price of the '
-    + 'sides it selects, not against a flat break-even. A rule that picks '
-    + 'favourites beats a coin flip by construction; what matters is whether '
-    + 'it beats <em>them</em>. A move counts at '
-    + (b.min_move_pp || 1) + 'pp or more.</div>'
-    // Six definitions are six chances to find a 95% result by luck. Stated
-    // here rather than left to the reader, because a row whose interval
-    // clears its price reads as a finding and one of six is roughly what
-    // chance hands over.
-    + '<div class="prose">' + b.rows.length + ' definitions are tested here. '
-    + 'At 95% confidence, roughly one in twenty lands outside its interval by '
-    + 'chance alone — so a single row clearing is weaker evidence than the '
-    + 'same row would be if it were the only one asked.</div></div></div>';
+  const clearing = b.clearing || 0;
+  const span = yrs.length ? yrs[0] + '–' + yrs[yrs.length - 1] : 'the archive';
 
-  h += '<div class="sect"><div class="card">'
-    + '<div class="secthead"><span>Definition</span><span>hit vs price</span></div>';
+  let h = '<div class="sect"><div class="card"><div class="verdict">'
+    + '<div class="verdict__t">' + (clearing
+        ? clearing + ' of ' + b.rows.length + ' beat their price'
+        : 'No edge in following the move') + '</div>'
+    + '<div class="verdict__b">'
+    + (clearing
+        ? 'Read the interval before acting on it — at 95% confidence, about '
+          + 'one row in twenty clears by chance, and ' + b.rows.length
+          + ' were asked.'
+        : b.rows.length + ' ways of following line movement, tested across '
+          + span + '. None returns a profit you could rely on'
+          + ((b.losing || 0) ? ', and ' + b.losing + ' lose money at every '
+              + 'rate the measurement allows' : '')
+          + '. That is the result, not a gap: it is what keeps you off a bet '
+          + 'that looks clever.')
+    + '</div></div></div></div>';
+
+  h += '<div class="sect"><div class="card">';
   b.rows.slice().sort((x, y) => (y.roi_pct || 0) - (x.roi_pct || 0)).forEach(r => {
     const rate = r.hit_rate == null ? null : r.hit_rate * 100;
     const imp = r.implied == null ? null : r.implied * 100;
+    const loss = Math.abs(r.roi_pct || 0);
+    // Per $100, because "-7.2%" is a rate and a reader wants a quantity.
+    const money = (loss < 0.05 ? 'breaks about even'
+      : ((r.roi_pct || 0) > 0 ? 'returns about $' : 'costs about $')
+        + loss.toFixed(2) + ' per $100 staked');
     h += '<div class="def">'
-      + '<div class="def__t">' + esc(r.definition)
-        + '<span class="def__n num">n ' + r.n + '</span></div>'
-      + '<div class="def__r">'
-        + '<span class="num">' + (rate == null ? '—' : rate.toFixed(1) + '%') + '</span>'
-        + '<span class="def__v">vs</span>'
-        + '<span class="num">' + (imp == null ? '—' : imp.toFixed(1) + '%') + '</span>'
-        + '<span class="num ' + ((r.roi_pct || 0) > 0 ? 'good' : 'bad') + '">'
-          + ((r.roi_pct || 0) > 0 ? '+' : '−')
-          + Math.abs(r.roi_pct || 0).toFixed(1) + '%</span>'
-      + '</div>'
-      // The interval, drawn against the price rather than against 50%. A bar
-      // that straddles the marker is the whole finding.
+      + '<div class="def__t">' + esc(sentenceCase(r.definition))
+        + '<span class="def__n num">' + r.n.toLocaleString() + ' bets</span></div>'
+      // Break-even is an average over prices that vary, so clearing it does
+      // not have to mean profit: one definition wins 47.9% against a 43.7%
+      // break-even and still loses, because the bets it wins are priced
+      // shorter than the ones it loses. Said outright rather than left as
+      // three numbers that appear to contradict each other.
+      + '<div class="def__s">Wins <b>' + (rate == null ? '—' : rate.toFixed(1) + '%')
+        + '</b> of the time' + (r.price_bias
+            ? ', above the <b>' + (imp == null ? '—' : imp.toFixed(1) + '%')
+              + '</b> it needs on average — but the bets it wins are priced '
+              + 'shorter than the ones it loses, so it still ' + money
+            : '. You need <b>' + (imp == null ? '—' : imp.toFixed(1) + '%')
+              + '</b> to break even at these prices, so it ' + money)
+        + '.</div>'
       + ciBar(r)
       + '<div class="def__w">' + esc(r.verdict || '') + '</div>'
       + '</div>';
   });
-  h += '<div class="prose">ROI is a flat stake at the median closing price. '
-    + 'Nobody can bet a median — the best book beats it by about 1.2pp on a '
-    + 'moneyline — so these run conservative by roughly that much.</div>'
+  // The legend, once, under the rows it explains rather than beside each.
+  h += '<div class="prose"><b>The bar</b> is the range this bet\u2019s return '
+    + 'could plausibly sit in, given how many were measured. <b>The tick</b> '
+    + 'is break-even. A bar entirely left of it loses money; one that crosses '
+    + 'it has not been measured well enough to call either way \u2014 which '
+    + 'is most of them, and is why none of these is a system. Returns assume '
+    + 'the median closing price; the best book beats that by roughly 1.2pp on '
+    + 'a moneyline, so these run a little pessimistic.</div>'
     + '</div></div>';
   return h;
 }
 
-// The 95% interval with the implied price marked on it. Scaled to the span
-// the rows actually occupy rather than to [0,1], where every bar would be a
-// short line in the middle and the overlap would be invisible.
-function ciBar(r) {
-  if (r.lo == null || r.hi == null) return '';
-  const lo = 25, hi = 75;                       // percent of the market, clamped
-  const x = v => Math.max(0, Math.min(100, ((v * 100 - lo) / (hi - lo)) * 100));
-  const a = x(r.lo), c = x(r.hi), mark = x(r.implied);
-  return '<div class="ci"><span class="ci__bar" style="left:' + a.toFixed(1)
-    + '%;width:' + Math.max(1.5, c - a).toFixed(1) + '%"></span>'
-    + '<span class="ci__mark" style="left:' + mark.toFixed(1) + '%"></span></div>';
-}
+const sentenceCase = s => String(s || '').charAt(0).toUpperCase() + String(s || '').slice(1);
 
+// The RETURN's interval, with break-even marked at zero.
+//
+// Not the hit rate's. A hit rate cannot be compared to an average price when
+// the prices run from -450 to +381 — the same 52% is a fortune on longshots
+// and a catastrophe on favourites — and comparing them reported a definition
+// that LOSES $3.78 per $100 as one that beat its price.
+//
+// Drawn over a fixed -50%..+50% window so that every row shares one axis and
+// the bars can be compared to each other by eye. Anything wider than that is
+// clamped and keeps its number in the text.
+function ciBar(r) {
+  if (r.roi_lo == null || r.roi_hi == null) return '';
+  const lo = -50, hi = 50;
+  const x = v => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+  const a = x(r.roi_lo), c = x(r.roi_hi);
+  const tone = r.clears ? ' ci__bar--good' : (r.loses ? ' ci__bar--bad' : '');
+  return '<div class="ci"><span class="ci__bar' + tone + '" style="left:' + a.toFixed(1)
+    + '%;width:' + Math.max(1.5, c - a).toFixed(1) + '%"></span>'
+    + '<span class="ci__mark" style="left:' + x(0).toFixed(1) + '%"></span></div>';
+}
 // ── Combinations ────────────────────────────────────────────────────────
 //
 // Every slip you could build from a pool you choose, ranked. The pool control
