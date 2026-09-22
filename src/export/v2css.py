@@ -302,6 +302,60 @@ EXTRA_CSS = """
 }
 .graded b{font-weight:600}
 .graded .pos{color:var(--good)} .graded .neg{color:var(--bad)}
+
+/* ---------- game lines ---------- */
+/* One priced outcome: what it is, the consensus, the best, the gap, and who
+   is offering it. A five-column grid rather than a table because the last
+   column is a book name of unpredictable length and has to be allowed to
+   truncate rather than push the numbers off the right edge of a phone. */
+.gmk{
+  padding:var(--space-3) var(--space-4) var(--space-1);
+  font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.bl{
+  display:grid;grid-template-columns:minmax(0,1fr) 52px 52px 62px minmax(0,72px);
+  gap:var(--space-2);align-items:center;
+  padding:var(--space-2) var(--space-4);
+  font-size:14px;line-height:19px;
+}
+.bl + .bl{border-top:var(--hairline) solid var(--separator)}
+.bl__o{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bl__c{color:var(--ink-muted);text-align:right}
+.bl__b{text-align:right;font-weight:600}
+.bl__g{text-align:right;color:var(--ink-faint);font-size:13px}
+.bl__g.good{color:var(--good)}
+.bl__w{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:12px;color:var(--ink-faint);text-align:right;
+}
+/* Movement drops the book column: the mover is the market, not one book. */
+.bl--mv{grid-template-columns:minmax(0,1fr) 52px 52px 68px}
+.bl--mv .bl__g.good{color:var(--good)} .bl--mv .bl__g.bad{color:var(--bad)}
+
+/* ---------- bet definitions ---------- */
+/* Hit rate, the price it is measured against, and the interval drawn over
+   that price. The bar straddling the marker IS the finding, so it is drawn
+   rather than described — a reader who skips the verdict line still sees it. */
+.def{padding:var(--space-3) var(--space-4)}
+.def + .def{border-top:var(--hairline) solid var(--separator)}
+.def__t{display:flex;gap:var(--space-2);align-items:baseline;font-size:14px;line-height:19px}
+.def__n{margin-left:auto;font-size:12px;color:var(--ink-faint);flex:none}
+.def__r{display:flex;gap:var(--space-2);align-items:baseline;margin-top:2px;font-size:15px}
+.def__r .good{color:var(--good)} .def__r .bad{color:var(--bad)}
+.def__v{font-size:12px;color:var(--ink-faint)}
+.def__w{margin-top:var(--space-1);font-size:12px;line-height:17px;color:var(--ink-muted)}
+.ci{
+  position:relative;height:6px;margin:var(--space-2) 0 var(--space-1);
+  background:var(--bg-inset);border-radius:var(--radius-pill);
+}
+.ci__bar{
+  position:absolute;top:0;height:6px;
+  background:var(--border);border-radius:var(--radius-pill);
+}
+/* The price the interval has to clear. A 2px rule, full height, so it reads
+   as a threshold rather than as another value on the bar. */
+.ci__mark{position:absolute;top:-3px;width:2px;height:12px;background:var(--ink)}
 """
 
 

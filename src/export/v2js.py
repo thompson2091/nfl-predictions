@@ -22,8 +22,9 @@ from __future__ import annotations
 #: still work and a link into the app still lands where it says.
 JS = r"""
 // ── The shell ───────────────────────────────────────────────────────────
-const V2TABS = [['week', 'Board'], ['combos', 'Combos'], ['slip', 'Slip'],
-                ['saved', 'Saved'], ['ladder', 'Ladder'], ['model', 'Model']];
+const V2TABS = [['week', 'Board'], ['bets', 'Bets'], ['combos', 'Combos'],
+                ['slip', 'Slip'], ['saved', 'Saved'], ['ladder', 'Ladder'],
+                ['model', 'Model']];
 
 //: Which sheet is up, and what it is about. One at a time, by construction:
 //: a sheet over a sheet on a phone is a thing you cannot get out of.
@@ -31,6 +32,7 @@ let SHEET = null;
 
 const TABICON = {
   week: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+  bets: '<path d="M4 18V9M9.3 18V5M14.7 18v-6M20 18v-9"/>',
   combos: '<circle cx="9" cy="9" r="4.5"/><circle cx="15" cy="15" r="4.5"/>',
   slip: '<path d="M5 4h14v16l-3.5-2-3.5 2-3.5-2L5 20z"/>',
   saved: '<path d="M4 7.5A2.5 2.5 0 016.5 5H12l2 2h4a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2z"/>',
@@ -106,6 +108,7 @@ function screenHTML() {
   switch (S.route) {
     case 'week': return vBoard();
     case 'slip': return vSlip();
+    case 'bets': return vBets();
     case 'combos': return vCombos();
     case 'ladder': return vLadder();
     case 'saved': return vSaved();
@@ -904,9 +907,9 @@ JS_EVENTS = r"""
 //:
 //: `pstake` is deliberately absent: it is an input, and the input listener
 //: has it. A test holds this list against what the views actually emit.
-const CLICKS = ['tab', 'view', 'cbpool', 'pcard', 'del', 'open', 'fam', 'load',
-                'sheet', 'act', 'fav', 'fav2', 'add', 'add2', 'detail',
-                'set', 'drop'];
+const CLICKS = ['tab', 'view', 'cbpool', 'betseg', 'pcard', 'del', 'open',
+                'fam', 'load', 'sheet', 'act', 'fav', 'fav2', 'add', 'add2',
+                'detail', 'set', 'drop'];
 const CLICK_SEL = CLICKS.map(k => '[data-' + k + ']').join(',');
 
 function wire() {
@@ -937,6 +940,7 @@ function wire() {
       render(); return;
     }
     if (d.cbpool) { S.cb.pool = d.cbpool; render(); return; }
+    if (d.betseg) { S.bets = d.betseg; render(); return; }
     if (d.pcard) { S.pcard[d.pcard] = !S.pcard[d.pcard]; render(true); return; }
     if (d.del) { dropParlay(d.del); return; }
     if (d.open) {
@@ -1153,6 +1157,7 @@ function loadCombo(i) {
   const pools = kind === 'ou'
     ? { all: board, fav: board.filter(r => isFav(r.id)) }
     : { short: rowsFor(key, 'short').filter(eligible),
+        fade: rowsFor(key, 'fade').filter(eligible),
         fav: board.filter(r => isFav(r.id)), all: board };
   const pool = (pools[c.pool] || board).slice()
     .sort((a, b) => b.ours - a.ours).slice(0, COMBO_POOL_MAX);
@@ -1271,6 +1276,221 @@ def js() -> str:
 
 
 JS_SCREENS = r"""
+// ── Bets ────────────────────────────────────────────────────────────────
+//
+// The game-line archive, in three readings: what the market says about this
+// week's fixtures, which way each number moved, and how the definitions
+// built on that movement actually score.
+//
+// **No model column, on purpose.** The only thing here that speaks to a
+// game's scoring level is `joint.fit_team_rate`, and that is a regression OF
+// team touchdowns ON the total and the spread — it reads the market's number
+// rather than forming a view about it. A projection printed beside the
+// posted total would be the posted total wearing a different hat.
+const BETSEGS = [['games', 'Games'], ['move', 'Movement'], ['defs', 'Definitions']];
+const MKLABEL = { h2h: 'Moneyline', spreads: 'Spread', totals: 'Total' };
+
+function vBets() {
+  const g = (DATA.games || {}), b = (DATA.bets || {});
+  if (!g.rows && !b.rows) return vEmpty('No game lines captured',
+    'Run scripts/53_game_lines.py to archive this week’s spreads, totals and '
+    + 'moneylines. Nothing here is modelled — it is the market, and it has to '
+    + 'be fetched before it can be shown.');
+
+  const seg = BETSEGS.some(s => s[0] === S.bets) ? S.bets : 'games';
+  let h = '<div class="sect"><div class="seg" role="tablist">'
+    + BETSEGS.map(s => '<button role="tab" aria-selected="'
+      + (seg === s[0] ? 'true' : 'false') + '" data-betseg="' + s[0] + '">'
+      + s[1] + '</button>').join('') + '</div></div>';
+
+  if (seg === 'games') return h + vBetsGames(g);
+  if (seg === 'move') return h + vBetsMove(g);
+  return h + vBetsDefs(b);
+}
+
+// One card per fixture, three rows: spread, total, moneyline. Each row shows
+// the consensus and the best price beside it, because the gap between them is
+// the only edge on this page that needs no model — and it is real money.
+function vBetsGames(g) {
+  if (!g.rows || !g.rows.length) return vEmpty('No games this week',
+    'The archive holds no lines for ' + (g.season || '') + ' week ' + (g.week || '') + '.');
+
+  const by = {};
+  g.rows.forEach(r => { (by[r.game_id] = by[r.game_id] || []).push(r); });
+  const gaps = g.rows.map(r => r.gap_pp).filter(has).sort((a, b) => a - b);
+  const med = gaps.length ? gaps[Math.floor(gaps.length / 2)] : null;
+
+  let h = '<div class="sect"><div class="card"><div class="keystats">'
+    + keystat('Games', String(g.games || Object.keys(by).length))
+    + keystat('Best beats consensus', has(med) ? '+' + med.toFixed(2) + 'pp' : '—', 'good', true)
+    + keystat('Books', '≥ ' + (g.min_books || 4), null, true)
+    + '</div>'
+    + '<div class="prose">' + esc(g.no_model || '') + '</div></div></div>';
+
+  Object.keys(by).sort().forEach(id => {
+    const rows = by[id];
+    const a = rows[0];
+    h += '<div class="sect"><div class="card">'
+      + '<div class="secthead"><span>' + esc(a.away) + ' @ ' + esc(a.home)
+      + '</span><span>consensus → best</span></div>';
+    ['spreads', 'totals', 'h2h'].forEach(mk => {
+      const sel = rows.filter(r => r.market === mk);
+      if (!sel.length) return;
+      // By how many books quote it, not by probability. Books hang different
+      // points on the same game, so ordering by probability interleaves the
+      // alternates with the main line — ARI @ SF showed SF -8, ARI +8.5,
+      // SF -8.5, ARI +8 in that order. The line the most books agree on IS
+      // the market's line, so it leads, and the two sides of it stay adjacent.
+      sel.sort((x, y) => (y.n_books || 0) - (x.n_books || 0)
+                      || (x.point || 0) - (y.point || 0)
+                      || (y.consensus_prob || 0) - (x.consensus_prob || 0));
+      h += '<div class="gmk">' + esc(MKLABEL[mk] || mk) + '</div>';
+      sel.forEach(r => { h += betLine(r); });
+    });
+    h += '</div></div>';
+  });
+  return h;
+}
+
+// A single priced outcome. `gap_pp` is toned only when it is worth the second
+// account it would take to collect — below a point the best price and the
+// consensus are the same number with rounding between them.
+function betLine(r) {
+  const pt = has(r.point) ? (r.point > 0 ? '+' : '') + r.point : '';
+  const gap = has(r.gap_pp) ? r.gap_pp : null;
+  return '<div class="bl">'
+    + '<span class="bl__o">' + esc(r.outcome) + (pt ? ' <span class="num">'
+      + pt + '</span>' : '') + '</span>'
+    + '<span class="bl__c num">' + american(r.consensus) + '</span>'
+    + '<span class="bl__b num">' + american(r.best) + '</span>'
+    + '<span class="bl__g num' + (gap != null && gap >= 1 ? ' good' : '') + '">'
+      + (gap == null ? '' : '+' + gap.toFixed(2) + 'pp') + '</span>'
+    + '<span class="bl__w">' + esc(r.best_book || '') + '</span>'
+    + '</div>';
+}
+
+// Which way the market moved, biggest first. Empty is the NORMAL state for a
+// week still being played: the open is archived when the lines go up and the
+// close before kickoff, and there is nothing to difference in between.
+function vBetsMove(g) {
+  const rows = (g.rows || []).filter(r => has(r.move_pp) && r.move_pp !== 0);
+  // Not "nothing moved". A week can hold two snapshots that are the same
+  // capture — week 3 archived its open and close four minutes apart — and the
+  // difference table is then all zeroes for a reason that has nothing to do
+  // with the market. The gap is printed so the reader can tell which it is.
+  if (!g.moved) {
+    const gh = g.capture_gap_hours;
+    const near = gh != null && gh < 1;
+    return vEmpty(near ? 'Both snapshots are the same capture'
+                       : 'Only one end of this week is archived',
+      near
+        ? 'The open and the close were archived ' + Math.round(gh * 60)
+          + ' minutes apart, so every line is unchanged by construction rather '
+          + 'than by the market standing still. Run weekly_odds.sh open at the '
+          + 'start of a week and the close before kickoff.'
+        : 'Movement needs an open and a close. The open goes up with the lines '
+          + 'and the close is captured before kickoff — until both exist there '
+          + 'is nothing to difference, which is not a fault.');
+  }
+  if (!rows.length) return vEmpty('Nothing moved',
+    'Every line closed where it opened, to within a rounding step.');
+
+  rows.sort((a, b) => Math.abs(b.move_pp) - Math.abs(a.move_pp));
+  let h = '<div class="sect"><div class="card">'
+    + '<div class="secthead"><span>Outcome</span><span>open → close</span></div>'
+    + rows.map(r => {
+      const pt = has(r.point) ? ' ' + (r.point > 0 ? '+' : '') + r.point : '';
+      const up = r.move_pp > 0;
+      return '<div class="bl bl--mv">'
+        + '<span class="bl__o">' + esc(r.away) + '@' + esc(r.home) + ' · '
+          + esc(r.outcome) + '<span class="num">' + pt + '</span></span>'
+        + '<span class="bl__c num">' + american(r.open_odds) + '</span>'
+        + '<span class="bl__b num">' + american(r.consensus) + '</span>'
+        + '<span class="bl__g num ' + (up ? 'good' : 'bad') + '">'
+          + (up ? '+' : '−') + Math.abs(r.move_pp).toFixed(2) + 'pp</span>'
+        + '</div>';
+    }).join('')
+    + '<div class="prose">Positive means the market came toward that side. '
+    + 'The other side of the same line carries the mirror image, which is what '
+    + 'makes a one-sided move visible as one.</div>'
+    + '</div></div>';
+  return h;
+}
+
+// The definitions, each against the price it would be taken at.
+//
+// This is the screen the whole archive was built for, and it says no. Every
+// row carries n, the interval and the implied price BECAUSE a hit rate on its
+// own reads as a system: the first version of this table compared everything
+// to a flat 52.38% and reported "moneyline moved toward this side" as
+// clearing at 62.3%. Those sides were favourites priced at 56.8%.
+function vBetsDefs(b) {
+  if (!b.rows || !b.rows.length) return vEmpty('No definitions scored',
+    'The archive needs both ends of at least one completed week.');
+
+  const yrs = (b.seasons || []).filter(y => y);
+  let h = '<div class="sect"><div class="card"><div class="keystats">'
+    + keystat('Definitions', String(b.rows.length))
+    + keystat('Clearing their price', String(b.clearing || 0),
+              b.clearing ? 'good' : 'bad', true)
+    + keystat('Seasons', yrs.length ? yrs[0] + '–' + yrs[yrs.length - 1] : '—', null, true)
+    + '</div>'
+    + '<div class="prose">Each row is scored against the closing price of the '
+    + 'sides it selects, not against a flat break-even. A rule that picks '
+    + 'favourites beats a coin flip by construction; what matters is whether '
+    + 'it beats <em>them</em>. A move counts at '
+    + (b.min_move_pp || 1) + 'pp or more.</div>'
+    // Six definitions are six chances to find a 95% result by luck. Stated
+    // here rather than left to the reader, because a row whose interval
+    // clears its price reads as a finding and one of six is roughly what
+    // chance hands over.
+    + '<div class="prose">' + b.rows.length + ' definitions are tested here. '
+    + 'At 95% confidence, roughly one in twenty lands outside its interval by '
+    + 'chance alone — so a single row clearing is weaker evidence than the '
+    + 'same row would be if it were the only one asked.</div></div></div>';
+
+  h += '<div class="sect"><div class="card">'
+    + '<div class="secthead"><span>Definition</span><span>hit vs price</span></div>';
+  b.rows.slice().sort((x, y) => (y.roi_pct || 0) - (x.roi_pct || 0)).forEach(r => {
+    const rate = r.hit_rate == null ? null : r.hit_rate * 100;
+    const imp = r.implied == null ? null : r.implied * 100;
+    h += '<div class="def">'
+      + '<div class="def__t">' + esc(r.definition)
+        + '<span class="def__n num">n ' + r.n + '</span></div>'
+      + '<div class="def__r">'
+        + '<span class="num">' + (rate == null ? '—' : rate.toFixed(1) + '%') + '</span>'
+        + '<span class="def__v">vs</span>'
+        + '<span class="num">' + (imp == null ? '—' : imp.toFixed(1) + '%') + '</span>'
+        + '<span class="num ' + ((r.roi_pct || 0) > 0 ? 'good' : 'bad') + '">'
+          + ((r.roi_pct || 0) > 0 ? '+' : '−')
+          + Math.abs(r.roi_pct || 0).toFixed(1) + '%</span>'
+      + '</div>'
+      // The interval, drawn against the price rather than against 50%. A bar
+      // that straddles the marker is the whole finding.
+      + ciBar(r)
+      + '<div class="def__w">' + esc(r.verdict || '') + '</div>'
+      + '</div>';
+  });
+  h += '<div class="prose">ROI is a flat stake at the median closing price. '
+    + 'Nobody can bet a median — the best book beats it by about 1.2pp on a '
+    + 'moneyline — so these run conservative by roughly that much.</div>'
+    + '</div></div>';
+  return h;
+}
+
+// The 95% interval with the implied price marked on it. Scaled to the span
+// the rows actually occupy rather than to [0,1], where every bar would be a
+// short line in the middle and the overlap would be invisible.
+function ciBar(r) {
+  if (r.lo == null || r.hi == null) return '';
+  const lo = 25, hi = 75;                       // percent of the market, clamped
+  const x = v => Math.max(0, Math.min(100, ((v * 100 - lo) / (hi - lo)) * 100));
+  const a = x(r.lo), c = x(r.hi), mark = x(r.implied);
+  return '<div class="ci"><span class="ci__bar" style="left:' + a.toFixed(1)
+    + '%;width:' + Math.max(1.5, c - a).toFixed(1) + '%"></span>'
+    + '<span class="ci__mark" style="left:' + mark.toFixed(1) + '%"></span></div>';
+}
+
 // ── Combinations ────────────────────────────────────────────────────────
 //
 // Every slip you could build from a pool you choose, ranked. The pool control
@@ -1289,7 +1509,13 @@ function vCombos() {
   const pools = kind === 'ou'
     ? { all: { label: 'Priced', rows: board },
         fav: { label: 'Favourites', rows: board.filter(r => isFav(r.id)) } }
+    // Fades sit beside the shortlist here for the same reason they do on the
+    // board: they are the same table with the opposite rule applied. A slip
+    // built from them is a slip of players we rate BELOW their price, which is
+    // a lay ticket, not a parlay — `vCombos` prints that warning rather than
+    // leaving the pool to be read as picks.
     : { short: { label: 'Shortlist', rows: rowsFor(key, 'short').filter(eligible) },
+        fade: { label: 'Fades', rows: rowsFor(key, 'fade').filter(eligible) },
         fav: { label: 'Favourites', rows: board.filter(r => isFav(r.id)) },
         all: { label: 'Everyone', rows: board } };
   if (!pools[c.pool]) c.pool = kind === 'ou' ? 'all' : 'short';
@@ -1299,6 +1525,16 @@ function vCombos() {
       + (c.pool === k ? 'true' : 'false') + '" data-cbpool="' + k + '">'
       + pools[k].label + ' <span class="c">' + pools[k].rows.length
       + '</span></button>').join('') + '</div></div>';
+
+  // Every leg is still priced and multiplied as a BACK. On the fade pool that
+  // is the wrong direction by definition — these are the players the model
+  // rates below the price being quoted — so each slip is negative EV by
+  // construction and the ranking will say so. Shown rather than hidden,
+  // because "what would this cost me" is the question the pool answers.
+  if (c.pool === 'fade') h += '<div class="sect"><div class="banner banner--warn">'
+    + 'These are players rated <em>below</em> their price. The legs below are '
+    + 'still priced as backs, so every slip here is negative value on purpose '
+    + '— this pool shows what to leave out, not what to build.</div></div>';
 
   h += '<div class="chiprow">'
     + vChip('cblegs', c.legs + ' legs', false)

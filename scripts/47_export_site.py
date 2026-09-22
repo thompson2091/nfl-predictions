@@ -628,6 +628,145 @@ def _attach_ou_shortlists(payload: dict) -> None:
                                               ous.load(market))
 
 
+def games(season: int | None, week: int | None) -> dict:
+    """This week's games as the market prices them — and no model column.
+
+    **There is deliberately no projection beside a spread or a total.** The
+    only thing in this project that speaks to a game's scoring level is
+    `joint.fit_team_rate`, and that is a Poisson regression OF team touchdowns
+    ON `implied_team_total`, `total_line` and `abs_spread`. Its job is to turn
+    the market's number into touchdowns, not to form a second opinion about
+    it, so printing its output next to the posted total would print the total
+    twice and label the second copy a prediction. `src/evaluation/matchups`
+    carries the longer version of this note.
+
+    What is real here is the disagreement. The best moneyline beats the
+    consensus by a median 1.23pp, which is return available for holding more
+    than one account and needs no model at all.
+    """
+    if not (season and week):
+        return {}
+    try:
+        from src.evaluation.matchups import MIN_BOOKS, board, movement
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  games unavailable ({e})", file=sys.stderr)
+        return {}
+
+    b = board(season, week)
+    if b.is_empty():
+        print(f"  no game lines for {season} week {week}", file=sys.stderr)
+        return {}
+
+    mv = movement(season, week)
+    moves = {}
+    if not mv.is_empty():
+        for r in mv.iter_rows(named=True):
+            moves[(r["game_id"], r["market"], str(r["outcome"]),
+                   r["point"])] = r
+
+    # Two snapshots are not two ENDS. Week 3 of 2026 archived its open and its
+    # close four minutes apart — `weekly_odds.sh open` had not run, so the
+    # backfill wrote the same market state twice — and 202 of its 204 lines
+    # came back bit-identical. Rendered naively that reads "nothing moved",
+    # which is a claim about the market rather than about the capture.
+    #
+    # The gate is `MIN_MOVE_PP`, borrowed from `rlm` rather than invented here:
+    # that module already defines it as the point below which a difference is
+    # book rounding. If not one line in the week cleared it, there is nothing
+    # to show and the reason is the capture, not the market.
+    from src.evaluation.rlm import MIN_MOVE_PP
+
+    real = [m for m in moves.values() if abs(m["move_pp"] or 0) >= MIN_MOVE_PP]
+    gap_h = None
+    try:
+        import polars as pl
+
+        from src.ingest.game_lines import LINES_PATH
+        d = (pl.read_parquet(LINES_PATH)
+             .filter((pl.col("season") == season) & (pl.col("week") == week)))
+        ts = {k: v for k, v in
+              d.group_by("snapshot").agg(pl.col("captured_at").min().alias("t"))
+              .iter_rows()}
+        if "open" in ts and "close" in ts:
+            from datetime import datetime
+            fmt = "%Y-%m-%dT%H:%M:%SZ"
+            gap_h = round((datetime.strptime(ts["close"], fmt)
+                           - datetime.strptime(ts["open"], fmt)).total_seconds()
+                          / 3600.0, 2)
+    except Exception:                                            # noqa: BLE001
+        pass
+
+    rows = []
+    for r in b.iter_rows(named=True):
+        k = (r["game_id"], r["market"], str(r["outcome"]), r["point"])
+        m = moves.get(k)
+        rows.append({
+            "game_id": r["game_id"], "home": r["home_team"],
+            "away": r["away_team"], "market": r["market"],
+            "outcome": str(r["outcome"]), "point": r["point"],
+            "consensus": r["consensus_odds"], "consensus_prob": r["consensus_prob"],
+            "best": r["best_odds"], "best_book": r["best_book"],
+            "gap_pp": r["gap_pp"], "n_books": r["n_books"],
+            # Null, not zero, when the week holds one end only. A week being
+            # played has no close yet and "did not move" is a different claim
+            # from "cannot be known".
+            "move_pp": (m or {}).get("move_pp"),
+            "open_odds": (m or {}).get("open_odds"),
+        })
+    return {"season": season, "week": week, "rows": rows,
+            "min_books": MIN_BOOKS,
+            "games": int(b["game_id"].n_unique()),
+            # Not `bool(moves)`: a week holding two copies of the same capture
+            # has a full movement table of zeroes. See above.
+            "moved": bool(real),
+            "capture_gap_hours": gap_h,
+            "min_move_pp": MIN_MOVE_PP,
+            # Stated on the page rather than left for the reader to wonder at.
+            "no_model": ("The team-rate model is a regression ON the total and "
+                         "the spread, so it cannot second-guess them. What is "
+                         "shown is the market, the spread between books, and "
+                         "which way it moved.")}
+
+
+def bets(season: int | None) -> dict:
+    """Bet definitions, each scored against the price it would be taken at.
+
+    **Not against a flat break-even**, which is the mistake this table exists
+    to avoid repeating: the first version compared every definition to 52.38%
+    and reported "moneyline moved toward this side" as clearing at 62.3%.
+    Those sides are favourites priced at 56.8%; beating a coin flip is not
+    beating them. Every row carries its n, its interval and the price it is
+    measured against, because a hit rate without those three manufactures
+    exactly the belief the rest of this project spends its tests guarding
+    against.
+    """
+    try:
+        from src.evaluation.rlm import MIN_MOVE_PP, evaluate
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  bet definitions unavailable ({e})", file=sys.stderr)
+        return {}
+    try:
+        rows = evaluate()
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  bet definitions unavailable ({e})", file=sys.stderr)
+        return {}
+    rows = [r for r in rows if r.get("n")]
+    if not rows:
+        return {}
+    seasons = []
+    try:
+        import polars as pl
+
+        from src.ingest.game_lines import LINES_PATH
+        if LINES_PATH.exists():
+            d = pl.read_parquet(LINES_PATH)
+            seasons = sorted(int(x) for x in d["season"].unique())
+    except Exception:                                            # noqa: BLE001
+        pass
+    return {"rows": rows, "min_move_pp": MIN_MOVE_PP, "seasons": seasons,
+            "clearing": sum(1 for r in rows if r.get("clears"))}
+
+
 def build(season: int | None, week: int | None, brand: str) -> dict:
     import importlib.util
 
@@ -655,9 +794,15 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
         for p in m.get("players") or []:
             if p.get("player") in pos:
                 p["pos"] = pos[p["player"]]
-        # Shortlist and veto rows need no enrichment: the page reads them as a
-        # set of names and takes every figure from the board, so the two views
-        # cannot disagree with the table they filter.
+        # Shortlist and veto rows take every FIGURE from the board, so the two
+        # views cannot disagree with the table they filter. The name is the
+        # exception, because the name is the join key: `qualified_name` rewrote
+        # the board's "DEF/ST" to "DEF/ST (BUF)" and left these bare, so a
+        # defence on either list matched nothing and dropped out of Shortlist
+        # and Fades without emptying them — the failure looks like a short week.
+        for key in ("rows", "vetoes"):
+            for r in (m.get("shortlist") or {}).get(key) or []:
+                r["player"] = qualified_name(r.get("player"), r.get("team"))
 
     _receptions_projections(payload, s, w)
 
@@ -689,6 +834,13 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     payload["season"] = s
     payload["week"] = w
     payload["results"] = results(s, w) if s and w else {}
+
+    # The game-level market and the bet definitions. Both read the game-line
+    # archive rather than the player board, and both are absent rather than
+    # empty when it has not been captured for the week — a games tab showing
+    # sixteen blank fixtures is worse than a tab that says why it is not there.
+    payload["games"] = games(s, w)
+    payload["bets"] = bets(s)
 
     # Earlier weeks, so the board can be looked back at. Only weeks whose
     # play-by-play is on disk: an unplayed week carries `target = 0` on every

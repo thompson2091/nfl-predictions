@@ -204,12 +204,24 @@ def evaluate(seasons: list[int] | None = None,
         dec = s.with_columns((1.0 / pl.col("close_prob")).alias("_d"))
         roi = float((dec.filter(pl.col("won"))["_d"].sum() - n) / n) * 100
         clears = lo > implied
+        # Three outcomes, not two. "Interval spans it" was printed for every
+        # row that did not clear, including one whose interval sits ENTIRELY
+        # below its price — "moved toward the under" hits 35.5% against 53.5%
+        # with an interval of [28.0, 43.6], which touches 53.5% nowhere. That
+        # is a different and stronger statement than an inconclusive one, and
+        # printing the weaker wording for it was simply false.
+        loses = hi < implied
+        if clears:
+            verdict = "beats its own price"
+        elif loses:
+            verdict = (f"loses to its price ({implied:.1%}) — the whole "
+                       f"interval sits below it")
+        else:
+            verdict = (f"does not beat its price ({implied:.1%}) — "
+                       f"interval spans it")
         out.append({
             "definition": name, "n": n, "hits": hits, "hit_rate": rate,
             "lo": lo, "hi": hi, "implied": implied, "roi_pct": roi,
-            "clears": clears,
-            "verdict": ("beats its own price" if clears else
-                        f"does not beat its price ({implied:.1%}) — "
-                        f"interval spans it"),
+            "clears": clears, "loses": loses, "verdict": verdict,
         })
     return out
