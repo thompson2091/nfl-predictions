@@ -124,9 +124,16 @@ function vAppbar() {
     ? '<button class="market" data-sheet="market">' + esc(marketLabel(S.market))
       + ' ' + I.chev + '</button>'
     : '';
+  // Beside the market, and only where there is a past week to look at. It
+  // rides in the bar for the same reason the market does: it changes what
+  // every row on the screen means, so it cannot sit over one board.
+  const week = (MARKET_ROUTES[S.route] && historyWeeks().length)
+    ? '<button class="market" data-sheet="week">' + esc(weekLabel())
+      + ' ' + I.chev + '</button>'
+    : '';
   return '<span class="appbar__mark">' + esc(DATA.brand || 'Pick Six') + '</span>'
     + '<span class="appbar__screen">' + esc(S.route === 'week' ? '' : label) + '</span>'
-    + market;
+    + week + market;
 }
 
 function vTab(t) {
@@ -184,6 +191,12 @@ function vBoard() {
   rows = applyFilters(rows, f);
   rows = v2sort(rows, f);
 
+  // A past week replaces the board rather than filtering it. Those rows are
+  // the archived top 100 with an outcome attached — no price, no slip, no
+  // shortlist — and pushing them through the live renderer would offer a bet
+  // on a game that has finished.
+  if (S.week != null) return vPastWeek();
+
   let h = '<div class="sect">' + vSeg(key, kind, m) + vSearch(f) + '</div>'
         + vChips(f, key, kind, all);
   (m.problems || []).forEach(p => {
@@ -194,6 +207,47 @@ function vBoard() {
   // replacing the search input above it. See `patchBoard`.
   h += '<div class="sect" id="boardlist">' + boardList(rows, all, f, view, kind)
      + '</div>';
+  return h;
+}
+
+// One archived week: what the model rated, and what happened.
+//
+// The header carries HIT COUNT AGAINST EXPECTED, not the hit count alone.
+// "30 of 100" reads as a bad week and "30 against 38 expected" reads as a
+// below-average one; only the second is a statement about the model. On a
+// hundred rows averaging 38% the ordinary spread is about five either way.
+function vPastWeek() {
+  const rows = weekRows() || [];
+  const a = weekAccuracy();
+  let h = '<div class="sect"><div class="banner">'
+        + 'Week ' + S.week + ' has been played. These are the top '
+        + rows.length + ' the model rated, with what happened.'
+        + '</div></div>';
+  if (a) {
+    h += '<div class="sect"><div class="card" style="padding:14px 16px">'
+       + '<div class="metrics">'
+       + met('Hit', String(a.hit))
+       + met('Expected', String(a.expected))
+       + met('Of', String(a.n))
+       + met('Vs expected', (a.hit - a.expected >= 0 ? '+' : '')
+             + (a.hit - a.expected).toFixed(1),
+             a.hit - a.expected >= 0 ? 'v-good' : 'v-bad')
+       + '</div></div></div>';
+  }
+  h += '<div class="sect"><div class="card">'
+     + rows.map((r, i) => {
+         const hit = r.scored === 1;
+         const tone = hit ? 'v-good' : 'v-bad';
+         return '<div class="row2">'
+           + '<span class="row2__rank num">' + (i + 1) + '</span>'
+           + '<span class="row2__name">' + esc(r.player_name || '')
+           + ' <span class="c">' + esc(r.team || '') + '</span></span>'
+           + '<span class="row2__p num">' + pct(r.probability) + '</span>'
+           + '<span class="badge badge--' + (hit ? 'good' : 'bad') + '">'
+           + (hit ? 'scored' : 'no') + '</span>'
+           + '</div>';
+       }).join('')
+     + '</div></div>';
   return h;
 }
 
@@ -584,11 +638,53 @@ function vSheet() {
   sheet.className = 'sheet open';
 }
 
+// ── Past weeks ──────────────────────────────────────────────────────────
+//
+// `DATA.history` carries the top of the board for every PLAYED week, with each
+// row marked hit or miss. Only played weeks are in it: a week that has not
+// kicked off carries a target of 0 on every candidate rather than null, so
+// grading one would paint every pick as a miss — which is not a bad week, it
+// is no week. The exporter gates on play-by-play, not on the label.
+//
+// `S.week` of null means the live board, which is the full payload. A past
+// week is a slimmer object — the top 100 by our probability — because 540 rows
+// times eighteen weeks is most of a megabyte to carry a tail nobody scrolls to.
+function historyFor(key) {
+  const h = (DATA.history || {})[key || S.market];
+  return h && h.weeks ? h : null;
+}
+function historyWeeks() {
+  const h = historyFor();
+  return h ? (h.played || []) : [];
+}
+function weekLabel() {
+  return S.week == null ? 'This week' : ('Week ' + S.week);
+}
+function weekRows() {
+  const h = historyFor();
+  if (!h || S.week == null) return null;
+  return h.weeks[String(S.week)] || null;
+}
+function weekAccuracy() {
+  const h = historyFor();
+  if (!h || S.week == null) return null;
+  return (h.accuracy || {})[String(S.week)] || null;
+}
+
 const SHEETS = {
   market: () => sheetHTML('Market', MENU.map(g =>
     '<div class="secthead" style="padding:12px 0 4px">' + esc(g.title) + '</div>'
     + g.items.map(it => opt(it[1], it[0] === S.market, '', 'market', it[0],
                             !!it[2] || !served(it[0]))).join('')).join('')),
+
+  week: () => sheetHTML('Week',
+    opt('This week', S.week == null, '', 'week', '')
+    + historyWeeks().slice().reverse().map(w => {
+        const a = ((historyFor() || {}).accuracy || {})[String(w)];
+        const note = a ? (a.hit + ' of ' + a.n + ' hit, ' + a.expected
+                          + ' expected') : '';
+        return opt('Week ' + w, String(S.week) === String(w), note, 'week', w);
+      }).join('')),
 
   sort: () => sheetHTML('Sort by', SORTS.map(s =>
     opt(s[1], S.fw.sort === s[0], '', 'sort', s[0])).join('')),
@@ -873,7 +969,10 @@ function wire() {
         S.cb[key] = (key === 'rank') ? v : +v;
         SHEET = null; render(); return;
       }
-      if (k === 'market') { S.market = v; S.fw.game = ''; }
+      if (k === 'week') {
+        // Empty string is "this week": the sheet cannot carry a null.
+        S.week = (v === '' || v == null) ? null : Number(v);
+      } else if (k === 'market') { S.market = v; S.fw.game = ''; }
       else if (k === 'sort') {
         // Tapping the column you are already sorted by reverses it, which is
         // what the arrow on a table heading does and what a sheet cannot say.

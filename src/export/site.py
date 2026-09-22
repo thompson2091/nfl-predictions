@@ -1098,6 +1098,9 @@ const S = {
   // shortlist, or the players we rate below the price. Favorites is a
   // separate toggle because it is orthogonal — you can want your starred
   // players within the shortlist.
+  // Which archived week the board is showing; null is the live one. Only
+  // weeks with play-by-play on disk can be selected — see `week_history`.
+  week: null,
   fw: { view: 'all', q: '', game: '', pos: '', priced: 'all', favOnly: false,
         // Off means one row per player. See `oneLine`.
         allLines: false, sort: DEFAULT_BOARD_SORT, dir: -1 },

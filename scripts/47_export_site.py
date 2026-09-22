@@ -689,6 +689,22 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     payload["season"] = s
     payload["week"] = w
     payload["results"] = results(s, w) if s and w else {}
+
+    # Earlier weeks, so the board can be looked back at. Only weeks whose
+    # play-by-play is on disk: an unplayed week carries `target = 0` on every
+    # candidate rather than null, so grading one reads as every pick losing —
+    # which is not a bad week, it is no week. See `week_history`.
+    #
+    # Top 100 per week rather than the whole board: 540 rows x 18 weeks would
+    # add roughly 780KB to a 1.6MB payload to carry a tail nobody scrolls to.
+    if s:
+        try:
+            from src.evaluation.week_history import payload as week_payload
+            payload["history"] = {
+                mk: week_payload(s, mk) for mk in ("anytime_td", "first_td")}
+        except Exception as e:                                   # noqa: BLE001
+            print(f"  week history unavailable ({e})", file=sys.stderr)
+            payload["history"] = {}
     return _shrink(mod.clean(payload))
 
 
