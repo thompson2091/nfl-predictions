@@ -26,6 +26,9 @@ from src.features.score_first_features import build_score_first_features
 from src.features.td_streak_features import build_td_streak_features
 from src.features.opp_target_features import build_opp_target_features
 from src.features.coach_features import build_coach_features
+from src.features.market_movement_features import build_market_movement_features
+from src.features.practice_features import build_practice_features
+from src.prediction.predict import _norm_name_expr
 # TODO(oc-features): re-enable once data/raw/oc_mapping.csv is generated
 # dynamically rather than hand-maintained. See build_oc_features docstring.
 # from src.features.oc_features import build_oc_features
@@ -407,6 +410,9 @@ def assemble_features() -> pl.DataFrame:
     print(f"  Starter lookup: {starters.shape} "
           f"({starters['season'].n_unique()} seasons)")
     injury_player_feats, injury_team_feats = build_injury_features(injuries, starters)
+    # Its own family so it can be ablated on its own; see practice_features.
+    practice_feats = build_practice_features(injuries)
+    print(f"  Practice-report features: {practice_feats.shape}")
     print(f"  Injury player features: {injury_player_feats.shape}")
     print(f"  Injury team features: {injury_team_feats.shape}")
 
@@ -649,6 +655,44 @@ def assemble_features() -> pl.DataFrame:
     # Round 2: Injury player features
     if not injury_player_feats.is_empty():
         df = df.join(injury_player_feats, on=["player_id", "season", "week"], how="left")
+
+    if not practice_feats.is_empty():
+        before = df.height
+        df = df.join(practice_feats, on=["player_id", "season", "week"], how="left")
+        assert df.height == before, (
+            f"practice join fanned out: {before} -> {df.height}")
+
+    # What the market did between its open and its last pre-kickoff price.
+    #
+    # Keyed on the NORMALISED NAME, because the odds archive has no player_id —
+    # which makes this the one join in this file that can fan out on a name
+    # collision, and DEF/ST is thirty-two rows sharing one. The builder returns
+    # one row per (season, week, name) and the row count is asserted below,
+    # because a fan-out here would duplicate candidates before the shift() that
+    # every rolling feature depends on. See trap 2.
+    #
+    # Null for a player-week with no closing price, which on a board built
+    # before the closing capture is every row. That is honest — the market has
+    # not moved yet — and it is why `weekly_odds.sh` rebuilds after a close.
+    try:
+        mkt_move = build_market_movement_features()
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  Market movement features unavailable ({e}) — skipping")
+        mkt_move = None
+    if mkt_move is not None and not mkt_move.is_empty():
+        before = df.height
+        mkt_move = mkt_move.unique(subset=["season", "week", "player_name_norm"],
+                                   keep="last")
+        df = df.with_columns(
+            _norm_name_expr("player_name").alias("_mm_name")
+        ).join(
+            mkt_move.rename({"player_name_norm": "_mm_name"}),
+            on=["season", "week", "_mm_name"], how="left",
+        ).drop("_mm_name")
+        assert df.height == before, (
+            f"market-movement join fanned out: {before} -> {df.height}. The "
+            f"name key is not unique on one side.")
+        print(f"  Market movement features: {mkt_move.height} keys joined")
 
     # Round 2: Injury team features (teammate boost)
     if not injury_team_feats.is_empty():

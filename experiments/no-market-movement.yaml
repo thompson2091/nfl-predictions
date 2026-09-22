@@ -1,0 +1,24 @@
+# Does open-to-close line movement carry anything the on-field features do not?
+#
+# This is the only input in the project that is not a summary of on-field
+# events: it is what other people's money did after the week's prices went up.
+# `docs/DATA_SOURCES.md` has listed it as the top unexploited input since the
+# odds backfill landed.
+#
+# Served as a within-week z-score, because the raw move's level drifts by
+# season (-0.18pp in 2023 to -0.85pp in 2025) and a tree cannot extrapolate to
+# a level it never saw. Populated on about 46% of rows inside the seasons the
+# odds archive covers (2023+) and null before that, so most of the training
+# matrix cannot see it at all — which caps how much it can be worth and is
+# exactly why it needs measuring rather than assuming.
+#
+# Run as a REMOVAL: the champion carries the family, this overlay drops it.
+#
+#   make screen EXP=experiments/no-market-movement.yaml
+#   make gate   EXP=experiments/no-market-movement.yaml
+id: 2026.09.22-no-market-movement
+note: "Ablate the line-movement family; champion carries it, overlay drops it"
+overlay:
+  models:
+    exclude_feature_families:
+    - build_market_movement_features

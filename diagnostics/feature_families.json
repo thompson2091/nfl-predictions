@@ -1,7 +1,7 @@
 {
   "n_features": 236,
-  "n_columns_mapped": 348,
-  "n_families": 37,
+  "n_columns_mapped": 355,
+  "n_families": 39,
   "unattributed": [
     "has_scored_td",
     "is_high_snap",
@@ -109,6 +109,11 @@
       "ix_windy_x_rb",
       "ix_wr_air_x_opp_target_wr",
       "ix_wr_tgt_x_opp_wr_td"
+    ],
+    "build_market_movement_features": [
+      "mkt_move_abs_z",
+      "mkt_move_pp",
+      "mkt_move_z"
     ],
     "build_matchup_interaction_features": [
       "ix_itt_x_td_mkt_share",
@@ -222,6 +227,7 @@
       "player_fantasy_points_ppr_avg_3g",
       "player_fantasy_points_ppr_avg_5g",
       "player_fantasy_points_ppr_szn_avg",
+      "player_games_observed",
       "player_receiving_epa_avg_3g",
       "player_receiving_epa_avg_5g",
       "player_receiving_epa_szn_avg",
@@ -284,6 +290,11 @@
       "player_target_rate_3g",
       "player_target_rate_5g",
       "player_target_rate_szn"
+    ],
+    "build_practice_features": [
+      "practice_dnp",
+      "practice_full",
+      "practice_limited"
     ],
     "build_qb_features": [
       "team_qb_rush_td_rate_avg_5g",
