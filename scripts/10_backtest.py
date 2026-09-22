@@ -72,7 +72,7 @@ def _clustered_roi(sel: pl.DataFrame, draws: int = 2000):
 
 
 def main(season: int, target_type: str, model_name: str,
-         walk_forward: bool = False) -> int:
+         walk_forward: bool = False, out_name: str | None = None) -> int:
     """Replay one season through the production betting path.
 
     With `walk_forward`, the model is retrained from scratch on seasons before
@@ -383,7 +383,29 @@ def main(season: int, target_type: str, model_name: str,
     # and an untagged file meant the Betting reality tab kept quoting whichever
     # model happened to run last while the board scored with the one you had
     # selected — two different models described as one.
+    # And tagged with WHICH MODEL WEIGHTS, which is not the same question.
+    # Under --walk-forward the fold retrains from scratch on earlier seasons,
+    # so `raw_prob` here comes from a model that is deliberately not the one in
+    # production. Nothing recorded that, and `evaluation.parity` reads this
+    # frame to ask whether the served path and the evaluated path agree — a
+    # question it cannot answer against retrained weights, and which it
+    # therefore answered "no" every time the frames were fresh enough to check.
+    # Measured 2026-09-22: with --walk-forward the two paths differ by 0.0147
+    # mean on anytime TD; without it they agree to 1.9e-9.
     out_dir = get_path("output", target_type)
+    df = df.with_columns(pl.lit(bool(walk_forward)).alias("walk_forward"))
+
+    # `out_name` writes somewhere of the caller's choosing instead of over the
+    # season's frame. It exists for the parity frame: `make evaluate` needs
+    # --walk-forward and `evaluation.parity` needs the production weights, and
+    # the two cannot share one filename without each silently overwriting the
+    # other's answer.
+    if out_name:
+        out = out_dir / out_name
+        df.write_csv(out)
+        print(f"\nSaved per-bet detail: {out}")
+        return 0
+
     out = out_dir / f"backtest_{model_name}_{season}.csv"
     df.write_csv(out)
     print(f"\nSaved per-bet detail: {out}")
@@ -404,6 +426,9 @@ if __name__ == "__main__":
     ap.add_argument("--target", default=cfg["target"]["type"])
     # Resolved after parsing: the right model depends on --target.
     ap.add_argument("--model", default=None)
+    ap.add_argument("--out-name", default=None,
+                    help="Write to output/<target>/<name> instead of the "
+                         "season's frame. Used for the parity frame.")
     ap.add_argument("--walk-forward", action="store_true",
                     help="Retrain on earlier seasons before scoring this one. "
                          "Required for any season at or before splits.train_end, "
@@ -412,4 +437,4 @@ if __name__ == "__main__":
     if a.model is None:
         from src.utils.config import production_model
         a.model = production_model(a.target)
-    sys.exit(main(a.season, a.target, a.model, a.walk_forward))
+    sys.exit(main(a.season, a.target, a.model, a.walk_forward, a.out_name))

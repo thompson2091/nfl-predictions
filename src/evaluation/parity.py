@@ -45,8 +45,20 @@ def compare(season: int, week: int, target_type: str,
 
     model_name = model_name or production_model(target_type)
 
-    frames = [p for p in backtest_files(target_type)
-              if p.stem.endswith(str(season))]
+    from src.utils.paths import get_path as _gp
+
+    # The parity frame first, when one exists. `make evaluate` builds the
+    # season frames with --walk-forward, whose folds retrain on earlier seasons
+    # and so cannot be compared to the served weights; `make parity-frame`
+    # builds this one on the production model for exactly this check. Falling
+    # back to the season frame keeps the old behaviour, and the tags below
+    # explain the skip when it cannot be used.
+    parity_frame = _gp("output", target_type) / f"parity_{season}.csv"
+    if parity_frame.exists():
+        frames = [parity_frame]
+    else:
+        frames = [p for p in backtest_files(target_type)
+                  if p.stem.endswith(str(season))]
     if not frames:
         return None
 
@@ -64,6 +76,25 @@ def compare(season: int, week: int, target_type: str,
     bt = pl.read_csv(frames[0]).filter(pl.col("week") == week)
     if bt.height == 0:
         return None
+
+    # A walk-forward frame is not comparable and never was. Its fold retrains
+    # from scratch on the seasons before the one being scored, so `raw_prob`
+    # comes from weights production does not serve — the difference is 0.0147
+    # mean on anytime TD against 1.9e-9 for a frame built on the production
+    # model. `make evaluate` passes --walk-forward, which is right for the
+    # measurement it is making and wrong for this one, so the two silently
+    # disagreed for as long as the frames were fresh enough to be compared.
+    #
+    # Frames written before this column existed carry no answer; treat them as
+    # unknown rather than assume, since assuming "not walk-forward" is what
+    # produced a year of confident wrong failures.
+    if "walk_forward" in bt.columns:
+        if bool(bt["walk_forward"][0]):
+            return {"walk_forward": True, "target_type": target_type,
+                    "season": season, "week": week, "n": 0}
+    else:
+        return {"untagged": True, "target_type": target_type,
+                "season": season, "week": week, "n": 0}
 
     served = predict(season, week, model_name=model_name,
                      target_type=target_type)
@@ -114,6 +145,20 @@ def check(target_type: str, season: int, week: int | None = None,
     res = compare(season, week, target_type, model_name)
     if res is None:
         return True, f"{target_type} {season} wk{week}: not comparable — skipped"
+    if res.get("walk_forward"):
+        return True, (
+            f"{target_type} {season} wk{week}: the backtest frame was built "
+            f"with --walk-forward, whose folds retrain on earlier seasons — "
+            f"not comparable to the served model. Rebuild one for parity with "
+            f"`python scripts/10_backtest.py --season {season} "
+            f"--target {target_type}`"
+        )
+    if res.get("untagged"):
+        return True, (
+            f"{target_type} {season} wk{week}: the backtest frame predates the "
+            f"`walk_forward` tag, so it cannot say which weights wrote it — "
+            f"re-run `make evaluate`"
+        )
     if res.get("stale"):
         return True, (
             f"{target_type} {season} wk{week}: features are newer than the "

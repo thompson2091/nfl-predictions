@@ -1865,20 +1865,43 @@ def test_served_path_matches_the_evaluated_path(capsys):
     probabilities must sum to 1 per game and instead summed to 2.7.
 
     Skips rather than fails when the inputs are absent, so a fresh checkout
-    still runs green.
+    still runs green — but it SKIPS, visibly, rather than passing.
+
+    That distinction is the point. `parity.compare` returns `stale` whenever
+    `features.parquet` is newer than the backtest frame, which is correct (the
+    two paths would be asked about different inputs) and which used to be
+    reported as `ok=True`. A silent pass and a real pass looked identical, so
+    every `make features` disarmed this check and nothing said so. The weekly
+    rollover rebuilds the matrix, so in practice it was off almost all the
+    time: the frames sat at 19 August through a month of green runs, and when
+    they were finally regenerated the check reported the two paths disagreeing
+    by 1.6-2.8pp on both markets.
+
+    A skip shows as `s` in the summary and is counted. A pass does not.
     """
+    import pytest as _pytest
+
     from src.evaluation.parity import check
     from src.utils.config import get_config
 
     season = get_config()["splits"]["test_season"]
-    failures = []
+    failures, skipped = [], []
     for target in ("anytime_td", "first_td"):
-        with capsys.disabled() if False else __import__("contextlib").redirect_stdout(
-                __import__("io").StringIO()):
+        with __import__("contextlib").redirect_stdout(__import__("io").StringIO()):
             ok, msg = check(target, season)
         if not ok:
             failures.append(msg)
+        elif "features are newer" in msg or "skipped" in msg:
+            skipped.append(msg)
     assert not failures, "\n".join(failures)
+    if skipped and len(skipped) == 2:
+        _pytest.skip(
+            "parity could not be checked for either market — run `make "
+            "evaluate` to bring the backtest frames up to the current feature "
+            "matrix:\n  " + "\n  ".join(skipped))
+    if skipped:
+        _pytest.skip("parity checked on only one market:\n  "
+                     + "\n  ".join(skipped))
 
 
 def test_first_td_probabilities_sum_to_one_per_game():

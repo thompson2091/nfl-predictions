@@ -1,4 +1,4 @@
-.PHONY: all ingest targets candidates features train predict clean \
+.PHONY: all ingest targets candidates features train predict clean parity-frame \
 	docker-build docker-up docker-down docker-logs docker-shell \
 	docker-pipeline docker-prod docker-prod-down docker-build-amd64 \
 	backtest walkforward longshot economics clusters evaluate wager wager-report \
@@ -188,6 +188,24 @@ evaluate:
 		$(PYTHON) scripts/38_cover_selection.py --target $$t; \
 	done
 	$(PYTHON) scripts/12_longshot.py --target anytime_td
+	$(MAKE) parity-frame
+
+# The frame `evaluation.parity` compares against, and the reason it is separate.
+#
+# Everything above runs the backtest with --walk-forward, whose folds retrain
+# from scratch on earlier seasons. That is the honest out-of-sample number and
+# it is NOT the production model, so comparing it to what the app serves asks
+# whether two different models agree — which they do not, by 0.0147 mean on
+# anytime TD against 1.9e-9 for a frame built on the production weights.
+#
+# The two cannot share a filename without silently overwriting each other's
+# answer, so parity gets its own. Rebuilt here because it goes stale the moment
+# the feature matrix moves, and a stale one makes the check skip.
+parity-frame:
+	@for t in anytime_td first_td; do \
+		$(PYTHON) scripts/10_backtest.py --season $(shell $(PYTHON) -c "from src.utils.config import get_config; print(get_config()['splits']['test_season'])") \
+			--target $$t --out-name parity_$(shell $(PYTHON) -c "from src.utils.config import get_config; print(get_config()['splits']['test_season'])").csv; \
+	done
 
 # ── Experiments ───────────────────────────────────────────────────────────
 # An experiment is a config overlay in a YAML file, scored on the same folds
