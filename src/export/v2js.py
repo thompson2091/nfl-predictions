@@ -130,7 +130,7 @@ function vAppbar() {
   // Beside the market, and only where there is a past week to look at. It
   // rides in the bar for the same reason the market does: it changes what
   // every row on the screen means, so it cannot sit over one board.
-  const week = (MARKET_ROUTES[S.route] && historyWeeks().length)
+  const week = (WEEK_ROUTES[S.route] && historyWeeks().length)
     ? '<button class="market" data-sheet="week">' + esc(weekLabel())
       + ' ' + I.chev + '</button>'
     : '';
@@ -652,11 +652,26 @@ function vSheet() {
 // `S.week` of null means the live board, which is the full payload. A past
 // week is a slimmer object — the top 100 by our probability — because 540 rows
 // times eighteen weeks is most of a megabyte to carry a tail nobody scrolls to.
+//: The board's market keys are `any` and `first`; the history is keyed by
+//: TARGET TYPE, because `week_history` is built per target type and named for
+//: it. Without this map the lookup returned undefined for every market and the
+//: week pill never appeared — silently, since "no history" and "no weeks
+//: played yet" are the same empty list and the second is a normal state.
+const HISTORY_KEY = { any: 'anytime_td', first: 'first_td' };
+
 function historyFor(key) {
-  const h = (DATA.history || {})[key || S.market];
+  const k = key || S.market;
+  const h = (DATA.history || {})[HISTORY_KEY[k] || k];
   return h && h.weeks ? h : null;
 }
 function historyWeeks() {
+  // Bets keeps its own list. A week is offered there when its LINES were
+  // archived, which is not when its play-by-play landed — 2026 weeks 1 and 2
+  // were played long before anything captured a spread for them.
+  if (S.route === 'bets') {
+    const past = ((DATA.games || {}).past) || {};
+    return Object.keys(past).map(Number).sort((a, b) => a - b);
+  }
   const h = historyFor();
   return h ? (h.played || []) : [];
 }
@@ -845,6 +860,10 @@ JS_ROUTE = r"""
 // v2 and read by `vAppbar`: Saved names its own market, the ladder prices
 // whatever the slip holds, and the Model page describes every market at once.
 const MARKET_ROUTES = { week: 1, combos: 1 };
+//: Where the WEEK pill belongs, which is not the same set. Bets carries a
+//: week and no market: its rows are games, and `S.market` names a player
+//: prop that has nothing to say about a spread.
+const WEEK_ROUTES = { week: 1, combos: 1, bets: 1 };
 
 //: Where each tab had got to, and which tab the slip was opened from.
 //:
@@ -1320,6 +1339,12 @@ function vBets() {
 // that reason. A model that could disagree with it has to be trained without
 // the vegas feature family, which does not exist yet.
 function vBetsGames(g) {
+  // A past week REPLACES the live one rather than filtering it: those rows
+  // carry a result and no bet, and running them through the live path would
+  // price a game that has finished.
+  const past = S.week == null ? null : (((g.past) || {})[String(S.week)] || null);
+  if (past) g = Object.assign({}, g, {rows: past.rows, cards: past.cards,
+                                      week: S.week, graded: true});
   if (!g.rows || !g.rows.length) return vEmpty('No games this week',
     'The archive holds no lines for ' + (g.season || '') + ' week ' + (g.week || '') + '.');
 
@@ -1338,16 +1363,32 @@ function vBetsGames(g) {
 function vBetsFilter(cards, g) {
   const evs = (g.rows || []).map(r => r.ev100).filter(has);
   const best = evs.length ? Math.max.apply(null, evs) : null;
+  // On a graded week the interesting number is what the market got right,
+  // not what value is on offer — the offer expired.
+  const graded = (g.rows || []).filter(r => r.won != null);
+  const favsHome = graded.filter(r => has(r.fair) && r.fair >= 0.5);
+  const favsWon = favsHome.filter(r => r.won).length;
+
   let h = '<div class="sect"><div class="card"><div class="keystats">'
     + keystat('Games', String(cards.length))
-    + keystat('Best value found', best == null ? '—' : '+' + best.toFixed(2),
-              best != null && best > 0 ? 'good' : null, true)
+    + (g.graded
+        ? keystat('Favourites held', favsHome.length
+            ? favsWon + ' of ' + favsHome.length : '—', null, true)
+        : keystat('Best value found', best == null ? '—' : '+' + best.toFixed(2),
+                  best != null && best > 0 ? 'good' : null, true))
     + keystat('Books', '≥ ' + (g.min_books || 4), null, true)
     + '</div>'
-    + '<div class="prose">Chances are the market’s, with the book’s margin '
-    + 'divided out. <b>EV</b> is what $100 returns at the best price if that '
-    + 'chance is right — so it measures beating the median book, not beating '
-    + 'the market. Nothing on this page is a model.</div></div></div>';
+    + '<div class="prose">'
+    + (g.graded
+        ? 'Week ' + g.week + ' has been played. Chances are what the market '
+          + 'said BEFORE it was, with the margin divided out, and the tick '
+          + 'beside each line is what actually happened. Nothing here was a '
+          + 'model prediction, so this grades the market, not us.'
+        : 'Chances are the market’s, with the book’s margin divided out. '
+          + '<b>EV</b> is what $100 returns at the best price if that chance '
+          + 'is right — so it measures beating the median book, not beating '
+          + 'the market. Nothing on this page is a model.')
+    + '</div></div></div>';
 
   h += '<div class="chiprow">'
     + '<button class="chip" aria-pressed="' + (S.betsGame ? 'false' : 'true')
@@ -1416,9 +1457,14 @@ function betLine(r) {
         ? (r.fair * 100).toFixed(1) + '%' : '—') + '</span>'
     + '<span class="bl__p num"><span class="bl__c">' + american(r.consensus)
       + '</span> ' + american(r.best) + '</span>'
-    + '<span class="bl__e num ' + (ev == null ? '' : ev > 0 ? 'good' : 'bad') + '">'
-      + (ev == null ? '' : (ev > 0 ? '+' : '−') + '$' + Math.abs(ev).toFixed(2))
-    + '</span>'
+    // Once a line has a result, the result is what the column is for. An EV
+    // beside a finished game is an offer that expired.
+    + (r.won != null
+        ? '<span class="bl__e ' + (r.won ? 'good' : 'bad') + '">'
+          + (r.won ? 'won' : 'lost') + '</span>'
+        : '<span class="bl__e num ' + (ev == null ? '' : ev > 0 ? 'good' : 'bad') + '">'
+          + (ev == null ? '' : (ev > 0 ? '+' : '−') + '$' + Math.abs(ev).toFixed(2))
+          + '</span>')
     // The chance as a bar, so a ladder of alternates reads as a shape rather
     // than as a column of numbers four tenths of a point apart. Scaled to the
     // full 0-100 because these ARE probabilities — squeezing the axis to the
@@ -1428,8 +1474,9 @@ function betLine(r) {
     // would draw a second marker on this same track, and the gap between them
     // would be the edge. There is no such model yet, so there is one bar.
     + (has(r.fair)
-        ? '<span class="blbar"><span class="blbar__f" style="width:'
-          + (r.fair * 100).toFixed(1) + '%"></span></span>'
+        ? '<span class="blbar"><span class="blbar__f' + (r.won == null ? ''
+            : (r.won ? ' blbar__f--won' : ' blbar__f--lost'))
+          + '" style="width:' + (r.fair * 100).toFixed(1) + '%"></span></span>'
         : '')
     + '</div>';
 }

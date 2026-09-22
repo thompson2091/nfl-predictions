@@ -343,6 +343,10 @@ EXTRA_CSS = """
   background:var(--bg-inset);border-radius:var(--radius-pill);overflow:hidden;
 }
 .blbar__f{display:block;height:4px;background:var(--border);border-radius:var(--radius-pill)}
+/* On a graded week the bar carries the outcome, so a page of lines can be
+   scanned for what happened without reading a single number. */
+.blbar__f--won{background:var(--good)}
+.blbar__f--lost{background:var(--bad)}
 
 /* ---------- matchup card ---------- */
 .gcard{padding:var(--space-4) var(--space-4) var(--space-3)}

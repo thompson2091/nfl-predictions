@@ -628,90 +628,19 @@ def _attach_ou_shortlists(payload: dict) -> None:
                                               ous.load(market))
 
 
-def games(season: int | None, week: int | None) -> dict:
-    """This week's games as the market prices them — and no model column.
+def _enrich_lines(book_rows: list[dict], moves: dict | None = None) -> tuple:
+    """De-vig every line, price its EV, and summarise each fixture.
 
-    **There is deliberately no projection beside a spread or a total.** The
-    only thing in this project that speaks to a game's scoring level is
-    `joint.fit_team_rate`, and that is a Poisson regression OF team touchdowns
-    ON `implied_team_total`, `total_line` and `abs_spread`. Its job is to turn
-    the market's number into touchdowns, not to form a second opinion about
-    it, so printing its output next to the posted total would print the total
-    twice and label the second copy a prediction. `src/evaluation/matchups`
-    carries the longer version of this note.
-
-    What is real here is the disagreement. The best moneyline beats the
-    consensus by a median 1.23pp, which is return available for holding more
-    than one account and needs no model at all.
+    Shared by the live week and by every archived one, so a past week
+    cannot drift into showing a different set of numbers from the week it
+    will become. Returns `(rows, cards)`.
     """
-    if not (season and week):
-        return {}
-    try:
-        from src.evaluation.matchups import MIN_BOOKS, board, movement
-    except Exception as e:                                       # noqa: BLE001
-        print(f"  games unavailable ({e})", file=sys.stderr)
-        return {}
-
-    b = board(season, week)
-    if b.is_empty():
-        print(f"  no game lines for {season} week {week}", file=sys.stderr)
-        return {}
-
-    mv = movement(season, week)
-    moves = {}
-    if not mv.is_empty():
-        for r in mv.iter_rows(named=True):
-            moves[(r["game_id"], r["market"], str(r["outcome"]),
-                   r["point"])] = r
-
-    # Two snapshots are not two ENDS. Week 3 of 2026 archived its open and its
-    # close four minutes apart — `weekly_odds.sh open` had not run, so the
-    # backfill wrote the same market state twice — and 202 of its 204 lines
-    # came back bit-identical. Rendered naively that reads "nothing moved",
-    # which is a claim about the market rather than about the capture.
-    #
-    # The gate is `MIN_MOVE_PP`, borrowed from `rlm` rather than invented here:
-    # that module already defines it as the point below which a difference is
-    # book rounding. If not one line in the week cleared it, there is nothing
-    # to show and the reason is the capture, not the market.
-    from src.evaluation.rlm import MIN_MOVE_PP
-
-    real = [m for m in moves.values() if abs(m["move_pp"] or 0) >= MIN_MOVE_PP]
-    gap_h = None
-    try:
-        import polars as pl
-
-        from src.ingest.game_lines import LINES_PATH
-        d = (pl.read_parquet(LINES_PATH)
-             .filter((pl.col("season") == season) & (pl.col("week") == week)))
-        ts = {k: v for k, v in
-              d.group_by("snapshot").agg(pl.col("captured_at").min().alias("t"))
-              .iter_rows()}
-        if "open" in ts and "close" in ts:
-            from datetime import datetime
-            fmt = "%Y-%m-%dT%H:%M:%SZ"
-            gap_h = round((datetime.strptime(ts["close"], fmt)
-                           - datetime.strptime(ts["open"], fmt)).total_seconds()
-                          / 3600.0, 2)
-    except Exception:                                            # noqa: BLE001
-        pass
-
-    # De-vig, so the page can print a probability rather than a price.
-    #
-    # The two sides of a line sum to more than 1 — that excess IS the book's
-    # margin — and the fair number is each side's share of the total. The three
-    # markets pair their sides DIFFERENTLY, which is the only subtle part:
-    # a moneyline has one null point, a total has Over and Under on the same
-    # point, and a spread has SF -8.5 against ARI +8.5, whose points are
-    # negatives of each other. Grouping all three on `point` would pair a total
-    # correctly, leave a moneyline alone, and silently fail to pair any spread
-    # at all — every spread would then read as fair at its vigged price.
+    moves = moves or {}
     def _pairkey(r):
         if r["market"] == "spreads" and r["point"] is not None:
             return (r["game_id"], "spreads", abs(r["point"]))
         return (r["game_id"], r["market"], r["point"])
 
-    book_rows = b.to_dicts()
     totals_by_key: dict = {}
     for r in book_rows:
         k = _pairkey(r)
@@ -804,9 +733,93 @@ def games(season: int | None, week: int | None) -> dict:
             "proj_home": ph, "proj_away": pa,
             "win_home": wins.get(a["home"]), "win_away": wins.get(a["away"]),
         }
+    return rows, [cards[k] for k in sorted(cards)]
+
+
+def games(season: int | None, week: int | None) -> dict:
+    """This week's games as the market prices them — and no model column.
+
+    **There is deliberately no projection beside a spread or a total.** The
+    only thing in this project that speaks to a game's scoring level is
+    `joint.fit_team_rate`, and that is a Poisson regression OF team touchdowns
+    ON `implied_team_total`, `total_line` and `abs_spread`. Its job is to turn
+    the market's number into touchdowns, not to form a second opinion about
+    it, so printing its output next to the posted total would print the total
+    twice and label the second copy a prediction. `src/evaluation/matchups`
+    carries the longer version of this note.
+
+    What is real here is the disagreement. The best moneyline beats the
+    consensus by a median 1.23pp, which is return available for holding more
+    than one account and needs no model at all.
+    """
+    if not (season and week):
+        return {}
+    try:
+        from src.evaluation.matchups import MIN_BOOKS, board, movement
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  games unavailable ({e})", file=sys.stderr)
+        return {}
+
+    b = board(season, week)
+    if b.is_empty():
+        print(f"  no game lines for {season} week {week}", file=sys.stderr)
+        return {}
+
+    mv = movement(season, week)
+    moves = {}
+    if not mv.is_empty():
+        for r in mv.iter_rows(named=True):
+            moves[(r["game_id"], r["market"], str(r["outcome"]),
+                   r["point"])] = r
+
+    # Two snapshots are not two ENDS. Week 3 of 2026 archived its open and its
+    # close four minutes apart — `weekly_odds.sh open` had not run, so the
+    # backfill wrote the same market state twice — and 202 of its 204 lines
+    # came back bit-identical. Rendered naively that reads "nothing moved",
+    # which is a claim about the market rather than about the capture.
+    #
+    # The gate is `MIN_MOVE_PP`, borrowed from `rlm` rather than invented here:
+    # that module already defines it as the point below which a difference is
+    # book rounding. If not one line in the week cleared it, there is nothing
+    # to show and the reason is the capture, not the market.
+    from src.evaluation.rlm import MIN_MOVE_PP
+
+    real = [m for m in moves.values() if abs(m["move_pp"] or 0) >= MIN_MOVE_PP]
+    gap_h = None
+    try:
+        import polars as pl
+
+        from src.ingest.game_lines import LINES_PATH
+        d = (pl.read_parquet(LINES_PATH)
+             .filter((pl.col("season") == season) & (pl.col("week") == week)))
+        ts = {k: v for k, v in
+              d.group_by("snapshot").agg(pl.col("captured_at").min().alias("t"))
+              .iter_rows()}
+        if "open" in ts and "close" in ts:
+            from datetime import datetime
+            fmt = "%Y-%m-%dT%H:%M:%SZ"
+            gap_h = round((datetime.strptime(ts["close"], fmt)
+                           - datetime.strptime(ts["open"], fmt)).total_seconds()
+                          / 3600.0, 2)
+    except Exception:                                            # noqa: BLE001
+        pass
+
+    # De-vig, so the page can print a probability rather than a price.
+    #
+    # The two sides of a line sum to more than 1 — that excess IS the book's
+    # margin — and the fair number is each side's share of the total. The three
+    # markets pair their sides DIFFERENTLY, which is the only subtle part:
+    # a moneyline has one null point, a total has Over and Under on the same
+    # point, and a spread has SF -8.5 against ARI +8.5, whose points are
+    # negatives of each other. Grouping all three on `point` would pair a total
+    # correctly, leave a moneyline alone, and silently fail to pair any spread
+    # at all — every spread would then read as fair at its vigged price.
+    book_rows = b.to_dicts()
+    rows, cards = _enrich_lines(book_rows, moves)
+
 
     return {"season": season, "week": week, "rows": rows,
-            "cards": [cards[k] for k in sorted(cards)],
+            "cards": cards,
             "min_books": MIN_BOOKS,
             "games": int(b["game_id"].n_unique()),
             # Not `bool(moves)`: a week holding two copies of the same capture
@@ -819,6 +832,63 @@ def games(season: int | None, week: int | None) -> dict:
                          "the spread, so it cannot second-guess them. What is "
                          "shown is the market, the spread between books, and "
                          "which way it moved.")}
+
+
+def games_past(season: int | None, current: int | None) -> dict:
+    """Earlier weeks of game lines, with the result attached to every side.
+
+    A different set of weeks from the board's history. That one asks for
+    play-by-play (`week_history`); this one asks whether the LINES were
+    archived, and the two diverge — 2026 weeks 1 and 2 were played long before
+    anything captured a spread for them, and had to be backfilled. Offering
+    the board's week list here would have shown weeks with nothing in them.
+
+    `won` is the fact this view exists for: not what the market thought, but
+    which side actually cashed. Null on a push, which is not a side losing.
+    """
+    if not season:
+        return {}
+    try:
+        import polars as pl
+
+        from src.evaluation.matchups import board
+        from src.evaluation.rlm import graded
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  past game lines unavailable ({e})", file=sys.stderr)
+        return {}
+
+    try:
+        g = graded([season])
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  grading unavailable ({e})", file=sys.stderr)
+        return {}
+    if g.is_empty():
+        return {}
+
+    out: dict = {}
+    for wk in sorted(int(w) for w in g["week"].unique()):
+        if current is not None and wk >= int(current):
+            continue
+        b = board(season, wk)
+        if b.is_empty():
+            continue
+        won = {(r["game_id"], r["market"], str(r["outcome"]), r["point"]):
+               bool(r["won"])
+               for r in g.filter(pl.col("week") == wk).iter_rows(named=True)}
+        # Enrich from the RAW board columns, exactly as the live week does,
+        # then attach the result. Renaming first and enriching second put the
+        # two views on different key names and the shared helper on a
+        # `best_odds` that no longer existed.
+        rows, cards = _enrich_lines(b.to_dicts())
+        for r in rows:
+            k = (r["game_id"], r["market"], str(r["outcome"]), r["point"])
+            # Absent, not false, on a push or an ungraded line: a push is not
+            # a side losing, and counting it as one would drag every archived
+            # week's record down by however often lines land on the number.
+            r["won"] = won.get(k)
+        if rows:
+            out[str(wk)] = {"rows": rows, "cards": cards}
+    return out
 
 
 def bets(season: int | None) -> dict:
@@ -934,6 +1004,12 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     # empty when it has not been captured for the week — a games tab showing
     # sixteen blank fixtures is worse than a tab that says why it is not there.
     payload["games"] = games(s, w)
+    if payload["games"]:
+        # Earlier weeks, keyed by week number. Gated on ARCHIVED LINES
+        # rather than on play-by-play: the board's week list and this
+        # one genuinely differ, and offering the board's here would
+        # show weeks holding no prices at all.
+        payload["games"]["past"] = games_past(s, w)
     payload["bets"] = bets(s)
 
     # Earlier weeks, so the board can be looked back at. Only weeks whose

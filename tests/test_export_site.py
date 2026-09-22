@@ -1,5 +1,7 @@
 """The site payload: what the page is handed, and what it joins on."""
 
+from pathlib import Path
+
 
 
 
@@ -126,3 +128,32 @@ def test_v2js_string_constants_are_balanced():
         v = getattr(v2js, n)
         assert isinstance(v, str) and len(v) > 200, f"{n} is {len(v)} chars"
         assert "= r" not in v[:40], f"{n} begins with a Python assignment"
+
+
+def test_history_is_reachable_under_the_key_the_board_looks_it_up_by():
+    """The week pill looked up `DATA.history[S.market]` and never found it.
+
+    The board's market keys are `any` and `first`; `week_history` is built per
+    TARGET TYPE and keyed `anytime_td` and `first_td`. The lookup returned
+    undefined for every market, so the pill never rendered — and "no history"
+    is indistinguishable from "no weeks played yet", which is a normal state,
+    so nothing complained. It shipped dead.
+    """
+    import importlib
+    import re
+
+    v2js = importlib.import_module("src.export.v2js")
+    js = "".join(getattr(v2js, n) for n in dir(v2js) if n.startswith("JS"))
+
+    m = re.search(r"const HISTORY_KEY = \{(.*?)\};", js, re.S)
+    assert m, "HISTORY_KEY map is gone; the week pill will look up the wrong key"
+    mapped = dict(re.findall(r"(\w+):\s*'([\w]+)'", m.group(1)))
+    assert mapped.get("any") == "anytime_td"
+    assert mapped.get("first") == "first_td"
+
+    # And the builder must still emit those names, or the map points at
+    # nothing and the failure returns in the other direction.
+    build = (Path(__file__).resolve().parents[1]
+             / "scripts/47_export_site.py").read_text()
+    assert 'for mk in ("anytime_td", "first_td")' in build
+
