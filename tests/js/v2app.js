@@ -84,8 +84,19 @@ ok('with the record beside it', html().indexOf('class="graded"') >= 0);
 
 S.market = 'rec'; S.fw.view = 'short';
 render();
-ok('a line board offers Priced instead of Fades',
-   html().indexOf('data-view="priced"') >= 0 && html().indexOf('data-view="fade"') < 0);
+// A line board carries Priced, which a touchdown board does not, AND Fades.
+// It used to have no Fades tab because there were no veto rows to fill it;
+// on a two-sided line the fades are the rule's UNDER picks, and `rowsFor`
+// fell through to the whole board for that view before it was given one.
+ok('a line board offers Priced and Fades',
+   html().indexOf('data-view="priced"') >= 0
+   && html().indexOf('data-view="fade"') >= 0);
+S.fw.view = 'fade';
+render();
+ok('and its fades are a subset of the board, not all of it',
+   rowsFor('rec', 'fade').length < rowsFor('rec', 'all').length);
+S.fw.view = 'short';
+render();
 
 // ── Sheets ──────────────────────────────────────────────────────────────
 S.market = 'any'; S.fw.view = 'all';

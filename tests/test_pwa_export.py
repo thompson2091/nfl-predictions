@@ -265,8 +265,16 @@ def test_the_build_script_writes_all_three_or_says_which(tmp_path):
     """Two of the three is an app that loads and never works offline."""
     mk = (REPO / "scripts" / "51_export_app.py").read_text()
     assert "--out" in mk and "site/v2" in mk
-    assert "upload all three" in mk, (
-        "the recipe has to say that the worker travels with its page")
+    # The wording changed when the week history moved into `data/`; what has
+    # to survive is the instruction, not the sentence. Checked by what it must
+    # NAME — every file the page needs beside it — so the test does not go
+    # quiet the next time the message is reworded.
+    for needed in ("index.html", "manifest.webmanifest", "sw.js", "data/"):
+        assert needed in mk, (
+            f"the recipe has to name {needed}: the worker and the week files "
+            f"travel with the page")
+    assert "offline" in mk, (
+        "and has to say what goes wrong when they do not")
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
