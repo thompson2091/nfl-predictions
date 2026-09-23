@@ -303,6 +303,46 @@ EXTRA_CSS = """
 .graded b{font-weight:600}
 .graded .pos{color:var(--good)} .graded .neg{color:var(--bad)}
 
+/* ---------- archived week ---------- */
+/*
+ * The past-week table had NO RULES AT ALL. Its markup shipped with `.row2`
+ * and `.row2__rank` and nothing ever styled them, so every cell rendered as
+ * an inline span and the whole thing ran together as one paragraph of text —
+ * which is what a week looked like on a phone.
+ *
+ * A grid, and it wraps rather than scrolls: a table narrower than the screen
+ * beats a table you have to drag sideways, and the seven O/U columns do not
+ * fit 375px at a readable size.
+ */
+.ph{
+  display:grid;gap:var(--space-2);align-items:end;
+  padding:var(--space-2) var(--space-4);
+  font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-faint);border-bottom:var(--hairline) solid var(--separator);
+}
+.ph > span:not(:first-child){text-align:right}
+.ph--td{grid-template-columns:minmax(0,1fr) 46px 46px 46px 58px}
+.ph--ou{grid-template-columns:minmax(0,1fr) 40px 58px 44px 44px 44px 62px}
+.pr{
+  display:grid;gap:var(--space-2);align-items:baseline;
+  padding:var(--space-2) var(--space-4);
+  font-size:14px;line-height:19px;
+}
+.pr + .pr{border-top:var(--hairline) solid var(--separator)}
+.pr--td{grid-template-columns:minmax(0,1fr) 46px 46px 46px 58px}
+.pr--ou{grid-template-columns:minmax(0,1fr) 40px 58px 44px 44px 44px 62px}
+.pr > span:not(.pr__n){text-align:right}
+.pr__n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pr__t{margin-left:6px;font-size:12px;color:var(--ink-faint)}
+/* The book, muted, and the served number, accented — the same pairing the
+   live board uses, so the two screens read the same way. */
+.pr__b{color:var(--ink-muted)}
+.pr__a{color:var(--accent);font-weight:600}
+.pr__j{display:flex;flex-direction:column;align-items:flex-end;gap:0}
+.pr__band{font-size:11px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.pr__r{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.badge--none{background:var(--bg-inset);color:var(--ink-faint)}
+
 /* ---------- game lines ---------- */
 /* One priced outcome: what it is, the consensus, the best, the gap, and who
    is offering it. A five-column grid rather than a table because the last
@@ -447,6 +487,16 @@ DESKTOP_CSS = """
  * 1080px window is a phone pattern being worn by something that is not a
  * phone — the thumb argument that puts it there does not apply to a mouse.
  */
+/* Under 420px the seven-column O/U row stops being readable. The projection
+   band and the model column go first: the band is a detail of the projection
+   beside it, and the model is recoverable from the adj and the book. */
+@media (max-width:420px){
+  .ph--ou{grid-template-columns:minmax(0,1fr) 38px 46px 42px 42px 56px}
+  .pr--ou{grid-template-columns:minmax(0,1fr) 38px 46px 42px 42px 56px}
+  .ph--ou > span:nth-child(4), .pr--ou > span:nth-child(4){display:none}
+  .pr__band{display:none}
+}
+
 @media (min-width:900px){
   .tabbar{
     order:-1;height:auto;padding:0;box-shadow:none;

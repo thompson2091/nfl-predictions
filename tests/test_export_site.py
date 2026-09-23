@@ -157,3 +157,44 @@ def test_history_is_reachable_under_the_key_the_board_looks_it_up_by():
              / "scripts/47_export_site.py").read_text()
     assert 'for mk in ("anytime_td", "first_td")' in build
 
+
+
+def test_week_history_still_exposes_every_builder_the_export_calls():
+    """A splice on this module once deleted `payload` outright.
+
+    The export catches the resulting ImportError and prints "week history
+    unavailable", so the page built fine with no history on any market — the
+    same shape as a season that has not started.
+    """
+    import importlib
+
+    wh = importlib.import_module("src.evaluation.week_history")
+    for name in ("played_weeks", "week_board", "payload", "ou_week",
+                 "ou_payload"):
+        assert callable(getattr(wh, name, None)), f"{name} is missing"
+
+    build = (Path(__file__).resolve().parents[1]
+             / "scripts/47_export_site.py").read_text()
+    assert "from src.evaluation.week_history import payload as week_payload" in build
+    assert "from src.evaluation.week_history import ou_payload" in build
+
+
+def test_history_is_split_out_of_the_page_and_indexed():
+    """The rows live in their own files; the page keeps only the index.
+
+    Inlined, a full season across six markets measured 20MB. If `_split_history`
+    stops firing, the page silently grows by that much instead of failing.
+    """
+    import importlib
+
+    pwa = importlib.import_module("src.export.pwa")
+    payload = {"history": {"anytime_td": {
+        "weeks": {"1": [{"a": 1}], "2": []}, "accuracy": {"1": {"n": 1}},
+        "played": [1, 2]}}}
+    out, files = pwa._split_history(payload)
+    assert "weeks" not in out["history"]["anytime_td"]
+    assert out["history"]["anytime_td"]["has"] == [1], "empty weeks must not be offered"
+    assert list(files) == ["data/h-anytime_td-1.json"]
+    assert out["history_path"] == pwa.HISTORY_PATH
+    # The caller's dict must survive: the exporter reuses it afterwards.
+    assert "weeks" in payload["history"]["anytime_td"]

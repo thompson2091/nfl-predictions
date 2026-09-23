@@ -22,6 +22,11 @@ from __future__ import annotations
 #: still work and a link into the app still lands where it says.
 JS = r"""
 // ── The shell ───────────────────────────────────────────────────────────
+//: How many archived rows to put in the DOM at once. The week file
+//: carries every line, but 1,581 of them is a second of layout on a
+//: phone for rows nobody scrolls to. Search reaches the rest.
+const PAST_SHOW = 250;
+
 const V2TABS = [['week', 'Board'], ['bets', 'Bets'], ['combos', 'Combos'],
                 ['slip', 'Slip'], ['saved', 'Saved'], ['ladder', 'Ladder'],
                 ['model', 'Model']];
@@ -215,44 +220,106 @@ function vBoard() {
 
 // One archived week: what the model rated, and what happened.
 //
-// The header carries HIT COUNT AGAINST EXPECTED, not the hit count alone.
-// "30 of 100" reads as a bad week and "30 against 38 expected" reads as a
-// below-average one; only the second is a statement about the model. On a
-// hundred rows averaging 38% the ordinary spread is about five either way.
+// Three states, not two. `undefined` is still fetching, `null` is a fetch that
+// will not arrive, and an array is the week. Collapsing the first two shows an
+// empty table twice and explains neither — and the likeliest cause of the
+// second is not the network but opening the page from the filesystem, where
+// `fetch` of a relative path is blocked outright.
 function vPastWeek() {
-  const rows = weekRows() || [];
+  const rows = weekRows();
+  const kind = KIND[S.market] || 'td';
+  if (rows === undefined) return '<div class="sect"><div class="card">'
+    + '<div class="prose">Loading week ' + S.week + '…</div></div></div>';
+  if (rows === null || !rows.length) return vEmpty(
+    'Week ' + S.week + ' did not load',
+    'Its rows live in ' + esc(weekFile(S.market, S.week)) + ', which has to sit '
+    + 'beside the page. Opening index.html straight from disk blocks that '
+    + 'fetch; served over http it works.');
+
   const a = weekAccuracy();
   let h = '<div class="sect"><div class="banner">'
-        + 'Week ' + S.week + ' has been played. These are the top '
-        + rows.length + ' the model rated, with what happened.'
-        + '</div></div>';
+        + 'Week ' + S.week + ' has been played. These are the '
+        + rows.length.toLocaleString() + ' lines the model rated, with what '
+        + 'happened.</div></div>';
   if (a) {
     h += '<div class="sect"><div class="card" style="padding:14px 16px">'
        + '<div class="metrics">'
        + met('Hit', String(a.hit))
-       + met('Expected', String(a.expected))
+       + (has(a.expected) ? met('Expected', String(a.expected)) : '')
        + met('Of', String(a.n))
-       + met('Vs expected', (a.hit - a.expected >= 0 ? '+' : '')
-             + (a.hit - a.expected).toFixed(1),
-             a.hit - a.expected >= 0 ? 'v-good' : 'v-bad')
+       + (has(a.expected)
+           ? met('Vs expected', (a.hit - a.expected >= 0 ? '+' : '')
+                 + (a.hit - a.expected).toFixed(1),
+                 a.hit - a.expected >= 0 ? 'v-good' : 'v-bad')
+           : met('Rate', (100 * a.hit / a.n).toFixed(0) + '%',
+                 a.hit * 2 >= a.n ? 'v-good' : 'v-bad'))
        + '</div></div></div>';
   }
-  h += '<div class="sect"><div class="card">'
-     + rows.map((r, i) => {
-         const hit = r.scored === 1;
-         const tone = hit ? 'v-good' : 'v-bad';
-         return '<div class="row2">'
-           + '<span class="row2__rank num">' + (i + 1) + '</span>'
-           + '<span class="row2__name">' + esc(r.player_name || '')
-           + ' <span class="c">' + esc(r.team || '') + '</span></span>'
-           + '<span class="row2__p num">' + pct(r.probability) + '</span>'
-           + '<span class="badge badge--' + (hit ? 'good' : 'bad') + '">'
-           + (hit ? 'scored' : 'no') + '</span>'
-           + '</div>';
-       }).join('')
-     + '</div></div>';
+  h += '<div class="sect" id="pastlist">' + pastList(rows, kind) + '</div>';
   return h;
 }
+
+// The table. Same three probabilities the live board shows — model, book and
+// the blend it serves — because a week you cannot compare to the board is a
+// week you cannot learn anything from.
+function pastList(rows, kind) {
+  const q = (S.fw.q || '').toLowerCase();
+  let list = q ? rows.filter(r => String(r.player_name || r.p || '')
+                   .toLowerCase().indexOf(q) >= 0) : rows;
+  const n = list.length;
+  list = list.slice(0, PAST_SHOW);
+  const head = kind === 'ou'
+    ? '<div class="ph ph--ou"><span>Player</span><span>Line</span>'
+      + '<span>Proj</span><span>Model</span><span>Book</span><span>Adj</span>'
+      + '<span>Actual</span></div>'
+    : '<div class="ph ph--td"><span>Player</span><span>Model</span>'
+      + '<span>Book</span><span>Adj</span><span></span></div>';
+  return '<div class="card">' + vSearch(S.fw) + head
+    + list.map(r => kind === 'ou' ? pastOu(r) : pastTd(r)).join('')
+    + '</div><div class="count">'
+    + (n > PAST_SHOW ? 'showing ' + PAST_SHOW.toLocaleString() + ' of '
+        + n.toLocaleString() + ' — search to narrow'
+        : n.toLocaleString() + ' line' + (n === 1 ? '' : 's'))
+    + '</div>';
+}
+
+function pastTd(r) {
+  const hit = r.scored === 1;
+  return '<div class="pr pr--td">'
+    + '<span class="pr__n">' + esc(r.player_name || '')
+      + '<span class="pr__t">' + esc(r.team || '') + '</span></span>'
+    + '<span class="num">' + pct(r.prob_model) + '</span>'
+    + '<span class="num pr__b">' + (has(r.book) ? pct(r.book) : '—') + '</span>'
+    + '<span class="num pr__a">' + pct(r.probability) + '</span>'
+    + '<span class="badge badge--' + (hit ? 'good' : 'bad') + '">'
+      + (hit ? 'scored' : 'no') + '</span>'
+    + '</div>';
+}
+
+// `won` is graded on the side OUR number took, so the badge says which side
+// that was. A green "over" and a green "under" are both us being right, and
+// a row with no side is carried rather than hidden — dropping the ones we had
+// no opinion on would flatter the count above it.
+function pastOu(r) {
+  const won = r.won;
+  const tone = won == null ? 'none' : (won ? 'good' : 'bad');
+  const band = has(r.lo) && has(r.hi)
+    ? '<span class="pr__band">' + fmt1(r.lo) + '–' + fmt1(r.hi) + '</span>' : '';
+  return '<div class="pr pr--ou">'
+    + '<span class="pr__n">' + esc(r.player_name || '') + '</span>'
+    + '<span class="num">' + fmt1(r.line) + '</span>'
+    + '<span class="num pr__j">' + (has(r.proj) ? fmt1(r.proj) : '—') + band + '</span>'
+    + '<span class="num">' + (has(r.model) ? pct(r.model) : '—') + '</span>'
+    + '<span class="num pr__b">' + (has(r.book) ? pct(r.book) : '—') + '</span>'
+    + '<span class="num pr__a">' + (has(r.ours) ? pct(r.ours) : '—') + '</span>'
+    + '<span class="pr__r"><b class="num">' + (has(r.actual) ? fmt1(r.actual) : '—')
+      + '</b><span class="badge badge--' + tone + '">'
+      + (r.side || '—') + '</span></span>'
+    + '</div>';
+}
+
+const fmt1 = v => !has(v) ? '—'
+  : (Math.abs(v - Math.round(v)) < 0.05 ? String(Math.round(v)) : v.toFixed(1));
 
 // The rows, the sort bar above them and the count under them — everything
 // that changes when you type, and nothing that does not.
@@ -657,12 +724,52 @@ function vSheet() {
 //: it. Without this map the lookup returned undefined for every market and the
 //: week pill never appeared — silently, since "no history" and "no weeks
 //: played yet" are the same empty list and the second is a normal state.
-const HISTORY_KEY = { any: 'anytime_td', first: 'first_td' };
+const HISTORY_KEY = {
+  any: 'anytime_td', first: 'first_td', rec: 'receptions',
+  rush: 'rushing_yards', recyds: 'receiving_yards', passyds: 'passing_yards',
+};
+
+//: Weeks already fetched, keyed by file path. A week is fetched once per
+//: load; the service worker keeps it across loads.
+const WEEKS = {};
+//: Fetches in flight, so a re-render while one is running does not start a
+//: second request for the same file.
+const WEEKING = {};
 
 function historyFor(key) {
   const k = key || S.market;
   const h = (DATA.history || {})[HISTORY_KEY[k] || k];
-  return h && h.weeks ? h : null;
+  // `has` rather than `weeks`: the rows live in their own files now and the
+  // page carries only the index. Testing for `weeks` here is what would make
+  // every market look historyless again.
+  return h && h.has ? h : null;
+}
+
+function weekFile(market, week) {
+  const tmpl = DATA.history_path || 'data/h-{market}-{week}.json';
+  return tmpl.replace('{market}', HISTORY_KEY[market] || market)
+             .replace('{week}', String(week));
+}
+
+//: Fetch one week's rows, then re-render. Returns what is already in hand, so
+//: a caller can draw immediately and be redrawn when the rows land.
+//:
+//: A failure is REMEMBERED as a failure rather than retried on every render —
+//: an empty `data/` folder would otherwise fire one request per keystroke.
+//: The most likely failure is not the network: opening `index.html` from the
+//: filesystem blocks `fetch` of a relative path under CORS, so a local
+//: preview shows this message where a served page shows the week.
+function weekRowsAsync(market, week) {
+  const path = weekFile(market, week);
+  if (WEEKS[path] !== undefined) return WEEKS[path];
+  if (WEEKING[path]) return undefined;
+  WEEKING[path] = true;
+  fetch(path, { cache: 'no-cache' })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(rows => { WEEKS[path] = rows; })
+    .catch(() => { WEEKS[path] = null; })
+    .then(() => { delete WEEKING[path]; render(true); });
+  return undefined;
 }
 function historyWeeks() {
   // Bets keeps its own list. A week is offered there when its LINES were
@@ -673,15 +780,18 @@ function historyWeeks() {
     return Object.keys(past).map(Number).sort((a, b) => a - b);
   }
   const h = historyFor();
-  return h ? (h.played || []) : [];
+  return h ? (h.has || h.played || []) : [];
 }
 function weekLabel() {
   return S.week == null ? 'This week' : ('Week ' + S.week);
 }
+//: `undefined` means still loading, `null` means it will not arrive, and an
+//: array means it is here. Three states, because a spinner and a failure are
+//: different answers and collapsing them shows an empty table for both.
 function weekRows() {
   const h = historyFor();
   if (!h || S.week == null) return null;
-  return h.weeks[String(S.week)] || null;
+  return weekRowsAsync(S.market, S.week);
 }
 function weekAccuracy() {
   const h = historyFor();

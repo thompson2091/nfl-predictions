@@ -43,12 +43,37 @@ def main() -> int:
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    for name, body in files.items():
-        (out / name).write_text(body)
-        print(f"  {out / name}  ({len(body) / 1024:,.0f} KB)", file=sys.stderr)
-    print(f"\nupload all three of {', '.join(files)} to the same directory.\n"
+    # Stale week files are REMOVED before writing. A market that loses a week
+    # — a re-run that finds its play-by-play incomplete, a market dropped from
+    # the export — would otherwise leave its old file on disk, and the page,
+    # which asks the index rather than the directory, would never fetch it
+    # again while a future upload shipped it forever.
+    data_dir = out / "data"
+    if data_dir.exists():
+        keep = {out / n for n in files}
+        for old_file in data_dir.glob("h-*.json"):
+            if old_file not in keep:
+                old_file.unlink()
+
+    top, side = [], []
+    for name, body in sorted(files.items()):
+        path = out / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body)
+        (side if "/" in name else top).append((name, len(body)))
+    for name, n in top:
+        print(f"  {out / name}  ({n / 1024:,.0f} KB)", file=sys.stderr)
+    if side:
+        total = sum(n for _, n in side) / 1024
+        print(f"  {out / 'data'}/  ({len(side)} week files, {total:,.0f} KB, "
+              f"fetched on demand)", file=sys.stderr)
+    print(f"\nupload {', '.join(n for n, _ in top)}"
+          + (f" AND the data/ folder" if side else "")
+          + " to the same directory.\n"
           f"the worker's scope is where it is served from, so a page without "
-          f"its sw.js beside it never goes offline and never says so.",
+          f"its sw.js beside it never goes offline and never says so."
+          + (f"\nwithout data/, every past week is empty — the page loads and "
+             f"the picker still lists them." if side else ""),
           file=sys.stderr)
     return 0
 

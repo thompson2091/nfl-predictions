@@ -28,11 +28,18 @@ from __future__ import annotations
 
 import polars as pl
 
-#: How many rows a week keeps. The board is ~540 players and the tail is
-#: people no book quoted at 1% — carrying all of them for every week of a
-#: season would add roughly 780KB to a payload that is 1.6MB, to show rows
-#: nobody scrolls to. The top of the board is the part a week view is for.
-TOP_N = 100
+#: How many rows a week keeps. `None` is all of them.
+#:
+#: It was 100, because the history was inlined in the page and a full season
+#: across six markets measured 20MB — a ten-fold page, in a single file
+#: uploaded by hand. The cap was the wrong half of that trade: 98% of the rows
+#: it threw away were real posted lines with a settled result.
+#:
+#: The history is now one file per market and week, fetched when a week is
+#: opened (`pwa._split_history`), so the page carries an index and a week
+#: costs about 60KB when you actually look at it. There is no longer a reason
+#: to drop a line that existed.
+TOP_N = None
 
 
 def played_weeks(season: int) -> list[int]:
@@ -43,7 +50,7 @@ def played_weeks(season: int) -> list[int]:
 
 
 def week_board(season: int, week: int, target_type: str = "anytime_td",
-               top_n: int = TOP_N) -> pl.DataFrame:
+               top_n: int | None = TOP_N) -> pl.DataFrame:
     """The top of the board for one week, with outcomes where they exist.
 
     `scored` is null for a week that has not been played, never 0 — the
@@ -61,7 +68,9 @@ def week_board(season: int, week: int, target_type: str = "anytime_td",
     keep = [c for c in ("game_id", "player_name", "team", "probability",
                         "prob_model", "rank", "has_market_price")
             if c in df.columns]
-    df = df.select(keep).sort("probability", descending=True).head(top_n)
+    df = df.select(keep).sort("probability", descending=True)
+    if top_n is not None:
+        df = df.head(top_n)
 
     if week not in set(played_weeks(season)):
         return df.with_columns(pl.lit(None, dtype=pl.Int8).alias("scored"))
@@ -178,6 +187,34 @@ def _with_book(df: pl.DataFrame, season: int, week: int,
     return out
 
 
+
+def payload(season: int, target_type: str = "anytime_td",
+            top_n: int | None = TOP_N) -> dict:
+    """Every played week, keyed by week number, for a week selector.
+
+    Returns `{"weeks": {...}, "played": [...]}`. The current week is NOT here —
+    the board already carries it in full, and duplicating it would put two
+    copies of the same numbers on one page with nothing keeping them equal.
+    """
+    weeks, hits = {}, {}
+    for w in played_weeks(season):
+        b = week_board(season, w, target_type, top_n)
+        if b.is_empty():
+            continue
+        rows = b.to_dicts()
+        weeks[str(w)] = rows
+        graded = [r for r in rows if r.get("scored") is not None]
+        if graded:
+            hits[str(w)] = {
+                "n": len(graded),
+                "hit": int(sum(r["scored"] for r in graded)),
+                # What the model expected of exactly these rows. Printed beside
+                # the hit count because "34 of 100" means nothing without it.
+                "expected": round(sum(r["probability"] for r in graded), 1),
+            }
+    return {"weeks": weeks, "played": sorted(int(k) for k in weeks),
+            "accuracy": hits, "top_n": top_n}
+
 #: The stat each over/under market settles against, in `weekly_stats`.
 OU_STAT = {"receptions": "receptions",
            "receiving_yards": "receiving_yards",
@@ -185,7 +222,8 @@ OU_STAT = {"receptions": "receptions",
            "passing_yards": "passing_yards"}
 
 
-def ou_week(season: int, week: int, market: str, top_n: int = TOP_N) -> list[dict]:
+def ou_week(season: int, week: int, market: str,
+            top_n: int | None = TOP_N) -> list[dict]:
     """One over/under market, one played week, with the line settled.
 
     Rebuilt rather than read back. There are no stored per-week files for
@@ -234,7 +272,16 @@ def ou_week(season: int, week: int, market: str, top_n: int = TOP_N) -> list[dic
           .select(["player_display_name", stat])
           .rename({"player_display_name": "player_name", stat: "actual"})
           .collect())
-    actual = dict(zip(ws["player_name"].to_list(), ws["actual"].to_list()))
+    # Two players can share a display name in one week — "Byron Young" and
+    # "Marcus Harris" both appear twice in 2026 week 1. `dict(zip(...))` keeps
+    # whichever came last and grades one man against the other's stat line,
+    # silently. An ambiguous name is left ungraded instead: a wrong result is
+    # worse than a missing one, because only the missing one is visible.
+    dupes = (ws.group_by("player_name").agg(pl.len().alias("_n"))
+             .filter(pl.col("_n") > 1)["player_name"].to_list())
+    actual = {k: v for k, v in zip(ws["player_name"].to_list(),
+                                   ws["actual"].to_list())
+              if k not in set(dupes)}
 
     out = []
     for r in rows:
@@ -262,10 +309,11 @@ def ou_week(season: int, week: int, market: str, top_n: int = TOP_N) -> list[dic
     # By how far our number sits from the book's, which is what a week view is
     # read for — the disagreements, not the alphabet.
     out.sort(key=lambda r: -(abs(r["edge"]) if r.get("edge") is not None else -1))
-    return out[:top_n]
+    return out if top_n is None else out[:top_n]
 
 
-def ou_payload(season: int, market: str, top_n: int = TOP_N) -> dict:
+def ou_payload(season: int, market: str,
+               top_n: int | None = TOP_N) -> dict:
     """Every played week of one over/under market, keyed by week number.
 
     Shaped like `payload` so the page can render either from one code path.

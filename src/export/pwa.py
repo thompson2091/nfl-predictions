@@ -379,6 +379,19 @@ def render(payload: dict) -> dict[str, str]:
     js = "\n".join([v1.JS_CORE, v1.JS_SHARED, v1.JS_SLIPVIEW, v1.JS_WEEK,
                     v1.JS_COMBOS, v1.JS_SAVED, v1.JS_LADDER, v1.JS_MODEL,
                     v2js.js()])
+    # The week history moves OUT of the page and into one file per market and
+    # week, fetched when a week is opened.
+    #
+    # Inlining it was measured at 20MB for a full season across six markets —
+    # a ten-fold page, in a single file uploaded by hand — and the alternative
+    # was a row cap that threw away real lines. Split, the page stays as it is
+    # and a week costs about 60KB when you actually look at it.
+    #
+    # What stays inline is the INDEX: which weeks exist and how each scored.
+    # That is what the picker needs to draw itself, and a picker that has to
+    # fetch before it can list its own options is a picker that flickers.
+    payload, extra = _split_history(payload)
+
     # `</` inside the JSON would close the script tag early and render the
     # rest of the payload as text.
     data = (json.dumps(payload, separators=(",", ":"), allow_nan=False)
@@ -406,4 +419,41 @@ def render(payload: dict) -> dict[str, str]:
         "index.html": page,
         "manifest.webmanifest": manifest(payload),
         "sw.js": SW.replace("__STAMP__", stamp or "dev"),
+        **extra,
     }
+
+
+#: Where a week's rows live, relative to the page. One file per market and
+#: week: the finest split that still fetches once per thing you open.
+HISTORY_PATH = "data/h-{market}-{week}.json"
+
+
+def _split_history(payload: dict) -> tuple[dict, dict]:
+    """Lift `history[market].weeks` into separate files, leaving an index.
+
+    Returns `(payload, files)`. The payload keeps `played`, `accuracy` and
+    `top_n` per market and loses `weeks`, which is all the size. Nothing else
+    in the payload is touched — a shallow copy per level, so the caller's dict
+    is not mutated underneath it.
+    """
+    hist = payload.get("history") or {}
+    if not hist:
+        return payload, {}
+    files, index = {}, {}
+    for market, blk in hist.items():
+        if not isinstance(blk, dict):
+            continue
+        weeks = blk.get("weeks") or {}
+        keep = {k: v for k, v in blk.items() if k != "weeks"}
+        for wk, rows in weeks.items():
+            if not rows:
+                continue
+            name = HISTORY_PATH.format(market=market, week=wk)
+            files[name] = json.dumps(rows, separators=(",", ":"),
+                                     allow_nan=False)
+        # `has` rather than the rows themselves: the page asks "is week 3
+        # there" far more often than it asks for week 3.
+        keep["has"] = sorted(int(k) for k in weeks if weeks[k])
+        index[market] = keep
+    payload = {**payload, "history": index, "history_path": HISTORY_PATH}
+    return payload, files
