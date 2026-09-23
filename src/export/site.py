@@ -896,13 +896,23 @@ function rowsFor(key, view) {
     // figures came from somewhere else and disagreed with the board about the
     // same man. What the payload carries here is (name, line, side), and every
     // number on screen still comes off the board.
-    if (view === 'short') {
+    // `fade` falls through to `short` on purpose: on a two-sided line the rule
+    // already names which way it leans, so the fades are its UNDER picks —
+    // the lines where our number says the posted over is too expensive. There
+    // is no opposite tail to find, the way there is on a one-sided touchdown
+    // market where a fade is a player rated below his price.
+    //
+    // Falling through matters: `fade` previously hit the `return out` below
+    // and handed back EVERY row, so the tab would have shown the whole board
+    // under the word "Fades".
+    if (view === 'short' || view === 'fade') {
       const want = ouShortKeys(m);
-      return out.filter(r => want.has(ouKey(r.player, r.line))).map(r => {
+      const picks = out.filter(r => want.has(ouKey(r.player, r.line))).map(r => {
         const hit = ouShortHit(m, r);
         return Object.assign({}, r, { take: hit ? hit.side : '',
                                       takeGap: hit ? hit.gap_pp : null });
       });
+      return view === 'fade' ? picks.filter(r => r.take === 'under') : picks;
     }
     return out;
   }

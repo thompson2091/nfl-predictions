@@ -190,11 +190,12 @@ function vBoard() {
     marketLabel(key) + ' has no model behind it in this build.');
 
   const view = kind === 'ou'
-    ? (['priced', 'short'].indexOf(f.view) >= 0 ? f.view : 'all')
+    ? (['priced', 'short', 'fade'].indexOf(f.view) >= 0 ? f.view : 'all')
     : f.view;
   let rows = rowsFor(key, view === 'priced' ? 'all' : view);
   if (view === 'priced') rows = rows.filter(r => r.priced);
-  rows = view === 'short' && kind === 'ou' ? oneTake(rows) : oneLine(rows, f);
+  rows = (view === 'short' || view === 'fade') && kind === 'ou'
+    ? oneTake(rows) : oneLine(rows, f);
   const all = rows;
   rows = applyFilters(rows, f);
   rows = v2sort(rows, f);
@@ -210,7 +211,8 @@ function vBoard() {
   (m.problems || []).forEach(p => {
     h += '<div class="sect"><div class="banner banner--bad">' + esc(String(p)) + '</div></div>';
   });
-  if (view === 'short') h += vFunnel(m, key, kind, rows.length);
+  if (view === 'short' || view === 'fade')
+    h += vFunnel(m, key, kind, rows.length, view);
   // The list is in a box of its own so that typing can replace it without
   // replacing the search input above it. See `patchBoard`.
   h += '<div class="sect" id="boardlist">' + boardList(rows, all, f, view, kind)
@@ -344,11 +346,12 @@ function patchBoard() {
   const f = S.fw, key = S.market, kind = KIND[key] || 'td';
   const m = marketOf(key);
   const view = kind === 'ou'
-    ? (['priced', 'short'].indexOf(f.view) >= 0 ? f.view : 'all')
+    ? (['priced', 'short', 'fade'].indexOf(f.view) >= 0 ? f.view : 'all')
     : f.view;
   let rows = rowsFor(key, view === 'priced' ? 'all' : view);
   if (view === 'priced') rows = rows.filter(r => r.priced);
-  rows = view === 'short' && kind === 'ou' ? oneTake(rows) : oneLine(rows, f);
+  rows = (view === 'short' || view === 'fade') && kind === 'ou'
+    ? oneTake(rows) : oneLine(rows, f);
   const all = rows;
   host.innerHTML = boardList(v2sort(applyFilters(rows, f), f), all, f, view, kind);
 }
@@ -359,7 +362,8 @@ function vSeg(key, kind, m) {
   const opts = kind === 'ou'
     ? [['all', 'Everyone', shown.length],
        ['priced', 'Priced', shown.filter(r => r.priced).length],
-       ['short', 'Shortlist', ouShortKeys(m).size]]
+       ['short', 'Shortlist', ouShortKeys(m).size],
+       ['fade', 'Fades', ouFadeCount(m)]]
     : [['all', 'Everyone', (m.players || []).length],
        ['short', 'Shortlist', ((m.shortlist || {}).rows || []).length],
        ['fade', 'Fades', ((m.shortlist || {}).vetoes || []).length]];
@@ -427,6 +431,12 @@ const SORTS = [['ours', 'Adj'], ['modelOnly', 'Model'], ['player', 'Player'],
 // and the posted price. `ev100` stays the single definition of that number —
 // copying it onto every row at map time would be a second one to keep in step,
 // and the v1 board already sorts its EV $100 column through the same function.
+//: How many of the rule's picks lean under. Counted from the same artifact
+//: the shortlist is counted from, so the tab and the list cannot disagree.
+function ouFadeCount(m) {
+  return (((m.shortlist || {}).rows) || []).filter(r => r.side === 'under').length;
+}
+
 const SORTVAL = { player: r => r.player, ev: r => ev100(r) };
 
 function v2sort(rows, f) {
@@ -520,8 +530,18 @@ const met = (l, v, cls, ours, wide) => '<span class="metric'
 // The rule's funnel, and its record. Both belong to the shortlist view and
 // to nothing else: "27 shortlisted" means nothing without the 530 it came
 // from, and neither means anything without what backing them returned.
-function vFunnel(m, key, kind, shown) {
+function vFunnel(m, key, kind, shown, view) {
   const sl = (kind === 'ou' ? m.shortlist : m.shortlist) || {};
+  // The funnel counts the rule's whole output. On the fades view that is the
+  // wrong denominator — they are its under-side picks — so it says which.
+  if (view === 'fade' && kind === 'ou') {
+    return '<div class="sect"><div class="card"><div class="prose">'
+      + 'The lines the rule leans <b>under</b> on: our number says the posted '
+      + 'over is priced too short. A subset of the shortlist, not its '
+      + 'opposite — on a two-sided line the rule already picks the side, so '
+      + 'there is no tail of players rated below their price the way there is '
+      + 'on a touchdown board.</div></div></div>';
+  }
   const dropped = sl.dropped || [];
   const first = kind === 'ou' ? (m.rows || []).length
                               : (m.players || []).filter(p => p.priced).length;
@@ -805,12 +825,33 @@ const SHEETS = {
     + g.items.map(it => opt(it[1], it[0] === S.market, '', 'market', it[0],
                             !!it[2] || !served(it[0]))).join('')).join('')),
 
+  betgame: () => sheetHTML('Game', (() => {
+    const cards = ((DATA.games || {}).cards) || [];
+    const past = S.week == null ? null
+      : (((DATA.games || {}).past) || {})[String(S.week)];
+    const list = past ? (past.cards || []) : cards;
+    return opt('All games', !S.betsGame, list.length + ' fixtures',
+               'betgame', '')
+      + list.map(c => {
+          // What the sheet can say about a fixture without opening it: the
+          // number the market hung on it, and the result if it has one.
+          const note = (c.final_home != null
+              ? c.away + ' ' + c.final_away + ', ' + c.home + ' ' + c.final_home
+              : [c.total != null ? 'O/U ' + c.total : '',
+                 c.spread != null ? c.home + ' ' + (c.spread > 0 ? '+' : '')
+                   + c.spread : ''].filter(Boolean).join(' · '));
+          return opt(c.away + ' @ ' + c.home, S.betsGame === c.game_id, note,
+                     'betgame', c.game_id);
+        }).join('');
+  })()),
+
   week: () => sheetHTML('Week',
     opt('This week', S.week == null, '', 'week', '')
     + historyWeeks().slice().reverse().map(w => {
         const a = ((historyFor() || {}).accuracy || {})[String(w)];
-        const note = a ? (a.hit + ' of ' + a.n + ' hit, ' + a.expected
-                          + ' expected') : '';
+        const note = !a ? ''
+          : (a.hit + ' of ' + a.n + ' hit'
+             + (has(a.expected) ? ', ' + a.expected + ' expected' : ''));
         return opt('Week ' + w, String(S.week) === String(w), note, 'week', w);
       }).join('')),
 
@@ -1070,9 +1111,10 @@ function wire() {
     }
     if (d.cbpool) { S.cb.pool = d.cbpool; render(); return; }
     if (d.betseg) { S.bets = d.betseg; render(); return; }
-    // Empty string is a real value here — it is the "All games" chip —
-    // so this tests for the ATTRIBUTE, not for a truthy value.
-    if ('betgame' in d) { S.betsGame = d.betgame || null; render(); return; }
+    // Chosen from the sheet now, so the sheet closes with it.
+    if ('betgame' in d) { S.betsGame = d.betgame || null; SHEET = null;
+                          render(); return; }
+
     if (d.pcard) { S.pcard[d.pcard] = !S.pcard[d.pcard]; render(true); return; }
     if (d.del) { dropParlay(d.del); return; }
     if (d.open) {
@@ -1468,89 +1510,121 @@ function vBetsGames(g) {
   return h;
 }
 
-// The game filter, and the one number worth putting above it: what shopping
-// is worth this week, in money rather than probability points.
+// The game filter and the week's headline. A sheet, not a row of pills:
+// sixteen fixtures in a horizontal scroller hides most of them off-screen and
+// gives no way to see what you are choosing between.
 function vBetsFilter(cards, g) {
   const evs = (g.rows || []).map(r => r.ev100).filter(has);
   const best = evs.length ? Math.max.apply(null, evs) : null;
-  // On a graded week the interesting number is what the market got right,
-  // not what value is on offer — the offer expired.
-  const graded = (g.rows || []).filter(r => r.won != null);
-  const favsHome = graded.filter(r => has(r.fair) && r.fair >= 0.5);
-  const favsWon = favsHome.filter(r => r.won).length;
+  const pick = S.betsGame ? cards.filter(c => c.game_id === S.betsGame)[0] : null;
 
   let h = '<div class="sect"><div class="card"><div class="keystats">'
     + keystat('Games', String(cards.length))
     + (g.graded
-        ? keystat('Favourites held', favsHome.length
-            ? favsWon + ' of ' + favsHome.length : '—', null, true)
-        : keystat('Best value found', best == null ? '—' : '+' + best.toFixed(2),
+        ? keystat('Week', String(g.week), null, true)
+        : keystat('Best value', best == null ? '—' : '+$' + best.toFixed(2),
                   best != null && best > 0 ? 'good' : null, true))
     + keystat('Books', '≥ ' + (g.min_books || 4), null, true)
-    + '</div>'
-    + '<div class="prose">'
-    + (g.graded
-        ? 'Week ' + g.week + ' has been played. Chances are what the market '
-          + 'said BEFORE it was, with the margin divided out, and the tick '
-          + 'beside each line is what actually happened. Nothing here was a '
-          + 'model prediction, so this grades the market, not us.'
-        : 'Chances are the market’s, with the book’s margin divided out. '
-          + '<b>EV</b> is what $100 returns at the best price if that chance '
-          + 'is right — so it measures beating the median book, not beating '
-          + 'the market. Nothing on this page is a model.')
     + '</div></div></div>';
 
-  h += '<div class="chiprow">'
-    + '<button class="chip" aria-pressed="' + (S.betsGame ? 'false' : 'true')
-    + '" data-betgame="">All games</button>'
-    + cards.map(c => '<button class="chip" aria-pressed="'
-      + (S.betsGame === c.game_id ? 'true' : 'false') + '" data-betgame="'
-      + esc(c.game_id) + '">' + esc(c.away) + ' @ ' + esc(c.home)
-      + '</button>').join('') + '</div>';
+  h += '<div class="sect"><button class="picker" data-sheet="betgame">'
+    + '<span class="picker__l">Game</span>'
+    + '<span class="picker__v">' + (pick ? esc(pick.away) + ' @ ' + esc(pick.home)
+        : 'All ' + cards.length + ' games') + '</span>'
+    + I.chev + '</button></div>';
   return h;
 }
 
+// One fixture. Three labelled blocks with rules between them, because the
+// previous card ran a score, a bar and three markets together with nothing
+// saying which was which — and the bar in particular reads as a bet split
+// unless something says otherwise. It is the de-vigged moneyline.
 function gameCard(c, g) {
   const rows = (g.rows || []).filter(r => r.game_id === c.game_id);
-  let h = '<div class="sect"><div class="card">'
-    + '<div class="gcard">'
-    + '<div class="gcard__t"><span>' + esc(c.away) + ' @ ' + esc(c.home)
-    + '</span><span class="gcard__k">market’s projection</span></div>';
+  const fin = c.final_home != null && c.final_away != null;
 
+  let h = '<div class="sect"><div class="card">'
+    + '<div class="gc__head"><span class="gc__teams">' + esc(c.away) + ' @ '
+    + esc(c.home) + '</span>'
+    + (fin ? '<span class="gc__fin"><b class="num">' + c.final_away + '–'
+        + c.final_home + '</b> final</span>'
+       : '<span class="gc__when">' + esc(c.kick || '') + '</span>')
+    + '</div>';
+
+  // What the market expects. Arithmetic on the posted numbers, said so.
   if (c.proj_home != null && c.proj_away != null) {
-    h += '<div class="gcard__s"><span class="num">' + c.proj_away.toFixed(1)
-      + '</span><span class="gcard__d">–</span><span class="num">'
+    h += '<div class="gc__blk"><div class="gc__lbl">Market’s expected score'
+      + '<span class="gc__hint">total and spread, rearranged</span></div>'
+      + '<div class="gc__score"><span class="num">' + c.proj_away.toFixed(1)
+      + '</span><span class="gc__dash">–</span><span class="num">'
       + c.proj_home.toFixed(1) + '</span>'
-      + '<span class="gcard__l">' + (c.total != null ? 'total ' + c.total : '')
+      + '<span class="gc__line">' + (c.total != null ? 'O/U ' + c.total : '')
       + (c.spread != null ? ' · ' + esc(c.home) + ' '
          + (c.spread > 0 ? '+' : '') + c.spread : '') + '</span></div>';
+    if (fin) {
+      const miss = Math.abs((c.final_home + c.final_away) - (c.total || 0));
+      h += '<div class="gc__vs">Finished ' + (c.final_home + c.final_away)
+        + ' — the total missed by ' + miss.toFixed(1) + '</div>';
+    }
+    h += '</div>';
   }
-  // The two chances as one bar. Both sides of the same question, so one bar
-  // rather than two numbers side by side — the split IS the reading.
+
+  // Our number, where one exists. It is the only modelled thing on this page
+  // and it is labelled as unproven, because it is: see `game_model`.
+  if (c.model_home != null && c.model_away != null) {
+    h += '<div class="gc__blk"><div class="gc__lbl">Our model'
+      + '<span class="gc__hint gc__hint--warn">never sees the line · unproven</span></div>'
+      + '<div class="gc__score gc__score--ours"><span class="num">'
+      + c.model_away.toFixed(1) + '</span><span class="gc__dash">–</span>'
+      + '<span class="num">' + c.model_home.toFixed(1) + '</span>'
+      + '<span class="gc__line">' + modelLean(c) + '</span></div></div>';
+  }
+
+  // The two chances, as one bar, SAID to be win probability. Both sides of one
+  // question, so one bar — and the label is the point: a split with no label
+  // reads as the share of bets on each team, which this is not.
   if (c.win_home != null && c.win_away != null) {
     const aw = Math.round(c.win_away * 100), hm = Math.round(c.win_home * 100);
-    h += '<div class="split" role="img" aria-label="' + esc(c.away) + ' ' + aw
-      + ' percent, ' + esc(c.home) + ' ' + hm + ' percent">'
+    h += '<div class="gc__blk"><div class="gc__lbl">Chance of winning'
+      + '<span class="gc__hint">moneyline, book’s margin removed</span></div>'
+      + '<div class="split" role="img" aria-label="' + esc(c.away) + ' ' + aw
+      + ' percent to win, ' + esc(c.home) + ' ' + hm + ' percent">'
       + '<span class="split__a" style="width:' + (c.win_away * 100).toFixed(1) + '%">'
       + '<b>' + esc(c.away) + '</b> ' + aw + '%</span>'
       + '<span class="split__h" style="width:' + (c.win_home * 100).toFixed(1) + '%">'
-      + '<b>' + esc(c.home) + '</b> ' + hm + '%</span></div>';
+      + '<b>' + esc(c.home) + '</b> ' + hm + '%</span></div></div>';
   }
-  h += '</div>';
 
   ['spreads', 'totals', 'h2h'].forEach(mk => {
     const sel = rows.filter(r => r.market === mk);
     if (!sel.length) return;
-    // By how many books quote it: the line the most books agree on IS the
-    // market's line, and ordering by probability interleaves the alternates.
     sel.sort((x, y) => (y.n_books || 0) - (x.n_books || 0)
                     || (x.point || 0) - (y.point || 0)
                     || (y.fair || 0) - (x.fair || 0));
     h += '<div class="gmk">' + esc(MKLABEL[mk] || mk)
-      + '<span class="gmk__h">chance · price · EV $100</span></div>';
+      + '<span class="gmk__h">' + (g.graded ? 'chance · price · result'
+          : 'chance · price · EV $100') + '</span></div>';
     sel.forEach(r => { h += betLine(r); });
   });
   return h + '</div></div>';
+}
+
+// Which side the model takes against the posted number, in words. A score
+// beside a score invites subtraction; this does the subtraction.
+function modelLean(c) {
+  const bits = [];
+  if (c.model_total != null && c.total != null) {
+    const d = c.model_total - c.total;
+    if (Math.abs(d) >= 0.5)
+      bits.push((d > 0 ? 'over' : 'under') + ' by ' + Math.abs(d).toFixed(1));
+  }
+  if (c.model_spread != null && c.spread != null) {
+    const d = c.model_spread - c.spread;
+    if (Math.abs(d) >= 0.5)
+      bits.push((d < 0 ? esc(c.home) : esc(c.away)) + ' by '
+                + Math.abs(d).toFixed(1));
+  }
+  return bits.length ? bits.join(' · ') : 'agrees with the line';
 }
 
 // One priced outcome. EV carries the tone, not the shopping gain: the gain is

@@ -628,7 +628,9 @@ def _attach_ou_shortlists(payload: dict) -> None:
                                               ous.load(market))
 
 
-def _enrich_lines(book_rows: list[dict], moves: dict | None = None) -> tuple:
+def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
+                  season: int | None = None, week: int | None = None
+                  ) -> tuple:
     """De-vig every line, price its EV, and summarise each fixture.
 
     Shared by the live week and by every archived one, so a past week
@@ -733,6 +735,8 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None) -> tuple:
             "proj_home": ph, "proj_away": pa,
             "win_home": wins.get(a["home"]), "win_away": wins.get(a["away"]),
         }
+    _attach_finals(cards, season, week)
+    _attach_model(cards, season, week)
     return rows, [cards[k] for k in sorted(cards)]
 
 
@@ -815,7 +819,7 @@ def games(season: int | None, week: int | None) -> dict:
     # correctly, leave a moneyline alone, and silently fail to pair any spread
     # at all — every spread would then read as fair at its vigged price.
     book_rows = b.to_dicts()
-    rows, cards = _enrich_lines(book_rows, moves)
+    rows, cards = _enrich_lines(book_rows, moves, season, week)
 
 
     return {"season": season, "week": week, "rows": rows,
@@ -832,6 +836,95 @@ def games(season: int | None, week: int | None) -> dict:
                          "the spread, so it cannot second-guess them. What is "
                          "shown is the market, the spread between books, and "
                          "which way it moved.")}
+
+
+def _attach_finals(cards: dict, season: int | None, week: int | None) -> None:
+    """The score, where THIS week's game has been played.
+
+    Keyed on season and week as well as the teams. Keyed on the pair alone it
+    matched any previous meeting of those two, so the upcoming week 3 card for
+    ARI @ SF carried a 15-16 "final" from an earlier season — a finished score
+    on a game that has not kicked off, which is worse than showing none.
+    """
+    import polars as pl
+
+    from src.utils.paths import get_path
+
+    if not (season and week):
+        return
+    try:
+        s = (pl.read_parquet(get_path("raw") / "schedules.parquet")
+             .filter((pl.col("game_type") == "REG")
+                     & (pl.col("season") == season) & (pl.col("week") == week))
+             .drop_nulls(["home_score", "away_score"])
+             .select(["home_team", "away_team", "home_score", "away_score"]))
+    except Exception:                                            # noqa: BLE001
+        return
+    by = {(r["away_team"], r["home_team"]): r for r in s.iter_rows(named=True)}
+    for c in cards.values():
+        r = by.get((c["away"], c["home"]))
+        if r:
+            c["final_home"] = int(r["home_score"])
+            c["final_away"] = int(r["away_score"])
+
+
+def _attach_model(cards: dict, season: int | None = None,
+                  week: int | None = None) -> None:
+    """The vegas-blind model's score, where it can be produced.
+
+    **This is the one modelled number on the page and it is not validated.**
+    `game_model` is worse than the market on both margin and totals, by
+    design — it cannot see the line — and its only positive result is a
+    disagreement signal that has not survived a clean-room test. It is shown
+    because a second opinion is the point of the page and hidden numbers help
+    nobody, and it is labelled unproven everywhere it appears.
+
+    Absent rather than wrong when the model cannot be built: a card with no
+    model block reads as "no second opinion", which is true.
+    """
+    if not (season and week):
+        return
+    try:
+        from src.models.game_model import predict_week
+    except Exception:                                            # noqa: BLE001
+        return
+    try:
+        # ONE fit, not the seven `walk_forward` does. That function refits per
+        # season and takes minutes; it belongs in evaluation, not in an export
+        # that runs every time the board is rebuilt.
+        g = predict_week(season, week)
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  game model unavailable ({e})", file=sys.stderr)
+        return
+    if g is None or g.is_empty():
+        return
+    import polars as pl
+
+    from src.utils.paths import get_path
+
+    # `walk_forward` is keyed by the nflverse game id; the cards are keyed by
+    # the team pair the odds archive uses. Joined through the schedule rather
+    # than by reformatting either, so a change to one id scheme cannot quietly
+    # stop matching the other.
+    try:
+        sched = (pl.read_parquet(get_path("raw") / "schedules.parquet")
+                 .select(["game_id", "home_team", "away_team"]))
+    except Exception:                                            # noqa: BLE001
+        return
+    g = g.join(sched, on="game_id", how="inner")
+    for r in g.iter_rows(named=True):
+        c = cards.get(f"{r['away_team']}_{r['home_team']}")
+        if not c:
+            continue
+        tot, mar = r.get("total_model"), r.get("margin_model")
+        if tot is None or mar is None:
+            continue
+        c["model_total"] = round(float(tot), 1)
+        # Signed toward the home side, like `spread`, so the two can be
+        # compared without the reader working out which way each points.
+        c["model_spread"] = round(-float(mar), 1)
+        c["model_home"] = round((float(tot) + float(mar)) / 2, 1)
+        c["model_away"] = round((float(tot) - float(mar)) / 2, 1)
 
 
 def games_past(season: int | None, current: int | None) -> dict:
@@ -879,7 +972,7 @@ def games_past(season: int | None, current: int | None) -> dict:
         # then attach the result. Renaming first and enriching second put the
         # two views on different key names and the shared helper on a
         # `best_odds` that no longer existed.
-        rows, cards = _enrich_lines(b.to_dicts())
+        rows, cards = _enrich_lines(b.to_dicts(), None, season, wk)
         for r in rows:
             k = (r["game_id"], r["market"], str(r["outcome"]), r["point"])
             # Absent, not false, on a push or an ungraded line: a push is not

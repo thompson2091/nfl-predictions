@@ -63,14 +63,33 @@ LEAK_MIN_ROWS = 25
 LEAK_FROM_WEEK = 4
 
 
-def team_games(target_type: str = "anytime_td") -> pl.DataFrame:
+#: Built frames, by (target type, played_only). Reading and de-duplicating the
+#: player matrix is most of the cost, and an export builds the live week plus
+#: every archived one — which paid for it once per board.
+_FRAMES: dict = {}
+
+#: Fitted models, by season trained up to.
+_FITS: dict = {}
+
+
+def team_games(target_type: str = "anytime_td",
+               played_only: bool = True) -> pl.DataFrame:
     """One row per team per game: its features, and the points it scored.
 
     Recovered from the player-level feature matrix by taking the team-level
     columns and de-duplicating, which is sound only because those columns are
     constant across a side's players — asserted here rather than assumed.
+
+    `played_only=False` keeps games with no score yet, which is the only way
+    to predict one: the default inner join drops the upcoming week entirely,
+    so a card for a game that has not kicked off had no model row and showed
+    no model — silently, since a missing second opinion is a legitimate state.
     """
     from src.utils.paths import get_path
+
+    key = (target_type, played_only)
+    if key in _FRAMES:
+        return _FRAMES[key]
 
     lf = pl.scan_parquet(get_path("processed", target_type) / "features.parquet")
     cols = lf.collect_schema().names()
@@ -82,8 +101,9 @@ def team_games(target_type: str = "anytime_td") -> pl.DataFrame:
             .unique(subset=keys, keep="first"))
 
     sched = (pl.read_parquet(get_path("raw") / "schedules.parquet")
-             .filter(pl.col("game_type") == "REG")
-             .drop_nulls(["home_score", "away_score"]))
+             .filter(pl.col("game_type") == "REG"))
+    if played_only:
+        sched = sched.drop_nulls(["home_score", "away_score"])
     long = pl.concat([
         sched.select(["game_id", pl.col("home_team").alias("team"),
                       pl.col("home_score").alias("points"),
@@ -97,7 +117,22 @@ def team_games(target_type: str = "anytime_td") -> pl.DataFrame:
     per = out.group_by("game_id").agg(pl.len().alias("n"))
     assert per.filter(pl.col("n") != 2).is_empty(), (
         "some games do not have exactly two team rows")
+    _FRAMES[key] = out
     return out
+
+
+def feature_columns_cached(d: pl.DataFrame, _cache: dict = {}) -> list[str]:
+    """`feature_columns` minus `leaky_columns`, computed once per process.
+
+    The screen walks every column against every null subset and costs a few
+    seconds. Paid once in an export that rebuilds several boards, rather than
+    once per board.
+    """
+    key = (d.height, len(d.columns))
+    if key not in _cache:
+        feats = feature_columns(d)
+        _cache[key] = [c for c in feats if c not in set(leaky_columns(d, feats))]
+    return _cache[key]
 
 
 def feature_columns(d: pl.DataFrame) -> list[str]:
@@ -117,15 +152,26 @@ def leaky_columns(d: pl.DataFrame, cols: list[str] | None = None) -> list[str]:
     w = (d.with_columns(pl.col("points").mean()
                         .over(["season", "team"]).alias("_tm"))
           .with_columns((pl.col("points") - pl.col("_tm")).alias("_vs"))
-          .filter(pl.col("week") >= LEAK_FROM_WEEK))
-    out = []
-    for c in cols:
-        s = w.filter(pl.col(c).is_null())
-        if s.height < LEAK_MIN_ROWS:
-            continue
-        if float(s["_vs"].mean()) < LEAK_GAP_PTS:
-            out.append(c)
-    return out
+          .filter(pl.col("week") >= LEAK_FROM_WEEK)
+          # Only the columns the screen reads. It used to filter the WHOLE
+          # frame once per column — 300 columns copied 160 times — which cost
+          # 38 seconds and put that on every export.
+          .select(cols + ["_vs"]))
+    if w.height == 0:
+        return []
+    # One pass: per column, how many rows it is null on and the mean deviation
+    # across exactly those rows. `mean` over a null-masked column ignores the
+    # nulls, so the deviation is masked by the column rather than filtered by it.
+    agg = w.select([
+        e for c in cols for e in (
+            pl.col(c).is_null().sum().alias(f"n::{c}"),
+            pl.when(pl.col(c).is_null()).then(pl.col("_vs"))
+              .otherwise(None).mean().alias(f"g::{c}"))
+    ]).row(0, named=True)
+    return [c for c in cols
+            if (agg[f"n::{c}"] or 0) >= LEAK_MIN_ROWS
+            and agg[f"g::{c}"] is not None
+            and agg[f"g::{c}"] < LEAK_GAP_PTS]
 
 
 def walk_forward(d: pl.DataFrame | None = None, first: int = 2019,
@@ -234,3 +280,90 @@ def disagreements(g: pl.DataFrame, market: str = "total",
             "clears": lo > BREAK_EVEN,
         })
     return out
+
+
+def predict_week(season: int, week: int, d: pl.DataFrame | None = None
+                 ) -> pl.DataFrame:
+    """One fit on everything before this season, then predict one week.
+
+    Separate from `walk_forward`, which refits per season and takes minutes —
+    fine for measuring, far too slow to sit inside an export that runs every
+    time the board is rebuilt.
+
+    Trains on seasons strictly before `season`, so a week served in September
+    is scored by a model that has seen no game from the season it is
+    predicting. Returns one row per game with the model's margin and total.
+    """
+    import lightgbm as lgb
+
+    # Unplayed games included, or the week being predicted is not in the frame.
+    d = team_games(played_only=False) if d is None else d
+    # The screen needs OUTCOMES to measure missingness against, so it is run on
+    # the played rows only — the unplayed ones have no score to compare to.
+    feats = feature_columns_cached(d.filter(pl.col("points").is_not_null()))
+    tr = d.filter((pl.col("season") < season) & pl.col("points").is_not_null())
+    te = d.filter((pl.col("season") == season) & (pl.col("week") == week))
+    if te.is_empty() or tr.height < 500:
+        return pl.DataFrame()
+
+    # One fit per season, not per week, and PERSISTED. Every week of a season
+    # trains on the same rows — everything before it — and the fit itself is
+    # 43 seconds, which an export that rebuilds the live week and every
+    # archived one was paying repeatedly. Saved beside the other models and
+    # reloaded, so a rebuild costs a load.
+    m = _FITS.get(season)
+    if m is None:
+        m = _load_fit(season, feats)
+    if m is None:
+        m = lgb.LGBMRegressor(n_estimators=400, learning_rate=0.05,
+                              num_leaves=31, min_child_samples=40,
+                              subsample=0.8, colsample_bytree=0.6,
+                              random_state=0, verbose=-1)
+        m.fit(tr.select(feats).to_numpy(), tr["points"].to_numpy())
+        _save_fit(season, feats, m)
+    _FITS[season] = m
+    te = te.with_columns(
+        pl.Series("pred", m.predict(te.select(feats).to_numpy())))
+    home, away = pl.col("home") == 1, pl.col("home") == 0
+    return te.group_by("game_id").agg([
+        (pl.col("pred").filter(home).first()
+         - pl.col("pred").filter(away).first()).alias("margin_model"),
+        pl.col("pred").sum().alias("total_model"),
+    ])
+
+
+def _fit_path(season: int):
+    from src.utils.paths import get_path
+
+    return get_path("models") / "game_model" / f"points_{season}.pkl"
+
+
+def _load_fit(season: int, feats: list[str]):
+    """The saved model, or None if it was fitted on different columns.
+
+    The feature list is stored WITH the booster and checked on load. A model
+    reloaded against a changed feature matrix predicts from columns that have
+    silently moved — the trap `leaky_columns` exists to catch would come back
+    through the back door, with no error anywhere.
+    """
+    import pickle
+
+    path = _fit_path(season)
+    if not path.exists():
+        return None
+    try:
+        blob = pickle.loads(path.read_bytes())
+    except Exception:                                            # noqa: BLE001
+        return None
+    if blob.get("features") != list(feats):
+        return None
+    return blob.get("model")
+
+
+def _save_fit(season: int, feats: list[str], model) -> None:
+    import pickle
+
+    path = _fit_path(season)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(pickle.dumps({"features": list(feats), "model": model,
+                                   "season": season}))

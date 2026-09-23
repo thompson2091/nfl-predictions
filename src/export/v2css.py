@@ -388,19 +388,56 @@ EXTRA_CSS = """
 .blbar__f--won{background:var(--good)}
 .blbar__f--lost{background:var(--bad)}
 
+/* ---------- picker ---------- */
+/* One control that opens a sheet, in place of a horizontal row of pills.
+   Sixteen fixtures in a scroller put most of them off-screen with no way to
+   see what you were choosing between. */
+.picker{
+  display:flex;align-items:center;gap:var(--space-2);width:100%;
+  min-height:var(--tap-target);padding:var(--space-2) var(--space-4);
+  background:var(--bg-surface);border:var(--hairline) solid var(--border-soft);
+  border-radius:var(--radius-md);color:var(--ink);text-align:left;
+}
+.picker__l{font-size:12px;color:var(--ink-faint);flex:none}
+.picker__v{flex:1;font-size:15px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+
 /* ---------- matchup card ---------- */
-.gcard{padding:var(--space-4) var(--space-4) var(--space-3)}
-.gcard__t{display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-2)}
-.gcard__t > span:first-child{font-size:17px;font-weight:600}
-.gcard__k{font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.04em}
-.gcard__s{display:flex;align-items:baseline;gap:var(--space-2);margin-top:var(--space-1)}
-.gcard__s .num{font-size:26px;font-weight:600;letter-spacing:-.01em}
-.gcard__d{color:var(--ink-faint);font-size:20px}
-.gcard__l{margin-left:auto;font-size:12px;color:var(--ink-muted);text-align:right}
+/* Blocks with rules between them and a label on each. The previous card ran a
+   score, a bar and three price tables together with nothing saying which was
+   which — and an unlabelled 66/34 split reads as the share of bets on each
+   team, which it is not. */
+.gc__head{
+  display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-2);
+  padding:var(--space-4) var(--space-4) var(--space-3);
+  border-bottom:var(--hairline) solid var(--separator);
+}
+.gc__teams{font-size:17px;font-weight:600}
+.gc__fin{font-size:12px;color:var(--ink-muted)}
+.gc__fin b{font-size:15px;color:var(--ink);margin-right:4px}
+.gc__when{font-size:12px;color:var(--ink-faint)}
+.gc__blk{padding:var(--space-3) var(--space-4)}
+.gc__blk + .gc__blk{border-top:var(--hairline) solid var(--separator)}
+.gc__lbl{
+  display:flex;align-items:baseline;gap:var(--space-2);
+  font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.gc__hint{
+  font-weight:400;letter-spacing:0;text-transform:none;font-size:11px;
+  color:var(--ink-faint);
+}
+.gc__hint--warn{color:var(--warn)}
+.gc__score{display:flex;align-items:baseline;gap:var(--space-2);margin-top:2px}
+.gc__score .num{font-size:24px;font-weight:600;letter-spacing:-.01em}
+.gc__score--ours .num{color:var(--accent)}
+.gc__dash{color:var(--ink-faint)}
+.gc__line{margin-left:auto;font-size:12px;color:var(--ink-muted);text-align:right}
+.gc__vs{margin-top:var(--space-2);font-size:12px;color:var(--ink-muted)}
 /* Both sides of one question, so one bar. Two numbers side by side invite
    the reader to compare them to 50 rather than to each other. */
 .split{
-  display:flex;height:26px;margin-top:var(--space-3);
+  display:flex;height:26px;margin-top:var(--space-2);
   border-radius:var(--radius-sm);overflow:hidden;font-size:12px;
 }
 .split span{
