@@ -1021,9 +1021,16 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     # add roughly 780KB to a 1.6MB payload to carry a tail nobody scrolls to.
     if s:
         try:
+            from src.evaluation.week_history import ou_payload
             from src.evaluation.week_history import payload as week_payload
             payload["history"] = {
                 mk: week_payload(s, mk) for mk in ("anytime_td", "first_td")}
+            # And the four over/under boards, which store no per-week file and
+            # are rebuilt from the archived odds instead. Without these, four
+            # of the six markets offered a week selector that led nowhere.
+            for mk in ("receptions", "receiving_yards", "rushing_yards",
+                       "passing_yards"):
+                payload["history"][mk] = ou_payload(s, mk)
         except Exception as e:                                   # noqa: BLE001
             print(f"  week history unavailable ({e})", file=sys.stderr)
             payload["history"] = {}
