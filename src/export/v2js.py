@@ -437,6 +437,20 @@ function ouFadeCount(m) {
   return (((m.shortlist || {}).rows) || []).filter(r => r.side === 'under').length;
 }
 
+//: The fixture a matchup card is, in the same words the boards use. The Bets
+//: payload keys a card by its team pair and the boards key a row by
+//: "AWAY @ HOME"; one of the two has to be the shared form, and it is this
+//: one, because six boards already filter on it.
+const cardLabel = c => (c.away || '') + ' @ ' + (c.home || '');
+
+//: Which card the current selection names, or null for all of them. Shared
+//: with the boards through `S.fw.game`, so picking a game on the Bets tab and
+//: switching to Anytime TD lands on the same fixture.
+function betsPick(cards) {
+  if (!S.fw.game) return null;
+  return (cards || []).filter(c => cardLabel(c) === S.fw.game)[0] || null;
+}
+
 const SORTVAL = { player: r => r.player, ev: r => ev100(r) };
 
 function v2sort(rows, f) {
@@ -830,7 +844,7 @@ const SHEETS = {
     const past = S.week == null ? null
       : (((DATA.games || {}).past) || {})[String(S.week)];
     const list = past ? (past.cards || []) : cards;
-    return opt('All games', !S.betsGame, list.length + ' fixtures',
+    return opt('All games', !S.fw.game, list.length + ' fixtures',
                'betgame', '')
       + list.map(c => {
           // What the sheet can say about a fixture without opening it: the
@@ -840,8 +854,8 @@ const SHEETS = {
               : [c.total != null ? 'O/U ' + c.total : '',
                  c.spread != null ? c.home + ' ' + (c.spread > 0 ? '+' : '')
                    + c.spread : ''].filter(Boolean).join(' · '));
-          return opt(c.away + ' @ ' + c.home, S.betsGame === c.game_id, note,
-                     'betgame', c.game_id);
+          return opt(cardLabel(c), S.fw.game === cardLabel(c), note,
+                     'betgame', cardLabel(c));
         }).join('');
   })()),
 
@@ -1112,7 +1126,8 @@ function wire() {
     if (d.cbpool) { S.cb.pool = d.cbpool; render(); return; }
     if (d.betseg) { S.bets = d.betseg; render(); return; }
     // Chosen from the sheet now, so the sheet closes with it.
-    if ('betgame' in d) { S.betsGame = d.betgame || null; SHEET = null;
+    // Writes the SHARED filter, so the choice follows you onto the boards.
+    if ('betgame' in d) { S.fw.game = d.betgame || ''; SHEET = null;
                           render(); return; }
 
     if (d.pcard) { S.pcard[d.pcard] = !S.pcard[d.pcard]; render(true); return; }
@@ -1150,7 +1165,18 @@ function wire() {
       if (k === 'week') {
         // Empty string is "this week": the sheet cannot carry a null.
         S.week = (v === '' || v == null) ? null : Number(v);
-      } else if (k === 'market') { S.market = v; S.fw.game = ''; }
+      } else if (k === 'market') {
+        // The game filter SURVIVES a market switch. It used to be cleared
+        // here, which meant looking at one fixture across the six boards
+        // re-picked it five times. Every market labels a fixture identically
+        // — "ARI @ SF", from the same `fixtureOf` — so the filter carries;
+        // it is dropped only when the new market has no rows for that game,
+        // where keeping it would show an empty board and no reason why.
+        S.market = v;
+        if (S.fw.game && !rowsFor(v, 'all').some(r => r.game === S.fw.game)) {
+          S.fw.game = '';
+        }
+      }
       else if (k === 'sort') {
         // Tapping the column you are already sorted by reverses it, which is
         // what the arrow on a table heading does and what a sheet cannot say.
@@ -1501,8 +1527,8 @@ function vBetsGames(g) {
     'The archive holds no lines for ' + (g.season || '') + ' week ' + (g.week || '') + '.');
 
   const cards = (g.cards || []);
-  const pick = S.betsGame;
-  const shown = pick ? cards.filter(c => c.game_id === pick) : cards;
+  const pick = betsPick(cards);
+  const shown = pick ? [pick] : cards;
 
   let h = vBetsFilter(cards, g);
   shown.forEach(c => { h += gameCard(c, g); });
@@ -1516,7 +1542,7 @@ function vBetsGames(g) {
 function vBetsFilter(cards, g) {
   const evs = (g.rows || []).map(r => r.ev100).filter(has);
   const best = evs.length ? Math.max.apply(null, evs) : null;
-  const pick = S.betsGame ? cards.filter(c => c.game_id === S.betsGame)[0] : null;
+  const pick = betsPick(cards);
 
   let h = '<div class="sect"><div class="card"><div class="keystats">'
     + keystat('Games', String(cards.length))
@@ -1677,6 +1703,13 @@ function vBetsMove(g) {
   if (!g.moved) {
     const gh = g.capture_gap_hours;
     const near = gh != null && gh < 1;
+    // A close older than the newest open is not a close. Said separately
+    // because the fix is different: the others wait, this one has a stale row
+    // sitting in front of a good capture.
+    if (g.stale_close) return vEmpty('No closing prices yet this week',
+      'The newest capture filed as a close is older than the newest open, so '
+      + 'there is nothing to difference against. It resolves when the close '
+      + 'before kickoff runs.');
     return vEmpty(near ? 'Both snapshots are the same capture'
                        : 'Only one end of this week is archived',
       near

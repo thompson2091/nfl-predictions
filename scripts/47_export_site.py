@@ -790,15 +790,31 @@ def games(season: int | None, week: int | None) -> dict:
 
     real = [m for m in moves.values() if abs(m["move_pp"] or 0) >= MIN_MOVE_PP]
     gap_h = None
+    stale_close = False
     try:
         import polars as pl
 
         from src.ingest.game_lines import LINES_PATH
         d = (pl.read_parquet(LINES_PATH)
              .filter((pl.col("season") == season) & (pl.col("week") == week)))
+        # The LATEST of each, not the earliest. A week can hold several
+        # captures per end, and what decides whether a close exists is the
+        # newest one — see `stale_close` below.
+        ends = {k: v for k, v in
+                d.group_by("snapshot").agg(pl.col("captured_at").max().alias("t"))
+                .iter_rows()}
         ts = {k: v for k, v in
               d.group_by("snapshot").agg(pl.col("captured_at").min().alias("t"))
               .iter_rows()}
+        # A close that predates the newest open is not a close. Week 3 held a
+        # pair captured four minutes apart while a real open landed the next
+        # day, and the four-minute pair still differed by a point or two on
+        # five lines — not because the market moved but because the set of
+        # books quoting them changed, which shifts a median. Requiring "some
+        # line moved" passed that; requiring the close to come AFTER the open
+        # does not, and needs no threshold to say so.
+        if "open" in ends and "close" in ends:
+            stale_close = ends["close"] < ends["open"]
         if "open" in ts and "close" in ts:
             from datetime import datetime
             fmt = "%Y-%m-%dT%H:%M:%SZ"
@@ -828,8 +844,9 @@ def games(season: int | None, week: int | None) -> dict:
             "games": int(b["game_id"].n_unique()),
             # Not `bool(moves)`: a week holding two copies of the same capture
             # has a full movement table of zeroes. See above.
-            "moved": bool(real),
+            "moved": bool(real) and not stale_close,
             "capture_gap_hours": gap_h,
+            "stale_close": stale_close,
             "min_move_pp": MIN_MOVE_PP,
             # Stated on the page rather than left for the reader to wonder at.
             "no_model": ("The team-rate model is a regression ON the total and "
