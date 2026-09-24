@@ -173,6 +173,31 @@ def load_rosters(seasons: list[int]) -> pl.DataFrame:
             )
     df = normalize_teams(df, ["team"])
     _report_coverage("Rosters", df, seasons)
+    # MERGE, never replace. `_write` overwrites the file, and this loader is
+    # called with a single season by `56_inactives.py --refresh`, which runs
+    # fifteen times a week. Its first firing replaced rosters for 2015-2026
+    # with 2026 alone, and nothing failed: the current week still resolved, so
+    # the board, the candidates and the inactives check all carried on. What
+    # broke was everything keyed on an older season — grading the odds archive
+    # went from matching book names to gsis ids to matching none of them, 0%
+    # across 44,000 archived closing prices, reported only as "grading will be
+    # sparse". A later `make features` would have rebuilt the training
+    # population off the same hole.
+    #
+    # So seasons that were not asked for are kept. A caller wanting only the
+    # requested seasons should filter what it reads, not the file everything
+    # else reads too.
+    path = get_path("raw") / "rosters.parquet"
+    if path.exists():
+        try:
+            prior = pl.read_parquet(path)
+            fresh = set(df["season"].unique().to_list())
+            keep = prior.filter(~pl.col("season").is_in(fresh))
+            if keep.height:
+                df = pl.concat([keep, df], how="diagonal_relaxed")
+        except Exception as e:                                   # noqa: BLE001
+            print(f"  WARNING: could not merge existing rosters ({e}) — "
+                  f"writing only {sorted(set(df['season'].unique().to_list()))}")
     return _write(df, "rosters.parquet")
 
 
