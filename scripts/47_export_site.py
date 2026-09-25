@@ -737,7 +737,65 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
         }
     _attach_finals(cards, season, week)
     _attach_model(cards, season, week)
-    return rows, [cards[k] for k in sorted(cards)]
+    _attach_kickoff(cards, season, week)
+    # Sorted by kickoff where it is known, so the list reads as a weekend
+    # rather than as an alphabet. Games with no time sort last rather than
+    # first: a missing kickoff is usually a game the schedule has not
+    # finalised, and burying it is better than opening the page with it.
+    return rows, sorted(cards.values(),
+                        key=lambda c: (c.get("kick_sort") or "9", c["game_id"]))
+
+
+def _attach_kickoff(cards: dict, season: int | None, week: int | None) -> None:
+    """Kickoff day and time, Eastern, as the schedule states it.
+
+    `gametime` in the nflverse schedule is ALREADY Eastern — it is the
+    league's own publication timezone — so there is no conversion here and
+    there must not be one. Converting a naive string as though it were UTC
+    would move every Sunday 13:00 to 08:00 and nothing would look wrong
+    enough to catch.
+
+    Absent rather than guessed when the schedule has no time: an unscheduled
+    game shows no kickoff, which is what is true of it.
+    """
+    if not (season and week):
+        return
+    import polars as pl
+
+    from src.utils.paths import get_path
+
+    try:
+        s = (pl.read_parquet(get_path("raw") / "schedules.parquet")
+             .filter((pl.col("season") == season) & (pl.col("week") == week)))
+    except Exception:                                            # noqa: BLE001
+        return
+    for r in s.iter_rows(named=True):
+        c = cards.get(f"{r.get('away_team')}_{r.get('home_team')}")
+        if not c:
+            continue
+        day, t = r.get("weekday"), r.get("gametime")
+        c["kick_day"] = day
+        c["kick_et"] = _et_clock(t)
+        c["kick_sort"] = f"{r.get('gameday') or ''} {t or ''}"
+        # Prime time is a real betting category, not a decoration — it is what
+        # `situational_features` splits on — so the page can label it without
+        # re-deriving the rule.
+        c["prime"] = bool(day in ("Thursday", "Monday")
+                          or (day == "Sunday" and (t or "") >= "19:00"))
+
+
+def _et_clock(t: str | None) -> str | None:
+    """"20:15" as "8:15 PM ET". Twelve-hour, because the audience reads it."""
+    if not t or ":" not in str(t):
+        return None
+    try:
+        h, m = str(t).split(":")[:2]
+        h = int(h)
+    except ValueError:
+        return None
+    ap = "AM" if h < 12 else "PM"
+    h12 = h % 12 or 12
+    return f"{h12}:{m} {ap} ET"
 
 
 def model_cards() -> list[dict]:
