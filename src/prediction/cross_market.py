@@ -17,11 +17,11 @@ Top-5 than the dedicated model — the two carry different information, which is
 why combining them beats either.
 
 **Geometric, not arithmetic.** These are probabilities on very different scales
-— an anytime favourite sits near 0.55, a first-TD favourite near 0.15 — and a
+— an anytime favorite sits near 0.55, a first-TD favorite near 0.15 — and a
 weighted average would let the larger number dominate the ordering regardless of
 what either model meant. A geometric blend is a weighted average in log space,
 so it combines the two rankings rather than their levels, and the level is
-restored by normalising within the game afterwards.
+restored by normalizing within the game afterwards.
 
 **The weight is fitted, never chosen.** The curve above was measured on the same
 seasons it would be applied to, which makes its peak optimistic; the weight this
@@ -52,7 +52,7 @@ WEIGHT_GRID = np.round(np.arange(0.0, 1.001, 0.05), 3)
 def blend(first: np.ndarray, anytime: np.ndarray, weight: float) -> np.ndarray:
     """Geometric mean of two probability vectors, weighted toward `anytime`.
 
-    Not normalised — callers rank within a game, and `predict` renormalises so
+    Not normalized — callers rank within a game, and `predict` renormalises so
     a game's first-TD probabilities sum to one.
     """
     w = float(np.clip(weight, 0.0, 1.0))
@@ -67,7 +67,7 @@ def categorical_nll(df: pl.DataFrame, prob_col: str, game_col: str = "game_id",
                     target_col: str = "target") -> float:
     """Negative log likelihood of the player who actually scored first.
 
-    Within each game the scores are normalised to sum to one — exactly one
+    Within each game the scores are normalized to sum to one — exactly one
     player wins — and this returns the mean negative log probability the model
     placed on the winner. Lower is better, and unlike Top-1 it moves smoothly
     with the weight.

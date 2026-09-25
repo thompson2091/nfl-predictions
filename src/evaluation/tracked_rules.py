@@ -230,7 +230,7 @@ def _played_weeks(season: int) -> set[int]:
 
 
 def _outcomes(target_type: str) -> pl.DataFrame | None:
-    """Did each candidate score, by season, week and normalised name.
+    """Did each candidate score, by season, week and normalized name.
 
     Read off the candidate matrix rather than re-derived from play-by-play:
     `target` there is the same column the model is trained against, so a pick

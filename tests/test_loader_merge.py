@@ -26,7 +26,7 @@ SRC = Path(__file__).resolve().parents[1] / "src/ingest/loader.py"
 #: game's final score meant `load_schedules([2026])`, and 3,300 rows became
 #: 272. "This one is always called with every season" is a claim about every
 #: caller that will ever exist, which is not a claim anyone can make — so the
-#: list is now every season-keyed file, with no exceptions and no judgement.
+#: list is now every season-keyed file, with no exceptions and no judgment.
 SEASON_KEYED = ["rosters.parquet", "pbp.parquet", "weekly_stats.parquet",
                 "snap_counts.parquet", "injuries.parquet",
                 "schedules.parquet"]
@@ -52,7 +52,7 @@ def test_every_season_keyed_loader_merges_rather_than_replaces():
 
 
 def test_the_merge_keeps_seasons_it_was_not_asked_for(tmp_path, monkeypatch):
-    """Behaviour, not just wiring: the helper itself has to do it."""
+    """Behavior, not just wiring: the helper itself has to do it."""
     from src.ingest import loader
 
     monkeypatch.setattr(loader, "get_path", lambda k: tmp_path)

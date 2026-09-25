@@ -5,22 +5,22 @@ import polars as pl
 def _line_features() -> list[pl.Expr]:
     """Line-derived features, once, for a `spread_line` already in team perspective.
 
-    nflverse `spread_line` is **positive when the home team is favoured**
+    nflverse `spread_line` is **positive when the home team is favored**
     (correlation with home margin of victory is +0.44). The previous code
     asserted the opposite in a comment and built three features on it, all
     wrong:
 
     - `is_favorite` and `is_big_favorite` were inverted. Teams flagged as
-      favourites won 34.9% of their games; teams flagged as underdogs won
+      favorites won 34.9% of their games; teams flagged as underdogs won
       66.7%.
     - `implied_team_total` came out identical for both sides of all 3,300
       games. The home rows subtracted the spread when they should have added
       it, and the away rows negated the spread into team perspective and then
-      negated it again inside the formula, so the two cancelled and both teams
+      negated it again inside the formula, so the two canceled and both teams
       received the away team's number.
 
     Every caller flips `spread_line` into that team's own perspective first, so
-    a positive value here always means "this team is favoured" and one set of
+    a positive value here always means "this team is favored" and one set of
     expressions serves both.
     """
     return [

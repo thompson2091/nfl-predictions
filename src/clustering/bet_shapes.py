@@ -16,7 +16,7 @@ matter. `model_edge` is recomputed here from `prob_calibrated` against
 `market_prob`, the same way `edge_curve` does it and for the same reason.
 
 **Returns get a game-clustered bootstrap.** Two bets in one game share a
-defence, a game script and a final score, so they are not independent draws, and
+defense, a game script and a final score, so they are not independent draws, and
 per-bet returns are wildly skewed besides — a +3000 winner pays 30u against a 1u
 loss. A naive interval on this data is about half what it should be. `measure`
 calls `clustered_roi` rather than computing anything of its own.
@@ -47,7 +47,7 @@ CANDIDATE_FEATURES = [
     "prob_calibrated",  # how likely we think it is
     "market_prob",      # how likely they think it is
     "log_dec",          # the price, on a scale where +6600 does not swallow the axis
-    "rank_frac",        # how far down our board, normalised by board size
+    "rank_frac",        # how far down our board, normalized by board size
     "implied_team_total",
     "total_line",
     "abs_spread",

@@ -22,7 +22,7 @@ def _payload():
         "markets": [{
             "key": "anytime_td",
             "players": [
-                # The model's favourite, and a bad price — so an EV sort
+                # The model's favorite, and a bad price — so an EV sort
                 # buries him. This is the row the brief used to drop.
                 {"player": "Likely Back", "game_id": "2026_03_CIN_PIT",
                  "priced": True, "odds_num": -200, "model_only": 0.62,
@@ -74,7 +74,7 @@ def test_the_likeliest_scorer_is_always_in_the_brief():
 
     The board's preloaded question is "Who's most likely to score?" and the
     brief was one EV-ordered cut, so it opened with a longshot and could drop
-    the model's own favourite entirely. On the live week it dropped a 39%
+    the model's own favorite entirely. On the live week it dropped a 39%
     scorer from one game of sixteen — a miss that grows with the number of
     players a book prices.
     """
@@ -158,7 +158,7 @@ def test_the_halves_carry_edges_and_point_at_the_full_game_for_rates():
     assert me["first_half"] == ["Early-down success: CIN +0.02"]
     assert "full_game" in me["halves_note"]
     # The full game keeps both sides' rates, which is what the halves drop.
-    assert "offence 0.36" in me["full_game"][0]["sides"][0]
+    assert "offense 0.36" in me["full_game"][0]["sides"][0]
 
 
 def test_nothing_the_reader_types_can_reach_the_brief():

@@ -3,7 +3,7 @@
 The board is built from depth charts and usage history, and nothing in it knows
 that a player was ruled out on Friday. A recommendation for someone who is
 inactive is not a bad bet, it is a guaranteed loss — the one category of error
-this project has no defence against, because every other check compares numbers
+this project has no defense against, because every other check compares numbers
 against numbers and this one needs an outside fact.
 
 The markets know. Player props move hard on the inactive report ~90 minutes

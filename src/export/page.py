@@ -1,4 +1,4 @@
-"""The HTML shell: design tokens, layout, and the browser-side behaviour.
+"""The HTML shell: design tokens, layout, and the browser-side behavior.
 
 Kept apart from render.py so the node-to-markup mapping stays readable next to
 the capture it consumes, and so the whole of the page's look is one file you can

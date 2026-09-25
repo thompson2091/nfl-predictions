@@ -248,7 +248,7 @@ def pooled_walkforward(market: str) -> dict | None:
 
     Standard errors are the binomial ones on the pooled games. They are wide —
     +/-1.5% on anytime TD — which is the whole reason the iteration plan puts
-    paired testing ahead of any modelling change. See docs/MODEL_ITERATION.md.
+    paired testing ahead of any modeling change. See docs/MODEL_ITERATION.md.
     """
     path = get_path("output", market) / "walkforward.json"
     if not path.exists():

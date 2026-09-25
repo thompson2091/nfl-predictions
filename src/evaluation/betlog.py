@@ -69,7 +69,7 @@ def _implied(odds) -> float | None:
 
     Included on purpose: both ends of the comparison carry it, so it cancels,
     and de-vigging one end against a slate the other end never saw would put a
-    modelling choice inside a measurement whose whole value is that it has none.
+    modeling choice inside a measurement whose whole value is that it has none.
     """
     if odds is None:
         return None

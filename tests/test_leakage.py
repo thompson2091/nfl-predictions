@@ -436,7 +436,7 @@ def test_level_calibration_can_target_a_subset():
     """`mask_col` must match the sum over the masked rows, not over everything.
 
     Production scores priced players; ~5 candidates a game are never priced and
-    account for well under 1% of scorers. Normalising the total across all of
+    account for well under 1% of scorers. Normalizing the total across all of
     them leaves every priced player systematically short.
     """
     from src.prediction.blend import calibrate_level
@@ -463,7 +463,7 @@ def test_implied_team_total_differs_between_the_two_teams():
     """An implied team total is team-specific; identical values mean a sign bug.
 
     `build_vegas_features` negates `spread_line` into away perspective and then
-    used to negate it again inside the formula. The two cancelled, so every
+    used to negate it again inside the formula. The two canceled, so every
     away team was handed the home team's implied total — the same number for
     both sides of every game, uncorrelated with the spread, flattening the four
     `ix_itt_*` interactions that multiply through it.
@@ -487,10 +487,10 @@ def test_implied_team_total_differs_between_the_two_teams():
     identical = per_game.filter(pl.col("n") == 1).height
     assert identical == 0, (
         f"{identical} of {per_game.height} games give both teams the same "
-        "implied team total — the away-side sign flip is cancelling out."
+        "implied team total — the away-side sign flip is canceling out."
     )
 
-    # The favourite must carry the higher implied total, by construction.
+    # The favorite must carry the higher implied total, by construction.
     t = feats.group_by(["game_id", "team"]).agg([
         pl.col("implied_team_total").first(), pl.col("spread_line").first(),
     ])
@@ -498,7 +498,7 @@ def test_implied_team_total_differs_between_the_two_teams():
                        t["implied_team_total"].to_numpy())[0, 1]
     assert corr > 0.5, (
         f"implied total vs spread correlation is {corr:+.3f}. nflverse spread "
-        "is positive when this team is favoured, so a favourite must carry the "
+        "is positive when this team is favored, so a favorite must carry the "
         "higher implied total."
     )
 
@@ -506,9 +506,9 @@ def test_implied_team_total_differs_between_the_two_teams():
 def test_favourite_flag_is_not_inverted():
     """`is_favorite` must mark the team the market expects to win.
 
-    nflverse `spread_line` is positive when the home team is favoured, and the
+    nflverse `spread_line` is positive when the home team is favored, and the
     code asserted the opposite in a comment. The flag came out fully inverted:
-    teams marked favourite won 34.9% of their games and teams marked underdog
+    teams marked favorite won 34.9% of their games and teams marked underdog
     won 66.7%. `is_big_favorite` and `favorite_team` in the score-first
     features carried the same inversion.
     """
@@ -534,7 +534,7 @@ def test_favourite_flag_is_not_inverted():
     fav = home.filter(pl.col("is_favorite") == 1)["home_won"].mean()
     dog = home.filter(pl.col("is_favorite") == 0)["home_won"].mean()
     assert fav > dog, (
-        f"teams flagged favourite win {fav:.1%} of the time, underdogs win "
+        f"teams flagged favorite win {fav:.1%} of the time, underdogs win "
         f"{dog:.1%}. The flag is inverted."
     )
 
@@ -582,7 +582,7 @@ def test_first_td_probabilities_sum_to_one_per_game():
     assert abs(out["first_td_prob"].sum() - 1.0) < 1e-9, (
         f"first-TD probabilities sum to {out['first_td_prob'].sum():.6f}, not 1"
     )
-    # The stronger offence must be likelier to score first.
+    # The stronger offense must be likelier to score first.
     a = out.filter(pl.col("team") == "A")["first_td_prob"].sum()
     b = out.filter(pl.col("team") == "B")["first_td_prob"].sum()
     assert a > b
@@ -608,7 +608,7 @@ def test_team_rate_responds_to_the_market():
     idx = model["design_cols"].index("implied_team_total")
     assert model["coef"][idx] > 0, (
         f"implied team total carries coefficient {model['coef'][idx]:+.4f}; "
-        "a better offence must not predict fewer touchdowns."
+        "a better offense must not predict fewer touchdowns."
     )
 
     games = pl.DataFrame({
@@ -619,7 +619,7 @@ def test_team_rate_responds_to_the_market():
     out = team_rate(model, games)
     fav = out.filter(pl.col("team") == "fav")["team_lambda"][0]
     dog = out.filter(pl.col("team") == "dog")["team_lambda"][0]
-    assert fav > dog, f"favourite rate {fav:.3f} not above underdog {dog:.3f}"
+    assert fav > dog, f"favorite rate {fav:.3f} not above underdog {dog:.3f}"
 
 
 def test_production_model_is_resolved_per_market():
@@ -727,12 +727,12 @@ def test_longshot_claim_is_backed_by_its_own_measurement():
 
 
 def test_devig_does_not_depend_on_how_many_players_were_priced():
-    """A favourite's fair probability must not move when longshots are added.
+    """A favorite's fair probability must not move when longshots are added.
 
     The one-sided branch divides every price by sum(implied)/expected, so
     quoting extra deep longshots rescales *everyone*. Archive coverage fell
     from 52 priced players a game in 2023 to 26.8 in 2025, and that alone moved
-    a -100 favourite's fair probability from 41% to 49% while its real rate sat
+    a -100 favorite's fair probability from 41% to 49% while its real rate sat
     near 52% throughout. Callers must pass only the scored population.
     """
     from src.prediction.blend import devig_market
@@ -757,10 +757,10 @@ def test_devig_does_not_depend_on_how_many_players_were_priced():
     with_tail = devig_market(pl.concat([core, tail]), expected)
     fav_after = with_tail.filter(pl.col("player_id") == "p0")["market_prob"][0]
 
-    # This documents the behaviour rather than forbidding it: the function is
+    # This documents the behavior rather than forbidding it: the function is
     # doing what it is asked. The guard that matters is that the *callers*
     # restrict their input, which the assertion below pins down.
-    assert fav_after < fav_before, "expected the tail to dilute the favourite"
+    assert fav_after < fav_before, "expected the tail to dilute the favorite"
 
     import re
     src = Path("scripts/10_backtest.py").read_text()
@@ -818,7 +818,7 @@ def test_clv_direction_logic_is_right_way_round():
         clv_mod.line_movement = lambda target_type="anytime_td": big_moves
         # first_td so the de-vig target is exactly 1.0 and the fixture's prices
         # (which already sum to 1.0 per game) pass through unchanged — the
-        # point of this test is the direction logic, not the normalisation.
+        # point of this test is the direction logic, not the normalization.
         # This fixture names its column `probability`; the default is now the
         # pre-blend `prob_calibrated`, so say which one explicitly.
         stats = measure(big_preds, target_type="first_td", prob_col="probability")
@@ -896,7 +896,7 @@ def test_clv_compares_against_the_devigged_open():
     # `hit_rows` builds the scored rows and `measure` turns them into the
     # headline; the de-vig and the zero-movement filter live in the first, the
     # permutation null in the second. Inspecting both keeps the guard on the
-    # behaviour rather than on which function currently holds it — the split
+    # behavior rather than on which function currently holds it — the split
     # happened so two runs could be paired on the same rows, and a guard that
     # broke on the move would have argued against making it.
     rows_src = inspect.getsource(clv.hit_rows)
@@ -996,7 +996,7 @@ def test_clv_result_beats_its_own_null():
 def test_rank_economics_intervals_are_game_clustered():
     """Intervals must resample games, not bets.
 
-    Two bets in one game share a defence, a game script and a final score. A
+    Two bets in one game share a defense, a game script and a final score. A
     naive standard error on this data is roughly half what it should be, which
     is how a break-even strategy comes to look like a winning one. Feeding the
     same returns as one-bet-per-game versus all-in-one-game must produce
@@ -1134,7 +1134,7 @@ def test_single_winner_simulation_is_mutually_exclusive():
 def test_kelly_stakes_are_not_renormalised_to_the_full_bankroll():
     """Kelly returns a fraction of bankroll, not a weight to be scaled up.
 
-    Normalising it would turn "bet 3% of bankroll" into "bet everything" —
+    Normalizing it would turn "bet 3% of bankroll" into "bet everything" —
     a conservative rule silently becoming a reckless one.
     """
     from src.prediction.portfolio import allocate
@@ -1150,7 +1150,7 @@ def test_kelly_stakes_are_not_renormalised_to_the_full_bankroll():
     sized = allocate(bets, 1000.0, "kelly", target_type="anytime_td")
     assert sized["stake"].sum() < 200.0, (
         f"quarter Kelly on thin edges staked ${sized['stake'].sum():.0f} of "
-        "$1000 — the fractions are being renormalised."
+        "$1000 — the fractions are being renormalized."
     )
     equal = allocate(bets, 1000.0, "equal", target_type="anytime_td")
     assert abs(equal["stake"].sum() - 1000.0) < 1.0, (
@@ -1338,7 +1338,7 @@ def test_wager_log_stores_the_price_taken_not_the_consensus(tmp_path):
     """The whole point of the log is the gap between those two numbers.
 
     Every backtest figure assumes the consensus close. If the log quietly
-    overwrote the price actually given with the one we modelled against, it
+    overwrote the price actually given with the one we modeled against, it
     would measure nothing and look like it was working.
     """
     import polars as pl
@@ -1617,7 +1617,7 @@ def test_blend_weight_is_the_one_the_blend_applies():
 
     `blend` applies (1-w)*logit(model) + w*logit(market) — no intercept, and the
     coefficients forced to sum to one. The weight used to come from an
-    unregularised two-coefficient regression with a free intercept, normalised
+    unregularised two-coefficient regression with a free intercept, normalized
     after the fact; on three seasons that fit wanted a+b = 1.11 and c = 0.21,
     both of which the blend then silently discarded.
 
@@ -1742,7 +1742,7 @@ def test_bet_guidance_does_not_endorse_a_one_season_strategy():
         econ(["positive", "negative", "negative"]), 3)
     assert not any(endorsement in line for line in once), \
         "a strategy that won in a minority of seasons is being endorsed"
-    assert any("Be sceptical of the headline" in line for line in once)
+    assert any("Be skeptical of the headline" in line for line in once)
     assert any("only profitable in 1 season out of 3" in line for line in once)
 
 
@@ -2491,12 +2491,12 @@ def test_defence_is_not_a_share_of_its_own_offence():
     """`team_lambda` counts offensive touchdowns; DEF/ST cannot contribute one.
 
     `td_counts` filters `td_team == posteam`, so the fitted team rate contains
-    no defensive or special-teams scores at all. Normalising the DEF/ST
+    no defensive or special-teams scores at all. Normalizing the DEF/ST
     pseudo-player into the same share denominator therefore hands it a slice of
     a rate it can never earn: measured over four walk-forward folds it published
-    a defence as the game's most likely scorer in 131 of 1,131 games at a mean
+    a defense as the game's most likely scorer in 131 of 1,131 games at a mean
     probability of 0.908, against an actual rate of 0.153. It also understates
-    every real player on that team by whatever share the defence took.
+    every real player on that team by whatever share the defense took.
     """
     import numpy as np
     from src.models.joint import combine, player_shares
@@ -2514,25 +2514,25 @@ def test_defence_is_not_a_share_of_its_own_offence():
     shared = player_shares(rates, df, exclude_defst=False)
     assert shared["share"].sum() == pytest.approx(1.0)
     naive = combine(shared, score_col="raw_prob")
-    defence = naive.filter(pl.col("player_id") == "KC_DEFST")["probability"][0]
-    assert defence > 0.6, (
-        "the unfixed path is expected to blow the defence up — if this stops "
+    defense = naive.filter(pl.col("player_id") == "KC_DEFST")["probability"][0]
+    assert defense > 0.6, (
+        "the unfixed path is expected to blow the defense up — if this stops "
         "being true the measurement behind the fix no longer applies"
     )
 
     fixed = player_shares(rates, df, exclude_defst=True)
     assert fixed.filter(pl.col("player_id") == "KC_DEFST")["share"][0] == 0.0
-    offence = fixed.filter(pl.col("player_id") != "KC_DEFST")
-    assert offence["share"].sum() == pytest.approx(1.0), (
+    offense = fixed.filter(pl.col("player_id") != "KC_DEFST")
+    assert offense["share"].sum() == pytest.approx(1.0), (
         "the offensive shares must still sum to one, or the team's expected "
         "touchdowns no longer add up to its rate"
     )
-    # And the real players get the share the defence was taking.
-    assert offence["share"][0] == pytest.approx(0.30 / 0.50)
+    # And the real players get the share the defense was taking.
+    assert offense["share"][0] == pytest.approx(0.30 / 0.50)
 
     out = combine(fixed, score_col="raw_prob")
     assert out.filter(pl.col("player_id") == "KC_DEFST")["probability"][0] == \
-        pytest.approx(0.50), "a held-out defence keeps the classifier's number"
+        pytest.approx(0.50), "a held-out defense keeps the classifier's number"
     assert out.filter(pl.col("player_id") == "a")["probability"][0] > \
         naive.filter(pl.col("player_id") == "a")["probability"][0]
 
@@ -2543,7 +2543,7 @@ def test_held_out_defence_keeps_its_probability_when_score_and_out_are_one_colum
     `apply_joint(..., score_col="prob", out_col="prob")` is what predict, the
     backtest and the harness all pass. Reading the score back after the formula
     has written the same column returns the formula's own output — zero, for a
-    defence whose share was held out — so every defence published at exactly
+    defense whose share was held out — so every defense published at exactly
     0.000. The tell was a DEF/ST AUC of exactly 0.5000: not a weak ranking, an
     absent one, and it cost 0.03 of overall AUC in a gate run.
     """
@@ -2560,13 +2560,13 @@ def test_held_out_defence_keeps_its_probability_when_score_and_out_are_one_colum
     shared = player_shares(df["prob"].to_numpy(), df, exclude_defst=True)
     out = combine(shared, out_col="prob", score_col="prob")
 
-    defence = out.filter(pl.col("player_id") == "KC_DEFST")["prob"][0]
-    assert defence == pytest.approx(0.12), (
-        f"a held-out defence must keep the classifier's own number, got {defence}"
+    defense = out.filter(pl.col("player_id") == "KC_DEFST")["prob"][0]
+    assert defense == pytest.approx(0.12), (
+        f"a held-out defense must keep the classifier's own number, got {defense}"
     )
     assert "_score_in" not in out.columns, "scratch column leaked into the output"
 
-    # And two defences with different scores must stay different, or the
+    # And two defenses with different scores must stay different, or the
     # ordering within DEF/ST is gone even when the level is right.
     two = pl.DataFrame({
         "game_id": ["g", "g"], "team": ["KC", "BUF"],
@@ -2636,7 +2636,7 @@ def test_tie_breaking_never_leaves_the_unit_interval_on_real_calibrators():
 def test_rank_calibration_is_not_fitted_where_nothing_reads_it():
     """It is disabled in both markets, for two different reasons.
 
-    `first_td` never reaches the correction: `predict()` normalises raw
+    `first_td` never reaches the correction: `predict()` normalizes raw
     probabilities within the game and returns, and only the anytime branch
     calls `_anchor_to_market`, where the correction lives.
     `scripts/10_backtest.py` branches the same way. `anytime_td` reaches it and
@@ -2662,7 +2662,7 @@ def test_rank_calibration_is_not_fitted_where_nothing_reads_it():
     # Deliberately not asserting the file is absent. A `rank_calibration.json`
     # written by an earlier run is inert — nothing loads it — and it is recorded
     # in the locked version's manifest, so deleting it to satisfy a test would
-    # break `verify_current` for no behavioural gain. The next retrain removes
+    # break `verify_current` for no behavioral gain. The next retrain removes
     # it. What must stay true is that nothing reads it, which is what is
     # asserted above.
 
@@ -2688,7 +2688,7 @@ def test_candidate_filter_defaults_reproduce_the_hardcoded_rule():
 
     The filter decides which players can be ranked at all, so a default that
     quietly shifted would move every number in the project at once and look
-    like a modelling result. It is the same class of change as the denominator
+    like a modeling result. It is the same class of change as the denominator
     fix, and that one moved Top-1 by 0.2pp while being invisible in the code.
     """
     import polars as pl
@@ -2735,7 +2735,7 @@ def test_an_unplayed_game_is_not_a_game_where_nobody_scored():
     scored. That is how a real 99.3% scorer coverage read as 80.2% and made the
     plan's ceiling figures look wrong when they were right to the decimal.
 
-    Nothing in the modelling path is affected — training and the walk-forward
+    Nothing in the modeling path is affected — training and the walk-forward
     select on `season`, not on target nullity — so this is a guard for the
     analysis code that keeps being written against these frames, which is where
     it actually bit.
@@ -2955,7 +2955,7 @@ def test_over_under_markets_are_read_rather_than_silently_skipped():
     row = consensus[0]
     assert row["point"] == 0.5 and row["n_books"] == 2
     # Both sides posted, so the vig comes off directly and none of the
-    # one-sided expected-scorers normalisation in blend.devig_market applies.
+    # one-sided expected-scorers normalization in blend.devig_market applies.
     assert row["fair_prob"] is not None and row["overround"] > 1.0
     # One vocabulary in the archive, so `side == "yes"` filters keep working.
     assert {b["side"] for b in books} == {"yes", "no"}
@@ -3057,8 +3057,8 @@ def test_devig_default_is_the_measured_choice_not_the_obvious_one():
     """How the margin comes off decides what counts as an edge.
 
     The proportional split — `p_over / (p_over + p_under)` — was hardcoded
-    everywhere. It under-corrects favourite-longshot bias, which leaves
-    favourites beating their "fair" price and longshots missing it. Measured on
+    everywhere. It under-corrects favorite-longshot bias, which leaves
+    favorites beating their "fair" price and longshots missing it. Measured on
     archived closing prices, additive beat it by 0.008 log loss on anytime TD
     and tied it inside noise on receptions, so additive is the default.
 

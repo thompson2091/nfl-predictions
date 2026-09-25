@@ -63,7 +63,7 @@ def td_counts(seasons: list[int] | None = None) -> pl.DataFrame:
         & pl.col("posteam").is_not_null()
         # Offensive touchdowns only: the share model runs over a team's
         # offensive candidates, and a pick-six belongs to the other team's
-        # defence, not to this team's touchdown production.
+        # defense, not to this team's touchdown production.
         & (pl.col("td_team") == pl.col("posteam"))
     ).select(["game_id", "season", "week", "td_player_id", "td_team"])
 
@@ -87,7 +87,7 @@ def team_td_counts(seasons: list[int] | None = None) -> pl.DataFrame:
 
 
 # --------------------------------------------------------------------------
-# 1. Team rate: how many touchdowns will this offence score
+# 1. Team rate: how many touchdowns will this offense score
 # --------------------------------------------------------------------------
 
 #: Kept deliberately small. The betting market already prices team scoring
@@ -195,10 +195,10 @@ def team_rate(model: dict, games: pl.DataFrame) -> pl.DataFrame:
 
 
 def _defst_mask(df: pl.DataFrame) -> pl.Expr:
-    """Rows that are a team's defence/special teams rather than a player.
+    """Rows that are a team's defense/special teams rather than a player.
 
-    A frame carrying neither identifier has no defences in it — the joint model
-    is exercised on synthetic team-share frames that are all offence — so the
+    A frame carrying neither identifier has no defenses in it — the joint model
+    is exercised on synthetic team-share frames that are all offense — so the
     mask is empty rather than an error. Guessing from a missing column is how a
     unit test starts failing for a reason that has nothing to do with what it
     is testing.
@@ -212,7 +212,7 @@ def _defst_mask(df: pl.DataFrame) -> pl.Expr:
 
 def player_shares(rates: np.ndarray, df: pl.DataFrame,
                   exclude_defst: bool | None = None) -> pl.DataFrame:
-    """Normalise per-player touchdown rates to shares within each team-game.
+    """Normalize per-player touchdown rates to shares within each team-game.
 
     The share model does not have to be calibrated in absolute terms — only
     correctly ordered and correctly proportioned within a team, because the
@@ -220,14 +220,14 @@ def player_shares(rates: np.ndarray, df: pl.DataFrame,
     than a calibrated probability, and it is the half of the problem a usage
     model is actually good at.
 
-    **A defence is not a share of its offence.** `team_lambda` is fitted on
+    **A defense is not a share of its offense.** `team_lambda` is fitted on
     offensive touchdowns alone — `td_counts` filters `td_team == posteam` and
-    contains no DEF/ST rows at all — so normalising the DEF/ST pseudo-player
+    contains no DEF/ST rows at all — so normalizing the DEF/ST pseudo-player
     into the same denominator hands it a slice of a rate it cannot contribute
-    to. Measured over four walk-forward folds, that published a defence as the
+    to. Measured over four walk-forward folds, that published a defense as the
     game's most likely scorer in 131 of 1,131 games at a mean probability of
     **0.908**, against an actual rate of **0.153**. It does damage in both
-    directions: the defence is wildly overstated, and every real player on that
+    directions: the defense is wildly overstated, and every real player on that
     team is understated by whatever share it took.
 
     With `exclude_defst`, DEF/ST rows are held out of the denominator and given
@@ -261,7 +261,7 @@ def player_shares(rates: np.ndarray, df: pl.DataFrame,
 #: Marks a row no sportsbook quoted, for the split conversion level. Set by
 #: the caller — `predict` knows who was priced because it has just joined the
 #: market, and the trainer knows from the graded archive. Absent, every row is
-#: treated as priced, which is the behaviour before the split existed.
+#: treated as priced, which is the behavior before the split existed.
 UNPRICED_COL = "_unpriced"
 
 
@@ -283,21 +283,21 @@ def combine(df: pl.DataFrame, share_col: str = "share",
     Poisson assumes a player's touchdowns arrive independently. They do not. A
     lead back's goal-line carries are close to guaranteed once the drive gets
     there, so his count is *less* dispersed than Poisson and his chance of at
-    least one is correspondingly higher. Modelling the count as
+    least one is correspondingly higher. Modeling the count as
     Binomial(r, mu/r) spans the range — r = 1 is a single all-or-nothing shot,
     r -> infinity recovers Poisson — and `r` is fitted rather than assumed.
 
     `level` corrects the scoring environment drifting away from the seasons the
     team rate was fitted on; it multiplies mu before the conversion.
 
-    With both fitted (level 0.90, dispersion 1.15) the favourites band went from
+    With both fitted (level 0.90, dispersion 1.15) the favorites band went from
     6.7 points low to 1.0 high on held-out 2025, and the published probabilities
     summed to 4.04 per game against 4.04 actual.
     """
     # Stash the incoming score before anything writes over it. Every caller
     # here passes score_col == out_col ("prob" -> "prob"), so reading it back
     # after the formula has run returns the formula's own output — which for a
-    # held-out defence is 0, its share being zero. That published every defence
+    # held-out defense is 0, its share being zero. That published every defense
     # at exactly 0.000, and the tell was a DEF/ST AUC of exactly 0.5000: not a
     # weak ranking, an absent one.
     df = df.with_columns(pl.col(score_col).alias("_score_in")) \
@@ -327,7 +327,7 @@ def combine(df: pl.DataFrame, share_col: str = "share",
 
     if score_col is not None and "_is_defst" in out.columns:
         # Held out of the offensive share denominator, so its share is zero and
-        # this formula would publish it at 0. A defence still scores about 10%
+        # this formula would publish it at 0. A defense still scores about 10%
         # of the time; the calibrated classifier already says so, and that is
         # the number to keep — including its ordering, which is the half a flat
         # constant would throw away.
@@ -446,7 +446,7 @@ def apply_joint_first_td(df: pl.DataFrame, features: pl.DataFrame, model: dict,
     fitted team rate and the model's own within-team shares — so this needs no
     extra parameter and nothing to fit.
 
-    Production does not use it. `predict` normalises raw first-TD scores within
+    Production does not use it. `predict` normalizes raw first-TD scores within
     the game, which preserves whatever ordering the classifier produced and
     cannot express the fact that the *team* likely to score first is a separate
     question from which of its players would score. `first_td_probability` has

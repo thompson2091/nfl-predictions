@@ -178,7 +178,7 @@ def _ex_top10(pnl: np.ndarray) -> float | None:
     return float(rest.mean() * 100.0) if len(rest) else None
 
 
-def summarise(slips: pd.DataFrame) -> dict:
+def summarize(slips: pd.DataFrame) -> dict:
     """The four numbers, plus the count that says how much to trust them."""
     n = len(slips)
     if not n:
@@ -244,7 +244,7 @@ def measure(target_type: str, model: str) -> dict | None:
                 if graded.empty:
                     continue
                 for show in SHOW_STOPS:
-                    stat = summarise(graded[graded["_rank"] <= show])
+                    stat = summarize(graded[graded["_rank"] <= show])
                     if not stat["slips"]:
                         continue
                     rows.append({"legs": legs, "per_game": per_game,

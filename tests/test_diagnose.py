@@ -162,15 +162,15 @@ def test_coin_flips_are_reported_separately_from_decided_games():
 def test_pool_ceiling_separates_a_data_gap_from_a_filter_loss():
     """Two different problems that used to be one number.
 
-    A game with no scorer anywhere in the pool is a labelling gap no ranking
+    A game with no scorer anywhere in the pool is a labeling gap no ranking
     can win. A game whose scorer the filter removed is a miss we chose.
     """
-    labelled = pl.DataFrame({
+    labeled = pl.DataFrame({
         "game_id": ["g1", "g1", "g2", "g2", "g3", "g3"],
         "target": [1, 0, 1, 0, 0, 0],        # g3: nobody in the pool scored
     })
-    filtered = labelled.filter(pl.col("game_id") != "g2")   # g2's scorer removed
-    p = D.pool_ceiling(labelled, filtered)
+    filtered = labeled.filter(pl.col("game_id") != "g2")   # g2's scorer removed
+    p = D.pool_ceiling(labeled, filtered)
     assert p["played_games"] == 3
     assert p["games_with_no_scorer_anywhere"] == 1
     assert p["games_whose_scorer_the_filter_removed"] == 1
@@ -244,12 +244,12 @@ def test_position_table_reports_the_book_beside_every_number():
 
 
 def test_favourite_and_underdog_slices_are_not_inverted():
-    """`spread_line` is team-relative and POSITIVE when that team is favoured.
+    """`spread_line` is team-relative and POSITIVE when that team is favored.
 
     `vegas_features` defines `is_favorite` as `spread_line > 0`, and this
     project has already shipped the opposite reading once — teams marked
-    favourite were winning 34.9% of their games. An inverted slice here would
-    not crash; it would quietly claim the model is bad at backing favourites
+    favorite were winning 34.9% of their games. An inverted slice here would
+    not crash; it would quietly claim the model is bad at backing favorites
     when it is bad at backing underdogs, and Phase 3 would chase the wrong
     thing.
     """
@@ -265,7 +265,7 @@ def test_favourite_and_underdog_slices_are_not_inverted():
     ])
     outcomes = pl.DataFrame({"game_id": ["fav", "dog"], "hit1": [True, False]})
     by_side = {d["side"]: d["top1"] for d in D.slices(players, outcomes)["by_side"]}
-    assert by_side["pick on favourite"] == 1.0
+    assert by_side["pick on favorite"] == 1.0
     assert by_side["pick on underdog"] == 0.0
 
 

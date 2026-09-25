@@ -21,7 +21,7 @@ def _game(game: str, probs: list[float], any_probs: list[float],
 def test_blend_is_geometric_so_the_bigger_scale_cannot_dominate():
     """The two markets live on different scales.
 
-    An anytime favourite sits near 0.55 and a first-TD favourite near 0.15. A
+    An anytime favorite sits near 0.55 and a first-TD favorite near 0.15. A
     weighted *average* would let the anytime number decide the ordering
     regardless of what either model meant; a geometric blend is an average in
     log space, so it combines the rankings rather than the levels.

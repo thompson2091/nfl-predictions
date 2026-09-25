@@ -392,7 +392,7 @@ function vChips(f, key, kind, rows) {
     + '<button class="chip" aria-pressed="' + (f.favOnly ? 'true' : 'false')
     + '" data-act="favonly">' + (f.favOnly ? I.starOn : I.star)
       .replace('width="22" height="22"', 'width="15" height="15"')
-    + ' Favourites <span class="c num">' + nFav + '</span></button>';
+    + ' Favorites <span class="c num">' + nFav + '</span></button>';
   // Game first, because it is the filter anyone actually reaches for — you
   // watch a fixture, you do not watch a position. It used to sit last, after
   // three chips that are narrowings of a board you have already got.
@@ -521,7 +521,7 @@ function vRow(r, kind) {
   ];
   return '<div class="row">'
     + '<button class="ib' + (fav ? ' ib--on' : '') + '" data-fav="' + esc(r.id)
-      + '" aria-label="' + (fav ? 'Remove' : 'Add') + ' favourite ' + esc(r.player)
+      + '" aria-label="' + (fav ? 'Remove' : 'Add') + ' favorite ' + esc(r.player)
       + '">' + (fav ? I.starOn : I.star) + '</button>'
     + '<button class="row__main" data-detail="' + esc(r.id) + '">'
       + '<span class="row__top"><span class="row__name">' + esc(r.player) + '</span>'
@@ -952,7 +952,7 @@ const SHEETS = {
         + '|under">Under</button><button class="btn btn--primary" style="flex:1"'
         + ' data-add2="' + esc(r.id) + '|over">Over</button>'
       : '<button class="btn btn--secondary" style="flex:1" data-fav2="' + esc(r.id)
-        + '">' + (isFav(r.id) ? 'Unfavourite' : 'Favourite') + '</button>'
+        + '">' + (isFav(r.id) ? 'Unfavourite' : 'Favorite') + '</button>'
         + '<button class="btn btn--primary" style="flex:1" data-add2="' + esc(r.id)
         + '">' + (inSlip ? 'Remove from slip' : 'Add to slip') + '</button>';
 
@@ -1498,7 +1498,7 @@ function vBets() {
   const g = (DATA.games || {}), b = (DATA.bets || {});
   if (!g.rows && !b.rows) return vEmpty('No game lines captured',
     'Run scripts/53_game_lines.py to archive this week’s spreads, totals and '
-    + 'moneylines. Nothing here is modelled — it is the market, and it has to '
+    + 'moneylines. Nothing here is modeled — it is the market, and it has to '
     + 'be fetched before it can be shown.');
 
   const seg = BETSEGS.some(s => s[0] === S.bets) ? S.bets : 'games';
@@ -1516,8 +1516,8 @@ function vBets() {
 // then every line it quotes.
 //
 // **The projected score is arithmetic, not a forecast.** A total of 47.5 with
-// the home side favoured by 8.5 IS 28.0 and 19.5 — the same two numbers the
-// market already published, rearranged. It is labelled as the market's for
+// the home side favored by 8.5 IS 28.0 and 19.5 — the same two numbers the
+// market already published, rearranged. It is labeled as the market's for
 // that reason. A model that could disagree with it has to be trained without
 // the vegas feature family, which does not exist yet.
 function vBetsGames(g) {
@@ -1622,7 +1622,7 @@ function vBetsFilter(cards, g) {
   return h;
 }
 
-// One fixture. Three labelled blocks with rules between them, because the
+// One fixture. Three labeled blocks with rules between them, because the
 // previous card ran a score, a bar and three markets together with nothing
 // saying which was which — and the bar in particular reads as a bet split
 // unless something says otherwise. It is the de-vigged moneyline.
@@ -1656,8 +1656,8 @@ function gameCard(c, g) {
     h += '</div>';
   }
 
-  // Our number, where one exists. It is the only modelled thing on this page
-  // and it is labelled as unproven, because it is: see `game_model`.
+  // Our number, where one exists. It is the only modeled thing on this page
+  // and it is labeled as unproven, because it is: see `game_model`.
   if (c.model_home != null && c.model_away != null) {
     h += '<div class="gc__blk"><div class="gc__lbl">Our model'
       + '<span class="gc__hint gc__hint--warn">never sees the line · unproven</span></div>'
@@ -1813,7 +1813,7 @@ function vBetsMove(g) {
 // six failures rather than as one useful result.** It is not a fault list: it
 // is four seasons of archived lines saying that following the market's move
 // does not beat the market's price. That saves money, so it is written as a
-// finding and toned neutrally. Colour is reserved for a row that ever clears.
+// finding and toned neutrally. Color is reserved for a row that ever clears.
 function vBetsDefs(b) {
   if (!b.rows || !b.rows.length) return vEmpty('No definitions scored',
     'The archive needs both ends of at least one completed week.');
@@ -1886,7 +1886,7 @@ const sentenceCase = s => String(s || '').charAt(0).toUpperCase() + String(s || 
 //
 // Not the hit rate's. A hit rate cannot be compared to an average price when
 // the prices run from -450 to +381 — the same 52% is a fortune on longshots
-// and a catastrophe on favourites — and comparing them reported a definition
+// and a catastrophe on favorites — and comparing them reported a definition
 // that LOSES $3.78 per $100 as one that beat its price.
 //
 // Drawn over a fixed -50%..+50% window so that every row shares one axis and
@@ -1919,7 +1919,7 @@ function vCombos() {
   const board = oneLine(rowsFor(key, 'all'), null).filter(eligible);
   const pools = kind === 'ou'
     ? { all: { label: 'Priced', rows: board },
-        fav: { label: 'Favourites', rows: board.filter(r => isFav(r.id)) } }
+        fav: { label: 'Favorites', rows: board.filter(r => isFav(r.id)) } }
     // Fades sit beside the shortlist here for the same reason they do on the
     // board: they are the same table with the opposite rule applied. A slip
     // built from them is a slip of players we rate BELOW their price, which is
@@ -1927,7 +1927,7 @@ function vCombos() {
     // leaving the pool to be read as picks.
     : { short: { label: 'Shortlist', rows: rowsFor(key, 'short').filter(eligible) },
         fade: { label: 'Fades', rows: rowsFor(key, 'fade').filter(eligible) },
-        fav: { label: 'Favourites', rows: board.filter(r => isFav(r.id)) },
+        fav: { label: 'Favorites', rows: board.filter(r => isFav(r.id)) },
         all: { label: 'Everyone', rows: board } };
   if (!pools[c.pool]) c.pool = kind === 'ou' ? 'all' : 'short';
 
@@ -2082,7 +2082,7 @@ const keystat = (l, v, tone, small) => '<div class="keystat">'
 // Top-level numbers for every market that is served, and the features behind
 // each one a tap away. No alert boxes and no red: what this page reports is
 // measured, and a market that loses to its book says so in a sentence rather
-// than in a colour.
+// than in a color.
 function vModel() {
   let h = '';
   const rec = ((marketOf('any').shortlist || {}).record) || {};

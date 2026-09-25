@@ -163,7 +163,7 @@ def report(seasons: list[int] | None = None) -> pl.DataFrame:
     Sorted by generosity, because that is the half a bet can act on. The
     staleness column says whether the long price is a book that has not moved
     yet or a book that simply prices that market differently — and those call
-    for different behaviour: the first is a clock to beat, the second is a
+    for different behavior: the first is a clock to beat, the second is a
     standing account to open.
     """
     d = load(seasons)

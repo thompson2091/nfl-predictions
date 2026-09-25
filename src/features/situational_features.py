@@ -61,7 +61,7 @@ MIN_COACH_GAMES = 20
 
 
 def _haversine_miles(lat1, lon1, lat2, lon2) -> pl.Expr:
-    """Great-circle distance, for how far the away side travelled."""
+    """Great-circle distance, for how far the away side traveled."""
     r = 3958.8
     p1, p2 = lat1 * 3.14159265 / 180, lat2 * 3.14159265 / 180
     dp = (lat2 - lat1) * 3.14159265 / 180
@@ -99,7 +99,7 @@ def team_game_form(schedules: pl.DataFrame) -> pl.DataFrame:
     ])
 
     # Graded against the spread, from the home side's view. `result` is home
-    # minus away and `spread_line` is positive when the home team is favoured,
+    # minus away and `spread_line` is positive when the home team is favored,
     # both verified against the schedule rather than assumed.
     s = s.with_columns(
         (pl.col("result") - pl.col("spread_line")).alias("_ats_home"))

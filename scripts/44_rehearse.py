@@ -7,7 +7,7 @@
 Every link in the weekly flow works. Nobody has ever seen them work *in a row*,
 which is a different claim: the capture writes an archive the shortlist reads,
 the shortlist writes picks the score reads, the bet log joins the archive on a
-normalised name that has to match one written by a different module in a
+normalized name that has to match one written by a different module in a
 different week. A chain of five links each tested alone is not a tested chain,
 and week 1 is a bad time to find the seam.
 

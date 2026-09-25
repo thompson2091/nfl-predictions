@@ -112,7 +112,7 @@ CAPTURE_CAP_SECONDS="${CAPTURE_CAP_SECONDS:-900}"
 
 run_capped() {
     # Job control, purely so each background job becomes a process-group leader
-    # and can be signalled as a group. Killing a bare pid is not enough here:
+    # and can be signaled as a group. Killing a bare pid is not enough here:
     # a surviving child still holds the inherited stdout, `tee` waits on that
     # pipe, and the job stays alive in launchd's eyes — which is the thing this
     # function exists to prevent. That applies to the watchdog's own `sleep`

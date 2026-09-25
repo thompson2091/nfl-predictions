@@ -86,7 +86,7 @@ def test_the_margin_is_read_from_the_named_team_side(monkeypatch):
     atl = sr.band_probabilities(card, "ATL", hist)
     assert gb and atl
     assert gb["won big"] > atl["won big"], (
-        "the favourite must be likelier to win big than the underdog")
+        "the favorite must be likelier to win big than the underdog")
     assert atl["lost big"] > gb["lost big"]
 
 
@@ -104,7 +104,7 @@ def test_nothing_here_edits_a_projection():
 
     The association is not clean: quarterback passing yards FALL when losing
     big, which no game-script story predicts and which "getting blown out
-    usually means the offence was bad" explains at once. Using these
+    usually means the offense was bad" explains at once. Using these
     multipliers to move a number would bake that backwards causation in.
     """
     from pathlib import Path

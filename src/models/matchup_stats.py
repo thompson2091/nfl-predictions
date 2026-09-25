@@ -1,7 +1,7 @@
-"""How each side has actually played, offence against defence, as differentials.
+"""How each side has actually played, offense against defense, as differentials.
 
-The stats a handicapper reads before a game: does this offence stay ahead of
-schedule, does this defence get to the quarterback, who wins the red zone.
+The stats a handicapper reads before a game: does this offense stay ahead of
+schedule, does this defense get to the quarterback, who wins the red zone.
 Everything here is computed from play-by-play, per team, **from the games
 BEFORE the one being shown**.
 
@@ -13,10 +13,10 @@ coach features needed.
 
 **DIFFERENTIALS, BECAUSE A RAW RATE IS UNREADABLE.** "Cincinnati 48.2% early-
 down success" means nothing without knowing that the league sits near 45% and
-Pittsburgh's defence allows 44.1%. Each row pairs one side's offence with the
-other's defence and reports the gap, which is the number a reader can act on.
+Pittsburgh's defense allows 44.1%. Each row pairs one side's offense with the
+other's defense and reports the gap, which is the number a reader can act on.
 
-**WHAT IS A PROXY IS LABELLED A PROXY.** Sack rate and quarterback-hit rate
+**WHAT IS A PROXY IS LABELED A PROXY.** Sack rate and quarterback-hit rate
 are NOT pressure rate: they measure pressure that succeeded, not pressure
 applied, and a line that generates constant pressure against a quick release
 looks identical to one that generates none. True pressure needs the NFL's
@@ -33,7 +33,7 @@ from src.utils.paths import get_path
 
 #: Metrics this module can honestly produce, and what each one is.
 #:
-#: `higher_is_better` is from the OFFENCE's point of view; the defensive
+#: `higher_is_better` is from the OFFENSE's point of view; the defensive
 #: version of each is the same quantity allowed, so the sign flips there and
 #: the page must not assume one direction for both.
 METRICS = [
@@ -85,7 +85,7 @@ MISSING = [
     ("True pressure rate",
      "Needs the NFL participation feed's `was_pressure`, which this project's "
      "play-by-play does not carry. Sack and QB-hit rate are shown instead and "
-     "are labelled as proxies."),
+     "are labeled as proxies."),
     ("Pass block and pass rush win rate",
      "ESPN computes these from tracking data and does not publish them."),
 ]
@@ -226,7 +226,7 @@ def _rates(g: pl.DataFrame) -> pl.DataFrame:
 
 
 def build(season: int, week: int) -> dict:
-    """Offence and defence rates for every team, entering this week.
+    """Offense and defense rates for every team, entering this week.
 
     Three splits per team — full game, first half, second half — from ONE read
     of the play-by-play. A first-half number is a different fact from a
@@ -260,9 +260,9 @@ def build(season: int, week: int) -> dict:
 
 
 def matchup(card: dict, stats: dict, split: str = "full") -> list[dict] | None:
-    """One row per metric: each side's offence against the other's defence.
+    """One row per metric: each side's offense against the other's defense.
 
-    Two rows per metric — away offence vs home defence, and the reverse —
+    Two rows per metric — away offense vs home defense, and the reverse —
     because a matchup has two halves and showing one is showing half a game.
     """
     home, away = card.get("home"), card.get("away")
@@ -279,9 +279,9 @@ def matchup(card: dict, stats: dict, split: str = "full") -> list[dict] | None:
             pair.append({"offense": o, "defense": dteam,
                          "off_val": a, "def_val": b,
                          "diff": round(a - b, 4),
-                         # An advantage for the OFFENCE. On sack rate, where
+                         # An advantage for the OFFENSE. On sack rate, where
                          # a lower offensive number is better, beating the
-                         # defence's rate is a bad thing and the sign flips.
+                         # defense's rate is a bad thing and the sign flips.
                          "edge": round((a - b) if higher else (b - a), 4)})
         if pair:
             out.append({"key": key, "label": label, "note": note,

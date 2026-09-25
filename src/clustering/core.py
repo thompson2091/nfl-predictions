@@ -37,7 +37,7 @@ from src.features.definitions import get_definition
 from src.utils.config import get_config
 
 #: Bumped when the artifact schema changes shape. The app refuses an artifact it
-#: does not recognise rather than reading fields that have moved.
+#: does not recognize rather than reading fields that have moved.
 CLUSTER_VERSION = 1
 
 #: Defaults for every `clustering:` key, so a settings.yaml written before this

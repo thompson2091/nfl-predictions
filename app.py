@@ -1387,7 +1387,7 @@ def team_outlook_frame(season: int, week: int, version: str | None = None):
     # The bookmaker's own first-TD prices, de-vigged, read from the board so
     # the column beside ours is the number the board publishes rather than a
     # second de-vigging that could drift from it. Priced players only, which is
-    # the point: `first_td_share` normalises within the game, so what this
+    # the point: `first_td_share` normalizes within the game, so what this
     # measures is how the book splits the game between the two sides.
     book = None
     try:
@@ -1534,7 +1534,7 @@ def published_accuracy(tt: str, model: str) -> dict | None:
     `walkforward.json` scores the model's own ranking. Anytime TD does not
     publish that ranking — it publishes `final`, the model blended with the
     price — so the strip was describing an object the board never displays. The
-    page carried 49.6% here and 51.6% in the purpose panel, both labelled
+    page carried 49.6% here and 51.6% in the purpose panel, both labeled
     Top-1, and the larger sample was the one measuring the wrong column.
 
     Preferred only where the blend MOVES the number. It does on anytime TD, by
@@ -1553,7 +1553,7 @@ def published_accuracy(tt: str, model: str) -> dict | None:
     sat on 849, and the page would carry two Top-1 figures again for a
     different reason. One source for every figure beats one market's extra
     season. The walk-forward is still reported in Model performance, where it
-    is labelled as the longer history rather than as the headline.
+    is labeled as the longer history rather than as the headline.
     """
     from src.evaluation.hit_rates import published_topk
 
@@ -1605,7 +1605,7 @@ def headline_accuracy(tt: str, model: str, version: str | None = None):
     The board's header and the Model performance tab used to compute their own,
     from different sources and over different populations: the header pooled
     four walk-forward folds while the tab scored the single held-out season, and
-    both were labelled "Top-1". Two numbers under one label read as a
+    both were labeled "Top-1". Two numbers under one label read as a
     contradiction rather than as two views, and there was no way to tell from
     the screen which described what you were looking at.
 
@@ -1702,7 +1702,7 @@ def render_accuracy_strip(tt: str, model: str, version: str | None = None):
             help=f"How much closer our estimates were to reality than the "
                  f"sportsbook's, across {h2h['players']:,} priced players in "
                  f"{h2h['span']}. The range is a 95% interval from resampling "
-                 f"whole games, since players in one game share a defence and a "
+                 f"whole games, since players in one game share a defense and a "
                  f"game script. "
                  + ("It includes zero, so on this market we are not measurably "
                     "better than the book. "
@@ -1810,8 +1810,8 @@ then tested on ones it has never seen.
 
 **2. Score every player.** We compute {feat} numbers per player per game. What
 matters most isn't total yards, it's *where* the work happens — carries inside
-the 5-yard line, red-zone targets, opening-drive touches — plus the offence
-around him, the specific defence he faces, the point total and spread, weather,
+the 5-yard line, red-zone targets, opening-drive touches — plus the offense
+around him, the specific defense he faces, the point total and spread, weather,
 rest, and who's injured.
 
 > Every one of those must have been knowable before kickoff. That is the rule
@@ -2254,7 +2254,7 @@ def combo_record(tt: str, model: str) -> dict | None:
 def leg_correlation(tt: str) -> dict | None:
     """Do teammates' outcomes actually move together? Re-measured, not assumed.
 
-    Multiplying legs is the one modelling assumption the combination table
+    Multiplying legs is the one modeling assumption the combination table
     makes, so the table quotes what this currently says rather than a number
     written into the page. `fit_correlation` reads the backtest residuals, so a
     retrain that breaks the assumption changes the sentence under the table.
@@ -2687,7 +2687,7 @@ def render_purpose(tt: str, model: str, version: str | None = None):
                         f"points and ahead on Top-3 and Top-5. Read that as it "
                         f"is: this model brackets the scorer better than the "
                         f"price does and isolates him worse. If you want one "
-                        f"name, the book's favourite is still the better single "
+                        f"name, the book's favorite is still the better single "
                         f"guess; the board earns its keep on the shortlist."
                     )
 
@@ -2718,7 +2718,7 @@ def render_selectivity(tt: str, board=None, model: str | None = None):
 
     The board's own probabilities are a claim. This is the outcome: measured on
     backtested seasons, at each level of confidence, with a game-clustered
-    interval because two picks in one game share a defence and a final score.
+    interval because two picks in one game share a defense and a final score.
 
     It is deliberately framed as coverage against accuracy rather than as a
     single headline. Being right 60% of the time on a quarter of games and 50%
@@ -2733,7 +2733,7 @@ def render_selectivity(tt: str, board=None, model: str | None = None):
         return
 
     # The strongest picks, before anything else. "McCaffrey against a
-    # bottom-five run defence" weeks are the reason a reader opens this page,
+    # bottom-five run defense" weeks are the reason a reader opens this page,
     # and they were living three widgets deep. The bar is the highest measured
     # cut (0.55 -> 64-66% hit rate); when nothing clears it the strip says so
     # against the 0.50 bar instead of showing an empty box.
@@ -3026,10 +3026,10 @@ def week_board(season, week, tt: str, model: str,
     # First TD only: how likely this player's *team* is to score the game's
     # first touchdown. It is the context the player number sits in — a 9%
     # player on a team with a 60% chance of striking first is the focal point of
-    # an offence expected to score, and a 9% player on a 30% team is the
+    # an offense expected to score, and a 9% player on a 30% team is the
     # runaway pick of one that is not. Same number, different bet.
     #
-    # Exact rather than approximate on this market: `predict` normalises
+    # Exact rather than approximate on this market: `predict` normalizes
     # first-TD probabilities to sum to one within the game, so a team's number
     # is simply its players' summed probability. Anytime TD has no equivalent —
     # there the answer is ~92% for everyone.
@@ -3189,7 +3189,7 @@ if tab_short.open:
                         "book_pct": st.column_config.NumberColumn(
                             "Book says", format="%.1f%%",
                             help="The de-vigged price they carried, averaged. "
-                                 "Beside the realised rate this is the "
+                                 "Beside the realized rate this is the "
                                  "market's own accuracy, position by position."),
                         "ours_pct": st.column_config.NumberColumn(
                             "We say", format="%.1f%%",
@@ -3243,8 +3243,8 @@ if tab_short.open:
                             help="What the bookmaker's opinion gets wrong "
                                  "before it charges anything. Positive at the "
                                  "bottom and negative at the top is the "
-                                 "favourite-longshot bias: longshots are "
-                                 "overpriced, favourites underpriced."),
+                                 "favorite-longshot bias: longshots are "
+                                 "overpriced, favorites underpriced."),
                         "posted_pct": st.column_config.NumberColumn(
                             "Posted price implies", format="%.2f%%"),
                         "margin_pp": st.column_config.NumberColumn(
@@ -3265,7 +3265,7 @@ if tab_short.open:
                 st.caption(
                     f":material/insights: {_shape['span']}. The bookmaker's "
                     f"own number is genuinely wrong — too high on longshots, "
-                    f"too low on favourites — and the margin is bigger than "
+                    f"too low on favorites — and the margin is bigger than "
                     f"the error at every decile. A model would have to beat "
                     f"the book's de-vigged number by more than the overpay "
                     f"column to profit; on the bets we select we beat it by "
@@ -3314,7 +3314,7 @@ if tab_short.open:
                     "reason it is on the list.")
 
             # ── Under observation ────────────────────────────────────────
-            # Kept out of the list above and labelled on every line: this is a
+            # Kept out of the list above and labeled on every line: this is a
             # rule that looked good in a slice of three seasons and has one
             # good season and one bad one out of sample. Writing down what it
             # says each week is the only way it can ever be settled — and a
@@ -4418,7 +4418,7 @@ if tab_board.open:
                         help="The same arithmetic on the bookmaker's own "
                              "first-TD prices, with their margin removed: "
                              "their players' chances summed by team and "
-                             "normalised within the game. Same question, their "
+                             "normalized within the game. Same question, their "
                              "answer — which is what makes the gap beside it "
                              "worth reading. Blank where too few of a game's "
                              "players carry a price to split it.")
@@ -4525,7 +4525,7 @@ def _played(season: int, tt: str):
 @st.cache_data(show_spinner=False, max_entries=32)
 @guarded
 def _week_money(tt: str, season: int, week: int, model: str, tiers: dict | None):
-    """Expected vs realised money for the plays this week's board would mark.
+    """Expected vs realized money for the plays this week's board would mark.
 
     `tiers` is passed in rather than looked up so the cache key includes it: a
     rebuilt rule has to invalidate this, or the page grades one week's bets
@@ -5102,7 +5102,7 @@ _ROI_COLS = {
         help="The range of results that luck alone could have produced. If it "
              "includes zero, the profit column is not evidence of anything. "
              "Worked out by reshuffling whole games, because two bets in the "
-             "same game share a defence and a final score."),
+             "same game share a defense and a final score."),
 }
 
 
@@ -5210,7 +5210,7 @@ if tab_bet.open:
 
             st.markdown("##### By our rank")
             st.caption(
-                "Backing only the Nth-favourite player in each game, every week. "
+                "Backing only the Nth-favorite player in each game, every week. "
                 "Where this stops making money is where a card should stop — it is "
                 "the honest answer to \"how many should I take?\""
             )
@@ -5373,7 +5373,7 @@ games, luck alone can produce a run that looks exactly like skill. That column i
 the range luck could account for. When it includes zero, the profit figure beside
 it is not evidence of anything, however healthy it looks. It is worked out by
 reshuffling whole games rather than individual bets, because two bets in the same
-game share a defence, a game script and a final score — treating them as separate
+game share a defense, a game script and a final score — treating them as separate
 would make everything here look about twice as convincing as it is.
 
 **Three things it genuinely cannot tell you.** Whether a bookmaker would accept
@@ -5915,7 +5915,7 @@ if tab_clusters.open:
                             f"presented as a finding. So position is the thing "
                             f"these groups are found *inside* instead — which "
                             f"leaves an actual question: which backs are goal-line "
-                            f"backs, and which receivers are the ones their offence "
+                            f"backs, and which receivers are the ones their offense "
                             f"throws to near the end zone."
                         )
                     with _right:

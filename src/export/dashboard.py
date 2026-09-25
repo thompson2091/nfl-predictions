@@ -1,4 +1,4 @@
-"""The dashboard's shell: design tokens, layout, and the browser-side behaviour.
+"""The dashboard's shell: design tokens, layout, and the browser-side behavior.
 
 Kept apart from `scripts/34_export_dashboard.py` for the same reason `page.py`
 is kept apart from `render.py` — the whole of the page's look and all of its
@@ -155,7 +155,7 @@ h3 { font-size: 14px; margin: 18px 0 6px; letter-spacing: -0.005em; }
    cover, so the answer to "who is in?" is one line rather than a re-scan of
    forty checkboxes, and a grid for everyone who could be. The grid is a wall
    of names read by eye, so each cell puts the name and the probability on the
-   same baseline and the team and price beneath in a quieter colour. */
+   same baseline and the team and price beneath in a quieter color. */
 .picker { margin-bottom: 16px; }
 .picked { margin: 10px 0 12px; }
 .picked-h { font-size: 12px; color: var(--muted); text-transform: uppercase;
@@ -1825,7 +1825,7 @@ function paneTeams() {
     { k: 'first_td', label: 'Scores first', fmt: v => has(v) ? pct(v, 0) : '<span class="dim">—</span>',
       bar: v => v, title: 'Chance this team scores the game’s first touchdown. The two teams add to 100%.' },
     anyBook ? { k: 'book_first_td', label: 'Bookmaker says', fmt: v => has(v) ? pct(v, 0) : '<span class="dim">—</span>',
-      title: 'The same arithmetic on the bookmaker’s own first-TD prices, margin removed: their players’ chances summed by team and normalised within the game. Blank where too few of a game’s players carry a price to split it.' } : null,
+      title: 'The same arithmetic on the bookmaker’s own first-TD prices, margin removed: their players’ chances summed by team and normalized within the game. Blank where too few of a game’s players carry a price to split it.' } : null,
     anyBook ? { k: 'gap', label: 'Difference', fmt: v => has(v) ? pp(v, 0) + ' pts' : '', cls: v => cls(v),
       title: 'The same number with opposite signs on the two sides of a game, because both columns add to 100%.' } : null,
     { k: 'expected_tds', label: 'Expected TDs', fmt: v => has(v) ? v.toFixed(2) : '',
@@ -1978,7 +1978,7 @@ function marketShapeCard(shape) {
     { k: 'actual_pct', label: 'Actual', fmt: v => pct(v / 100, 2) },
     { k: 'book_error_pp', label: 'Book error', fmt: v => pp(v, 2) + ' pts',
       cls: v => cls(-v),
-      title: 'What the bookmaker\u2019s opinion gets wrong before it charges anything. Positive at the bottom and negative at the top is the favourite-longshot bias: longshots overpriced, favourites underpriced.' },
+      title: 'What the bookmaker\u2019s opinion gets wrong before it charges anything. Positive at the bottom and negative at the top is the favorite-longshot bias: longshots overpriced, favorites underpriced.' },
     { k: 'posted_pct', label: 'Posted implies', fmt: v => pct(v / 100, 2) },
     { k: 'margin_pp', label: 'Margin', fmt: v => pp(v, 2) + ' pts',
       title: 'What it charges for that opinion.' },
@@ -1988,7 +1988,7 @@ function marketShapeCard(shape) {
   ];
   out.appendChild(card('What the market gets wrong, and what it charges',
     esc(shape.span || '') + '. The bookmaker\u2019s own number is genuinely ' +
-    'wrong \u2014 too high on longshots, too low on favourites \u2014 and the ' +
+    'wrong \u2014 too high on longshots, too low on favorites \u2014 and the ' +
     'margin is bigger than the error at every decile. A model would have to ' +
     'beat the de-vigged number by more than the <b>overpay</b> column to ' +
     'profit; on the bets we select we beat it by about two points. That is the ' +
@@ -1998,7 +1998,7 @@ function marketShapeCard(shape) {
 }
 
 // A rule that looked good in a slice of three seasons, with one good season
-// and one bad one out of sample. Kept out of the list above and labelled on
+// and one bad one out of sample. Kept out of the list above and labeled on
 // every line: writing down what it says each week is the only way it can ever
 // be settled, and a rule that is re-tuned instead can never fail — every
 // failure is absorbed into the next tuning.
@@ -2079,7 +2079,7 @@ function positionCard(pos) {
     { k: 'scored_pct', label: 'Scored', fmt: v => pct(v / 100, 1),
       title: 'How often a priced player at this position actually scored.' },
     { k: 'book_pct', label: 'Book says', fmt: v => pct(v / 100, 1),
-      title: 'The de-vigged price they carried, averaged. Beside the realised rate this is the market\u2019s own accuracy, position by position.' },
+      title: 'The de-vigged price they carried, averaged. Beside the realized rate this is the market\u2019s own accuracy, position by position.' },
     { k: 'ours_pct', label: 'We say', fmt: v => has(v) ? pct(v / 100, 1) : '',
       title: 'Our own average estimate for the same rows. A model two points hot on one position and two cold on another looks perfect in aggregate and is wrong on every row.' },
     { k: 'median_odds', label: 'Median price', t: 1, fmt: v => american(v) },
@@ -2386,7 +2386,7 @@ function paneLiked() {
   const live = rows.filter(r => !r.stale);
   const stale = rows.length - live.length;
 
-  // Favourites first by default; a click on any heading takes over from there.
+  // Favorites first by default; a click on any heading takes over from there.
   rows.sort((a, b) => (b._fav ? 1 : 0) - (a._fav ? 1 : 0)
                    || (b.ours || 0) - (a.ours || 0));
 

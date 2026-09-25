@@ -1,4 +1,4 @@
-"""What the best available price is worth, against the one we modelled on.
+"""What the best available price is worth, against the one we modeled on.
 
 Every profitability figure in this project is computed against a consensus
 median across books. Nobody can bet a median. The price you can actually take is

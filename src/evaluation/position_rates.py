@@ -4,10 +4,10 @@ Three numbers a reader keeps re-deriving by eye, put in one table:
 
   * **How often a position scores.** A running back is not a wide receiver is
     not a quarterback, and "12%" means nothing until you know which.
-  * **What the book charges for it.** The de-vigged price beside the realised
+  * **What the book charges for it.** The de-vigged price beside the realized
     rate is the market's own accuracy, position by position — and the gap is
     where a market-wide edge would have to live if one existed.
-  * **What we say.** Our mean probability against the same realised rate is a
+  * **What we say.** Our mean probability against the same realized rate is a
     calibration check the pooled figures cannot give: a model that is 2 points
     hot on tight ends and 2 cold on backs looks perfect in aggregate and is
     wrong on every row.
@@ -19,7 +19,7 @@ describing a bet anyone could make. `all_rated` carries the wider number for
 context.
 
 Positions come from the feature matrix's own dummies rather than a roster join,
-so a row is labelled with exactly what the model was told about it. Wide
+so a row is labeled with exactly what the model was told about it. Wide
 receiver is the reference category — no dummy — which is why it is derived by
 elimination here rather than read.
 """
@@ -83,7 +83,7 @@ def _priced(target_type: str, model: str) -> pl.DataFrame | None:
 
 
 def measure(target_type: str, model: str) -> dict | None:
-    """Realised rate, price and model estimate for each position.
+    """Realized rate, price and model estimate for each position.
 
     Returns `None` rather than an empty table when either half is missing: a
     position table built from prices with no outcomes, or outcomes with no

@@ -397,7 +397,7 @@ def slate_expectation(frame, rule: dict | None) -> str | None:
     A per-row EV column cannot show this, and row-by-row is exactly where the
     reading goes wrong. Ten bets we rate 40-50% win four or five of themselves,
     which reads like a good afternoon — and still lose money whenever the
-    winners are priced short and the losers long. One favourite at -185 we rate
+    winners are priced short and the losers long. One favorite at -185 we rate
     43% costs about a third of its stake, more than several modest longshots
     make back. Expected winners and expected profit move independently, and the
     only way to see that is to add the payouts up rather than leaving it as an
@@ -530,7 +530,7 @@ def bet_guidance(econ: dict, n: int) -> tuple[list[str], list[str]]:
         else:
             season = "season" if good_seasons == 1 else "seasons"
             do.append(
-                f"**Be sceptical of the headline.** The pooled figure is "
+                f"**Be skeptical of the headline.** The pooled figure is "
                 f"positive, but it was only profitable in {good_seasons} "
                 f"{season} out of {len(seasons)}. A strategy that works in one "
                 f"year and not the next is usually one year of luck, not an "

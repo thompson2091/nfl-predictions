@@ -51,8 +51,8 @@ Measured on 6,792 backtested bets after the corrected retrain:
 
     big underdog (7+)   we said 30.0%   actual 34.6%   +4.5pp   significant
     small underdog      we said 33.0%   actual 35.2%   +2.2pp   significant
-    small favourite     we said 36.5%   actual 36.4%   -0.2pp
-    big favourite (7+)  we said 38.4%   actual 39.4%   +1.0pp
+    small favorite     we said 36.5%   actual 36.4%   -0.2pp
+    big favorite (7+)  we said 38.4%   actual 39.4%   +1.0pp
 
 Monotone across four buckets and it persisted through a retrain, so it is not
 noise. The cause is not mysterious: teams that fall behind throw more, throw
@@ -65,7 +65,7 @@ and it did not beat stage one — it re-learned rank and price and had nothing
 left over. The information belongs *inside* the model, as usage split by game
 state, which is what this module supplies.
 
-Every feature is shift(1) rolling, so a team's trailing behaviour comes from
+Every feature is shift(1) rolling, so a team's trailing behavior comes from
 games already played. `expected_trailing_share` is fitted from the spread
 rather than declared, so it re-fits with the data instead of encoding somebody's
 guess about how often a 7-point underdog trails.
@@ -83,7 +83,7 @@ TRAILING_BY = 7
 
 
 def _script(diff: pl.Expr) -> pl.Expr:
-    """Label a play by the game state the offence was in."""
+    """Label a play by the game state the offense was in."""
     return (pl.when(diff <= -TRAILING_BY).then(pl.lit("trailing"))
               .when(diff >= TRAILING_BY).then(pl.lit("leading"))
               .otherwise(pl.lit("neutral")))
@@ -155,7 +155,7 @@ def build_game_script_features(pbp: pl.DataFrame) -> pl.DataFrame:
 def build_player_script_features(pbp: pl.DataFrame) -> pl.DataFrame:
     """Each player's share of the ball, split by whether the team was behind.
 
-    `script_lift` is the point of the module: how much more of the offence a
+    `script_lift` is the point of the module: how much more of the offense a
     player absorbs when the team is losing than when the game is level. A
     receiver whose share jumps in trailing scripts is precisely the player the
     model under-rates on an underdog, and nothing else in the feature set says
@@ -273,7 +273,7 @@ def fit_expected_trailing(pbp: pl.DataFrame, schedules: pl.DataFrame) -> dict:
         "intercept": float(intercept),
         "rmse": float(np.sqrt((resid ** 2).mean())),
         "n": int(joined.height),
-        # A negative slope is the expected direction: a bigger favourite (higher
+        # A negative slope is the expected direction: a bigger favorite (higher
         # spread) trails less. If this ever comes out positive the spread's sign
         # convention has flipped again, which has happened twice in this project.
         "direction_ok": bool(slope < 0),

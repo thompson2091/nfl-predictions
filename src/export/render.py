@@ -19,7 +19,7 @@ from typing import Any
 
 # ── Board filters ──────────────────────────────────────────────────────────
 #
-# The app's filter widgets, mapped to the client-side behaviour that reproduces
+# The app's filter widgets, mapped to the client-side behavior that reproduces
 # them. Keyed by the widget's label, so a control the app renames simply stops
 # appearing rather than silently filtering on the wrong thing.
 #
@@ -365,7 +365,7 @@ def combo_controls(widgets: list[dict], spec: dict) -> str:
 # One ordinal blue ramp rather than three categorical hues: Top-1, Top-3 and
 # Top-5 are the same measurement at increasing depth — each set contains the one
 # before it — so a single hue getting lighter as the net widens encodes the
-# nesting that three unrelated colours would hide. Steps validated against both
+# nesting that three unrelated colors would hide. Steps validated against both
 # surfaces (light end 2.06:1 light, 2.63:1 dark).
 RAMP = ["--ramp-1", "--ramp-2", "--ramp-3"]
 

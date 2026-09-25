@@ -251,7 +251,7 @@ const s3 = { ix: [0, 1, 2], p: cpool.slice(0, 3).reduce((a, r) => a * r.ours, 1)
 ok('a combination is not saved before you save it', !comboSaved('any', s3, cpool));
 saveCombo('any', s3, cpool);
 ok('saving a combination adds one parlay', S.parlays.length === 1);
-ok('and it is recognised as saved afterwards', comboSaved('any', s3, cpool));
+ok('and it is recognized as saved afterwards', comboSaved('any', s3, cpool));
 
 const sv = S.parlays[0];
 ok('the saved slip keeps every leg', sv.legs.length === 3);
@@ -326,7 +326,7 @@ ok('and offers no handle when there is nothing in it', slipHandle() === null);
 // this checked `slipSlot` alone and passed while This week still called
 // `slipPanel` directly — a page-level swap that silently no-opped, so the slip
 // sat on the board at "0 legs" and the helper it was supposed to go through
-// was never reached. A helper nothing calls is not a behaviour.
+// was never reached. A helper nothing calls is not a behavior.
 ['week', 'combos'].forEach(name => {
   const fn = name === 'week' ? pageWeek : pageCombos;
   ok(name + ' shows no slip panel when the slip is empty and closed',
@@ -726,7 +726,7 @@ ok('an unquoted yardage player is a projection with no bet',
 S.market = 'rush'; S.fw.view = 'priced';
 const rushTxt = textOf(pageWeek()).join(' ');
 ok('a yardage board renders', rushTxt.length > 200);
-ok('and is labelled as itself, not as receptions',
+ok('and is labeled as itself, not as receptions',
    /Rushing yards/.test(rushTxt) && !/Receptions/.test(rushTxt), rushTxt.slice(0, 120));
 ok('the served mix in the copy is read from the payload',
    /Math\.round\(w \* 100\)/.test(PAGE_SRC),
@@ -755,7 +755,7 @@ ok('and does not claim an edge',
      has(td) && td !== 0, String(td));
   ok('and a line slip prices its legs independently',
      !has(rho('rush')) && !has(rho('rec')),
-     'that correlation is about SCORING — one offence stalls and neither of '
+     'that correlation is about SCORING — one offense stalls and neither of '
      + 'its players gets in. Nothing has measured it for a yardage line.');
 })();
 S.slip = { market: 'any', legs: [], size: 0, stake: 10, stakeRaw: '10' };
@@ -898,7 +898,7 @@ S.market = 'any'; S.fw.view = 'all';
      want.every(k => t.indexOf(marketLabel(k)) >= 0),
      want.filter(k => t.indexOf(marketLabel(k)) < 0).join(','));
 
-  // No colour that means "something has gone wrong". A standing finding is
+  // No color that means "something has gone wrong". A standing finding is
   // not an alert.
   const modelBlock = PAGE_SRC.slice(PAGE_SRC.indexOf('function pageModel'),
                                    PAGE_SRC.indexOf('function stat('));
@@ -1005,7 +1005,7 @@ S.market = 'any'; S.fw.view = 'all';
   S.market = 'any'; S.fw.view = 'all';
 })();
 
-// ── A defence does not catch passes ─────────────────────────────────────
+// ── A defense does not catch passes ─────────────────────────────────────
 //
 // It is on the shared feature matrix because it scores touchdowns, and it
 // arrived on the line boards carrying 2.34 projected receiving yards for
@@ -1015,11 +1015,11 @@ S.market = 'any'; S.fw.view = 'all';
   const isDef = r => /DEF|ST$/.test(r.player || '');
   MENU.forEach(g => g.items.forEach(([k]) => {
     if (!served(k) || KIND[k] !== 'ou') return;
-    ok('no defence is on the ' + marketLabel(k) + ' board',
+    ok('no defense is on the ' + marketLabel(k) + ' board',
        !rowsFor(k, 'all').some(isDef),
        rowsFor(k, 'all').filter(isDef).length + ' DEF/ST rows');
   }));
-  ok('but a defence stays on the touchdown board, where it can score',
+  ok('but a defense stays on the touchdown board, where it can score',
      rowsFor('any', 'all').some(isDef),
      'defensive touchdowns are a real market and this is it');
   // And each one is its own row. They all arrive named "DEF/ST", so every id
@@ -1027,9 +1027,9 @@ S.market = 'any'; S.fw.view = 'all';
   // leg could not say which was meant, and the settlement map resolved 32 rows
   // to one result.
   const defs = rowsFor('any', 'all').filter(isDef);
-  ok('and each defence is a distinct row, not 32 sharing one id',
+  ok('and each defense is a distinct row, not 32 sharing one id',
      new Set(defs.map(r => r.id)).size === defs.length,
-     defs.length + ' defences, ' + new Set(defs.map(r => r.id)).size + ' ids');
+     defs.length + ' defenses, ' + new Set(defs.map(r => r.id)).size + ' ids');
   ok('named by the team it plays for',
      defs.every(r => r.team && r.player.indexOf(r.team) === 0),
      defs.slice(0, 2).map(r => r.player).join(', '));

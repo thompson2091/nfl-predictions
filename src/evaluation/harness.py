@@ -198,7 +198,7 @@ def score_fold(target_type: str, model_dir: Path, test_season: int,
                val_season: int | None = None) -> tuple[pl.DataFrame, dict, pl.DataFrame | None]:
     """Score one fold's held-out season through the path production serves.
 
-    The universe is built from the **unfiltered** labelled frame, so the
+    The universe is built from the **unfiltered** labeled frame, so the
     denominator does not move when the candidate filter does. See
     `src/evaluation/ranking`.
     """
@@ -210,13 +210,13 @@ def score_fold(target_type: str, model_dir: Path, test_season: int,
     ensure_registered()
     feature_cols = pickle.loads((Path(model_dir) / "feature_cols.pkl").read_bytes())
 
-    labelled = _features(target_type).filter(
+    labeled = _features(target_type).filter(
         (pl.col("season") == test_season) & pl.col("target").is_not_null())
-    if labelled.height == 0:
+    if labeled.height == 0:
         raise ValueError(f"No played games in {test_season} for {target_type}")
-    universe = game_universe(labelled)
+    universe = game_universe(labeled)
 
-    scored = _filter_low_activity(labelled)
+    scored = _filter_low_activity(labeled)
     X, _ = prepare_data(scored, feature_cols)
     probs = score(model_name, X, feature_cols, model_dir,
                   active_models=active_models)
@@ -227,7 +227,7 @@ def score_fold(target_type: str, model_dir: Path, test_season: int,
     team_model = load_team_rate(Path(model_dir) / "team_td_rate.json")
     if (target_type == "first_td" and team_model is not None
             and get_config().get("first_td", {}).get("use_joint_path")):
-        # Competing Poisson processes rather than a within-game normalisation:
+        # Competing Poisson processes rather than a within-game normalization:
         # P(team scores first) = lambda_t / (lambda_home + lambda_away), scorer
         # drawn from that team's shares. No parameter to fit.
         from src.models.joint import apply_joint_first_td
@@ -375,7 +375,7 @@ def run(overlay: dict | None = None, *, markets=MARKETS,
     }
 
 
-def summarise(result: dict) -> dict:
+def summarize(result: dict) -> dict:
     """Pooled Top-K per market and model, plus the row metrics beside them."""
     from src.evaluation.ranking import pooled
 
@@ -408,7 +408,7 @@ def save(result: dict, experiment_id: str) -> Path:
         result["players"].write_parquet(directory / "players.parquet")
     (directory / "meta.json").write_text(json.dumps(
         {**result["meta"], "row_metrics": result["row_metrics"],
-         "summary": summarise(result)}, indent=2) + "\n")
+         "summary": summarize(result)}, indent=2) + "\n")
     return directory
 
 

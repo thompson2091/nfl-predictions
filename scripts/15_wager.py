@@ -99,7 +99,7 @@ def report(a) -> int:
     if s.get("n_shopped"):
         print(f"\n  Line shopping: {s['line_shopping_pp']:+.2f} pts on "
               f"{s['n_shopped']} bets")
-        print("    Price you got vs the consensus we modelled against. Positive "
+        print("    Price you got vs the consensus we modeled against. Positive "
               "means\n    you beat it, and every backtest figure is that much "
               "conservative.")
     if s.get("n_clv"):

@@ -8,7 +8,7 @@ Three numbers per team, each chosen because it carries information. Measured on
 four walk-forward folds, 2,278 team-games:
 
 **First-TD share.** The team's players' first-TD probabilities, summed and
-normalised within the game. Exactly one team scores first, so this is a true
+normalized within the game. Exactly one team scores first, so this is a true
 50/50 question, and the model beats a coin flip on it: AUC 0.674, Brier 0.2213
 against 0.25. It is calibrated across the range — 5.6% predicted against 5.5%
 actual at the bottom, 94.4% against 94.5% at the top, 45.4% against 49.0% in the
@@ -40,7 +40,7 @@ import polars as pl
 #: floor exists because the roster feed genuinely fails: 2015 has 83 team-weeks
 #: below it (the earliest season's rosters are thin) and the 2026 pre-season has
 #: 513, because next year's rosters are not published yet. Arizona in 2026 week
-#: 1 has exactly one candidate — the DEF/ST placeholder — which normalises to
+#: 1 has exactly one candidate — the DEF/ST placeholder — which normalizes to
 #: its opponent scoring first 99.2% of the time. That number is not a
 #: prediction, and publishing it unmarked is how a data outage gets read as
 #: football.
@@ -52,8 +52,8 @@ def first_td_share(predictions: pl.DataFrame, prob_col: str = "probability",
                    min_candidates: int = MIN_CANDIDATES) -> pl.DataFrame:
     """Each team's chance of scoring the game's first touchdown.
 
-    Summed within the team and normalised within the game, because exactly one
-    team scores first and the two must therefore add to one. Normalising is not
+    Summed within the team and normalized within the game, because exactly one
+    team scores first and the two must therefore add to one. Normalizing is not
     cosmetic: the per-player probabilities are published against the whole
     candidate pool, and a game whose pool is thin would otherwise return two
     numbers that do not sum to anything in particular.
@@ -123,7 +123,7 @@ def build(first_td_preds: pl.DataFrame | None,
 
     `first_td_market` is the bookmaker's own first-TD prices, de-vigged, and it
     goes through the *same* `first_td_share` — summed within the team and
-    normalised within the game. Computing it any other way would put two
+    normalized within the game. Computing it any other way would put two
     numbers side by side that are not answers to the same question, which is
     the only thing that makes a difference column mean anything.
 

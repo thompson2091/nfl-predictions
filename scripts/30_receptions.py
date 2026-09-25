@@ -203,7 +203,7 @@ def main() -> int:
 
     cfg = get_config()
     df, fcols = _frame()
-    print(f"Receptions frame: {df.height:,} labelled rows, {len(fcols)} features")
+    print(f"Receptions frame: {df.height:,} labeled rows, {len(fcols)} features")
 
     model_dir = get_path("models", "receptions")
     model_path = model_dir / "xgb_count.pkl"

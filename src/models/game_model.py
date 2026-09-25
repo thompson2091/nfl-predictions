@@ -178,7 +178,7 @@ def leaky_columns(d: pl.DataFrame, cols: list[str] | None = None) -> list[str]:
     """Columns whose ABSENCE predicts the result of the game they are absent in.
 
     Measured against each team's own season mean, so that a column which is
-    simply missing more often for bad offences is not mistaken for one that
+    simply missing more often for bad offenses is not mistaken for one that
     knows the score. See this module's docstring for what it caught.
     """
     cols = cols or feature_columns(d)

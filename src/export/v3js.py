@@ -5,7 +5,7 @@ knows. It is the right tool for someone who already knows what an edge is. v3
 is the same data answering a different question — "what should I look at, and
 why" — for someone who does not, and will not, learn the vocabulary first.
 
-**The calculation layer is v1's and is not forked.** `rowsFor` normalises a
+**The calculation layer is v1's and is not forked.** `rowsFor` normalizes a
 touchdown board and a yardage board into one row shape; `betProb`, `ev100`,
 `amToDec` and `money` are the arithmetic underneath every figure here. Those
 are covered by the existing tests and are imported by `v3.render`, exactly as
@@ -23,7 +23,7 @@ Three things this version has that v2 does not, all of them asked for:
   player-level result is a list of people to leave alone, and v2 buried it
   behind a market-specific control.
 - **Kickoff times, Eastern.** A slate reads as a weekend rather than as an
-  alphabet, and prime time is labelled because it is a real betting split.
+  alphabet, and prime time is labeled because it is a real betting split.
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ const V3TABS = [
   // player board is what you reach FROM a game more often than the reverse.
   ['games', 'Games', 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4'],
   ['props', 'Props', 'M12 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM5 21c0-3.9 3.1-6 7-6s7 2.1 7 6'],
-  ['slip', 'My picks', 'M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2zM9 9h6M9 13h4'],
+  ['picks', 'Picks', 'M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2zM9 9h6M9 13h4'],
   ['ladder', 'Ladder', 'M7 3v18M17 3v18M7 7h10M7 12h10M7 17h10'],
 ];
 
@@ -109,9 +109,13 @@ const V = Object.assign({
   tab: 'games', market: 'any', sort: 'model', desc: true, filter: 'all',
   gfilter: 'all',
   week: null, game: null, gameTab: 'notes', cat: 'all',
-  picks: {}, betType: 'parlay', stake: 10, shown: V3SHOW,
+  picks: {}, betType: 'twos', stake: 10, shown: V3SHOW,
   lodds: 100, rungs: 6, q: '', half: 'full',
-  ask: '', answer: '', saved: false,
+  ask: '', answer: '',
+  // The saved picks, and which of them the Picks tab is showing. `saved` was
+  // a boolean nothing read; the slip and the saved copy are different things
+  // and only one of them was ever stored.
+  saved: [], savedFilter: 'all',
 }, v3Load());
 
 function v3Load() {
@@ -126,6 +130,9 @@ function v3Save() {
       market: V.market, sort: V.sort, filter: V.filter, picks: V.picks,
       betType: V.betType, stake: V.stake, game: V.game,
       desc: V.desc, gfilter: V.gfilter,
+      // The saved picks themselves, not a flag. `V.saved` used to be a
+      // boolean that nothing read and nothing kept.
+      saved: V.saved, savedFilter: V.savedFilter,
       lodds: V.lodds, rungs: V.rungs }));
   } catch (e) { /* private window, blocked storage — the app still works */ }
 }
@@ -159,7 +166,7 @@ const v3Dash = s => String(s == null ? '' : s).replace(/-/g, '−');
 //
 // The thresholds are not fitted and are not claimed to be: +5 and -10 per
 // $100 are wide enough that a row has to disagree with the book clearly
-// before it is labelled, which is the point. `ev100` is v1's and already
+// before it is labeled, which is the point. `ev100` is v1's and already
 // prefers the model-only probability on a touchdown market, where the blend
 // has the book baked into it and would grade the book against itself.
 function v3Value(row) {
@@ -207,7 +214,7 @@ function v3Weeks() {
   // Slip and Ladder do not vary by week, so they offer none — and because
   // this one function decides, the header hides the control and `v3Do` drops
   // a stale week on the way in, from the same answer.
-  if (V.tab === 'slip' || V.tab === 'ladder') return [];
+  if (V.tab === 'picks' || V.tab === 'ladder') return [];
   if (V.tab === 'games') {
     return Object.keys(((DATA.games || {}).past) || {})
       .map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
@@ -290,7 +297,7 @@ function v3Fetch(market, week, then) {
       : 'could not load ' + path + ' (' + e + ')'));
 }
 
-// A graded row, normalised onto the same field names the live rows use, so
+// A graded row, normalized onto the same field names the live rows use, so
 // every renderer below is written once. `won` is the only addition, and it is
 // three-valued: true, false, or null for a pick that was never settled.
 function v3Graded(market, raw) {
@@ -321,7 +328,7 @@ function v3Graded(market, raw) {
 function v3Screen() {
   switch (V.tab) {
     case 'props': return v3Week();
-    case 'slip': return v3Slip();
+    case 'picks': return v3Picks();
     case 'ladder': return v3Ladder();
     default: return V.game ? v3Game(V.game) : v3Games();
   }
@@ -593,7 +600,7 @@ function v3Row(row) {
     + '</div>';
 }
 
-// FAVOURITES, ON v1's STORAGE RATHER THAN A SECOND LIST.
+// FAVORITES, ON v1's STORAGE RATHER THAN A SECOND LIST.
 //
 // `isFav` and `toggleFav` are v1's and already in the bundle, keyed by the
 // same row id v2 uses. Sharing the store means a player starred in v2 is
@@ -687,7 +694,7 @@ function v3Detail(row) {
     + '</dl></div>';
 }
 
-// A settled row. The colour IS the information: green won, red lost, grey
+// A settled row. The color IS the information: green won, red lost, gray
 // never settled. Everything else is what was shown before kickoff, unchanged,
 // so the two can be compared.
 function v3PastRow(row) {
@@ -777,9 +784,9 @@ function v3Games() {
   //
   // It used to come from the sign of `model_spread` while the percentage came
   // from `model_win_home`, and on a near-pick'em the two disagree: CIN at PIT
-  // had the model at -0.7 (home favoured, so the tag said "picks the other
+  // had the model at -0.7 (home favored, so the tag said "picks the other
   // side") and the model win probability at 48.5% for the home side, which
-  // favours the AWAY team. Both honest, both from the model, contradicting
+  // favors the AWAY team. Both honest, both from the model, contradicting
   // each other on the same card. Where a win probability exists it decides,
   // because it is the one on screen.
   const lean = c => {
@@ -790,8 +797,8 @@ function v3Games() {
       if ((c.win_home >= 0.5) !== (c.model_win_home >= 0.5))
         return ['Our model picks the other side', 'tag tag--warn'];
       if (Math.abs(d) < 3) return ['Our model agrees', 'tag'];
-      // "Closer" and "by more" are about the FAVOURITE, so the sign has to be
-      // read from the favourite's side rather than from the home side.
+      // "Closer" and "by more" are about the FAVORITE, so the sign has to be
+      // read from the favorite's side rather than from the home side.
       const towardFav = (c.win_home >= 0.5) ? d > 0 : d < 0;
       return [towardFav ? 'Our model: by more' : 'Our model: a closer game',
               'tag tag--ours'];
@@ -827,7 +834,7 @@ function v3Games() {
     // This printed a lean — "our model picks the other side" — beside a bare
     // "CIN 63% to win", where the 63% was the BOOK's number with nothing
     // saying so. Read together the two contradict each other. Book, model and
-    // the gap are now labelled, and the lean becomes a summary of numbers
+    // the gap are now labeled, and the lean becomes a summary of numbers
     // that are on the screen rather than a claim about numbers that are not.
     // EVERY CELL NAMES ITS TEAM. "63.0% CIN · book" beside a bare "51.5%
     // model" reads as two teams' numbers, and on this very card the model's
@@ -846,7 +853,7 @@ function v3Games() {
     const cell = (label, v) => v == null ? ''
       : v3Cell(label, esc(side) + ' ' + v3Pct(v, 1));
     // THE RESULT, where the week has been played. Green when the side the
-    // book favoured won, red when it did not — the same three-valued mark
+    // book favored won, red when it did not — the same three-valued mark
     // the props board uses, because a game with no final is not a loss.
     const played = has(c.final_home) && has(c.final_away);
     const won = !played ? null
@@ -1013,11 +1020,11 @@ function v3Game(gid) {
 //
 // Skill positions are marked, because those are the ones that move a player
 // market. An Out guard matters to the game; an Out receiver matters to a prop.
-// OFFENCE AGAINST DEFENCE, AS DIFFERENTIALS.
+// OFFENSE AGAINST DEFENSE, AS DIFFERENTIALS.
 //
 // A raw rate is unreadable: "Cincinnati 36.4% early-down success" means
-// nothing without knowing what Pittsburgh's defence allows. Each row pairs
-// one side's offence with the other's defence and leads with the gap, which
+// nothing without knowing what Pittsburgh's defense allows. Each row pairs
+// one side's offense with the other's defense and leads with the gap, which
 // is the number a reader can act on — and shows BOTH halves, because a
 // matchup has two and showing one is showing half a game.
 function v3Matchup(c) {
@@ -1044,14 +1051,14 @@ function v3Matchup(c) {
   const fmt = (k, v) => k === 'epa_play' ? (v >= 0 ? '+' : '') + v.toFixed(3)
     : pct(v);
   const row = (r, p) => {
-    // The bar is the EDGE, centred: right of the middle is an advantage for
-    // the offence, left is the defence winning it.
+    // The bar is the EDGE, centered: right of the middle is an advantage for
+    // the offense, left is the defense winning it.
     const e = r.key === 'epa_play' ? p.edge * 100 : p.edge * 100;
     const w = Math.min(50, Math.abs(e) * (r.key === 'epa_play' ? 3 : 2.2));
     const good = p.edge > 0;
     return '<div class="mx">'
-      + '<div class="mx__h"><span>' + esc(p.offense) + ' offence <i>vs</i> '
-      + esc(p.defense) + ' defence</span>'
+      + '<div class="mx__h"><span>' + esc(p.offense) + ' offense <i>vs</i> '
+      + esc(p.defense) + ' defense</span>'
       + '<b class="num ' + (good ? 'good' : 'bad') + '">'
       + (p.edge > 0 ? '+' : '') + fmt(r.key, p.edge) + '</b></div>'
       + '<div class="mx__b"><i class="' + (good ? 'r' : 'l') + '" style="width:'
@@ -1538,7 +1545,7 @@ function v3Note(n) {
 // could send its own context could send anything, and the endpoint would
 // become a general-purpose model billed to whoever owns the key.
 //: `bare` drops the card and the heading, for the sheet — which draws both
-//: itself, and whose background is the card colour, so a card inside it is a
+//: itself, and whose background is the card color, so a card inside it is a
 //: panel on a panel with a shadow between them.
 function v3Ask(gid, bare) {
   const qs = v3Questions(gid);
@@ -1762,15 +1769,39 @@ function v3GameScores(c) {
   }
   const bar = (pct, tone) => '<div class="mbar"><i style="width:'
     + Math.max(1, pct) + '%' + (tone ? ';background:' + tone : '') + '"></i></div>';
-  const margins = (d.margins || []).filter(m => m.n).map(m =>
-    '<div class="mrow"><span class="mrow__l">' + esc(m.band) + '</span>'
-    + bar(m.pct, m.band.indexOf(d.home) === 0 ? 'var(--ours)' : 'var(--mut3)')
-    + '<span class="mrow__v num">' + m.pct.toFixed(1) + '%</span></div>').join('');
-  const scores = (d.scores || []).map(x =>
-    '<div class="srow"><b class="num">' + esc(d.home) + ' ' + x.home
-    + '\u2013' + x.away + ' ' + esc(d.away) + '</b>'
-    + '<span class="sub num">' + x.pct.toFixed(1) + '% \u00b7 ' + x.n
-    + ' of ' + d.n + '</span></div>').join('');
+  // WHICH OF THESE ACTUALLY HAPPENED. On a played week the distribution stops
+  // being a forecast, and the row the game landed in is the only one worth
+  // finding quickly. A live card has no finals and nothing is marked.
+  const fh = c.final_home, fa = c.final_away;
+  const played = has(fh) && has(fa);
+  const margins = (d.margins || []).filter(m => m.n).map(m => {
+    // `mlo`/`mhi` are the MARGIN bounds, inclusive and home-positive.
+    // `lo`/`hi` on the same row are the Wilson interval on the percentage,
+    // and reading those as a margin marks whichever band happens to have a
+    // confidence interval straddling the final score.
+    const mg = played ? fh - fa : null;
+    const landed = played && (m.mlo != null || m.mhi != null)
+      && (m.mlo == null || mg >= m.mlo) && (m.mhi == null || mg <= m.mhi);
+    return '<div class="mrow' + (landed ? ' mrow--on' : '') + '">'
+      + '<span class="mrow__l">' + esc(m.band)
+      + (landed ? ' \u00b7 happened' : '') + '</span>'
+      + bar(m.pct, landed ? 'var(--good)'
+            : m.band.indexOf(d.home) === 0 ? 'var(--ours)' : 'var(--mut3)')
+      + '<span class="mrow__v num">' + m.pct.toFixed(1) + '%</span></div>';
+  }).join('');
+  const scores = (d.scores || []).map(x => {
+    const landed = played && x.home === fh && x.away === fa;
+    return '<div class="srow' + (landed ? ' srow--on' : '') + '">'
+      + '<b class="num">' + esc(d.home) + ' ' + x.home
+      + '\u2013' + x.away + ' ' + esc(d.away)
+      + (landed ? ' \u00b7 this one' : '') + '</b>'
+      + '<span class="sub num">' + x.pct.toFixed(1) + '% \u00b7 ' + x.n
+      + ' of ' + d.n + '</span></div>';
+  }).join('');
+  // The two headline boxes become right-or-wrong once the game is in.
+  const wonTone = !played ? '' : (fh > fa ? ' box--good' : ' box--bad');
+  const overTone = !played ? ''
+    : ((fh + fa) > d.total ? ' box--good' : ' box--bad');
 
   return '<div class="card"><div class="eyebrow">Based on</div>'
     + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:4px">'
@@ -1778,14 +1809,19 @@ function v3GameScores(c) {
     + '3.5 of this total. Not a simulation \u2014 what actually happened in '
     + 'them.</p>'
     + '<div class="two" style="margin-top:12px">'
-    + '<div class="box"><span class="eyebrow">' + esc(d.home)
+    + '<div class="box' + wonTone + '"><span class="eyebrow">' + esc(d.home)
     + ' won</span><b class="num">' + d.home_win.pct.toFixed(0) + '%</b>'
-    + '<span class="sub num">' + d.home_win.lo.toFixed(0) + '\u2013'
-    + d.home_win.hi.toFixed(0) + '% range</span></div>'
-    + '<div class="box"><span class="eyebrow">Went over ' + d.total
-    + '</span><b class="num">' + d.over.pct.toFixed(0) + '%</b>'
-    + '<span class="sub num">' + d.over.lo.toFixed(0) + '\u2013'
-    + d.over.hi.toFixed(0) + '% range</span></div></div>'
+    + '<span class="sub num">'
+    + (played ? (fh > fa ? esc(d.home) + ' did' : esc(d.home) + ' did not')
+              : d.home_win.lo.toFixed(0) + '\u2013'
+                + d.home_win.hi.toFixed(0) + '% range') + '</span></div>'
+    + '<div class="box' + overTone + '"><span class="eyebrow">Went over '
+    + d.total + '</span><b class="num">' + d.over.pct.toFixed(0) + '%</b>'
+    + '<span class="sub num">'
+    + (played ? 'finished ' + (fh + fa) + ((fh + fa) > d.total ? ', over'
+                                                              : ', under')
+              : d.over.lo.toFixed(0) + '\u2013' + d.over.hi.toFixed(0)
+                + '% range') + '</span></div></div>'
     + '<p class="help">Average result in those games: '
     + d.mean_total + ' total points, winner by '
     + Math.abs(d.mean_margin) + '.</p></div>'
@@ -1851,16 +1887,30 @@ function v3GameBets(gid) {
     }).join('');
   };
 
-  const table = (title, note, rowsIn, mark) =>
+  // ONCE THE GAME IS PLAYED, EVERY ROW HAS AN ANSWER.
+  //
+  // Each row asks whether the game went over a number, and on a week that has
+  // been played that is no longer a chance — it is a fact. `actual` colors
+  // the rows it settled: green where the number was cleared, red where it was
+  // not. A live week passes null and nothing is colored, because a table of
+  // green rows on a game nobody has played would be reading a forecast as a
+  // result.
+  const table = (title, note, rowsIn, mark, actual) =>
     '<h2 class="h1" style="font-size:19px;line-height:24px;margin-top:20px">'
     + esc(title) + '</h2>'
     + (note ? '<p class="help">' + note + '</p>' : '')
+    + (actual != null
+       ? '<p class="help"><b>Finished at ' + actual + '.</b> Green cleared, '
+         + 'red did not.</p>' : '')
     + '<div class="card"><div class="ltab">'
     + '<div class="ltab__h"><span>Over</span><span>Hit</span>'
     + '<span>How often</span></div>'
     + rowsIn.map(r => {
         const on = mark != null && Math.abs(r.line - mark) < 0.01;
-        return '<div class="ltab__r' + (on ? ' ltab__r--on' : '') + '">'
+        const hit = actual == null ? null : actual > r.line;
+        return '<div class="ltab__r' + (on ? ' ltab__r--on' : '')
+          + (hit == null ? '' : hit ? ' ltab__r--hit' : ' ltab__r--miss')
+          + '">'
           + '<span class="num">' + r.line + (on ? ' \u00b7 posted' : '')
           + '</span>'
           + '<span class="num">' + r.pct.toFixed(0) + '%</span>'
@@ -1869,9 +1919,18 @@ function v3GameBets(gid) {
       }).join('')
     + '</div></div>';
 
+  // The finals, where there are any. A live card has none and everything
+  // below reads exactly as it did before.
+  const fh = c.final_home, fa = c.final_away;
+  const played = has(fh) && has(fa);
+  const finalTotal = played ? fh + fa : null;
+  const finalMargin = played ? fh - fa : null;
+
   const teams = (L.teams || []).map(t =>
     table(t.team + ' points', 'How often ' + esc(t.team) + ' scored more than '
-          + 'each number, in games priced like this one.', t.rows, null))
+          + 'each number, in games priced like this one.', t.rows, null,
+          !played ? null : t.team === c.home ? fh : t.team === c.away ? fa
+                                                                     : null))
     .join('');
 
   return '<div class="card"><div class="eyebrow">Based on</div>'
@@ -1883,11 +1942,11 @@ function v3GameBets(gid) {
          + '</div>' : '')
     + '</div>'
     + table('Total points', 'The posted total is marked.',
-            (L.total || {}).rows || [], (L.total || {}).posted)
+            (L.total || {}).rows || [], (L.total || {}).posted, finalTotal)
     + table('Winning margin',
             'How often the home side won by more than each number. Negative '
             + 'means the away side won.',
-            (L.spread || {}).rows || [], (L.spread || {}).posted)
+            (L.spread || {}).rows || [], (L.spread || {}).posted, finalMargin)
     + teams
     + '<p class="help" style="margin-top:12px">Nothing here is smoothed, so '
     + 'the far ends of each table are ragged \u2014 that is sample, and the '
@@ -1909,17 +1968,125 @@ function v3Legs() {
   return out;
 }
 
-function v3Slip() {
+// ── screen: picks ──────────────────────────────────────────────────────
+//
+// The slips you kept, and how they turned out. `settle` is v2's and is not
+// reforked: it reads `DATA.results`, which maps a leg to hit or miss and
+// carries only graded weeks, so a leg it does not know keeps the whole slip
+// PENDING rather than being assumed missed. A pick that reads Lost because a
+// name failed to match is worse than one that reads Pending an hour longer.
+function v3Picks() {
+  const all = v3Saved().map(settle);
+  const settled = all.filter(p => p.status !== 'Pending');
+  const won = settled.filter(p => p.status === 'Won');
+  const net = settled.reduce((a, p) => a + (p.net || 0), 0);
+
+  if (!all.length) {
+    return '<div class="wrap"><h1 class="h1">Picks</h1>'
+      + '<p class="lede">Nothing kept yet. Add players from Props or a game, '
+      + 'open the slip from the bar at the bottom, and press '
+      + '\u201cSave to Picks\u201d. What you save stays here and settles '
+      + 'itself as the games finish.</p></div>';
+  }
+
+  const counts = { all: all.length, pending: all.length - settled.length,
+                   won: won.length, lost: settled.length - won.length };
+  const f = V.savedFilter || 'all';
+  const chips = [['all', 'All'], ['pending', 'Pending'], ['won', 'Won'],
+                 ['lost', 'Lost']]
+    .map(c => '<button class="mkt' + (counts[c[0]] ? '' : ' mkt--none')
+      + '" data-v3savedfilter="' + c[0] + '" aria-pressed="' + (f === c[0])
+      + '">' + esc(c[1]) + ' <i>' + counts[c[0]] + '</i></button>').join('');
+
+  const keep = p => f === 'all'
+    || (f === 'pending' && p.status === 'Pending')
+    || (f === 'won' && p.status === 'Won')
+    || (f === 'lost' && p.status === 'Lost');
+  const shown = all.filter(keep).slice().reverse();
+
+  return '<div class="wrap"><h1 class="h1">Picks</h1>'
+    + '<p class="lede">Slips you kept. They settle on their own as the games '
+    + 'finish.</p>'
+    // THE RECORD, ONLY ONCE THERE IS ONE. Printing "0 settled, $0 net"
+    // beside three pending slips reads as a result rather than as a wait.
+    + (settled.length
+       ? '<div class="card"><div class="three">'
+         + '<div><span class="eyebrow">Settled</span>'
+         + '<b class="num">' + settled.length + '</b></div>'
+         + '<div><span class="eyebrow">Won</span>'
+         + '<b class="num">' + won.length + '</b></div>'
+         + '<div><span class="eyebrow">Net</span>'
+         + '<b class="num ' + (net >= 0 ? 'good' : 'bad') + '">'
+         + (net >= 0 ? '+' : '\u2212') + '$' + Math.abs(net).toFixed(2)
+         + '</b></div></div></div>'
+       : '')
+    + '<div class="mkts" style="margin-top:16px">' + chips + '</div>'
+    + (shown.length
+       ? shown.map(v3PickCard).join('')
+       : '<div class="empty">Nothing here is ' + esc(f) + '.</div>')
+    + '</div>';
+}
+
+function v3PickCard(p) {
+  const pend = p.status === 'Pending';
+  const tone = pend ? '' : p.status === 'Won' ? 'good' : 'bad';
+  const legs = (p.legs || []).map(l => {
+    const dot = l.state === 'hit' ? 'good' : l.state === 'miss' ? 'bad' : 'pend';
+    return '<div class="legline"><span><i class="dot dot--' + dot + '"></i>'
+      + esc(l.label || l.player) + '</span>'
+      + '<span class="sub num">' + (has(l.odds) ? v3Dash(american(l.odds))
+                                                : '\u2014') + '</span></div>';
+  }).join('');
+  // The row of the stored curve that actually happened. Re-derived nothing:
+  // a full cover pays every sub-slip whose legs landed, and those have
+  // different prices, so there is no single number to multiply.
+  const row = (p.rows || []).filter(r => r.hit === p.hits)[0];
+  return '<div class="card">'
+    + '<div class="pub__h"><span class="name">' + esc(p.name) + '</span>'
+    + '<span class="tag' + (tone ? ' tag--' + tone : '') + '">'
+    + esc(p.status) + '</span></div>'
+    + '<div class="sub" style="margin-top:2px">' + esc(p.marketLabel)
+    + ' \u00b7 week ' + esc(String(p.week)) + ' \u00b7 $'
+    + Number(p.stake).toFixed(0)
+    + (p.slips > 1 ? ' each on ' + p.slips + ' slips' : '') + '</div>'
+    + '<div style="margin-top:10px">' + legs + '</div>'
+    + (pend
+       ? '<div class="sub num" style="margin-top:10px">Pays '
+         + (p.dec ? v3Dash(american(decToAm(p.dec))) : '\u2014')
+         + ' if every pick lands \u00b7 ' + v3Pct(p.chance) + '</div>'
+       : '<div class="three panel" style="margin-top:10px">'
+         + '<div><span class="eyebrow">Landed</span><b class="num">'
+         + p.hits + ' of ' + (p.legs || []).length + '</b></div>'
+         + '<div><span class="eyebrow">Put in</span><b class="num">$'
+         + Number(p.outlay || 0).toFixed(2) + '</b></div>'
+         + '<div><span class="eyebrow">Came back</span>'
+         + '<b class="num ' + ((p.net || 0) >= 0 ? 'good' : 'bad') + '">'
+         + ((p.net || 0) >= 0 ? '+' : '\u2212') + '$'
+         + Math.abs(p.net || 0).toFixed(2) + '</b></div></div>')
+    + '<button class="cta" data-v3unkeep="' + esc(p.id) + '" '
+    + 'style="background:var(--card);color:var(--bad);border-color:var(--bad)">'
+    + 'Remove from Picks</button>'
+    + '</div>';
+}
+
+// THE SLIP, IN A SHEET OVER WHATEVER YOU ARE READING.
+//
+// It used to be a tab, which meant leaving the board to look at what you had
+// just added to it and then navigating back. v2 opened it as a panel from the
+// bar at the bottom and that is the better shape: the slip is about the page
+// you are on, so it sits over it and closes back onto it.
+function v3SlipBody() {
   const legs = v3Legs();
   if (!legs.length) {
-    return '<div class="wrap"><h1 class="h1">My picks</h1>'
-      + '<p class="lede">Nothing added yet. Tap + beside a player on This '
-      + 'week and they will show up here with what the bet pays.</p></div>';
+    return '<p class="lede" style="font-size:15px">Nothing added yet. Tap + '
+      + 'beside a player and they will show up here with what the bet '
+      + 'pays.</p>';
   }
   const dec = legs.map(l => l.dec).filter(has);
   const ps = legs.map(l => betProb(l)).filter(has);
   const ok = dec.length === legs.length && ps.length === legs.length;
   const type = V3BETTYPES.filter(t => t[0] === V.betType)[0] || V3BETTYPES[0];
+  const saved = v3IsSaved(legs);
 
   // EVERY LEG CAN BE REMOVED THREE WAYS: swipe it, press the cross, or untap
   // the tick. The first version had only the tick, which meant a pick you no
@@ -1939,8 +2106,7 @@ function v3Slip() {
     + 'aria-label="Remove ' + esc(l.player) + '">\u2715</button>'
     + '</div></div>').join('');
 
-  return '<div class="wrap"><h1 class="h1">My picks</h1>'
-    + '<p class="lede">' + legs.length + ' pick'
+  return '<p class="help" style="margin-top:0">' + legs.length + ' pick'
     + (legs.length === 1 ? '' : 's') + '. Swipe one left to remove it.</p>'
     + '<div class="list">' + rows + '</div>'
     + '<div class="chooser">'
@@ -1956,9 +2122,17 @@ function v3Slip() {
           : '<div class="card"><p class="lede" style="font-size:15px">One of '
             + 'these picks has no posted price, so the payout cannot be worked '
             + 'out. Remove it to see the numbers.</p></div>')
+    // SAVING IS A COPY. The slip is untouched by it, so the same legs can be
+    // saved at one stake and then rebuilt at another.
+    + (ok ? '<button class="cta" data-v3keep="1"' + (saved ? ' disabled' : '')
+            + '>' + (saved ? '\u2713 Saved to Picks' : 'Save to Picks')
+            + '</button>'
+          : '')
+    + (saved ? '<button class="cta" data-v3tab="picks" '
+               + 'style="background:var(--card);color:var(--ours);'
+               + 'border-color:var(--ours)">See your Picks</button>' : '')
     + '<button class="cta" data-v3clear="1" style="background:var(--card);'
-    + 'color:var(--bad);border-color:var(--bad)">Clear all picks</button>'
-    + '</div>';
+    + 'color:var(--bad);border-color:var(--bad)">Clear the slip</button>';
 }
 
 // Enumerate every combination rather than approximating. With a handful of
@@ -2144,41 +2318,151 @@ function v3Num2(n) {
   return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
-function v3Outcomes(legs, stake) {
+// ── the slip, and the picks it becomes ─────────────────────────────────
+//
+// A SLIP IS NOT A SAVED PICK, AND THIS PAGE CONFLATED THEM.
+//
+// v2 had it right and v3 lost it: the slip is the thing you are building
+// right now, reachable from the bar at the bottom of whatever you are
+// reading, and it is gone the moment you clear it. A SAVED pick is a copy
+// taken at a price, which then settles itself as the games finish. One is a
+// draft, the other is a record, and a tab called "My picks" that showed the
+// draft meant there was nowhere for the record to live.
+//
+// So the bar opens the slip in a sheet, over the board you are on — the
+// popup v2 had — and the tab is the saved ones.
+//
+// WHAT IS STORED IS THE STRUCTURE, NOT A POINTER AT THE BOARD. The legs, the
+// bet type, the stake and the whole payout curve, because prices move under a
+// saved slip and a record that re-derived itself from today's board would
+// quietly rewrite what you actually took.
+function v3Saved() {
+  return Array.isArray(V.saved) ? V.saved : [];
+}
+
+//: The slip as it stands, as a comparable string. Saving twice without
+//: changing anything should say "saved", not make a second copy.
+function v3Sig(legs) {
+  return V.betType + '|' + V.stake + '|'
+    + legs.map(l => l.id).slice().sort().join(',');
+}
+
+function v3IsSaved(legs) {
+  const sig = v3Sig(legs);
+  return v3Saved().some(p => p.sig === sig && p.week === DATA.week);
+}
+
+function v3SaveSlip() {
+  const legs = v3Legs();
+  if (!legs.length) return;
+  if (v3IsSaved(legs)) return;
+  const m = v3SlipMath(legs, V.stake);
+  const type = V3BETTYPES.filter(t => t[0] === V.betType)[0] || V3BETTYPES[0];
+  const dec = legs.every(l => has(l.dec))
+    ? legs.reduce((a, l) => a * l.dec, 1) : null;
+  const p = {
+    id: 'p' + Date.now().toString(36),
+    sig: v3Sig(legs),
+    name: legs.length + (legs.length === 1 ? ' pick' : ' picks'),
+    marketLabel: type[1],
+    week: DATA.week, season: DATA.season,
+    betType: V.betType, stake: V.stake, size: 0,
+    slips: m.slips, outlay: m.cost, chance: m.all, priced: m.priced,
+    dec: dec, ev: m.ev,
+    // The curve, at the stake it was priced at. Net is linear in the stake,
+    // so a card can re-read it at another one — but only if it knows which
+    // stake produced it.
+    rows: m.byK.map(b => ({ hit: b.hit, slipsWon: b.slipsWon, chance: b.p,
+                            net: b.net, netLo: b.lo, netHi: b.hi })),
+    rowStake: V.stake,
+    legs: legs.map(l => ({ id: l.id, key: l.key, player: l.player,
+                           side: l.take, label: v3LegLabel(l), odds: l.odds,
+                           dec: l.dec, p: betProb(l), game: l.game })),
+    savedAt: new Date().toISOString(),
+  };
+  V.saved = v3Saved().concat([p]);
+  v3Save();
+}
+
+//: What a leg is called on a saved card, once the board it came from has
+//: moved on. Built at save time for that reason.
+function v3LegLabel(l) {
+  const line = v3Line(l);
+  return l.player + (line ? ' \u00b7 ' + line : '');
+}
+
+function v3DropSaved(id) {
+  V.saved = v3Saved().filter(p => p.id !== id);
+  v3Save();
+}
+
+// THE MATH, SEPARATE FROM THE DRAWING.
+//
+// It used to be one function that computed the payout curve and returned
+// HTML. A saved pick has to store that curve — `settle` reads it back to say
+// what a slip actually paid, months after the prices moved — and a curve that
+// only exists inside a string cannot be stored. Same numbers, two readers.
+//
+// `byK[k]` is the chance exactly k legs land and the net that follows. For a
+// parlay the net is the same whichever k legs they are; for singles and pairs
+// it is not, so `lo` and `hi` carry the spread and `net` is the
+// probability-weighted middle — which is what the row prints.
+function v3SlipMath(legs, stake, betType) {
+  const type = betType || V.betType;
   const n = legs.length;
   const d = legs.map(l => l.dec), p = legs.map(l => betProb(l));
-  const cost = V.betType === 'parlay' ? stake
-    : V.betType === 'singles' ? n * stake : (n * (n - 1) / 2) * stake;
-  const byK = []; for (let i = 0; i <= n; i++) byK.push({ p: 0, ev: 0 });
+  const cost = type === 'parlay' ? stake
+    : type === 'singles' ? n * stake : (n * (n - 1) / 2) * stake;
+  const byK = [];
+  for (let i = 0; i <= n; i++) {
+    byK.push({ hit: i, p: 0, ev: 0, lo: null, hi: null, slipsWon: 0 });
+  }
   let ev = 0;
   for (let m = 0; m < (1 << n); m++) {
-    let pr = 1, k = 0, ret = 0;
+    let pr = 1, k = 0, ret = 0, won = 0;
     const hit = [];
     for (let i = 0; i < n; i++) {
       const h = !!(m & (1 << i));
       hit.push(h); pr *= h ? p[i] : 1 - p[i]; if (h) k++;
     }
-    if (V.betType === 'parlay') {
+    if (type === 'parlay') {
       ret = k === n ? stake * d.reduce((a, b) => a * b, 1) : 0;
-    } else if (V.betType === 'singles') {
-      for (let i = 0; i < n; i++) if (hit[i]) ret += stake * d[i];
+      won = k === n ? 1 : 0;
+    } else if (type === 'singles') {
+      for (let i = 0; i < n; i++) if (hit[i]) { ret += stake * d[i]; won++; }
     } else {
       for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++)
-        if (hit[i] && hit[j]) ret += stake * d[i] * d[j];
+        if (hit[i] && hit[j]) { ret += stake * d[i] * d[j]; won++; }
     }
     const net = ret - cost;
-    byK[k].p += pr; byK[k].ev += pr * net; ev += pr * net;
+    const b = byK[k];
+    b.p += pr; b.ev += pr * net; ev += pr * net;
+    b.slipsWon = Math.max(b.slipsWon, won);
+    b.lo = b.lo == null ? net : Math.min(b.lo, net);
+    b.hi = b.hi == null ? net : Math.max(b.hi, net);
   }
-  const best = V.betType === 'parlay' ? stake * d.reduce((a, b) => a * b, 1)
-    : V.betType === 'singles' ? stake * d.reduce((a, b) => a + b, 0)
+  for (const b of byK) b.net = b.p ? b.ev / b.p : (b.lo == null ? 0 : b.lo);
+  const best = type === 'parlay' ? stake * d.reduce((a, b) => a * b, 1)
+    : type === 'singles' ? stake * d.reduce((a, b) => a + b, 0)
     : (() => { let t = 0; for (let i = 0; i < n; i++)
         for (let j = i + 1; j < n; j++) t += stake * d[i] * d[j]; return t; })();
+  const all = byK[n] ? byK[n].p : 0;
+  return { n: n, cost: cost, best: best, ev: ev, byK: byK, all: all,
+           slips: type === 'parlay' ? 1
+                  : type === 'singles' ? n : (n * (n - 1) / 2),
+           priced: d.every(has) && p.every(has) };
+}
+
+function v3Outcomes(legs, stake) {
+  const n = legs.length;
+  const m = v3SlipMath(legs, stake);
+  const byK = m.byK, cost = m.cost, best = m.best, ev = m.ev;
 
   const label = k => k === 0 ? 'None land'
     : k === n ? 'All ' + n + ' land' : k + ' of ' + n + ' land';
   const rows = [];
   for (let k = n; k >= 0; k--) {
-    const net = byK[k].p ? byK[k].ev / byK[k].p : 0;
+    const net = byK[k].net;
     const col = net > 0.005 ? 'var(--good)' : net < -0.005 ? 'var(--bad)'
       : 'var(--mut)';
     rows.push('<div class="out"><span>' + label(k) + '</span>'
@@ -2325,6 +2609,7 @@ const V3SHEETS = {
   // fault and costs a sixth of the tab bar. In the sheet it opens over
   // whichever tab raised the question and closes back onto it.
   ask: () => v3SheetHTML('Ask about this game', v3Ask(V.game, true)),
+  slip: () => v3SheetHTML('Your slip', v3SlipBody()),
 };
 
 function v3SheetHTML(title, body) {
@@ -2355,11 +2640,22 @@ function v3Sheet() {
   scrim.className = 'scrim open'; sheet.className = 'sheet open';
 }
 
+// ROUND ROBIN FIRST, AND IT IS THE DEFAULT.
+//
+// It was called "Any two", which describes the mechanic and hides the name
+// everyone actually uses for it. It also sat second behind all-or-nothing,
+// which is the hardest bet on the list to win — a poor thing to open on for
+// a reader who does not bet much.
+//
+// A round robin here is every PAIR. Bigger sizes exist in the wild; this
+// builds the 2-leg cover and says so, rather than offering a size control
+// whose larger settings this page cannot price.
 const V3BETTYPES = [
+  ['twos', 'Round robin',
+   'A separate bet on every pair. Any two landing wins something, so one '
+   + 'miss does not empty the slip.'],
   ['parlay', 'All or nothing',
    'One bet. Every pick has to land. Biggest payout, hardest to win.'],
-  ['twos', 'Any two',
-   'A smaller bet on each pair. Two landing wins something.'],
   ['singles', 'Each on its own',
    'Separate bets. Every pick that lands pays out.'],
 ];
@@ -2383,7 +2679,7 @@ function v3Nav() {
 // press the cross, or open it and remove legs.
 function v3Slipbar() {
   const legs = v3Legs();
-  if (!legs.length || V.tab === 'slip') return '';
+  if (!legs.length) return '';
   const names = legs.map(l => esc(v3Surname(l.player))).join(' \u00b7 ');
   const dec = legs.every(l => has(l.dec))
     ? legs.reduce((a, l) => a * l.dec, 1) : null;
@@ -2396,7 +2692,7 @@ function v3Slipbar() {
     + '<span class="slipbar__price num">'
     + (dec ? v3Dash(american(decToAm(dec))) : '\u2014') + '</span>'
     + '<span class="slipbar__legs">' + names + '</span></span>'
-    + '<button class="slipbar__open" data-v3tab="slip">Open</button>'
+    + '<button class="slipbar__open" data-v3sheet="slip">Open</button>'
     + '<button class="slipbar__x" data-v3clear="1" aria-label="Clear all picks">'
     + '\u2715</button>'
     + '</div></div>';
@@ -2447,6 +2743,8 @@ if (typeof window !== 'undefined' && window.addEventListener) {
       Object.assign(V, ev.state);
       // An entry pushed before Bets and Score merged still names one of them.
       V.gameTab = v3GTab(V.gameTab);
+      if (V.tab === 'slip') V.tab = 'picks';
+      if (!Array.isArray(V.saved)) V.saved = [];
       V.top = true; render(true);
     }
   });
@@ -2480,6 +2778,7 @@ function render(fromHistory) {
 // control that is added and never wired here does nothing at all rather than
 // throwing — which is why `test_every_v3_control_is_handled` exists.
 const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3pick', 'v3more',
+                  'v3keep', 'v3unkeep', 'v3savedfilter',
                   'v3game', 'v3back', 'v3gtab', 'v3cat', 'v3type',
                   'v3stake', 'v3ask', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
@@ -2608,11 +2907,16 @@ function v3Do(kind, v) {
     case 'v3clearq': V.q = ''; V.shown = V3SHOW; break;
     case 'v3half': V.half = v; break;
     case 'v3fav': toggleFav(v); break;
-    case 'v3clear': V.picks = {}; V.saved = false; break;
-    case 'v3drop': delete V.picks[v]; V.saved = false; break;
+    case 'v3clear': V.picks = {}; break;
+    case 'v3drop': delete V.picks[v]; break;
     case 'v3sheet': V.sheet = v; break;
     case 'v3sortpick': V.sort = v; V.sheet = null; break;
     case 'v3close': V.sheet = null; break;
+    // SAVING IS A COPY, NOT A MOVE. The slip stays exactly as it is, so the
+    // same legs can be saved at one stake and then rebuilt at another.
+    case 'v3keep': v3SaveSlip(); break;
+    case 'v3unkeep': v3DropSaved(v); break;
+    case 'v3savedfilter': V.savedFilter = v; break;
     case 'v3pick':
       if (V.picks[v]) delete V.picks[v]; else V.picks[v] = true; break;
     case 'v3game': V.tab = 'games'; V.game = v; V.gameTab = 'notes';
@@ -2627,8 +2931,8 @@ function v3Do(kind, v) {
       if (V.gameTab === 'players' && V.game) v3MarketForGame(V.game);
       break;
     case 'v3cat': V.cat = v; break;
-    case 'v3type': V.betType = v; V.sheet = null; V.saved = false; break;
-    case 'v3stake': V.stake = Number(v); V.sheet = null; V.saved = false; break;
+    case 'v3type': V.betType = v; V.sheet = null; break;
+    case 'v3stake': V.stake = Number(v); V.sheet = null; break;
     case 'v3ask': {
       const qs = v3Questions(V.game);
       V.answer = (qs[Number(v)] || {}).a || '';
@@ -2706,11 +3010,20 @@ const V3SWIPE_OPEN = 96;
   document.addEventListener('touchcancel', end, { passive: true });
 })();
 
-// `week` was this tab's key before it was renamed Props. Normalised ONCE, at
+// `week` was this tab's key before it was renamed Props. Normalized ONCE, at
 // boot, rather than inside `v3Screen` — a renderer that rewrites the state it
 // is rendering makes every render a state change, and the back stack started
 // pushing an entry every time the sort direction was flipped.
 if (V.tab === 'week') V.tab = 'props';
+
+// `slip` was this tab's key before the slip became a sheet and the tab became
+// the SAVED picks. A remembered state naming it would select no tab at all.
+if (V.tab === 'slip') V.tab = 'picks';
+
+// And `saved` was a boolean flag before it was the saved picks themselves. A
+// stored `false` would make every read of it throw or silently return
+// nothing, which is a reader's whole history disappearing on upgrade.
+if (!Array.isArray(V.saved)) V.saved = [];
 
 // A remembered state naming a tab that no longer exists would select none
 // and render the notes with no pill lit.

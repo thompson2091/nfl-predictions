@@ -237,7 +237,7 @@ def main(season: int, target_type: str, model_name: str,
         # read as a clear loser (-9.5%).
         #
         # Measured against outcomes, production's rule is simply better:
-        #   normalise within game   Brier 0.03520  AUC 0.7987  sum/game 1.000
+        #   normalize within game   Brier 0.03520  AUC 0.7987  sum/game 1.000
         #   joint model             Brier 0.04550  AUC 0.7843  sum/game 2.732
         if target_type == "first_td":
             res = res.with_columns(
@@ -269,8 +269,8 @@ def main(season: int, target_type: str, model_name: str,
                 res, rank_calib, "prob_calibrated", out_col="prob_calibrated"
             )
         # De-vig over the players we actually score, not every price in the
-        # archive. The one-sided normalisation divides by sum(implied), so
-        # including deep longshots nobody rates drags every favourite down —
+        # archive. The one-sided normalization divides by sum(implied), so
+        # including deep longshots nobody rates drags every favorite down —
         # and the archive's longshot coverage halved between 2023 and 2025.
         mkt = devig_market(
             mkt.join(res.select(["game_id", "player_id"]),
@@ -298,7 +298,7 @@ def main(season: int, target_type: str, model_name: str,
         if merged.height == 0:
             continue
         if target_type == "first_td":
-            # predict() publishes the normalised number for this market without
+            # predict() publishes the normalized number for this market without
             # blending, so `final` has to be that too or the backtest measures a
             # path nobody runs. Whether first TD *should* blend is a real
             # question, but it has to be answered by changing both paths at
@@ -355,7 +355,7 @@ def main(season: int, target_type: str, model_name: str,
     print("Read the interval, not the point estimate. Returns on touchdown props")
     print("are dominated by a few long-odds hits, so a naive standard error is")
     print("badly optimistic; these resample whole games, since players in one")
-    print("game share a defence, a game script and a final score.")
+    print("game share a defense, a game script and a final score.")
     print()
     print(f"{'filter':32s} {'bets':>6s} {'hit':>7s} {'ROI':>8s} {'95% interval':>22s} {'':>10s}")
     for lbl, flt in [

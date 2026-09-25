@@ -16,7 +16,7 @@ The per-week CSVs in `output/` are NOT the second thing, even though they look
 like it. `predict` overwrites them, and the week-1 and week-2 files were
 rewritten on 2026-09-21 when the conversion changed. A week view built on them
 answers "how does today's model score a past week", which is a fair question
-and a different one. It is labelled as such rather than implied to be a record.
+and a different one. It is labeled as such rather than implied to be a record.
 
 **Unplayed weeks must be excluded by the SCHEDULE, not by the label.** A week
 that has not kicked off carries `target = 0` on every candidate, not null — the
@@ -99,10 +99,10 @@ def _with_book(df: pl.DataFrame, season: int, week: int,
 
     **De-vigged by `blend.devig_market`, not by anything written here.** A
     touchdown board is a one-sided many-way market: every price is divided by
-    `sum(implied) / expected_scorers`, so a favourite's fair number depends on
+    `sum(implied) / expected_scorers`, so a favorite's fair number depends on
     how many OTHER players the book happened to quote. That function's
     docstring records what happened when the population moved — archive depth
-    fell from 52 priced players a game to 26.8, and a -100 favourite's "fair"
+    fell from 52 priced players a game to 26.8, and a -100 favorite's "fair"
     probability drifted from 41% to 49% while its true rate stayed near 52%.
     A second de-vig invented here would put a different number beside the same
     player on two screens.

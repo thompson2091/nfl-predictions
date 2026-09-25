@@ -82,11 +82,11 @@ def test_games_with_no_scorer_anywhere_are_excluded_and_counted():
     them entirely is how the old denominator got its flattering number. They
     are excluded from the universe and reported.
     """
-    labelled = pl.DataFrame({
+    labeled = pl.DataFrame({
         "game_id": ["g1", "g1", "g2", "g2"],
         "target": [1, 0, 0, 0],       # g2: nobody in the pool scored
     })
-    universe = game_universe(labelled)
+    universe = game_universe(labeled)
     assert universe["game_id"].to_list() == ["g1"]
 
 
@@ -508,7 +508,7 @@ def test_a_win_driven_by_one_seed_is_discounted():
                                against="xgb", k=1)
     assert r["n_seeds"] == 5 and r["n_compared"] == n
     assert r["delta"] == pytest.approx(20 * 0.2 / n)      # 0.04, not 0.20
-    assert r["seeds_ahead"] == 1, "only one seed favours the candidate"
+    assert r["seeds_ahead"] == 1, "only one seed favors the candidate"
 
     # The single-seed view of the same data claims five times the gain.
     single = C.paired_top_k(_outcomes(base), _outcomes(lucky), k=1)
@@ -815,7 +815,7 @@ def test_a_guard_band_of_zero_is_not_silently_accepted_as_measured():
 
     Without this distinction a missing measurement makes the gate maximally
     strict on exactly the metrics whose seed noise is smallest in absolute
-    terms, and the verdict looks like a considered judgement.
+    terms, and the verdict looks like a considered judgment.
     """
     from src.evaluation import compare as C
 

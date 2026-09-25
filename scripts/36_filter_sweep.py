@@ -15,7 +15,7 @@ scorer in the pool and 1 had its scorer filtered out. So trimming cannot raise
 the ceiling. It can still move Top-1 through two channels:
 
   - the model is refitted on the surviving rows, changing what it learns;
-  - `joint.player_shares` normalises within TEAM-GAME, so removing a player
+  - `joint.player_shares` normalizes within TEAM-GAME, so removing a player
     rescales his teammates by a common factor. That is monotone and cannot
     reorder teammates — it only moves cross-team comparisons, which is 51.5%
     of games (the other 48.5% have both top candidates on one team).

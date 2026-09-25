@@ -42,7 +42,7 @@ sys.path.insert(0, ".")
 
 import polars as pl
 
-from src.evaluation.harness import run, save, summarise
+from src.evaluation.harness import run, save, summarize
 from src.evaluation.ranking import pooled
 from src.utils.config import get_config
 from src.utils.paths import get_path
@@ -83,7 +83,7 @@ def _fold_rows(result: dict, market: str) -> list[dict]:
 def main(target_type: str, first_test: int, last_test: int, model_name: str) -> int:
     result = run({}, markets=(target_type,), first_test=first_test,
                  last_test=last_test)
-    summary = summarise(result)[target_type]
+    summary = summarize(result)[target_type]
     rows = _fold_rows(result, target_type)
     save(result, f"walkforward-{target_type}")
 

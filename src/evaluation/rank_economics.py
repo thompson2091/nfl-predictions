@@ -16,7 +16,7 @@ second is worth betting on.
 Every figure carries a game-clustered bootstrap interval rather than a standard
 error. Two reasons, both learned the hard way here. Per-bet returns are wildly
 skewed — a +3000 winner pays 30u against a 1u loss — so the normal
-approximation does not hold. And two bets in one game share a defence, a game
+approximation does not hold. And two bets in one game share a defense, a game
 script and a final score, so they are not independent draws. Naive standard
 errors on this data are roughly half what they should be.
 
@@ -52,8 +52,8 @@ from src.utils.paths import get_path
 BET_RANK_COL = "prob_calibrated"
 PUBLISHED_COL = "final"
 
-#: Price bands. Chosen to split the market at points where behaviour changes —
-#: odds-on favourites, the +100-300 core, and the longshot tail — not tuned for
+#: Price bands. Chosen to split the market at points where behavior changes —
+#: odds-on favorites, the +100-300 core, and the longshot tail — not tuned for
 #: returns.
 ODDS_BUCKETS = [
     (-10_000, 100, "<+100"),
@@ -345,7 +345,7 @@ def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
     Both tiers must clear the same bar the headline strategy does: a clustered
     interval excluding zero *and* a profit in every season separately. The
     short-price exclusion is applied only if it earns its place on the same
-    test, so a future season where favourites start paying will drop it.
+    test, so a future season where favorites start paying will drop it.
 
     Returns None when the market has no fitted edge rule to build on, which is
     what keeps an unproven market unmarked.
@@ -385,7 +385,7 @@ def fit_highlight_tiers(df: pl.DataFrame) -> dict | None:
     base = d.filter((pl.col("_edge") >= cut) & (pl.col("rank") <= max_rank))
     # Where to stop excluding short prices is fitted, not declared. An edge
     # measured in probability points buys less return the shorter the price —
-    # five points on a 55% favourite is proportionally far less than five on a
+    # five points on a 55% favorite is proportionally far less than five on a
     # 20% shot — so *some* floor should help, but which one is a question for
     # the data. Each candidate must beat keeping everything and still qualify
     # on its own; the loosest that does wins, so the rule discards as few bets
@@ -491,7 +491,7 @@ def week_pnl(target_type: str, season: int, week: int, tiers: dict,
 
     Expected profit is computed on `prob_calibrated` at the raw price — exactly
     how src/prediction/bets.py builds `ev_model_per_unit` for the live board, so
-    the number graded here is the number that board displayed. Realised profit
+    the number graded here is the number that board displayed. Realized profit
     is `pnl`, the same flat-stake figure every ROI in this module uses.
 
     Returns None when there are no backtest frames covering the week, which is
@@ -519,7 +519,7 @@ def week_pnl(target_type: str, season: int, week: int, tiers: dict,
     if floor is not None:
         eligible = eligible.filter(pl.col("odds") >= floor)
 
-    def summarise(sub: pl.DataFrame, **label) -> dict:
+    def summarize(sub: pl.DataFrame, **label) -> dict:
         out = {"bets": int(sub.height), "stake": stake,
                "staked": float(sub.height) * stake, **label}
         if sub.height == 0:
@@ -545,8 +545,8 @@ def week_pnl(target_type: str, season: int, week: int, tiers: dict,
     return {
         "season": season,
         "week": week,
-        "week_stats": summarise(eligible.filter(pl.col("week") == week)),
-        "to_date": summarise(eligible.filter(pl.col("week") <= week),
+        "week_stats": summarize(eligible.filter(pl.col("week") == week)),
+        "to_date": summarize(eligible.filter(pl.col("week") <= week),
                              weeks=int(df.filter(pl.col("week") <= week)["week"]
                                        .n_unique())),
     }

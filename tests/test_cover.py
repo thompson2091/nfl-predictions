@@ -661,7 +661,7 @@ def test_winning_bets_under_a_structure_is_the_binomial_not_the_power_set():
 
     The full cover's 2^k - 1 counts every subset of the scorers; a structure
     counts only the subsets whose size it bought. On six players that is
-    0, 0, 1, 3, 6, 10, 15 — the shape a reader recognises from the book's own
+    0, 0, 1, 3, 6, 10, 15 — the shape a reader recognizes from the book's own
     slip, and the reason the count cannot be left keyed to the power set.
     """
     out = portfolio(_flat(6, 0.5, odds=100), stake=1.0, sizes=[2])

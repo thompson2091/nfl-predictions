@@ -67,7 +67,7 @@ def _font_faces() -> str:
 CSS = """
 /* ── Tokens ──────────────────────────────────────────────────────────────
    Read off the artboards in design/, named for what they mean rather than
-   what colour they are, so a theme change is a block of declarations and not
+   what color they are, so a theme change is a block of declarations and not
    a search for #1F4FA3.
 
    There is no dark mode. The design is a single committed look on a warm
@@ -986,7 +986,7 @@ function ev100(row) {
 //
 // Every access is wrapped: localStorage throws outright in some privacy modes
 // rather than returning null, and a page that will not render because it
-// could not read a favourite is a worse page than one with no favourites.
+// could not read a favorite is a worse page than one with no favorites.
 const WK = () => (DATA.season || 0) + ':' + (DATA.week || 0);
 const KEY = what => 'sp:' + WK() + ':' + what;
 const LASTKEY = what => 'sp:' + (DATA.season || 0) + ':' + ((DATA.week || 1) - 1) + ':' + what;
@@ -1641,7 +1641,7 @@ function portfolio(legs, stake, rho) {
     bits.push(b); prob[m] = q;
   }
   // Teammates only. The measured correlation is a team-game effect — one
-  // offence stalls and neither of its players scores — and applying it across
+  // offense stalls and neither of its players scores — and applying it across
   // fixtures would inflate the tail for legs that have nothing to do with
   // each other.
   if (rho) {
@@ -1754,7 +1754,7 @@ function slipMath() {
 // The market payload carrying `cover`, whichever market the slip belongs to.
 function M0() {
   // The fitted teammate correlation is a touchdown-market quantity — one
-  // offence stalls and neither of its players SCORES. Nothing has measured it
+  // offense stalls and neither of its players SCORES. Nothing has measured it
   // for a line, so an over/under slip prices its legs independently rather
   // than borrowing a number fitted for a different question.
   return KIND[S.slip.market] === 'ou' ? {} : marketOf(S.slip.market);
@@ -1891,7 +1891,7 @@ function slipPanel() {
         + (m.roi >= 0 ? '+' : '') + (m.roi * 100).toFixed(1) + '% on ' + esc(money(m.outlay))
         + '), at our numbers and each leg\u2019s own price.'
         + (anySpread ? ' A starred net is an average: which legs landed changes what came back.' : '')
-        + ' Teammates are treated as correlated \u2014 one offence stalling takes '
+        + ' Teammates are treated as correlated \u2014 one offense stalling takes '
         + 'its players down together \u2014 and legs in different games as independent.' }));
     } else {
       a.appendChild(el('p', { class: 'fine',
@@ -2793,10 +2793,10 @@ function ouTable(rows, f, key) {
     emptyBody: 'Books post these much closer to kickoff than touchdown props.' });
 }
 
-// The four verdicts the board actually produces, each with its own colour.
+// The four verdicts the board actually produces, each with its own color.
 // Substring matching got this wrong in a way nobody would notice: "Strong
 // call" contains none of the words it looked for, so the strongest reading on
-// the page rendered in the same grey as "Matches book".
+// the page rendered in the same gray as "Matches book".
 const READ_CLASS = {
   'strong call': 'p-good',      // we rate him well above the price
   'leans': 'p-lean',            // above it, but not by much
@@ -2830,7 +2830,7 @@ JS_COMBOS = r"""
 // what goes together.
 //
 // Two honesty problems are on the page rather than in a footnote. Ranking by
-// likelihood alone always returns the shortest-priced favourites, so price and
+// likelihood alone always returns the shortest-priced favorites, so price and
 // expected value are ranking options beside it. And every number here assumes
 // the legs are independent, which they are not: two players in the same game
 // move together, so a same-game slip is further from its stated chance in both
@@ -3086,7 +3086,7 @@ function pageCombos() {
 
   main.appendChild(el('p', { class: 'fine', style: 'max-width:680px', text:
     'Every figure treats the legs as independent, which they are not. Two '
-    + 'players in one game share a script — if the offence stalls neither '
+    + 'players in one game share a script — if the offense stalls neither '
     + 'scores — so a same-game slip lands together or not at all more often '
     + 'than this says. That cuts both ways: it is likelier than the number '
     + 'above and also likelier to lose outright.' }));
@@ -3510,7 +3510,7 @@ JS_MODEL = r"""
 // families, and end with a red panel explaining that the book prices
 // receptions better than we do. All of that was true and almost none of it was
 // what the page is for. Provenance belongs in the registry, ablation in the
-// lab script that measured it, and a standing admission does not need a colour
+// lab script that measured it, and a standing admission does not need a color
 // that means "something has gone wrong" — nothing has; that is simply the
 // finding.
 //

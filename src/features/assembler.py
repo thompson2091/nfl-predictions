@@ -664,7 +664,7 @@ def assemble_features() -> pl.DataFrame:
 
     # What the market did between its open and its last pre-kickoff price.
     #
-    # Keyed on the NORMALISED NAME, because the odds archive has no player_id —
+    # Keyed on the NORMALIZED NAME, because the odds archive has no player_id —
     # which makes this the one join in this file that can fan out on a name
     # collision, and DEF/ST is thirty-two rows sharing one. The builder returns
     # one row per (season, week, name) and the row count is asserted below,

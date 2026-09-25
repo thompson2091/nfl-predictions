@@ -9,7 +9,7 @@ and the structure you find is running backs, receivers, and everyone with no
 usage: measured on anytime TD, silhouette peaks at k=3 and those are the three
 groups. That is the position column with extra steps. The interesting question
 is what is left *inside* a position — which backs are goal-line backs, which
-receivers are the ones their offence actually throws to near the end zone — so
+receivers are the ones their offense actually throws to near the end zone — so
 the fit runs within RB, WR, TE and QB separately and the pooled result is kept
 only as the evidence for why (`pooled_evidence` in the artifact, rendered in the
 tab so the negative result is shown rather than filed away).
@@ -81,7 +81,7 @@ CANDIDATE_FEATURES = [
 
 #: Fullbacks cluster with backs — there are too few of them to fit alone, and
 #: the ones who matter here are goal-line bodies, which is a back's role.
-#: Defence and special teams have no usage profile at all; they score on
+#: Defense and special teams have no usage profile at all; they score on
 #: turnovers and returns, which none of these columns measure.
 POSITION_FOLD = {"FB": "RB"}
 STRATA = ("RB", "WR", "TE", "QB")

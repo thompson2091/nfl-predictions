@@ -5,7 +5,7 @@
 
 Splits every priced bet by the bookmaker's own de-vigged number and puts three
 columns beside each other: what the book says, what happened, and what the
-posted price implied. The first two show a textbook favourite-longshot bias;
+posted price implied. The first two show a textbook favorite-longshot bias;
 the third shows the margin swallowing it whole at every decile.
 
 This is the table that explains every negative return in the project without

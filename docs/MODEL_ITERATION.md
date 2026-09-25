@@ -62,7 +62,7 @@ A screen result never promotes anything. It only decides what is worth gating.
 
 ### Two evaluation windows, and why they never match
 
-Two figures on the same page can both be labelled Top-1, both be correct, and
+Two figures on the same page can both be labeled Top-1, both be correct, and
 differ by two points. They are measured over different seasons, and the reason
 is worth writing down once so nobody spends an afternoon "fixing" it.
 
@@ -74,7 +74,7 @@ is worth writing down once so nobody spends an afternoon "fixing" it.
 **The odds archive starts in 2023.** Anytime TD publishes `final` — the model
 blended with the market — and a blend needs a price, so there is no 2022 row to
 measure it on. `scripts/10_backtest.py --season 2022` exits with *"no weeks had
-both predictions and prices"*, and that is correct behaviour rather than a bug
+both predictions and prices"*, and that is correct behavior rather than a bug
 to route around. `make evaluate` runs 2023–2025 for the same reason.
 
 So the narrower window cannot be widened, and the wider one cannot describe the
@@ -91,7 +91,7 @@ is a property of the seasons, not of the model or of either measurement.
 ## Phase 0 — Lock the baseline — **DONE (2026-08-12)**
 
 **Goal**: today's models become a version we can always return to, before a
-single line of modelling code changes.
+single line of modeling code changes.
 
 Shipped as `src/models/versioning.py`, `scripts/22_version.py`,
 `tests/test_versioning.py` and the Makefile targets below. The baseline is
@@ -130,7 +130,7 @@ the weights are not.
   "parent": null,
   "verdict": "PROMOTED",
   "justification": null,
-  "change": "Baseline lock. No modelling change.",
+  "change": "Baseline lock. No modeling change.",
   "config": { "...full settings.yaml snapshot..." },
   "feature_cols": { "anytime_td": 319, "first_td": 319, "sha256": "..." },
   "metrics": {
@@ -385,7 +385,7 @@ the right team and the wrong player. The market-driven Poisson half is doing its
 job; the usage half is where the error lives.
 
 **Anytime TD over-rates DEF/ST at the very top.** When its top pick is a
-defence, it hits 16.3% over 123 games — against 58.0% when the pick is a back.
+defense, it hits 16.3% over 123 games — against 58.0% when the pick is a back.
 Those 123 games are 11% of the slate. Bringing them merely to the WR pick rate
 (44.2%) would be worth about 3 points of Top-1 on its own, which is larger than
 anything else on the Phase 3 list.
@@ -448,7 +448,7 @@ The pattern is worth naming. Both rejected experiments were *theoretically*
 motivated — sound arguments about likelihoods and generative structure — and
 both cost accuracy. The one that worked came from a measurement nobody was
 looking for: predicted-against-actual by position and board rank, which showed
-defences published at 0.908 against an actual 0.153.
+defenses published at 0.908 against an actual 0.153.
 
 **Look for defects, not improvements.** A defect has a mechanism you can point
 at and a size you can measure before you write any code. An improvement has an
@@ -474,13 +474,13 @@ right-team, almost every remaining miss *must* be within-team by arithmetic.
 That figure describes a model picking the right team nearly always — it is not a
 diagnosis, and it was another slice read without a benchmark beside it.
 
-**Ranking defences needs features that do not exist.** Only 44 of 319 features
+**Ranking defenses needs features that do not exist.** Only 44 of 319 features
 are non-null and varying on DEF/ST rows, and 77 are constant. A model trained on
 DEF/ST rows alone reaches AUC 0.5045 — worse than the global model's 0.54 and
-indistinguishable from chance. Everything available describes the offence
+indistinguishable from chance. Everything available describes the offense
 (targets allowed, coach tendencies); nothing describes takeaway ability, return
 units, or the opponent's turnover-proneness. This is a feature-building project
-against play-by-play, and it buys Top-5, not Top-1: a defence at its true 11%
+against play-by-play, and it buys Top-5, not Top-1: a defense at its true 11%
 should rarely be anyone's top pick.
 
 **First TD's quarterback gap is not a compression defect.** The hypothesis was
@@ -503,7 +503,7 @@ book's mix would be probability matching — the same error as the RB misread.
 anytime TD is ahead of the book on Top-1, Top-3, Top-5, both halves of the
 decomposition, and within-position AUC everywhere except QB; first TD is level
 with it. The next real gains need new *information*, not new fitting — turnover
-and return-unit features for defences, and whatever else the play-by-play holds
+and return-unit features for defenses, and whatever else the play-by-play holds
 that 319 columns do not yet capture.
 
 ### Two ways the harness flattered a candidate
@@ -592,7 +592,7 @@ snapshot (committed), so the diagnosis itself is trackable over time.
    "the usage model is wrong" — two completely different fixes.
 3. **Rank-of-actual-scorer distribution** and the **top1–top2 probability gap**.
    The share of games that are genuine coin flips is the practical ceiling.
-4. **Slices**: Top-1 by scorer position, favourite/underdog, game total, week.
+4. **Slices**: Top-1 by scorer position, favorite/underdog, game total, week.
    `stage2.py` already documents a 9.2-point QB miss; this is where structural
    misses surface.
 5. **Candidate-pool ceiling**, now measurable honestly against the fixed
@@ -641,8 +641,8 @@ Two things the numbers say about *why*, both worth keeping:
   +0.80pp, with the coin-flip rate rising from 37.0% to 43.5%. A softmax is
   indifferent between two candidates it cannot separate, so it stops
   manufacturing a gap the data does not support. It orders the shortlist better
-  and commits to the top of it less. That is the correct behaviour for the loss
-  and the wrong behaviour for the metric.
+  and commits to the top of it less. That is the correct behavior for the loss
+  and the wrong behavior for the metric.
 - **On anytime the grouping throws away what the joint model needs.** Grouping
   by team-game learns only *relative* standing within a team, but `combine`
   multiplies a team-level Poisson rate by that share — and the cross-team
@@ -778,7 +778,7 @@ argmax. Three ways to close that gap:
   or `game_id × team` for anytime, since team-game is the group the joint model
   actually consumes.
 - **Fit shares directly** for anytime: multinomial within team-game against TD
-  counts, rather than normalising binary probabilities after the fact.
+  counts, rather than normalizing binary probabilities after the fact.
 
 Servability is already solved: `apply_joint`'s docstring notes the share basis
 need only be *proportional within a team*, so a pure ranker drops into the
@@ -786,7 +786,7 @@ anytime path with no calibration story at all.
 
 ### 3b. First-TD joint path A/B *(cheapest — code already exists)*
 
-`predict.py` normalises raw first-TD probabilities within game;
+`predict.py` normalizes raw first-TD probabilities within game;
 `joint.first_td_probability` implements the competing-Poisson derivation and is
 **never called**. The walk-forward also skips the joint path for `first_td`
 entirely. One flag, one gate run.
@@ -799,7 +799,7 @@ reorder — so calibration looks Top-1-neutral, and it is not, for two reasons:
 - **Ties.** Players landing on the same step come out identical; this needed the
   `_break_ties` hack in `scoring.py`, and the top score was tied in 10–25% of
   games.
-- **Shape.** In the anytime path calibrated probabilities are renormalised into
+- **Shape.** In the anytime path calibrated probabilities are renormalized into
   shares, so the *shape* of the transform — not just its ordering — decides
   which team's players rise. It is rank-changing across teams.
 
@@ -955,11 +955,11 @@ used:
 | snap > 10% | −0.88pp | −0.97pp |
 
 **The DEF/ST result is the one worth keeping, and it refutes a prediction I
-made.** Defences rank at chance — AUC 0.5045, measured in Phase 2 — so removing
+made.** Defenses rank at chance — AUC 0.5045, measured in Phase 2 — so removing
 two unrankable candidates from every game's ranking looked like free Top-1. It
 is worth +0.18pp, which is a fifth of a standard error and p=0.915, while
 costing 1.77pp of Top-3, well outside the 0.63pp seed band. Being unrankable is
-not the same as being worthless: defences do score, and a game where one scores
+not the same as being worthless: defenses do score, and a game where one scores
 is a guaranteed miss once they are out of the pool. They earn their place by
 being *present*, not by being ranked well.
 
@@ -974,17 +974,17 @@ against pool noise: 33 candidates per game survive the filter, from 51.8.
 `src/features/defense_features.py` builds the three things Phase 2 named as
 missing, from data that was on disk the whole time: takeaway rate, pressure
 rate and return-unit production keyed on `team` (what a DEF/ST candidate's own
-defence does), plus the opposing offence's giveaway rate keyed on `opponent`
-(a defensive touchdown needs a turnover before it needs a defence). 42 columns,
+defense does), plus the opposing offense's giveaway rate keyed on `opponent`
+(a defensive touchdown needs a turnover before it needs a defense). 42 columns,
 all ≥90% populated on DEF/ST rows.
 
 The build validates: league-wide takeaways (1.3407 per team-game) match
 giveaways (1.3386), as they must, which is what confirms the `td_team`
-attribution is right rather than crediting defensive scores to the offence that
+attribution is right rather than crediting defensive scores to the offense that
 turned it over. Leakage checked directly — the 3-game average equals the mean of
 the previous three games for every row, and all 32 teams' first row is null.
 
-**Defences are still unrankable.** Walk-forward on DEF/ST rows alone, three
+**Defenses are still unrankable.** Walk-forward on DEF/ST rows alone, three
 seeds per season:
 
 | test season | pre-existing features | with the new families |
@@ -1011,7 +1011,7 @@ features do not exist"; it is now "these features do not help", which is a
 different and much harder claim to reach by argument. Defensive touchdowns are
 rare — 79 a season across 272 games, and declining as kickoff rules change — and
 a team's past takeaway rate is mostly noise about a near-random event. There is
-no reason to expect it to identify *which* game a defence scores in.
+no reason to expect it to identify *which* game a defense scores in.
 
 The Top-3 cost is also informative beside 3e. Adding 42 columns that carry
 nothing cost 1.24pp of Top-3, which is what 3e predicts from the other
@@ -1026,7 +1026,7 @@ offensive coordinator needs an `oc_mapping.csv` that nflverse does not ship.
 
 ### 3h (survey) — what is available
 
-Phase 2 closed the defence question with "ranking defences needs features that do
+Phase 2 closed the defense question with "ranking defenses needs features that do
 not exist". That was true of the *assembled* feature set and false of the data
 available. Surveyed properly:
 
@@ -1055,7 +1055,7 @@ Two are directly on this question:
   `def_passer_rating_allowed`, `def_adot`), pressure (`def_times_blitzed`,
   `def_times_hurried`, `def_pressures`, `def_sacks`), and tackling
   (`def_missed_tackle_pct`). This is the "defensive tendencies" dataset.
-- **`load_team_stats`** — 138 weekly team columns, offence and defence.
+- **`load_team_stats`** — 138 weekly team columns, offense and defense.
 
 Also unused: `load_ftn_charting`, `load_officials`, `load_players`,
 `load_pfr_advstats` for pass/rush/rec.
@@ -1065,12 +1065,12 @@ Also unused: `load_ftn_charting`, `load_officials`, `load_players`,
 exists, is fully written, and is **commented out of the assembler** because it
 reads `data/raw/oc_mapping.csv`, which does not exist. nflverse ships no
 coordinator mapping, so offensive-coordinator tendencies need a hand-built or
-externally sourced table. That is a data-acquisition task, not a modelling one.
+externally sourced table. That is a data-acquisition task, not a modeling one.
 
 **Honest expectation before anyone builds this.** Phase 2 sized the prize:
 better defensive features buy Top-5 and calibration, not Top-1, because a
-defence at its true ~11% should rarely be anyone's top pick. Phase 3f then
-showed defences earn their place in the pool by being *present* rather than by
+defense at its true ~11% should rarely be anyone's top pick. Phase 3f then
+showed defenses earn their place in the pool by being *present* rather than by
 being ranked — removing them cost 1.77pp of Top-3 while moving Top-1 by a fifth
 of a standard error. So this is the largest genuinely-new information available,
 and it is still not obviously a Top-1 lever. It is the only remaining item that

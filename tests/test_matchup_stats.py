@@ -1,4 +1,4 @@
-"""Offence against defence: as-of, and honest about what is missing."""
+"""Offense against defense: as-of, and honest about what is missing."""
 import polars as pl
 import pytest
 
@@ -46,8 +46,8 @@ def test_rates_are_ratios_of_sums_not_means_of_ratios():
 
 
 def test_the_edge_flips_sign_where_lower_is_better():
-    """Sack rate is a rate you want LOW. An offence beating the defence's sack
-    rate is being sacked more often than that defence usually manages, which is
+    """Sack rate is a rate you want LOW. An offense beating the defense's sack
+    rate is being sacked more often than that defense usually manages, which is
     bad — and a single sign for every metric would paint it green."""
     # Nested by SPLIT: the module builds full game, first half and second
     # half from one read, and `matchup` takes which one to report.
@@ -60,7 +60,7 @@ def test_the_edge_flips_sign_where_lower_is_better():
     rows = ms.matchup({"home": "GB", "away": "ATL"}, stats)
     sack = [r for r in rows if r["key"] == "sack_rate"][0]
     gb = [p for p in sack["sides"] if p["offense"] == "GB"][0]
-    # GB's offence is sacked 10% against a defence that manages 6%: worse.
+    # GB's offense is sacked 10% against a defense that manages 6%: worse.
     assert gb["edge"] < 0
     early = [r for r in rows if r["key"] == "early_down_success"][0]
     gbe = [p for p in early["sides"] if p["offense"] == "GB"][0]

@@ -25,7 +25,7 @@ top-end calibration fault rather than a ceiling, and a UI that displayed the
 model's own probability without this table would present those picks as the
 best ones on the board.
 
-**Intervals are game-clustered.** Two picks in one game share a defence, a game
+**Intervals are game-clustered.** Two picks in one game share a defense, a game
 script and a final score, so they are not independent draws — the same reason
 `rank_economics.clustered_roi` resamples whole games, and the same factor of
 about two in the width of the interval.
@@ -290,7 +290,7 @@ def published_topk(target_type: str, model: str | None = None,
     it publishes `final`, the model blended with the market — so the headline
     was describing an object the board never shows. On 2026-08-19 one page
     carried 49.6% in the accuracy strip and 51.6% in the purpose panel, both
-    labelled Top-1, and the larger sample was the one measuring the wrong
+    labeled Top-1, and the larger sample was the one measuring the wrong
     column.
 
     The rule is: measure what is on screen, over the widest window where that

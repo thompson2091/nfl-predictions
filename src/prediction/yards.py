@@ -84,7 +84,7 @@ def load_model(market: str, model_dir=None) -> dict | None:
     Read as a dict rather than through `XGBQuantileModel.load`, so serving does
     not depend on that class staying importable at the same path — the three
     things needed to price are the booster, the column order and the levels,
-    and none of them are behaviour.
+    and none of them are behavior.
     """
     if market not in MARKETS:
         raise KeyError(f"unknown yardage market {market!r}; known are "
@@ -125,7 +125,7 @@ def expected_quantiles(market: str, season: int, week: int,
     gate = MARKETS[market]["gate"]
     if gate and gate in df.columns:
         df = df.filter(pl.col(gate) == 1)
-    # A defence does not catch passes, carry the ball or throw. It is on the
+    # A defense does not catch passes, carry the ball or throw. It is on the
     # shared matrix because it scores touchdowns, which is a real market and
     # not this one — and it arrived here carrying a projection of 2.34
     # receiving yards for Buffalo, 1.72 for Cleveland, one row per team.

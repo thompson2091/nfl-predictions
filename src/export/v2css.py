@@ -134,8 +134,8 @@ EXTRA_CSS = """
   font-size:14px;line-height:19px;font-weight:600;
   box-shadow:var(--shadow-sheet);
   opacity:0;pointer-events:none;
-  /* The resting position is the travelled-to one offset downward, so the
-     open state is a plain `translate(-50%,0)` and the centring survives. */
+  /* The resting position is the traveled-to one offset downward, so the
+     open state is a plain `translate(-50%,0)` and the centering survives. */
   transform:translate(-50%,6px);
   transition:opacity .18s ease,transform .18s ease;
 }

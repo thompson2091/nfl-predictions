@@ -62,7 +62,7 @@ MARKET_BY_TARGET: dict[str, str] = {
     # across 2023-2025.
     "receptions": "receptions",
     # Continuous targets, graded per (player, line) like receptions and
-    # modelled nothing like it — see src/models/yards.py for why a fitted mean
+    # modeled nothing like it — see src/models/yards.py for why a fitted mean
     # plus one dispersion is the wrong shape here. Registered 2026-09-16, once
     # their prices were bought: ~103,000 closing lines across 2023-2025, from
     # an archive that held none of them the day before.
@@ -135,7 +135,7 @@ BOOK_SCHEMA = {
     # for the same player — which is precisely what line shopping on an
     # over/under market means, and is invisible if only the median is kept.
     "point": pl.Float64,
-    # "yes"/"no". Over/under markets are normalised onto the same two words:
+    # "yes"/"no". Over/under markets are normalized onto the same two words:
     # "over" is stored as "yes", "under" as "no". The semantics are identical —
     # the side that wins when the player does more — and one vocabulary means
     # `best_prices` and `line_shopping` need no per-market branch. Which line
@@ -165,7 +165,7 @@ SCHEMA = {
     "season": pl.Int64,
     "week": pl.Int64,
     "game_id": pl.Utf8,
-    # Keep the book's original spelling alongside the normalised key. Name
+    # Keep the book's original spelling alongside the normalized key. Name
     # matching across seasons is fiddly and will need more than one attempt —
     # storing the raw string means a second pass costs zero API credits instead
     # of re-fetching the whole archive.
@@ -187,7 +187,7 @@ SCHEMA = {
     # The line this price is for, as the API reports it. Null for yes/no
     # markets, which have no line — anytime and first TD only ask whether it
     # happened. Over/under markets always carry one: 0.5 for rush and reception
-    # touchdowns, though books do post 1.5 on a heavy favourite, and receptions
+    # touchdowns, though books do post 1.5 on a heavy favorite, and receptions
     # lines routinely differ between books for the same player.
     #
     # It is part of the archive's grain, not decoration. A consensus median

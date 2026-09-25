@@ -54,7 +54,7 @@ def build_market_movement_features(target_type: str = "anytime_td"
     Returns a frame keyed on (season, week, player_name_norm) carrying:
 
         mkt_move_pp    the raw open->close change in vigged implied probability
-        mkt_move_z     that move, centred and scaled within its own week
+        mkt_move_z     that move, centered and scaled within its own week
         mkt_move_abs_z the same magnitude without direction
 
     Rows are absent, not zero, for a player-week with no closing price. The
@@ -74,7 +74,7 @@ def build_market_movement_features(target_type: str = "anytime_td"
     mv = mv.select(["season", "week", "player_name_norm",
                     (pl.col("move") * 100).alias("mkt_move_pp")])
 
-    # Centre and scale within the week. `std` over one row is null and over a
+    # Center and scale within the week. `std` over one row is null and over a
     # constant week is zero; both are guarded, because a zero denominator is
     # how a feature family arrives full of infinities that `prepare_data`
     # quietly turns into something finite and wrong.

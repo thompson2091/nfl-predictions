@@ -122,7 +122,7 @@ def blend_card(card: dict, weights: dict) -> dict | None:
     """The adjusted spread and total for one game.
 
     Signed the way the CARD signs them — negative when the home side is
-    favoured — because that is what every other number on the card does and a
+    favored — because that is what every other number on the card does and a
     blend that flips convention halfway is worse than no blend.
     """
     if not weights:

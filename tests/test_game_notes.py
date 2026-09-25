@@ -16,7 +16,7 @@ def _payload():
     """A minimal payload shaped like the real one, including the id mismatch.
 
     The boards key games as `2026_03_ATL_GB` and the cards as `ATL_GB`. That
-    is not a quirk to normalise away in the fixture — it is the bug that made
+    is not a quirk to normalize away in the fixture — it is the bug that made
     every touchdown note silently vanish, so the fixture keeps it.
     """
     return {

@@ -304,7 +304,7 @@ line-movement:
 # on the leaked matrix — the same vintage that made the ablation table wrong in
 # sign. Re-runnable for that reason, and because the pool moves Top-1 through
 # two channels the 99.9% ceiling does not cover: the model refits on the
-# survivors, and within-team share normalisation rescales teammates.
+# survivors, and within-team share normalization rescales teammates.
 filter-sweep:
 	$(PYTHON) scripts/36_filter_sweep.py --market $(TARGET) $(if $(SHOW),--show)
 

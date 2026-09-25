@@ -20,7 +20,7 @@ def _hist():
 
 
 def test_the_site_spread_is_flipped_exactly_once():
-    """The card signs the spread NEGATIVE when home is favoured; the schedule
+    """The card signs the spread NEGATIVE when home is favored; the schedule
     signs it positive. Getting it backwards mirrors the whole distribution and
     produces a confident, exactly wrong answer.
     """
@@ -171,7 +171,7 @@ def test_the_win_curve_is_monotone_in_the_spread():
     """A probability that is not monotone contradicts the score beside it.
 
     The comparable window is two points wide and its crossover is noisy: at a
-    model spread of -0.7 (home favoured) it returned 48.5% for the home side,
+    model spread of -0.7 (home favored) it returned 48.5% for the home side,
     and the page printed "our model: PIT by 0.7" next to "CIN 51.5%" — two
     statements from the same model pointing opposite ways on one card.
     """

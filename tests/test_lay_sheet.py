@@ -128,7 +128,7 @@ def test_probes_are_the_band_and_say_which_are_picks():
 
     Any in-band name tests whether the exchange quotes the market at all, which
     is what makes a probe list useful on a board where the rule fires nobody —
-    and why it has to be labelled so it is never read as one.
+    and why it has to be labeled so it is never read as one.
     """
     got = probes(_board(), RULE, shrink_from(FADE, RULE["max_ratio"]))
     assert [r["player"] for r in got] == ["In Band Pick", "In Band Only"]

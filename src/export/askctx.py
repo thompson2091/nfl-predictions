@@ -69,8 +69,8 @@ def _coordinators(season: int) -> dict:
 def _edges(rows: list) -> list:
     """One matchup split, as sentences rather than nested numbers."""
     return [{"metric": r["label"],
-             "sides": [f"{p['offense']} offence {p['off_val']} vs "
-                       f"{p['defense']} defence {p['def_val']} "
+             "sides": [f"{p['offense']} offense {p['off_val']} vs "
+                       f"{p['defense']} defense {p['def_val']} "
                        f"(edge {p['edge']:+})" for p in r["sides"]]}
             for r in (rows or [])]
 
@@ -112,7 +112,7 @@ def for_game(payload: dict, card: dict) -> dict:
                         f"from the roster ingested for this week"),
         "market": {"spread": card.get("spread"), "total": card.get("total"),
                    "home_win_pct": _round(card.get("win_home")),
-                   "note": "spread is negative when the HOME team is favoured"},
+                   "note": "spread is negative when the HOME team is favored"},
         "our_model": {"spread": card.get("model_spread"),
                       "total": card.get("model_total"),
                       "home_win_pct": _round(card.get("model_win_home")),
@@ -172,7 +172,7 @@ def for_game(payload: dict, card: dict) -> dict:
         if sp.get("h1") or sp.get("h2"):
             out["matchup_edges"]["halves_note"] = (
                 "halves carry the EDGE only; the rates behind them are in "
-                "full_game. A positive edge favours that team's offence.")
+                "full_game. A positive edge favors that team's offense.")
     # WHO IS ON THE SIDELINE, AND WHAT THEY HAVE DONE.
     #
     # The brief carried two head-coach names and nothing else, so a question

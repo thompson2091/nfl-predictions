@@ -1,7 +1,7 @@
 """This week's games, as the market prices them and as the books disagree.
 
 The data layer behind a matchup or bets view. Everything here comes from the
-game-line archive (`ingest/game_lines`); nothing is modelled, and that is
+game-line archive (`ingest/game_lines`); nothing is modeled, and that is
 deliberate.
 
 **Why there is no model opinion on the total here.** The obvious thing to show
@@ -116,7 +116,7 @@ def movement(season: int, week: int) -> pl.DataFrame:
     being played, not a fault — the open is archived when the lines go up and
     the close before kickoff, and there is nothing to difference in between.
 
-    `move_pp` is signed in the outcome's own favour: positive means the market
+    `move_pp` is signed in the outcome's own favor: positive means the market
     came toward that side. On a two-sided market the other side carries the
     mirror image, which is what makes a one-sided move visible as such.
     """

@@ -6,7 +6,7 @@ how it fails. Read this before trusting a number the app shows you.
 The governing rule: **no probability, rate, or weight in this project is a
 hand-set constant.** Anything that looks like a magic number is fit from the data
 below and refit on every training run. Where a starting value is unavoidable
-(the blend bootstrap), it is declared in `config/settings.yaml`, labelled as a
+(the blend bootstrap), it is declared in `config/settings.yaml`, labeled as a
 bootstrap, and replaced automatically once real data exists.
 
 ---
@@ -49,7 +49,7 @@ Two things it now makes possible that were not:
 |---|---|
 | Provider | [nflverse](https://github.com/nflverse/nflverse-data), via the `nfl_data_py` package |
 | Access | Public, free, no key. Parquet released on GitHub |
-| Licence | CC-BY-4.0 |
+| License | CC-BY-4.0 |
 | Loaded by | `src/ingest/loader.py` |
 | Lands in | `data/raw/*.parquet` |
 | Refresh | `make ingest`. In-season, nflverse updates within ~24h of a game |
@@ -302,7 +302,7 @@ Written by `make train` into `models/<target_type>/`, refit every run.
 
 | Artifact | Fit by | What it holds |
 |---|---|---|
-| `scorer_rate_prior.json` | `src/models/market_prior.py` | `E[distinct scorers per game] ~ total_line + \|spread\|`, OLS on labelled training games. Carries `seasons_used`, `n_games`, `rmse`, `fit_date` |
+| `scorer_rate_prior.json` | `src/models/market_prior.py` | `E[distinct scorers per game] ~ total_line + \|spread\|`, OLS on labeled training games. Carries `seasons_used`, `n_games`, `rmse`, `fit_date` |
 | `blend_weight.json` | `src/prediction/blend.py` | Model-vs-market weight from logistic stacking on graded odds history. Absent until enough history exists |
 | `train_null_rates.pkl` | `src/models/trainer.py` | Per-feature training null rates, for the skew guard |
 | `<model>_calibrator.pkl` | `src/models/calibration.py` | Temperature scaling, fit on the validation season |

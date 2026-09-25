@@ -31,7 +31,7 @@ and only teammates.
 
 First touchdown is the exception and needs no estimate: exactly one player
 scores, so our selections in a game are exactly mutually exclusive and that is
-modelled directly.
+modeled directly.
 
 **Mutual exclusivity.** Dutching — sizing stakes so any single winner returns
 the same — is only defined when exactly one bet can win. That is true of first
@@ -111,8 +111,8 @@ def allocate(bets: pl.DataFrame, bankroll: float, method: str = "kelly",
         raise ValueError(f"unknown allocation method: {method}")
 
     if method == "kelly":
-        # Kelly is already a fraction of bankroll, not a weight to normalise —
-        # normalising it would silently turn a "bet 3% of bankroll" signal into
+        # Kelly is already a fraction of bankroll, not a weight to normalize —
+        # normalizing it would silently turn a "bet 3% of bankroll" signal into
         # "bet everything", which is how a conservative rule becomes a reckless
         # one.
         stakes = np.minimum(w, max_frac) * bankroll
@@ -129,7 +129,7 @@ def allocate(bets: pl.DataFrame, bankroll: float, method: str = "kelly",
         stakes = (w / total * bankroll) if total > 0 else np.zeros(len(w))
         # With few selections the cap legitimately stops the whole bankroll
         # being deployed — two bets under a 25% cap put 50% to work, not 100%.
-        # That is the risk control doing its job, not a bug to normalise away.
+        # That is the risk control doing its job, not a bug to normalize away.
         stakes = np.minimum(stakes, max_frac * bankroll)
 
     return df.with_columns(pl.Series("stake", np.round(stakes, 2)))
@@ -144,7 +144,7 @@ def simulate(bets: pl.DataFrame, n_draws: int = 20_000, seed: int = 0,
              target_type: str = "anytime_td") -> np.ndarray:
     """Draw outcomes for every bet. Returns (n_draws, n_bets) of 0/1.
 
-    Single-winner markets are modelled exactly — one scorer per game, our
+    Single-winner markets are modeled exactly — one scorer per game, our
     selections mutually exclusive, the remaining probability belonging to
     someone we did not back. Multi-winner markets are drawn independently,
     which the measured teammate correlation of -0.024 justifies (see the module
@@ -205,7 +205,7 @@ def outcomes(bets: pl.DataFrame, n_draws: int = 20_000, seed: int = 0,
     # Profit per draw: winners return stake*(dec-1), everything staked is lost.
     profit = (won * (stake * (dec - 1.0))).sum(axis=1) - (~won * stake).sum(axis=1)
 
-    # Single-winner markets are modelled exactly; multi-winner ones are drawn
+    # Single-winner markets are modeled exactly; multi-winner ones are drawn
     # independently, which the measured correlations justify (see module docs).
     correlated = is_single_winner(target_type)
     return {

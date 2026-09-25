@@ -60,7 +60,7 @@ def test_the_tab_does_not_compute_its_own_top_1_for_the_headline(source):
     """The specific regression: a second, private calculation of the same claim.
 
     The tab is still free to compute a *single season* breakdown — that is a
-    different question, and it is labelled as one. What it must not do is
+    different question, and it is labeled as one. What it must not do is
     derive the headline track record itself.
     """
     tab = source[source.index("if tab2.open:"):]
@@ -219,7 +219,7 @@ def test_every_top1_figure_says_which_games_it_was_measured_on():
 
 
 def test_the_dashboard_cannot_show_two_top1s_because_it_shows_none():
-    """The gap was fixed by labelling; it is now closed by construction.
+    """The gap was fixed by labeling; it is now closed by construction.
 
     The dashboard carried the same two figures the app did — a walk-forward
     strip over 2022-2025 and a ladder over the priced seasons — and for a while
@@ -230,7 +230,7 @@ def test_the_dashboard_cannot_show_two_top1s_because_it_shows_none():
     So the copy is gone with them, and this guards the replacement invariant:
     if any Top-1 headline returns to the page, the window it was measured on
     has to return with it. A bare accuracy figure is exactly what produced
-    49.6% and 51.6% side by side, both labelled Top-1, neither wrong.
+    49.6% and 51.6% side by side, both labeled Top-1, neither wrong.
     """
     from pathlib import Path
 
@@ -249,7 +249,7 @@ def test_the_strip_and_the_purpose_panel_report_the_same_top1():
     2022-2025 — while the purpose panel read the backtest frames on the
     PUBLISHED column, 2023-2025. Anytime TD publishes the blended number, so
     the strip was describing an object the board never displays, and the page
-    showed 49.6% and 51.6% side by side, both labelled Top-1.
+    showed 49.6% and 51.6% side by side, both labeled Top-1.
 
     Both now read `published_topk`, so they agree by construction rather than
     by coincidence.

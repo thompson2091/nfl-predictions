@@ -27,7 +27,7 @@ def test_first_td_shares_sum_to_one_per_game():
         ("g1", "KC", "a", 0.10), ("g1", "KC", "b", 0.06),
         ("g1", "BUF", "c", 0.05), ("g1", "BUF", "d", 0.03),
     ])
-    # min_candidates=1 isolates the normalisation from the thin-roster guard,
+    # min_candidates=1 isolates the normalization from the thin-roster guard,
     # which is tested separately below.
     out = T.first_td_share(preds, min_candidates=1)
     assert out["first_td_pct"].sum() == pytest.approx(1.0)
@@ -53,7 +53,7 @@ def test_expected_scorers_counts_players_not_touchdowns():
 
     A player who scores twice contributes one here and two to the scoreboard,
     which is why the measured figure runs ~2.1 against ~2.4 actual touchdowns
-    per team-game. Labelling this "expected touchdowns" would be wrong by
+    per team-game. Labeling this "expected touchdowns" would be wrong by
     exactly that gap.
     """
     preds = _preds([("g", "KC", "a", 0.5), ("g", "KC", "b", 0.4),
@@ -70,7 +70,7 @@ def test_shutout_risk_is_poisson_zero():
         pytest.approx(0.0907, abs=1e-4)
     assert out.filter(pl.col("team") == "BUF")["shutout_pct"][0] > \
         out.filter(pl.col("team") == "KC")["shutout_pct"][0], \
-        "the weaker offence must carry the higher shut-out risk"
+        "the weaker offense must carry the higher shut-out risk"
 
 
 def test_build_omits_what_it_cannot_compute():
@@ -116,13 +116,13 @@ def test_a_thin_roster_does_not_publish_a_confident_split():
     """A team with no offensive candidates is a data outage, not a 99% read.
 
     Arizona in 2026 week 1 has exactly one candidate — the DEF/ST placeholder —
-    which normalises to its opponent scoring first 99.2% of the time. The
+    which normalizes to its opponent scoring first 99.2% of the time. The
     opponent's number is exactly as corrupted, since one is one minus the other,
     so both are withheld rather than just the thin side's.
 
     2015 has 83 such team-weeks and the 2026 pre-season has 513, because next
     season's rosters are not published yet. The 2016-2025 evaluation range is
-    clean, so this is a display guard rather than a modelling one.
+    clean, so this is a display guard rather than a modeling one.
     """
     rows = [("g", "ARI", "DEF/ST", 0.01)]
     rows += [("g", "LAC", f"p{i}", 0.10) for i in range(12)]

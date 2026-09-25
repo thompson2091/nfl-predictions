@@ -67,7 +67,7 @@ def test_no_band_on_the_bettable_side_is_a_real_answer():
 
 
 def test_a_thin_band_cannot_set_the_floor():
-    """Fifty observations of a positive drift is not a licence to bet."""
+    """Fifty observations of a positive drift is not a license to bet."""
     c = clv(band("higher", 0, 2, -0.20, n=5000),
             band("higher", 2, None, +0.30, n=40))
     assert clv_floor(c) is None

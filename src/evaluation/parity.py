@@ -51,7 +51,7 @@ def compare(season: int, week: int, target_type: str,
     # season frames with --walk-forward, whose folds retrain on earlier seasons
     # and so cannot be compared to the served weights; `make parity-frame`
     # builds this one on the production model for exactly this check. Falling
-    # back to the season frame keeps the old behaviour, and the tags below
+    # back to the season frame keeps the old behavior, and the tags below
     # explain the skip when it cannot be used.
     parity_frame = _gp("output", target_type) / f"parity_{season}.csv"
     if parity_frame.exists():

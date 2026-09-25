@@ -44,7 +44,7 @@ ok('it says in as many words that this is not a bet card',
 
 // ── The column is a disagreement, not an edge ───────────────────────────
 ok('the column is called a disagreement', txt.includes('Disagreement'));
-ok('no column on this tab is labelled an edge',
+ok('no column on this tab is labeled an edge',
    !/\bEdge\b/.test(txt), txt.match(/\bEdge\b.{0,40}/));
 
 // ── A thin line is marked, not dropped ──────────────────────────────────

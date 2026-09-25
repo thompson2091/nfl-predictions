@@ -52,13 +52,13 @@ def devig_market(odds: pl.DataFrame, expected: pl.DataFrame) -> pl.DataFrame:
 
     `odds` needs game_id, player_name_norm, implied_prob and optionally fair_prob
     (already two-sided de-vigged upstream). `expected` supplies the per-game
-    scorer count used to normalise one-sided books.
+    scorer count used to normalize one-sided books.
 
     **Pass only the players you are going to score.** The one-sided branch
     divides every price by `sum(implied) / expected`, so the result for a
-    favourite depends on how many *other* players the book happened to quote.
+    favorite depends on how many *other* players the book happened to quote.
     Archive coverage fell from 52 priced players a game in 2023 to 26.8 in
-    2025, and that alone moved a -100 favourite's "fair" probability from 41%
+    2025, and that alone moved a -100 favorite's "fair" probability from 41%
     to 49% while its real rate sat near 52% throughout. The market number was
     partly an artifact of how deep the book's longshot list ran that season,
     which then flowed into every edge, the blend weight, and the head-to-head
@@ -126,7 +126,7 @@ def calibrate_level(df: pl.DataFrame, prob_col: str, expected: pl.DataFrame,
     therefore hands about a tenth of the probability mass to players who
     account for well under 1% of actual scorers, which leaves every priced
     player systematically short. Pass the priced mask and an expectation
-    already scaled by the prior's `priced_share` to normalise where it counts.
+    already scaled by the prior's `priced_share` to normalize where it counts.
 
     The shift is monotone in log-odds, so ranking is untouched either way.
     """
@@ -139,8 +139,8 @@ def calibrate_level(df: pl.DataFrame, prob_col: str, expected: pl.DataFrame,
             m = g[mask_col].fill_null(False).to_numpy().astype(bool)
         else:
             m = np.ones(len(p), dtype=bool)
-        # Nothing priced in this game: fall back to normalising over everyone,
-        # which is the pre-existing behaviour rather than a silent no-op.
+        # Nothing priced in this game: fall back to normalizing over everyone,
+        # which is the pre-existing behavior rather than a silent no-op.
         target_rows = p[m] if m.any() else p
         delta = _solve_shift(target_rows, exp_map.get(game_id, float("nan")))
         if not np.isfinite(delta):
@@ -259,7 +259,7 @@ def build_blend_training_frame(target_type: str, model_name: str,
             continue
         X, _ = prepare_data(wdf, feature_cols)
         # `team` rides along because the joint model forms shares within a
-        # team-game; without it apply_joint has nothing to normalise over.
+        # team-game; without it apply_joint has nothing to normalize over.
         res = wdf.select(["game_id", "player_id", "team"]).with_columns(
             pl.Series("raw_prob", score(model_name, X, feature_cols, model_dir))
         )

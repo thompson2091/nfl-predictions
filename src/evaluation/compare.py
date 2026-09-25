@@ -344,7 +344,7 @@ def seed_averaged_paired(runs: list[dict], *, market: str, model: str,
     Two significance readings, because they answer different questions:
       * `p_value` is a sign test over games where the averaged outcomes differ,
         the direct analogue of the McNemar test in `paired_top_k`;
-      * `seeds_ahead` counts how many individual seeds favour the candidate,
+      * `seeds_ahead` counts how many individual seeds favor the candidate,
         which catches a result driven by one outlying seed even when the
         pooled average looks clean.
 
@@ -535,9 +535,9 @@ def noise_floor(results: list[dict]) -> dict:
     Reported as the standard deviation across seeds, per market, model and
     metric.
     """
-    from src.evaluation.harness import summarise
+    from src.evaluation.harness import summarize
 
-    summaries = [summarise(r) for r in results]
+    summaries = [summarize(r) for r in results]
     out: dict = {}
     markets = set().union(*[set(s) for s in summaries])
     for market in sorted(markets):

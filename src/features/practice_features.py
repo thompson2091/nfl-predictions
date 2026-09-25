@@ -1,4 +1,4 @@
-"""Whether a player practised this week, and how much of it.
+"""Whether a player practiced this week, and how much of it.
 
 Split out of `injury_features` rather than living beside `is_out` and
 `is_questionable`, for one reason: this project ablates by FAMILY, never by
@@ -11,8 +11,8 @@ the two answer different questions.
 On the raw file it is set on 61,175 of 61,221 rows against `report_status`'s
 32,055, so **29,163 player-weeks carry a practice report and no game status at
 all** — invisible to the model before this existed. It also discriminates
-INSIDE a status: "Questionable" covers 3,195 player-weeks who practised fully
-and 2,581 who did not practise at all, and those were the same number.
+INSIDE a status: "Questionable" covers 3,195 player-weeks who practiced fully
+and 2,581 who did not practice at all, and those were the same number.
 
 Joined onto the candidate pool the coverage is far thinner — about 12% of
 training rows — because only players who appear on an injury report have a row
@@ -23,7 +23,7 @@ does mean the three indicators are NOT zero-filled in this builder: 0/0/0 after
 here would erase the difference between that and a report that says nothing.
 
 Three indicators rather than one ordinal: the gap between full and limited is
-not the gap between limited and did-not-practise, and a tree should not be told
+not the gap between limited and did-not-practice, and a tree should not be told
 it is.
 """
 from __future__ import annotations
@@ -39,7 +39,7 @@ _FULL = "Full Participation"
 
 
 def build_practice_features(injuries: pl.DataFrame) -> pl.DataFrame:
-    """Per player-season-week: did not practise / limited / full.
+    """Per player-season-week: did not practice / limited / full.
 
     Null where the player is on no injury report that week, which is most of
     the pool. Returns an empty frame with the right schema when the feed has no

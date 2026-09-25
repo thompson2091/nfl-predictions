@@ -17,7 +17,7 @@ than against the model's own opinion.
 | Market | What the model predicts | Beats its market? |
 |---|---|---|
 | Anytime TD | Team rate x player share -> P(scores) | Not raw; shows CLV |
-| First TD | Same ranker, normalised within game | Not raw; shows CLV |
+| First TD | Same ranker, normalized within game | Not raw; shows CLV |
 | Receptions | A count, then any line off its distribution | No raw; **yes blended** |
 | Rushing / receiving / passing yards | A fitted quantile curve | No, either way |
 

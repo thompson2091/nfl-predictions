@@ -3,7 +3,7 @@
 
     python scripts/42_position_rates.py --target anytime_td
 
-Three numbers the board makes a reader derive by eye — the realised rate for a
+Three numbers the board makes a reader derive by eye — the realized rate for a
 position, the de-vigged price it carries, and our own estimate — measured over
 the priced population, which is the only one anybody can bet.
 

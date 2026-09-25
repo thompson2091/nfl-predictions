@@ -3,7 +3,7 @@
 Every profitability figure in this project comes from a replay: it assumes you
 could have had the closing consensus price, in unlimited size, at the moment we
 quoted it. None of those assumptions has ever been tested, and each one can only
-push realised returns down. A measured +18.3% survives a 3-point haircut; it
+push realized returns down. A measured +18.3% survives a 3-point haircut; it
 does not survive three of them.
 
 This log is the forward test. One row per bet actually placed, recording three
@@ -44,7 +44,7 @@ SCHEMA = {
     "player_name_norm": pl.Utf8,
     "market": pl.Utf8,
     # The price you were actually given, and where. This is the number that
-    # decides whether the money works — not the consensus we modelled against.
+    # decides whether the money works — not the consensus we modeled against.
     "odds_taken": pl.Int64,
     "book": pl.Utf8,
     "stake": pl.Float64,
@@ -160,7 +160,7 @@ def grade(target_type: str = "anytime_td") -> pl.DataFrame | None:
 
 
 def _attach_closing(graded: pl.DataFrame, target_type: str) -> pl.DataFrame:
-    """Add the closing consensus price, so realised CLV is measurable."""
+    """Add the closing consensus price, so realized CLV is measurable."""
     from src.ingest.odds_history import HISTORY_PATH
     if not HISTORY_PATH.exists():
         return graded.with_columns(pl.lit(None, dtype=pl.Int64).alias("closing_odds"))

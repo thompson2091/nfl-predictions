@@ -66,7 +66,7 @@ def positions(season: int, week: int) -> dict[str, str]:
 def qualified_name(name: str | None, team: str | None) -> str:
     """A player's name, made unique where the source does not make it so.
 
-    Every team's defence is called "DEF/ST". The board builds a leg id from
+    Every team's defense is called "DEF/ST". The board builds a leg id from
     `<market>|<player>` and the settlement map is keyed the same way, so all
     32 of them collapsed onto one id and one outcome.
 
@@ -157,7 +157,7 @@ def _week_results(season: int, week: int, pool: pl.DataFrame) -> dict[str, str]:
 
 
 def opening_prices(season: int, week: int) -> dict[str, dict]:
-    """`<market>|<normalised name>` -> the first price of the week, per market.
+    """`<market>|<normalized name>` -> the first price of the week, per market.
 
     The board is priced at the close, which is the price you could actually
     take. The open is the other end of the same measurement, and the gap
@@ -430,7 +430,7 @@ def _price_open_fallback(payload: dict) -> None:
     the same three steps the close gets: the count model's own number from the
     fitted distribution, the book's with its margin removed, and the blend
     between them. An over/under posts both sides at the open, so the de-vig is
-    real here rather than the one-sided normalisation a touchdown prop needs.
+    real here rather than the one-sided normalization a touchdown prop needs.
     Where a book somehow posted only one side, `blend_to_market` returns the
     model alone rather than reading a missing price as a 50% opinion.
     """
@@ -631,7 +631,7 @@ def _attach_ou_shortlists(payload: dict) -> None:
 def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
                   season: int | None = None, week: int | None = None
                   ) -> tuple:
-    """De-vig every line, price its EV, and summarise each fixture.
+    """De-vig every line, price its EV, and summarize each fixture.
 
     Shared by the live week and by every archived one, so a past week
     cannot drift into showing a different set of numbers from the week it
@@ -672,7 +672,7 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
         # EV of $100 at the BEST price, taking the de-vigged consensus as
         # truth. That assumption is the whole caveat and the page states it:
         # this measures beating the median book, not beating the market. It is
-        # also why it can go negative — a favourite whose best price is still
+        # also why it can go negative — a favorite whose best price is still
         # short of fair is a bet that shopping does not rescue.
         pb = _profit(r["best_odds"])
         pc = _profit(r["consensus_odds"])
@@ -699,8 +699,8 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     # team's chance of winning, which is what a matchup card is actually for.
     #
     # The score is ARITHMETIC, not a model. A total of 47.5 with the home side
-    # favoured by 8.5 is the two numbers T/2 +/- S/2, and it is the market's
-    # projection restated rather than a second opinion about it. Labelled as
+    # favored by 8.5 is the two numbers T/2 +/- S/2, and it is the market's
+    # projection restated rather than a second opinion about it. Labeled as
     # the market's on the page, and the slot a no-vegas model would fill.
     cards = {}
     by_game: dict = {}
@@ -793,15 +793,15 @@ def _attach_scores(cards: dict) -> None:
         # NOT the comparable window. That is right for the distribution's
         # shape and wrong for a single probability near a pick'em: it is two
         # points wide and its crossover is noisy, so a model spread of -0.7
-        # (home favoured) came back as 48.5% for the home side, and the page
+        # (home favored) came back as 48.5% for the home side, and the page
         # printed "our model: PIT by 0.7" beside "CIN 51.5%" — two statements
         # from the same model pointing opposite ways on one card.
         #
         # `win_prob` is a logistic fit through all 2,928 graded games. It is
         # monotone by construction, so the projected score and the win
-        # probability can no longer disagree about who is favoured.
+        # probability can no longer disagree about who is favored.
         if c.get("model_spread") is not None:
-            # The card signs its spread negative when HOME is favoured; the
+            # The card signs its spread negative when HOME is favored; the
             # curve is fitted on the schedule's opposite convention.
             got = win_prob(-float(c["model_spread"]), curve)
             if got is not None:
@@ -819,7 +819,7 @@ _STATUS_ORDER = {"Out": 0, "Doubtful": 1, "Questionable": 2}
 
 #: And for a player with no designation yet, how his week has gone. Missing
 #: practice entirely on a Wednesday is what a Friday "Doubtful" is made of.
-_PRACTICE_ORDER = {"Did not practise": 0, "Limited": 1, "Full": 2}
+_PRACTICE_ORDER = {"Did not practice": 0, "Limited": 1, "Full": 2}
 
 #: A veteran rest day is not an injury. nflverse files it in the same column
 #: with the reason "Not injury related - resting player", and treating it as
@@ -837,13 +837,13 @@ def _reason(v) -> str | None:
 
 
 def _practice(v) -> str | None:
-    """"Did Not Participate In Practice" -> "Did not practise"."""
+    """"Did Not Participate In Practice" -> "Did not practice"."""
     t = str(v or "").strip()
     if not t:
         return None
     low = t.lower()
     if low.startswith("did not"):
-        return "Did not practise"
+        return "Did not practice"
     if low.startswith("limited"):
         return "Limited"
     if low.startswith("full"):
@@ -882,7 +882,7 @@ def _attach_injuries(cards: dict, season: int | None,
     # and nearly useless midweek. The final report is filed the day before
     # kickoff, so on a Thursday only Thursday's game has one. What the other
     # thirty teams have already filed is PRACTICE PARTICIPATION, and a
-    # receiver who did not practise on Wednesday is the earliest real signal
+    # receiver who did not practice on Wednesday is the earliest real signal
     # there is: it is what the designation gets derived from on Friday.
     d = d.filter((pl.col("season") == season) & (pl.col("week") == week)
                  & (pl.col("report_status").is_not_null()
@@ -903,7 +903,7 @@ def _attach_injuries(cards: dict, season: int | None,
             "injury": _reason(r.get("report_primary_injury")
                               or r.get("practice_primary_injury")),
             # "Did Not Participate In Practice" is the useful half of a long
-            # string, and a Questionable who did not practise is closer to Out
+            # string, and a Questionable who did not practice is closer to Out
             # than a Questionable who was full.
             # nflverse writes both "Did Not Participate In Practice" and
             # "Full Participation in Practice" — different verbs, different
@@ -936,7 +936,7 @@ def _attach_injuries(cards: dict, season: int | None,
                 if (x["pos"] or "") in _SKILL
                 and not x["rest"]
                 and (x["status"] in ("Out", "Doubtful")
-                     or (not x["status"] and x["practice"] == "Did not practise")))
+                     or (not x["status"] and x["practice"] == "Did not practice")))
 
 
 #: Board market key to the weekly-stats column it settles against. The
@@ -1038,7 +1038,7 @@ def _attach_blend(cards: dict) -> None:
 
 def _attach_matchup(cards: dict, season: int | None,
                     week: int | None) -> None:
-    """Offence-against-defence rates for each side, as differentials.
+    """Offense-against-defense rates for each side, as differentials.
 
     Built ONCE for the week and matched per card. Every rate is computed from
     the games before this one; see `matchup_stats` for the as-of guarantee and
@@ -1619,7 +1619,7 @@ def bets(season: int | None) -> dict:
     **Not against a flat break-even**, which is the mistake this table exists
     to avoid repeating: the first version compared every definition to 52.38%
     and reported "moneyline moved toward this side" as clearing at 62.3%.
-    Those sides are favourites priced at 56.8%; beating a coin flip is not
+    Those sides are favorites priced at 56.8%; beating a coin flip is not
     beating them. Every row carries its n, its interval and the price it is
     measured against, because a hit rate without those three manufactures
     exactly the belief the rest of this project spends its tests guarding
@@ -1666,7 +1666,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     s = season if season is not None else (mk[0].get("season") if mk else None)
     w = week if week is not None else (mk[0].get("week") if mk else None)
 
-    # Every team's defence is on the touchdown board under the single name
+    # Every team's defense is on the touchdown board under the single name
     # "DEF/ST", so all 32 of them share the id `any|DEF/ST`. Starring one stars
     # them all, a saved leg cannot say which one was meant, and the settlement
     # map keyed on that name resolves 32 rows to one result. Qualified by team
@@ -1684,7 +1684,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
         # views cannot disagree with the table they filter. The name is the
         # exception, because the name is the join key: `qualified_name` rewrote
         # the board's "DEF/ST" to "DEF/ST (BUF)" and left these bare, so a
-        # defence on either list matched nothing and dropped out of Shortlist
+        # defense on either list matched nothing and dropped out of Shortlist
         # and Fades without emptying them — the failure looks like a short week.
         for key in ("rows", "vetoes"):
             for r in (m.get("shortlist") or {}).get(key) or []:
@@ -1772,11 +1772,11 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
             for rows in (c.get("injuries") or {}).values():
                 for r in rows:
                     # A practice-only row counts. Before Friday it is the
-                    # only thing there is, and "did not practise" is what a
+                    # only thing there is, and "did not practice" is what a
                     # designation is made of.
                     if not r.get("player"):
                         continue
-                    if r.get("status") or (r.get("practice") == "Did not practise"
+                    if r.get("status") or (r.get("practice") == "Did not practice"
                                            and not r.get("rest")):
                         flat[r["player"]] = {"s": r.get("status") or "No practice",
                                              "i": r.get("injury"),

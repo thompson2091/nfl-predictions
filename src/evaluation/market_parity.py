@@ -16,7 +16,7 @@ changed the answer when it was added:
   * **De-vigs across the joined population only.** Including prices for players
     that are never scored rescales everyone — see `blend.devig_market`.
   * **Resamples whole games** for the interval. Two players in one game share a
-    defence, a game script and a final score, so treating them as independent
+    defense, a game script and a final score, so treating them as independent
     understates the uncertainty by a wide margin.
 """
 from __future__ import annotations

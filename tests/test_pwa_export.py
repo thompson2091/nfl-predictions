@@ -116,7 +116,7 @@ def test_the_manifest_carries_what_installation_needs(built):
         "the corners off the mark")
     from src.export.pwa import TOKENS
     assert m["background_color"] == TOKENS["Ground and ink"]["bg"], (
-        "the colour behind the app before its first paint is the page's own "
+        "the color behind the app before its first paint is the page's own "
         "ground, or launching it is a flash of white")
 
 
@@ -223,13 +223,13 @@ def test_v2_is_a_skin_and_a_shell_over_v1s_behaviour(built):
     # And the tokens are v2's own, exactly once.
     css = pwa.tokens_css() + pwa.component_css() + pwa.APP_CSS
     assert css.count(":root{") == 1, (
-        "v1's token block must come off the front, or its colours override "
+        "v1's token block must come off the front, or its colors override "
         "v2's from further down the cascade")
     assert css.count("--bg:#F5F3EE") == 1
 
 
 def test_the_token_layer_is_wide_enough_to_be_worth_having(built):
-    """v1 has eleven custom properties and they are all colour.
+    """v1 has eleven custom properties and they are all color.
 
     Every spacing, radius and type size is typed literally into 33KB of
     component rules, so a design change is a search rather than an edit. The

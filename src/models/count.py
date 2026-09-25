@@ -196,7 +196,7 @@ def fit_market_blend(p_model: np.ndarray, p_book: np.ndarray,
 _SHRINK_POSITIONS = ("RB", "TE", "QB", "FB")
 
 #: A player at or below this many observed games is "no track record", and the
-#: prior is the mean outcome of exactly that population. Not a modelling knob:
+#: prior is the mean outcome of exactly that population. Not a modeling knob:
 #: it selects the rows the prior is *measured on*, and the shrinkage strength
 #: `k` is fitted separately against it.
 _DEBUT_GAMES = 1
@@ -419,7 +419,7 @@ def count_interval(mu: np.ndarray, dispersion: float,
 
 
 def fair_two_way(over: np.ndarray, push: np.ndarray) -> np.ndarray:
-    """Renormalise over/under to exclude the push, for comparison with a price.
+    """Renormalize over/under to exclude the push, for comparison with a price.
 
     A book's Over 5.0 price is a claim about the two outcomes that resolve, not
     about all three. Comparing our raw P(>5) to it would count the push as a

@@ -6,11 +6,11 @@ from pathlib import Path
 
 
 def test_shortlist_and_veto_names_match_the_board_they_filter():
-    """A defence on either list must not silently drop out of its view.
+    """A defense on either list must not silently drop out of its view.
 
-    The board qualifies "DEF/ST" by team so 32 defences do not share one leg
+    The board qualifies "DEF/ST" by team so 32 defenses do not share one leg
     id. Shortlist and veto rows are matched to the board BY NAME, so leaving
-    them bare made a vetoed defence match nothing — Fades came back one row
+    them bare made a vetoed defense match nothing — Fades came back one row
     short and looked like a quiet week rather than a bug.
     """
     import importlib.util

@@ -35,7 +35,7 @@ def _fit_priced_share(features: pl.DataFrame, train_seasons: list[int]) -> float
     """Share of a game's scorers who were priced by a sportsbook.
 
     Returns 1.0 when there is no odds archive to measure against, which makes
-    the level calibration behave exactly as it did before — normalising across
+    the level calibration behave exactly as it did before — normalizing across
     every candidate. That is the honest default: without prices we have no
     evidence about which candidates a book would have quoted.
     """
@@ -66,7 +66,7 @@ def _fit_priced_share(features: pl.DataFrame, train_seasons: list[int]) -> float
 def fit_scorer_rate_prior(features: pl.DataFrame, train_seasons: list[int]) -> dict:
     """Fit E[distinct scorers per game] ~ total_line + |spread|.
 
-    Uses the labelled candidate pool so the count is on exactly the same scope
+    Uses the labeled candidate pool so the count is on exactly the same scope
     the model predicts over — not a league-wide TD average that would include
     scorers who were never candidates.
     """
@@ -82,7 +82,7 @@ def fit_scorer_rate_prior(features: pl.DataFrame, train_seasons: list[int]) -> d
 
     if per_game.height < 100:
         raise ValueError(
-            f"Not enough labelled games to fit the scorer-rate prior "
+            f"Not enough labeled games to fit the scorer-rate prior "
             f"({per_game.height} found, need 100+)."
         )
 

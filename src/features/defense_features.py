@@ -1,4 +1,4 @@
-"""What a defence and its return units actually do, and how loosely the other
+"""What a defense and its return units actually do, and how loosely the other
 side holds the ball.
 
 Phase 2 measured why DEF/ST cannot be ranked: of 319 features only 44 are
@@ -10,15 +10,15 @@ opponent's turnover-proneness". Every one of those three is sitting in
 populated across all eleven seasons, with no coverage cliff to work around.
 
 The gap is structural, not incidental. `build_team_features` describes a team's
-**offence** and joins on `team`; `build_opponent_features` describes what a
-defence **allows** and joins on `opponent`. So a DEF/ST candidate for team T
+**offense** and joins on `team`; `build_opponent_features` describes what a
+defense **allows** and joins on `opponent`. So a DEF/ST candidate for team T
 carries T's offensive tendencies and the *other* team's defensive record, and
-nothing at all about T's own defence. This module fills that hole from both
+nothing at all about T's own defense. This module fills that hole from both
 sides:
 
-- `build_defense_features` — what T's defence and return units produce, joined
+- `build_defense_features` — what T's defense and return units produce, joined
   on `team`. This is the row a DEF/ST candidate needs.
-- `build_giveaway_features` — how often the opposing offence gives the ball
+- `build_giveaway_features` — how often the opposing offense gives the ball
   away, joined on `opponent`. A defensive touchdown needs a turnover first, so
   the opponent's carelessness is arguably the stronger half of the pair, and
   nothing in the feature set encoded it.
@@ -30,7 +30,7 @@ A caution the numbers demand: 864 return touchdowns exist across eleven seasons,
 about 79 a season over ~272 games. These are rare events, and rare-event rates
 computed over five games are mostly noise — which is why the season-to-date
 column matters more here than the short window, and why this is expected to help
-Top-5 and calibration rather than Top-1. Phase 3f showed defences earn their
+Top-5 and calibration rather than Top-1. Phase 3f showed defenses earn their
 place in the candidate pool by being present, not by being ranked well.
 """
 from __future__ import annotations
@@ -72,16 +72,16 @@ def _rolling(frame: pl.DataFrame, key: str, stat_cols: list[str],
 
 
 def build_defense_features(pbp: pl.DataFrame) -> pl.DataFrame:
-    """What team T's defence and return units produce. Joins on `team`.
+    """What team T's defense and return units produce. Joins on `team`.
 
     Takeaways are counted from the defending side: an interception on a play is
-    a takeaway for whoever is on defence, and `fumble_lost` is recorded from the
-    offence's point of view, so on a play where T is `defteam` a lost fumble is
+    a takeaway for whoever is on defense, and `fumble_lost` is recorded from the
+    offense's point of view, so on a play where T is `defteam` a lost fumble is
     T's recovery.
 
     Scores are attributed with `td_team`, not with `posteam`. On a pick-six or a
     punt return the scoring side is the one that was *defending* the play, so
-    reading `posteam` would credit every defensive touchdown to the offence that
+    reading `posteam` would credit every defensive touchdown to the offense that
     turned the ball over.
     """
     needed = {"defteam", "game_id", "season", "week"}
@@ -123,13 +123,13 @@ def build_defense_features(pbp: pl.DataFrame) -> pl.DataFrame:
 
 
 def build_giveaway_features(pbp: pl.DataFrame) -> pl.DataFrame:
-    """How loosely an offence holds the ball. Joins on `opponent`.
+    """How loosely an offense holds the ball. Joins on `opponent`.
 
-    A defensive touchdown needs a turnover before it needs a defence, so on a
+    A defensive touchdown needs a turnover before it needs a defense, so on a
     DEF/ST row this describes the other half of the event. Counted from the
-    offence's side — `posteam` throws the interception and loses the fumble —
+    offense's side — `posteam` throws the interception and loses the fumble —
     and then joined against `opponent` so a candidate's row carries the
-    carelessness of the offence its defence is facing.
+    carelessness of the offense its defense is facing.
     """
     if "posteam" not in pbp.columns:
         raise ValueError("pbp is missing posteam")

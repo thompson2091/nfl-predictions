@@ -254,7 +254,7 @@ def _filter_low_activity(df: pl.DataFrame) -> pl.DataFrame:
     backtests, never in production.
 
     The thresholds come from `candidate_filter` in config so Phase 3f can sweep
-    them. The defaults reproduce the hardcoded behaviour exactly — a strictly
+    them. The defaults reproduce the hardcoded behavior exactly — a strictly
     positive usage/snap threshold and depth-chart rank 1-2 — because the trade
     this filter makes is not obviously tuned: every candidate removed is one
     fewer distractor above the true scorer, and every *scorer* removed is a
@@ -359,7 +359,7 @@ def refit_conversion(df, train_seasons, splits, feature_cols, model_dir,
                     .join(priced.select(key), on=key, how="anti"))
         # DEF/ST is unpriced and never reaches this formula: `combine` hands
         # it back the calibrated classifier's own number instead, because a
-        # defence is not a share of its offence. Leaving it in the fit lets a
+        # defense is not a share of its offense. Leaving it in the fit lets a
         # population the level cannot move set the level — and it is the worst
         # possible member of it, scoring at ~10% where a real unpriced player
         # scores at 0.41%. It dragged the fit population from 0.41% to 3.03%.
@@ -597,7 +597,7 @@ def _fit_rank_correction(df, train_seasons, splits, feature_cols, model_dir,
         if stale.exists():
             stale.unlink()
             note = "  (removed the artifact a previous run left behind)"
-        reason = ("first_td never reaches it — predict() normalises within the "
+        reason = ("first_td never reaches it — predict() normalizes within the "
                   "game and returns" if target_type == "first_td" else
                   "the joint model is active, which disables it")
         print(f"\nRank calibration not fitted: {reason}. "
@@ -826,7 +826,7 @@ def train_all(target_type: str = None, splits: dict | None = None,
     # --- Fit the team touchdown rate that sets the level in the joint model ---
     # Predictions are published as 1 - exp(-lambda * share): this supplies the
     # lambda, the model above supplies the share. The scorer-rate prior is kept
-    # because the market de-vig still normalises against it.
+    # because the market de-vig still normalizes against it.
     from src.models.joint import fit_team_rate, save_team_rate
     try:
         team_model = fit_team_rate(df, train_seasons)

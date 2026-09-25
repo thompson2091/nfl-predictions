@@ -160,7 +160,7 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
 
     # Load the market first: the level calibration below needs to know who was
     # priced. Roughly five candidates a game never are, and they account for
-    # well under 1% of actual scorers, so normalising the total across all of
+    # well under 1% of actual scorers, so normalizing the total across all of
     # them hands ~10% of the probability mass to players who essentially never
     # score and leaves every priced player short.
     market = _load_market(week_df, expected, season, week, target_type)
@@ -198,7 +198,7 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
     # under it.
     #
     # Below the floor the column is simply not set, which `combine` treats as
-    # "all priced" — the behaviour before the split existed. Loud, because a
+    # "all priced" — the behavior before the split existed. Loud, because a
     # board served without it is the old over-predicting board and nothing else
     # would say so.
     conv = conversion or {}
@@ -359,8 +359,8 @@ def _load_market(week_df: pl.DataFrame, expected: pl.DataFrame,
         return None
 
     # Only de-vig the players this week's board will actually contain. The
-    # one-sided normalisation divides by sum(implied), so quoting extra deep
-    # longshots drags every favourite down — see devig_market's docstring.
+    # one-sided normalization divides by sum(implied), so quoting extra deep
+    # longshots drags every favorite down — see devig_market's docstring.
     candidates = week_df.select([
         _norm_name_expr("player_name").alias("player_name_norm"), "game_id",
     ]).unique()
@@ -556,7 +556,7 @@ _AVAILABLE_STATUSES = frozenset({"ACT", "DEV"})
 def _filter_unavailable(week_df: pl.DataFrame, season: int, week: int) -> pl.DataFrame:
     """Drop players the roster says cannot play — for a live board only.
 
-    This is an availability rule, not a modelling one, and the distinction is
+    This is an availability rule, not a modeling one, and the distinction is
     the reason it is here rather than in `_filter_low_activity`. That filter is
     applied identically in training and at serve time because changing it on one
     side only is train/serve skew. This one is applied to the board you would

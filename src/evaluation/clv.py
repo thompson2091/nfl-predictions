@@ -8,7 +8,7 @@ enough bets to settle that question takes years.
 Closing-line value answers a nearby question with far more statistical power.
 Instead of asking "did this bet win", it asks "did the price move our way
 before kickoff". Every priced player contributes an observation whether or not
-they scored, and the market's own movement is the judgement of everyone else's
+they scored, and the market's own movement is the judgment of everyone else's
 money. If the players we rate above the opening price are systematically the
 ones the market then shortens, our disagreement is finding something real. If
 the line drifts the other way, we are on the wrong side of the flow and any

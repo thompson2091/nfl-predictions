@@ -88,11 +88,11 @@ def payload_v3():
                                      "pct": 26.3, "lo": 22.2, "hi": 30.8}]},
              "injuries": {"GB": [{"player": "Jayden Reed", "pos": "WR",
                                   "status": "Out", "injury": "Neck",
-                                  "practice": "Did not practise",
+                                  "practice": "Did not practice",
                                   "rest": False}],
                           "ATL": [{"player": "A.J. Terrell", "pos": "CB",
                                    "status": None, "injury": "Groin",
-                                   "practice": "Did not practise",
+                                   "practice": "Did not practice",
                                    "rest": False}]},
              "injury_key": 1,
              "unfold": {"n": 403, "thin": False, "home": "GB", "away": "ATL",
@@ -208,7 +208,7 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
     # reporting "not exercised" and passing.
     for path in ("a past week renders", "game tab notes renders",
                  "game tab bets renders",
-                 "a coaching note is labelled as context",
+                 "a coaching note is labeled as context",
                  "the final-score tab renders",
                  "the bets tab is a ladder, not a list of books",
                  "the outcome tab carries BOTH, score first then the ladder",
@@ -216,6 +216,17 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "an old tab name does not render an empty screen",
                  "the ask control is on the edge tab",
                  "tapping it opens the ask sheet",
+                 "the slip opens on the round robin by default",
+                 "keeping copies the slip into Picks",
+                 "and leaves the slip alone",
+                 "keeping the same slip twice keeps one copy",
+                 "the saved copy stores its own legs",
+                 "and the payout curve it was priced at",
+                 "the Picks screen renders",
+                 "a kept slip can be removed",
+                 "the bar opens the slip rather than navigating",
+                 "tapping it opens the slip sheet",
+                 "and stays on the board underneath",
                  "the ask control sits under the score card",
                  "and above the tab bar",
                  "and does not leave the tab",
@@ -290,7 +301,7 @@ def test_a_past_week_is_graded_rather_than_merely_shown():
     js, css = v3js.js(), v3css.css()
     for cls in ("row--won", "row--lost", "mark--won", "mark--lost"):
         assert cls in js, f"{cls} is never applied"
-        assert "." + cls in css, f"{cls} has no rule, so it colours nothing"
+        assert "." + cls in css, f"{cls} has no rule, so it colors nothing"
     # Three-valued, not two. A pick that never settled is not a pick that lost.
     assert "mark--void" in js and ".mark--void" in css
 
@@ -480,7 +491,7 @@ def test_the_app_bar_is_not_shorter_than_the_header_inside_it():
 
     `.appbar` was a fixed 52px and `v3Header` rendered `.hd` inside it asking
     for 52px plus a 12px margin plus the safe-area inset. The overflow was
-    centred, so it bled downward and the brand row sat almost on top of the
+    centered, so it bled downward and the brand row sat almost on top of the
     game switcher beneath it on a phone.
 
     Falsified by giving either one a fixed height again.
@@ -528,6 +539,115 @@ def test_the_moneyline_move_is_shown_even_though_its_split_is_not():
     assert "amToDec" in body, (
         "the move must be read as implied chance; -142 to -130 and +120 to "
         "+110 are different sizes in the same direction")
-    assert "to win" in body, "the moneyline rows are not labelled"
+    assert "to win" in body, "the moneyline rows are not labeled"
     # And the absent split is stated rather than drawn as zero.
     assert "publishes none" in src, "the missing split is unexplained"
+
+
+def test_a_played_week_marks_which_lines_cleared():
+    """ONCE THE GAME IS IN, EVERY LADDER ROW HAS AN ANSWER.
+
+    Each row asks whether the game went over a number. On a historical week
+    that is no longer a chance, so the rows the result settled are tinted:
+    green where the number was cleared, red where it was not. A live week
+    passes no final and nothing is colored — a table of green rows on a game
+    nobody has played would read a forecast as a result.
+    """
+    from src.export import v3css, v3js
+
+    src = v3js.js()
+    i = src.index("function v3GameBets")
+    body = src[i:i + 4000]
+    assert "final_home" in body and "final_away" in body, (
+        "the ladder never reads the final score")
+    assert "ltab__r--hit" in body and "ltab__r--miss" in body
+    assert "actual == null ? null" in body, (
+        "a live week must pass no result rather than a default")
+    css = v3css.css()
+    assert ".ltab__r--hit{" in css and ".ltab__r--miss{" in css
+
+
+def test_the_margin_band_is_matched_on_margins_not_on_a_confidence_interval():
+    """`lo` AND `hi` ON A BAND ARE THE WILSON INTERVAL ON ITS PERCENTAGE.
+
+    They are not margin bounds, and reading them as such marks whichever band
+    happens to have an interval straddling the final score — the first cut of
+    this did exactly that. `mlo`/`mhi` are the inclusive margin bounds,
+    home-positive, and `score_dist` emits them so the page never has to parse
+    "SEA by 8-14" back out of a label built for reading.
+    """
+    import importlib
+
+    sd = importlib.import_module("src.models.score_dist")
+    import inspect
+
+    py = inspect.getsource(sd.summary)
+    assert '"mlo"' in py and '"mhi"' in py, "the bounds are not emitted"
+
+    from src.export import v3js
+
+    src = v3js.js()
+    i = src.index("function v3GameScores")
+    body = src[i:i + 3000]
+    assert "m.mlo" in body and "m.mhi" in body, (
+        "the page is matching on something other than the margin bounds")
+
+
+def test_the_band_bounds_actually_bracket_their_own_label():
+    """Falsified by a bound that disagrees with the words beside it."""
+    import importlib
+
+    sd = importlib.import_module("src.models.score_dist")
+    hist = sd.history()
+    if hist.is_empty():
+        pytest.skip("no score history on disk")
+    d = sd.summary(-3.0, 44.5, "PIT", "CIN", hist=hist)
+    by = {m["band"]: m for m in d["margins"]}
+    assert by["PIT by 8-14"]["mlo"] == 8 and by["PIT by 8-14"]["mhi"] == 14
+    assert by["CIN by 8-14"]["mlo"] == -14 and by["CIN by 8-14"]["mhi"] == -8
+    assert by["Tie"]["mlo"] == 0 and by["Tie"]["mhi"] == 0
+    # The open ends are open, not clamped to a number that would exclude a
+    # blowout from the band named for blowouts.
+    assert by["PIT by 15+"]["mhi"] is None
+    assert by["CIN by 15+"]["mlo"] is None
+    # And every band is reachable: the bounds must partition the line.
+    for m in d["margins"]:
+        assert m["mlo"] is None or m["mhi"] is None or m["mlo"] <= m["mhi"], m
+
+
+def test_the_slip_opens_on_round_robin_and_calls_it_that():
+    """"Any two" DESCRIBES THE MECHANIC AND HIDES THE NAME.
+
+    It is a round robin, which is what a reader will have heard it called,
+    and it sat second behind all-or-nothing — the hardest bet on the list to
+    win, and a poor thing to open on for someone who does not bet much.
+    """
+    from src.export import v3js
+
+    src = v3js.js()
+    i = src.index("const V3BETTYPES")
+    block = src[i:i + 900]
+    assert "'Round robin'" in block, "the round robin is not named"
+    assert "'Any two'" not in block
+    # First in the list, so it is what the chooser shows first.
+    assert block.index("'twos'") < block.index("'parlay'"), (
+        "all-or-nothing still leads the list")
+    # And the state opens on it.
+    j = src.index("betType:")
+    assert "betType: 'twos'" in src[j - 40:j + 40], src[j - 40:j + 40]
+
+
+def test_the_slip_has_a_save_button_that_names_where_it_goes():
+    """The tab is Picks, so the verb is save and the destination is named.
+
+    A button called "Keep" beside a tab called "Picks" leaves the reader to
+    infer they are the same thing.
+    """
+    from src.export import v3js
+
+    src = v3js.js()
+    i = src.index("function v3SlipBody")
+    body = src[i:i + 4000]
+    assert "data-v3keep=" in body, "the slip has no save control"
+    assert "Save to Picks" in body
+    assert "Saved to Picks" in body, "a saved slip must say so"

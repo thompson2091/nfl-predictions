@@ -12,7 +12,7 @@ to reconcile and a change to the token layer moves both versions at once.
 
 What differs is the component set. v2 packs; this breathes. Every interactive
 target is at least 44px because it is used with a thumb, every card is one
-idea, and the three colours that carry meaning — ours, good, bad — are never
+idea, and the three colors that carry meaning — ours, good, bad — are never
 spent on decoration, so that when a row is green it is green for a reason.
 """
 from __future__ import annotations
@@ -265,6 +265,24 @@ button{cursor:pointer}
 .bar .h{background:var(--ours);color:#fff;justify-content:flex-end}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+
+/* ---- picks: what you kept, and how it settled ----
+   A leg carries a dot rather than a word, because a saved slip is read at a
+   glance to see which way it is going and three colors say that faster than
+   three labels. Pending is gray on purpose: an ungraded leg is not a miss. */
+.legline{display:flex;align-items:center;justify-content:space-between;
+  gap:10px;padding:7px 0;border-top:1px solid var(--line3);font-size:14px}
+.legline > span:first-child{display:flex;align-items:center;gap:8px;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:999px;flex-shrink:0;
+  background:var(--mut2)}
+.dot--good{background:var(--good)}
+.dot--bad{background:var(--bad)}
+.dot--pend{background:var(--mut2)}
+.panel{padding:10px;border-radius:12px;background:var(--inset)}
+.panel .eyebrow{display:block;margin-bottom:2px}
+.num.good{color:var(--good)}
+.num.bad{color:var(--bad)}
 @media (max-width:420px){.three{grid-template-columns:1fr;gap:8px}}
 .cmp--adj{background:var(--goodbg)}
 .cmp--adj .eyebrow{color:var(--good)}
@@ -273,6 +291,16 @@ button{cursor:pointer}
 .box{padding:12px;border-radius:12px;background:var(--inset);
   display:flex;flex-direction:column;gap:2px}
 .box--ours{background:var(--oursbg)}
+/* A PLAYED GAME TURNS A CHANCE INTO AN ANSWER. Tinted, not recoloured: the
+   percentage that was forecast stays readable beside what happened. */
+.box--good{background:var(--goodbg)}
+.box--good .eyebrow,.box--good .sub{color:var(--good)}
+.box--bad{background:var(--badbg)}
+.box--bad .eyebrow,.box--bad .sub{color:var(--bad)}
+.mrow--on{background:var(--goodbg);border-radius:8px}
+.mrow--on .mrow__l{color:var(--good);font-weight:600}
+.srow--on{background:var(--goodbg);border-radius:8px}
+.srow--on b{color:var(--good)}
 .box b{font-size:17px;font-weight:600}
 .cats{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .cat{min-height:36px;padding:0 14px;border-radius:999px;font-size:15px;
@@ -441,6 +469,13 @@ button{cursor:pointer}
 .ltab__h{font-size:11px;font-weight:600;letter-spacing:.06em;
   text-transform:uppercase;color:var(--mut2);border-bottom:1px solid var(--line)}
 .ltab__r{border-top:1px solid var(--line3);font-size:14px}
+/* A PLAYED WEEK HAS ANSWERS, NOT CHANCES. Tinted rather than recoloured, so
+   the percentage stays readable and the row still reads as one of a ladder
+   rather than as a verdict of its own. */
+.ltab__r--hit{background:var(--goodbg)}
+.ltab__r--miss{background:var(--badbg)}
+.ltab__r--hit .num:first-child{color:var(--good);font-weight:600}
+.ltab__r--miss .num:first-child{color:var(--bad);font-weight:600}
 .ltab__r:first-of-type{border-top:0}
 .ltab__r--on{background:var(--oursbg);border-radius:8px;
   box-shadow:0 0 0 6px var(--oursbg);position:relative}
@@ -557,7 +592,7 @@ button{cursor:pointer}
 .legwrap[data-swipe=open]>.row{transform:translateX(-96px)}
 .legwrap[data-swipe=dragging]>.row{transition:none}
 
-/* ---- favourites ---- */
+/* ---- favorites ---- */
 .star{flex-shrink:0;width:40px;height:40px;border-radius:10px;border:0;
   background:transparent;color:var(--mut3);font-size:19px;line-height:1}
 .star[aria-pressed=true]{color:var(--star)}

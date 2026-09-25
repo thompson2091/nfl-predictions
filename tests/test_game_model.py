@@ -42,7 +42,7 @@ def test_columns_whose_absence_knows_the_score_are_dropped():
     assert len(leaks) >= 15, f"screen went quiet: only {len(leaks)} caught"
 
     # And the effect it screens on is real and large, measured WITHIN team so
-    # that a column missing more often for bad offences cannot masquerade.
+    # that a column missing more often for bad offenses cannot masquerade.
     w = (d.with_columns(pl.col("points").mean()
                         .over(["season", "team"]).alias("_tm"))
           .with_columns((pl.col("points") - pl.col("_tm")).alias("_vs"))

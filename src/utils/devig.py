@@ -29,8 +29,8 @@ outcomes, split by season:
 
 On receptions the three are a tie inside noise — a 0.0001 difference in log
 loss decides nothing. On anytime TD, where the probabilities sit far from a
-half, additive is ahead by 0.008, and in the direction the favourite-longshot
-literature predicts: proportional de-vig under-corrects, leaving favourites
+half, additive is ahead by 0.008, and in the direction the favorite-longshot
+literature predicts: proportional de-vig under-corrects, leaving favorites
 beating their "fair" price and longshots missing it.
 
 The residual by line on receptions says the same thing. Actual minus fair, at

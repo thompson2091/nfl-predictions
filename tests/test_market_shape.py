@@ -52,7 +52,7 @@ def test_the_bias_and_the_margin_are_reported_separately(monkeypatch, tmp_path):
     """A book can be wrong and still be too expensive, and those differ.
 
     The bottom slice here is a market that is two points too high on a longshot;
-    the top is one that is two points too *low* on a favourite. Both lose money
+    the top is one that is two points too *low* on a favorite. Both lose money
     at the posted price, and only this split says why.
     """
     df = pd.concat([_frame(6000, 0.05, 0.03, 0.02, seed=3),
@@ -64,7 +64,7 @@ def test_the_bias_and_the_margin_are_reported_separately(monkeypatch, tmp_path):
                         lambda tt, m: [path])
     lo, hi = measure("anytime_td", "xgb", deciles=2)["rows"]
     assert lo["book_error_pp"] > 0, "overpriced longshot"
-    assert hi["book_error_pp"] < 0, "underpriced favourite"
+    assert hi["book_error_pp"] < 0, "underpriced favorite"
     # The phenomenon the real table shows: similar overpay in points, wildly
     # different returns. Four points above the truth is most of a 5% price and
     # a tenth of a 40% one, which is why the return column and the points
@@ -90,7 +90,7 @@ def test_the_fade_band_is_derived_from_where_laying_clears_zero(monkeypatch, tmp
     measurement itself — so a re-run on new seasons moves it. Nothing in the
     code names a price.
     """
-    # A market that badly over-prices its longshots and is fair on favourites.
+    # A market that badly over-prices its longshots and is fair on favorites.
     df = pd.concat([_frame(9000, 0.06, 0.02, 0.02, seed=5),
                     _frame(9000, 0.45, 0.45, 0.05, seed=6)],
                    ignore_index=True)
@@ -102,7 +102,7 @@ def test_the_fade_band_is_derived_from_where_laying_clears_zero(monkeypatch, tmp
     band = out["fade_band"]
     assert band is not None, "laying the overpriced half has to be found"
     assert band["deciles"][0] == 1, "the overpriced longshots are decile 1"
-    assert band["book_hi_pct"] < 40, "the fair favourites must stay outside it"
+    assert band["book_hi_pct"] < 40, "the fair favorites must stay outside it"
     assert band["carries_pct"] > 0
 
 

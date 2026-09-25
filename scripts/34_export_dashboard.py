@@ -773,7 +773,7 @@ def _shortlist_record(target_type: str) -> dict | None:
         "seasons": d.get("seasons"), "skipped": d.get("skipped_seasons"),
         "priced_at": d.get("priced_at"),
         # The half no book sells, and the only measured return here that
-        # clears zero. Carried whole: the page shows the group's realised rate
+        # clears zero. Carried whole: the page shows the group's realized rate
         # against its price, not just the return, because the return is
         # priced at a number no market posts.
         "fade": d.get("fade"),

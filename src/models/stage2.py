@@ -265,7 +265,7 @@ def coefficients(df: pl.DataFrame) -> dict:
     Worth reading rather than trusting: if this says quarterbacks get a positive
     bump and underdogs get a positive slope, it has rediscovered the residuals
     that motivated it, which is the cheapest available check that it is
-    modelling something real.
+    modeling something real.
     """
     scaler, lr = _fit(df)
     return {f: round(float(c), 4) for f, c in zip(FEATURES, lr.coef_[0])}

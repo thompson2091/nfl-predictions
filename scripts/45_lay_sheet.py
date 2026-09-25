@@ -80,7 +80,7 @@ def _probe_rows(s: dict) -> None:
     """Names to check a price on when the rule itself names nobody.
 
     The rule's cut and the venue question are different questions: any player
-    in the band tests whether an exchange quotes this market. Labelled so the
+    in the band tests whether an exchange quotes this market. Labeled so the
     two never get read as one list.
     """
     rows = s.get("probes") or []

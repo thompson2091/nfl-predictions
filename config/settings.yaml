@@ -140,7 +140,7 @@ models:
   #
   # So xgb wins on average and on both guards. The walk-forward table above
   # disagrees because it runs at model.seed = 42 alone, and seed 42 is one of
-  # the two seeds favouring the ensemble — 16.80% against 16.53%, reproducing
+  # the two seeds favoring the ensemble — 16.80% against 16.53%, reproducing
   # the table exactly.
   #
   # Note this is the MIRROR of the {xgb, condlogit} case below. There the
@@ -488,7 +488,7 @@ model:
 clustering:
   seed: 42
   k_min: 2
-  # Also the number of categorical colours the theme provides. A position that
+  # Also the number of categorical colors the theme provides. A position that
   # wanted more groups than this would be drawing beyond its palette.
   k_max: 8
   # Reference draws for the gap statistic. 20 is where the standard error of the
@@ -533,16 +533,16 @@ betting:
 
 # The joint game model: team touchdown rate x within-team player share.
 joint:
-  # Hold a team's defence/special teams out of the offensive share denominator.
+  # Hold a team's defense/special teams out of the offensive share denominator.
   #
   # `team_lambda` is fitted on OFFENSIVE touchdowns alone — td_counts filters
   # td_team == posteam and contains no DEF/ST rows — but player_shares
-  # normalises the DEF/ST pseudo-player into the same denominator, handing it a
+  # normalizes the DEF/ST pseudo-player into the same denominator, handing it a
   # slice of a rate it cannot contribute to. Measured over four walk-forward
-  # folds that published a defence as the game's most likely scorer in 131 of
+  # folds that published a defense as the game's most likely scorer in 131 of
   # 1,131 games, at a mean probability of 0.908 against an actual rate of 0.153.
   # It also understates every real player on that team by whatever share the
-  # defence took.
+  # defense took.
   #
   # With this on, DEF/ST rows are held out of the denominator and keep the
   # calibrated classifier's own probability, which is what they had before the
@@ -556,14 +556,14 @@ joint:
   #         Top-5 94.8% -> 93.3%  (-1.50pp)   AUC 0.8413 -> 0.8320 (-0.0094)
   #   lgbm  Top-1 49.7% -> 51.1%  (+1.41pp, p=0.033), Brier better
   #   ens   Top-1 51.2% -> 51.8%  (not significant)
-  #   lr    unchanged — it never ranked a defence highly to begin with
+  #   lr    unchanged — it never ranked a defense highly to begin with
   #
   # Promoted as KEPT_WITH_JUSTIFICATION: Top-1 is the objective, and the Top-5
-  # loss is the honest price of no longer covering defences by accident. The old
-  # path bought that coverage by publishing a 15%-likely defence as the game's
+  # loss is the honest price of no longer covering defenses by accident. The old
+  # path bought that coverage by publishing a 15%-likely defense as the game's
   # most likely scorer 131 times.
   #
-  # Getting Top-5 back means ranking defences properly rather than inflating
+  # Getting Top-5 back means ranking defenses properly rather than inflating
   # them: within DEF/ST rows the classifier's AUC is 0.54, barely better than
   # chance. That is the follow-up, not a reason to keep the inflation.
   exclude_defst_from_shares: true
@@ -585,7 +585,7 @@ first_td:
   # seasons it would be applied to, so its peak is optimistic by construction.
   use_anytime_prior: false
 
-  # Derive first-TD probabilities from the joint model instead of normalising
+  # Derive first-TD probabilities from the joint model instead of normalizing
   # the classifier's scores within the game. If both teams' touchdowns arrive as
   # competing Poisson processes then P(team t scores first) = lambda_t /
   # (lambda_home + lambda_away), and the scorer is drawn from that team's
@@ -608,7 +608,7 @@ app:
   #
   # A control that silently changes which model produced the board is a good
   # way to read last month's model and believe it is this month's, so the
-  # preview is loud rather than subtle: the served version is labelled
+  # preview is loud rather than subtle: the served version is labeled
   # "(serving)", anything else raises a standing banner, and the banner says
   # that only the board follows the selector — every other tab reads artifacts
   # the pipeline wrote for the served version and does not move.

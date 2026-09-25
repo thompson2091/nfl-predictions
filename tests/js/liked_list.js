@@ -1,7 +1,7 @@
 // What "Guys I like" has to get right, checked without a browser.
 //
 // The pane is JavaScript inside a generated HTML file, so nothing in the
-// Python suite can see it. These are the behaviours that were actually wrong
+// Python suite can see it. These are the behaviors that were actually wrong
 // at some point while it was written:
 //
 //   * the two parlay builders shared their legs, because `coverPicker` and
@@ -56,7 +56,7 @@ ok('starring does not change the list', likedList(m).length === 3);
 // ── A player the board no longer carries ─────────────────────────────────
 likedToggle('Someone No Longer Listed');
 const stale = paneText();
-ok('a saved player off the board keeps a labelled row',
+ok('a saved player off the board keeps a labeled row',
    stale.includes('Someone No Longer Listed') && /not on this week/.test(stale));
 favToggle('Someone No Longer Listed');
 likedToggle('Someone No Longer Listed');
@@ -107,7 +107,7 @@ if (pair.length === 2) {
   S.liked = {}; S.likedFav = {};
   ok('the list survives a rebuild that drops a saved player',
      JSON.stringify(likedList(M())) === JSON.stringify(before));
-  ok('and the dropped player is still shown, labelled',
+  ok('and the dropped player is still shown, labeled',
      !before.includes(dropped.player) || /not on this week/.test(paneText()));
   M().players.push(dropped);
 

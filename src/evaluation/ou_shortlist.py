@@ -164,7 +164,7 @@ def model_probs(market: str, pr: pl.DataFrame) -> pl.DataFrame | None:
     if not feats_path.exists() or pr is None or pr.height == 0:
         return None
     feats = pl.read_parquet(feats_path)
-    # A defence does not catch passes, carry the ball or throw, and all 32 of
+    # A defense does not catch passes, carry the ball or throw, and all 32 of
     # them are named "DEF/ST". Off the matrix here for the same reason the
     # boards exclude them.
     if "position_DEFST" in feats.columns:
@@ -244,7 +244,7 @@ def roi_interval(ret: np.ndarray, games, n_boot: int = 4000,
     """Mean return with a 95% interval, resampled by GAME rather than by row.
 
     A book posts five passing lines on one quarterback and every one of them
-    settles on the same afternoon against the same defence. Treating those as
+    settles on the same afternoon against the same defense. Treating those as
     five independent observations is what turns a coin flip into a finding,
     and is the same correction `scripts/49_yards.py:compare` makes.
     """

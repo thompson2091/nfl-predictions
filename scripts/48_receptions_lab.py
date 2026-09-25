@@ -68,7 +68,7 @@ def game_context() -> pl.DataFrame:
     they can be used.
 
     The derived columns are the ones with a mechanism behind them rather than
-    the raw pair. A team's own implied total says how much offence is expected;
+    the raw pair. A team's own implied total says how much offense is expected;
     the opponent's says how much they will have to chase; and the margin says
     which way the game script runs. A trailing team throws, and a team throwing
     is the entire reason a receptions line moves.
@@ -79,7 +79,7 @@ def game_context() -> pl.DataFrame:
     s = s.select(keep).filter(pl.col("spread_line").is_not_null()
                               & pl.col("total_line").is_not_null())
     # spread_line is from the home team's perspective: positive means the home
-    # side is favoured by that many.
+    # side is favored by that many.
     home = s.select([
         pl.col("game_id"), pl.col("season"), pl.col("week"),
         pl.col("home_team").alias("team"),

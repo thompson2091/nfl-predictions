@@ -148,8 +148,8 @@ def payload() -> dict:
     # cap alone hides every unpriced one. A four-player fixture cannot show that
     # — the cap never engages — and the Combinations pool control it justifies
     # would look like a filter with nothing to filter.
-    # Every team's defence is on the touchdown board, and every one of them is
-    # named "DEF/ST" — which is why the line boards exclude them (a defence
+    # Every team's defense is on the touchdown board, and every one of them is
+    # named "DEF/ST" — which is why the line boards exclude them (a defense
     # catches nothing) and the touchdown board does not (it scores).
     for tm, gm in (("AAA", "AAA @ BBB"), ("BBB", "AAA @ BBB")):
         players.append(player(f"{tm} DEF/ST", tm, gm, 0.09, 0.07, 12.0, "DEFST"))
@@ -192,7 +192,7 @@ def payload() -> dict:
                                                        {"commission": 0.05, "roi": 2.46}]},
                                  "arms": [{"arm": "shortlist", "roi": -19.6, "n": 6345}]}},
         # The fitted teammate correlation, which the slip's round robin prices
-        # with. Negative and small, as measured: one offence stalling takes its
+        # with. Negative and small, as measured: one offense stalling takes its
         # players down together, so a same-team parlay is worth slightly less
         # than independence says. Only the touchdown markets carry this — an
         # over/under block has no such number, which is the invariant
@@ -500,7 +500,7 @@ def test_launch_builds_one_file_under_a_name_a_server_will_serve():
     # version of this assertion looked for "public/index.html" anywhere in the
     # recipe and was satisfied by the closing `@echo`, so it passed against a
     # target that wrote public/board.html — a test agreeing with the file
-    # rather than with the behaviour.
+    # rather than with the behavior.
     out = [ln for ln in block.splitlines() if "--out" in ln]
     assert out, "the launch target must name its output"
     assert "--out public/index.html" in out[0], (
@@ -813,7 +813,7 @@ def test_a_row_showing_only_an_opening_line_still_counts_as_a_line():
 def test_the_board_and_the_results_map_name_a_player_the_same_way():
     """A leg id and a settlement key are the same string or nothing settles.
 
-    Every team's defence is called "DEF/ST", so all 32 shared the id
+    Every team's defense is called "DEF/ST", so all 32 shared the id
     `any|DEF/ST`: starring one starred them all, and the results map resolved
     32 rows to a single outcome.
 

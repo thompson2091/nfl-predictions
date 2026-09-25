@@ -120,7 +120,7 @@ def _group_softmax(scores: np.ndarray, groups: np.ndarray,
     shifted = np.exp(scores - top[groups])
     denom = np.zeros(n_groups)
     np.add.at(denom, groups, shifted)
-    # A group of one still normalises to 1.0; no division by zero is possible
+    # A group of one still normalizes to 1.0; no division by zero is possible
     # because every group has at least the row that created it.
     return shifted / denom[groups]
 

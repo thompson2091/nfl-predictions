@@ -34,7 +34,7 @@ head coach manages the building.
 
 It still generalises no better, and the displacement says why: these are
 SUBSTITUTES, not additions. A coordinator's prior points-for is a proxy for
-how good his offence is, and the model already holds 160-odd team-form
+how good his offense is, and the model already holds 160-odd team-form
 features that measure the same thing from closer range. Being ranked 4th means
 it is a convenient split, not that it carries anything new.
 
@@ -46,7 +46,7 @@ there either.
 **Everything is as-of, and the shift is per person, not per team.** A
 coordinator carries his record ACROSS clubs — that is the whole reason to
 prefer him to the team — so the cumulative runs over his name and a first
-season with a new club still knows what his offences did before. Computed the
+season with a new club still knows what his offenses did before. Computed the
 natural way, over team and season, it would carry the result of the game being
 predicted, which is the failure `game_model.leaky_columns` exists to catch.
 

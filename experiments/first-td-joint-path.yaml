@@ -1,4 +1,4 @@
-# Derive first TD from the joint model rather than normalising the classifier
+# Derive first TD from the joint model rather than normalizing the classifier
 # within the game: P(team scores first) = lambda_t / (lambda_home + lambda_away),
 # scorer drawn from that team's shares.
 #

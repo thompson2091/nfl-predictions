@@ -8,7 +8,7 @@ def build_injury_features(
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Build player-level and team-context injury features.
 
-    `starters` is the normalised frame from
+    `starters` is the normalized frame from
     `src.features.context_features.starter_lookup` — season, week, team,
     position, starter_id — covering both depth-chart formats. It used to be the
     raw old-format depth-chart file, which ends at 2024, so the starter join

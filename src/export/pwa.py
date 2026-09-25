@@ -1,11 +1,11 @@
 """site/v2 — the same board, as something you can install.
 
 v1 is `src/export/site.py` and is not going anywhere. This is the same data,
-the same models and the same behaviour, in a shell that a phone can keep on
+the same models and the same behavior, in a shell that a phone can keep on
 its home screen: a web app manifest, a service worker, and the handful of CSS
 rules that standalone display needs and a browser tab does not.
 
-**One source of truth for behaviour.** Every page, board, filter and parlay
+**One source of truth for behavior.** Every page, board, filter and parlay
 calculation is `site.JS_*`, imported here rather than copied. A fork of 156KB
 of page logic would drift within a week and would take the 635 tests that
 cover it out of the picture for v2 — which is exactly the part of this project
@@ -19,10 +19,10 @@ icons included: `src/export/appicon.py` draws them at build time and they
 travel as data URIs, which is what keeps this from being seven files.
 
 **The token layer is widened and waiting.** v1 has eleven custom properties,
-all of them colour, with every spacing, radius and type size typed literally
+all of them color, with every spacing, radius and type size typed literally
 into 33KB of component rules. Here they are a full scale — space, radius,
 type, elevation, layout — so that adopting a design system is a change to
-`TOKENS` rather than a search through the components. The colours in it are
+`TOKENS` rather than a search through the components. The colors in it are
 still v1's: this is the seam, not the new design.
 
 What standalone display actually changes, and why it is worth the two extra
@@ -265,7 +265,7 @@ def manifest(payload: dict) -> str:
         # and no viewport that changes height as you scroll.
         "display": "standalone",
         "orientation": "portrait-primary",
-        # The colour behind the app before its first paint, and the tint of
+        # The color behind the app before its first paint, and the tint of
         # the system bars around it. The page's own ground, so launching it
         # is not a flash of white.
         "background_color": TOKENS["Ground and ink"]["bg"],
@@ -374,7 +374,7 @@ def render(payload: dict) -> dict[str, str]:
     # v1's own page builders come with it and are never called. That is dead
     # weight, about 100KB before compression, and it is deliberate for now:
     # splitting them out means refactoring v1 while v2's needs are still
-    # being learnt, and a refactor of the tested thing to serve the untested
+    # being learned, and a refactor of the tested thing to serve the untested
     # one is the wrong way round.
     js = "\n".join([v1.JS_CORE, v1.JS_SHARED, v1.JS_SLIPVIEW, v1.JS_WEEK,
                     v1.JS_COMBOS, v1.JS_SAVED, v1.JS_LADDER, v1.JS_MODEL,

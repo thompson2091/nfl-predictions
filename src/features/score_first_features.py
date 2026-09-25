@@ -21,9 +21,9 @@ def build_score_first_features(schedules: pl.DataFrame) -> pl.DataFrame:
 
     games = games.join(first_scorer, on="game_id", how="left")
 
-    # nflverse spread_line is POSITIVE when the home team is favoured — its
+    # nflverse spread_line is POSITIVE when the home team is favored — its
     # correlation with home margin of victory is +0.44. This had the test the
-    # wrong way round and so named the underdog as the favourite in every game
+    # wrong way round and so named the underdog as the favorite in every game
     # with a line, which inverted `team_fav_scored_first_rate_*`.
     games = games.with_columns([
         pl.when(pl.col("spread_line") > 0)

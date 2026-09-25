@@ -77,7 +77,7 @@ def load_blend(model_dir=None) -> float | None:
 
     Fitted by `scripts/30_receptions.py` on the validation season and saved
     beside the model. Absent, the board serves the raw model — which is the
-    behaviour before this existed and is worse, so its absence is reported by
+    behavior before this existed and is worse, so its absence is reported by
     `board_for_week` rather than passed over.
     """
     import json
@@ -107,7 +107,7 @@ def load_model(model_dir=None) -> dict | None:
     Saved as a dict rather than the `XGBCountModel` instance, so loading it
     does not depend on that class staying importable at the same path — the
     three things needed to score are the booster, the column order and the
-    dispersion, and none of them are behaviour.
+    dispersion, and none of them are behavior.
     """
     path = (model_dir or get_path("models", "receptions")) / "xgb_count.pkl"
     if not path.exists():
@@ -140,7 +140,7 @@ def expected_counts(season: int, week: int, art: dict | None = None
     df = (pl.scan_parquet(feats_path)
           .filter((pl.col("season") == season) & (pl.col("week") == week))
           .collect())
-    # No defence has ever caught a pass. It is on this matrix because it scores
+    # No defense has ever caught a pass. It is on this matrix because it scores
     # touchdowns; it reached this board with a projected reception count, and
     # all 32 of them share the name "DEF/ST", so any key built from a player's
     # name folds them into a single row belonging to no team.

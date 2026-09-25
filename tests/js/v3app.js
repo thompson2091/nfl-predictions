@@ -10,14 +10,16 @@ const { loadPage, textOf, reporter } = require(
 
 const { ok, done } = reporter();
 const x = loadPage(process.argv[2], process.argv[3],
-  ['V', 'render', 'v3Screen', 'v3Week', 'v3Games', 'v3Game', 'v3Slip',
+  ['V', 'render', 'v3Screen', 'v3Week', 'v3Games', 'v3Game', 'v3Picks', 'v3SlipBody', 'v3SlipMath',
+   'v3SaveSlip', 'v3Saved', 'v3IsSaved',
    'v3Ladder', 'v3Header', 'v3Nav', 'v3Rows', 'v3Do', 'V3TABS', 'V3MKT',
    'V3CLICKS', 'V3HIST', 'v3Questions', 'v3Value', 'v3Outcomes', 'v3Legs',
    'rowsFor', 'served', 'DATA', 'V3SORTS', 'v3Sorted', 'V3CACHE', 'v3Same',
    'isFav', 'toggleFav', 'v3Slipbar', 'v3Sheet', 'V3SHEETS', 'v3Rungs',
    'v3Num', 'v3Rows', 'v3LadderSummary', 'v3Questions', 'v3AskSend',
+   'V3BETTYPES',
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty']);
-const { V, render, v3Screen, v3Games, v3Game, v3Slip, v3Ladder, v3Nav,
+const { V, render, v3Screen, v3Games, v3Game, v3Picks, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
         rowsFor, served, DATA } = x;
 
@@ -40,7 +42,7 @@ ok('the header names the brand', app().indexOf(DATA.brand) >= 0, DATA.brand);
 // vary by week, so it is ABSENT there rather than present and inert — which
 // is how it came to sit on the landing page changing nothing.
 ok('the board offers the week picker', app().indexOf('data-v3week') >= 0);
-V.tab = 'slip'; render();
+V.tab = 'picks'; render();
 ok('and the slip does not', app().indexOf('data-v3week') < 0);
 V.tab = 'ladder'; render();
 ok('nor the ladder', app().indexOf('data-v3week') < 0);
@@ -113,7 +115,7 @@ if (cards.length) {
     ok('game tab ' + gt + ' says something',
        textOf({ _html: html }).join('').trim().length > 40);
   });
-  // A coaching note must arrive labelled. Unlabelled, a 69% prime-time
+  // A coaching note must arrive labeled. Unlabelled, a 69% prime-time
   // record beside a priced pick reads as a reason to bet, and
   // `situational_features` measured thirteen of these without one clearing
   // the vig.
@@ -121,7 +123,7 @@ if (cards.length) {
   try { render(); } catch (e) { /* reported above */ }
   const notes = (DATA.notes || {})[cards[0].game_id] || [];
   if (notes.some(n => n.context)) {
-    ok('a coaching note is labelled as context',
+    ok('a coaching note is labeled as context',
        app().indexOf('Context, not an edge') >= 0);
   }
 
@@ -140,8 +142,10 @@ const rows = rowsFor('any', null).filter(r => r.priced && r.dec);
 if (rows.length >= 3) {
   V.picks = {}; rows.slice(0, 3).forEach(r => { V.picks[r.id] = true; });
   ok('three picks are found again from their ids', v3Legs().length === 3);
+  // THE SLIP IS A SHEET NOW, not a tab: it opens over whatever board you are
+  // reading and closes back onto it, which is the shape v2 had.
   ['parlay', 'twos', 'singles'].forEach(t => {
-    V.betType = t; V.tab = 'slip';
+    V.betType = t; V.tab = 'props'; V.sheet = 'slip';
     let e = null, html = '';
     try { render(); html = app(); } catch (ex) { e = ex; }
     ok('slip as ' + t + ' renders', !e, e && (e.message + '\n' + e.stack));
@@ -155,7 +159,7 @@ if (rows.length >= 3) {
   let e = null;
   try { render(); } catch (ex) { e = ex; }
   ok('a pick that is no longer on the board is dropped, not crashed', !e);
-  V.picks = {};
+  V.picks = {}; V.sheet = null;
 } else {
   ok('too few priced rows in the fixture for the slip path', true);
 }
@@ -293,7 +297,7 @@ if (wk.length) {
   V.week = null;
 }
 
-// ── Favourites ──────────────────────────────────────────────────────────
+// ── Favorites ──────────────────────────────────────────────────────────
 //
 // On v1's store, keyed by the same row id v2 uses, so a player starred in one
 // is starred in the other. Two lists under two keys would be the same feature
@@ -324,16 +328,22 @@ if (slipRows.length >= 2) {
   ok('the slip bar appears when picks exist',
      app().indexOf('slipbar__count') >= 0);
   ok('and carries a clear control', app().indexOf('data-v3clear') >= 0);
-  V.tab = 'slip'; render();
-  ok('the slip bar hides on the slip screen itself',
-     (document.getElementById('slipbarHost') || {}).innerHTML === '');
-  ok('every leg can be removed', app().indexOf('data-v3drop=') >= 0);
-  ok('and every leg can be swiped', app().indexOf('class="legwrap"') >= 0);
+  // THE BAR OPENS THE SLIP OVER THE BOARD, it does not navigate to it. It
+  // used to be a tab, so looking at what you had just added meant leaving the
+  // board it came from and then coming back.
+  ok('the bar opens the slip rather than navigating',
+     app().indexOf('data-v3sheet="slip"') >= 0);
+  x.v3Do('v3sheet', 'slip');
+  const sheet = () => (document.getElementById('sheet') || {}).innerHTML || '';
+  ok('tapping it opens the slip sheet', sheet().indexOf('legwrap') >= 0);
+  ok('and stays on the board underneath', V.tab === 'props');
+  ok('every leg can be removed', sheet().indexOf('data-v3drop=') >= 0);
+  ok('and every leg can be swiped', sheet().indexOf('class="legwrap"') >= 0);
   v3Do('v3drop', slipRows[0].id);
   ok('removing a leg removes exactly one', v3Legs().length === 1);
   v3Do('v3clear', '1');
   ok('clear empties the slip', v3Legs().length === 0);
-  V.tab = 'props';
+  V.tab = 'props'; V.sheet = null;
 }
 
 // ── The bottom sheet ────────────────────────────────────────────────────
@@ -684,8 +694,8 @@ if (cards.length) {
   ok('the matchup tab renders', !e, e && (e.message + '\n' + e.stack));
   if (cards[0].matchup) {
     const h = app();
-    ok('and pairs one offence against the other defence',
-       h.indexOf('offence') >= 0 && h.indexOf('defence') >= 0);
+    ok('and pairs one offense against the other defense',
+       h.indexOf('offense') >= 0 && h.indexOf('defense') >= 0);
     // A gap has to read as a gap rather than as an oversight.
     ok('and says what it could not build', h.indexOf('Not shown, and why') >= 0);
   }
@@ -710,7 +720,7 @@ if (cards.length) {
        h.indexOf('>Week ' + gw[0] + '<') >= 0);
     ok('and the final score is on the row', h.indexOf('41') >= 0);
     // A week the destination cannot show must not follow you into it.
-    v3Do('v3tab', 'slip');
+    v3Do('v3tab', 'picks');
     ok('a week the next screen cannot show is dropped', V.week == null);
     V.tab = 'games';
   }
@@ -804,6 +814,62 @@ if (cards.length) {
   x.v3Do('v3close', '1');
   ok('closing it returns to that tab', V.gameTab === before && !V.sheet);
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
+// ── a slip is not a saved pick ─────────────────────────────────────────
+//
+// v3 conflated them: the tab called "My picks" showed the slip, so there was
+// nowhere for a kept copy to live. v2 had it right — the slip is the draft,
+// reachable from the bar over whatever you are reading; Picks are the copies
+// you kept, which settle themselves as the games finish.
+{
+  const rs = rowsFor('any', null).filter(r => r.priced && r.dec);
+  if (rs.length >= 2) {
+    V.tab = 'props'; V.week = null; V.saved = []; V.savedFilter = 'all';
+    V.picks = {}; rs.slice(0, 2).forEach(r => { V.picks[r.id] = true; });
+    V.betType = 'parlay'; V.stake = 10;
+    ok('the slip opens on the round robin by default',
+       x.V3BETTYPES[0][0] === 'twos' && x.V3BETTYPES[0][1] === 'Round robin');
+
+    ok('nothing is kept to begin with', x.v3Saved().length === 0);
+    x.v3Do('v3keep', '1');
+    ok('keeping copies the slip into Picks', x.v3Saved().length === 1);
+    ok('and leaves the slip alone', v3Legs().length === 2,
+       'keeping must be a copy, not a move');
+    x.v3Do('v3keep', '1');
+    ok('keeping the same slip twice keeps one copy', x.v3Saved().length === 1);
+
+    const p = x.v3Saved()[0];
+    // STRUCTURE, NOT A POINTER AT THE BOARD. Prices move under a saved slip.
+    ok('the saved copy stores its own legs',
+       (p.legs || []).length === 2 && !!p.legs[0].label);
+    ok('and the payout curve it was priced at',
+       (p.rows || []).length === 3 && p.rows.every(r => 'net' in r),
+       JSON.stringify(p.rows || []).slice(0, 120));
+    ok('and the stake that curve belongs to', p.rowStake === 10);
+
+    V.tab = 'picks';
+    let e = null;
+    try { render(); } catch (ex) { e = ex; }
+    ok('the Picks screen renders', !e, e && (e.message + '\n' + e.stack));
+    const h = app();
+    ok('and shows it as pending before the games are in',
+       h.indexOf('Pending') >= 0);
+    ok('the tab is called Picks', h.indexOf('>Picks<') >= 0
+       || app().indexOf('Picks') >= 0);
+
+    x.v3Do('v3unkeep', p.id);
+    ok('a kept slip can be removed', x.v3Saved().length === 0);
+    ok('and removing it leaves the slip alone', v3Legs().length === 2);
+
+    // The old state shapes: a tab called slip, and `saved` as a boolean.
+    V.tab = 'slip';
+    if (V.tab === 'slip') V.tab = 'picks';
+    ok('an old saved tab name lands somewhere real', V.tab === 'picks');
+    V.picks = {}; V.saved = []; V.tab = 'props'; V.sheet = null;
+  } else {
+    ok('too few priced rows in the fixture for the picks path', true);
+  }
 }
 
 // ── The ask box sends a game id and a question, and nothing else ────────

@@ -19,7 +19,7 @@ was found. The summary this writes states both the raw and the blended
 comparison in numbers so no screen has to infer which claim is being made.
 
 See src/models/yards.py for why these predict a quantile function rather than a
-mean plus a distribution, which is the one real modelling difference from
+mean plus a distribution, which is the one real modeling difference from
 scripts/30_receptions.py.
 """
 from __future__ import annotations
@@ -72,7 +72,7 @@ MARKETS: dict[str, dict] = {
 
 
 def _frame(market: str) -> tuple[pl.DataFrame, list[str]]:
-    """The shared feature matrix, labelled with one yardage column.
+    """The shared feature matrix, labeled with one yardage column.
 
     REUSED from anytime_td rather than rebuilt, for the reason given in
     scripts/30_receptions.py: who is on a roster this week and how he has been
@@ -197,7 +197,7 @@ def compare(p_model, p_book, y, games, n_boot: int = 4000, seed: int = 0) -> dic
 
     **Resampled by game, not by row.** A book posts five passing lines on one
     quarterback and every one of them settles on the same afternoon against the
-    same defence. Treating those as five independent observations is what turns
+    same defense. Treating those as five independent observations is what turns
     53 fixtures into an n of 1,352 and a coin flip into a finding. That first
     run measured a +0.0036 gain whose 95% interval over games was
     [-0.0329, +0.0381], with P(gain > 0) = 0.581.
@@ -419,7 +419,7 @@ def run(market: str, skip_train: bool) -> dict:
     cfg = get_config()
     print(f"\n=== {market} ===")
     df, fcols = _frame(market)
-    print(f"  frame: {df.height:,} labelled rows, {len(fcols)} features"
+    print(f"  frame: {df.height:,} labeled rows, {len(fcols)} features"
           + (f", gated on {MARKETS[market]['gate']}" if MARKETS[market]["gate"] else ""))
 
     model_dir = get_path("models", market)

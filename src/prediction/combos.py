@@ -6,7 +6,7 @@ derived from the board's own columns — nothing is refitted, and nothing new is
 claimed about any single player.
 
 **Independence.** A combination's probability is the product of its legs'. That
-is a modelling assumption, and it is the one `src/prediction/portfolio.py`
+is a modeling assumption, and it is the one `src/prediction/portfolio.py`
 measured rather than assumed: teammate residual correlation is -0.024 on
 anytime TD and -0.046 on first TD across three seasons, small enough that the
 correction is below simulation noise. `portfolio.fit_correlation` re-derives it, and the app

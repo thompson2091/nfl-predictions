@@ -351,7 +351,7 @@ def replay(target_type: str, model: str) -> dict | None:
                 "shopped": shopped,
                 # How far from paying for itself, in the units a price is
                 # quoted in. This is the number that says what would have to
-                # change: 2.1 points of implied probability is not a modelling
+                # change: 2.1 points of implied probability is not a modeling
                 # problem, it is roughly twice what line shopping is worth.
                 "breakeven_gap_pp": breakeven - hit,
                 # What the prices demanded. A hit rate above it is the whole

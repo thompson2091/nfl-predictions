@@ -4,7 +4,7 @@
     python scripts/54_matchups.py
     python scripts/54_matchups.py --week 3 --movement
 
-Reads the game-line archive. Nothing here is modelled, and the module docstring
+Reads the game-line archive. Nothing here is modeled, and the module docstring
 explains why there is no model opinion beside a total: the joint model's team
 rate is a regression ON the market's total, so printing it there would be
 printing the total twice and calling the second one a second opinion.

@@ -18,7 +18,7 @@ Two things are needed to say it in advance and this project now has both:
 Multiply them together and a pick carries a number saying how much of its
 projection is riding on the script.
 
-**MEASURED, AND THE DIRECTION IS NOT UNIFORM.** Normalised to each market's
+**MEASURED, AND THE DIRECTION IS NOT UNIFORM.** Normalized to each market's
 own mean, by the team's final margin:
 
     RB rushing yards    won big 1.24   close 1.01   lost big 0.73   swing 0.51
@@ -39,7 +39,7 @@ FOR HOW IT IS READ.** A team that loses by 21 often loses BECAUSE its running
 game did nothing; the 0.73 is partly the score changing the play-calling and
 partly the rushing failure causing the score. Quarterback passing yards make
 that plain — they FALL when losing big, which no game-script story predicts
-and which "getting blown out usually means the offence was bad" explains
+and which "getting blown out usually means the offense was bad" explains
 immediately. So this is a risk flag, not an adjustment: nothing here edits a
 projection, because the arrow does not reliably point the way an adjustment
 would need it to.
@@ -102,7 +102,7 @@ def _band() -> pl.Expr:
 
 
 def fit() -> dict:
-    """Production by margin band, normalised to each market's own mean.
+    """Production by margin band, normalized to each market's own mean.
 
     Restricted to player-games with a NON-ZERO value in the stat. Without
     that, every market's "won big" multiplier is dragged up by the reserves
@@ -158,7 +158,7 @@ def band_probabilities(card: dict, team: str,
     sp, tot = card.get("spread"), card.get("total")
     if sp is None or tot is None or not team:
         return None
-    # The card signs its spread negative when the HOME side is favoured; the
+    # The card signs its spread negative when the HOME side is favored; the
     # schedule signs it the other way. Flipped once, here, as everywhere else.
     c = comparables(-float(sp), float(tot), hist=hist)
     if c.height < MIN_COMPARABLES:

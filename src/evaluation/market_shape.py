@@ -9,13 +9,13 @@ number and three columns fall out:
   * **What the posted price implied**, margin included — the number you are
     actually paying.
 
-The first two show a textbook favourite-longshot bias: on anytime TD the book's
+The first two show a textbook favorite-longshot bias: on anytime TD the book's
 de-vigged number is nearly three points too high on its longest shots and more
 than a point too low on its shortest. That is a real, exploitable-looking error
 in the direction everyone expects.
 
 The third column is why it is not exploitable. The margin is larger than the
-bias at every decile, so the posted price is above the realised rate everywhere
+bias at every decile, so the posted price is above the realized rate everywhere
 — worst at the bottom, where a two-point error costs half the stake, and least
 bad at the top, where it costs eight percent. That single table explains the
 whole ROI ladder in `rank_economics.by_odds_bucket` without reference to the
@@ -36,7 +36,7 @@ from src.evaluation.combo_backtest import _season, backtest_files
 from src.evaluation.rank_economics import clustered_roi
 
 #: How many slices of the priced population. Ten is what a reader can hold, and
-#: with ~20,000 bets it leaves ~2,000 a row — enough that a decile's realised
+#: with ~20,000 bets it leaves ~2,000 a row — enough that a decile's realized
 #: rate is a measurement rather than a rumour.
 DECILES = 10
 

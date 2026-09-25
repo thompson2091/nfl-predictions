@@ -19,7 +19,7 @@ rows plus the odds archive. None of them change the model.
 3. **How many games were winnable?** The rank the actual scorer landed on, and
    the share of games whose top two are within a point — coin flips, which cap
    what is available.
-4. **Where do the misses concentrate?** By scorer position, favourite or
+4. **Where do the misses concentrate?** By scorer position, favorite or
    underdog, game total, week. `stage2.py` already documents a 9.2-point
    quarterback miss; this is where that kind of thing surfaces.
 5. **What can the pool not reach?** Games whose scorer the filter removed, and
@@ -189,7 +189,7 @@ def by_position_vs_market(players: pl.DataFrame, graded: pl.DataFrame) -> dict:
     total_mass = float(ranked["prob"].sum())
     # Share of scoring *events*, not of games. Anytime TD has about four
     # scorers a game, so dividing by games gave a column summing to 400%
-    # against a mass column normalised to 100% — two different denominators
+    # against a mass column normalized to 100% — two different denominators
     # printed side by side and invited to be compared. On first TD, where there
     # is exactly one winner per game, the two definitions coincide.
     total_wins = float(ranked["target"].sum()) or 1.0
@@ -347,21 +347,21 @@ def slices(players: pl.DataFrame, outcomes: pl.DataFrame) -> dict:
         .sort("games", descending=True)
     )
 
-    # Favourite or underdog, from the picked player's team's point of view.
+    # Favorite or underdog, from the picked player's team's point of view.
     #
     # `spread_line` in the feature table has already been flipped into each
-    # team's own perspective, and is **positive when that team is favoured** —
+    # team's own perspective, and is **positive when that team is favored** —
     # `vegas_features` defines `is_favorite` as `spread_line > 0`. Reading it
     # the other way round is not hypothetical: this project shipped that exact
     # inversion once, and `tests/test_leakage.py::test_favourite_flag_is_not_
-    # inverted` exists because teams marked favourite were winning 34.9% of
+    # inverted` exists because teams marked favorite were winning 34.9% of
     # their games. Taking the value from the top-1 row is therefore right: it
     # is that pick's team's spread, not the home team's.
     context = top1.select(["game_id", "spread_line", "total_line"]).unique(
         subset=["game_id"])
     ctx = (context.join(hits, on="game_id", how="inner")
            .with_columns([
-               pl.when(pl.col("spread_line") >= 3).then(pl.lit("pick on favourite"))
+               pl.when(pl.col("spread_line") >= 3).then(pl.lit("pick on favorite"))
                .when(pl.col("spread_line") <= -3).then(pl.lit("pick on underdog"))
                .otherwise(pl.lit("close game")).alias("side"),
                pl.when(pl.col("total_line") >= 48).then(pl.lit("high total"))
@@ -386,14 +386,14 @@ def slices(players: pl.DataFrame, outcomes: pl.DataFrame) -> dict:
 # 5. What the pool cannot reach
 # --------------------------------------------------------------------------
 
-def pool_ceiling(labelled: pl.DataFrame, filtered: pl.DataFrame) -> dict:
+def pool_ceiling(labeled: pl.DataFrame, filtered: pl.DataFrame) -> dict:
     """Games the ranking cannot win however good it gets.
 
-    `labelled` is the unfiltered candidate pool for the scored seasons;
+    `labeled` is the unfiltered candidate pool for the scored seasons;
     `filtered` is what survived `_filter_low_activity`.
     """
-    played = labelled["game_id"].n_unique()
-    with_scorer = labelled.filter(pl.col("target") == 1)["game_id"].n_unique()
+    played = labeled["game_id"].n_unique()
+    with_scorer = labeled.filter(pl.col("target") == 1)["game_id"].n_unique()
     reachable = filtered.filter(pl.col("target") == 1)["game_id"].n_unique()
     return {
         "played_games": played,

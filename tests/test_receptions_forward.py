@@ -5,7 +5,7 @@ and it is the sentence the dashboard leads with. A measurement that says that
 wrongly is worse than no measurement, in both directions: overstate the market
 and a usable model stays on the shelf, understate it and a leak gets bet.
 
-The specific things that can go wrong here are not modelling choices, they are
+The specific things that can go wrong here are not modeling choices, they are
 bookkeeping. A push graded as a loss penalises both sides for an outcome
 neither called wrong. An in-play price graded as a close credits the market
 with knowing a result it could already see. And a pooled figure over a season
@@ -114,7 +114,7 @@ def test_the_record_is_kept_per_week_because_pooling_hides_a_bad_one(monkeypatch
 def test_an_in_play_price_never_reaches_the_forward_grade():
     """`graded` filters before it measures, and this is which filter.
 
-    Not a behavioural test of the arithmetic — a source-level one, because the
+    Not a behavioral test of the arithmetic — a source-level one, because the
     ordering is the part that is easy to get wrong and impossible to see in the
     output. Resolving ids must come first (the kickoff is looked up by game
     id), dropping in-play second, and keeping the newest last: an in-play quote

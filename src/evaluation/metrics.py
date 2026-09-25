@@ -17,7 +17,7 @@ def top_k_accuracy(df: pl.DataFrame, k: int) -> float:
     by ~1,100 games of quadratic-ish filtering, for a number a single grouped
     rank computes at once.
 
-    Behaviour is unchanged: with no wider frame to hand, the games that count
+    Behavior is unchanged: with no wider frame to hand, the games that count
     are those with a scorer in `df` — exactly what the loop did.
     """
     from src.evaluation.ranking import top_k_accuracy as _top_k

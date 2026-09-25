@@ -41,7 +41,7 @@ import polars as pl
 TOP_K = (1, 3, 5)
 
 
-def game_universe(labelled: pl.DataFrame, game_col: str = "game_id",
+def game_universe(labeled: pl.DataFrame, game_col: str = "game_id",
                   target_col: str = "target") -> pl.DataFrame:
     """Games a ranking could win: played, and with a scorer in the pool.
 
@@ -49,7 +49,7 @@ def game_universe(labelled: pl.DataFrame, game_col: str = "game_id",
     universe must not depend on the filter under test, which is the whole point.
     """
     return (
-        labelled.filter(pl.col(target_col) == 1)
+        labeled.filter(pl.col(target_col) == 1)
         .select(game_col).unique().sort(game_col)
     )
 
@@ -152,7 +152,7 @@ def top_k_accuracy(scored: pl.DataFrame, k: int, universe: pl.DataFrame | None =
                    prob_col: str = "prob") -> float:
     """Top-K over `universe`, defaulting to the games present in `scored`.
 
-    The default reproduces the old behaviour for callers that have no wider
+    The default reproduces the old behavior for callers that have no wider
     frame to hand — in-training validation reporting, where the filtered set is
     all there is. Anything comparing two models must pass an explicit
     `universe`, or the two are free to be measured over different games.

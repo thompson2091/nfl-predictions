@@ -111,7 +111,7 @@ def _odds(o):
 
 
 def _team_side(card, spread):
-    """Which team a home-signed spread favours, and by how much."""
+    """Which team a home-signed spread favors, and by how much."""
     if spread is None:
         return None, None
     return (card["home"], abs(spread)) if spread < 0 else (card["away"], abs(spread))
@@ -466,7 +466,7 @@ def _rate(card: dict, side: str, stat: str) -> tuple:
 
 
 def _coach_notes(card: dict) -> list[dict]:
-    """The handicapper's situational angles, as context and labelled as such.
+    """The handicapper's situational angles, as context and labeled as such.
 
     **SELECTION IS ON THE SITUATION, NEVER ON THE RECORD.** A note fires
     because the game is in prime time or because one side is on a short week —
@@ -640,7 +640,7 @@ RULES, all of them hard:
   not there, and never round one that is.
 - Never advise. Explain what the number means; the reader decides.
 - A note marked model is our own team model's view. State it plainly as our
-  number against the book's. Do not hedge it, apologise for it, or call it
+  number against the book's. Do not hedge it, apologize for it, or call it
   unproven, untested or a lean.
 - A note marked avoid is about a bet NOT to place: we rate the player BELOW
   his price. Never call it good value.

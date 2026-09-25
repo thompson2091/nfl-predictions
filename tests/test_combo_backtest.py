@@ -83,7 +83,7 @@ def graded(n_win, n_lose, dec=4.0):
 
 
 def test_summary_reports_the_rate_the_count_and_the_money():
-    out = cb.summarise(graded(25, 75))
+    out = cb.summarize(graded(25, 75))
     assert out["slips"] == 100
     assert out["landed"] == pytest.approx(0.25)
     assert out["we_said"] == pytest.approx(0.20)
@@ -95,7 +95,7 @@ def test_summary_reports_the_rate_the_count_and_the_money():
 
 def test_an_empty_replay_summarises_to_no_slips_rather_than_zeroes():
     """A rate of 0% and no slips at all are different claims."""
-    assert cb.summarise(pd.DataFrame()) == {"slips": 0}
+    assert cb.summarize(pd.DataFrame()) == {"slips": 0}
 
 
 def test_return_without_the_biggest_wins_drops_exactly_ten():
@@ -110,8 +110,8 @@ def test_no_return_without_the_biggest_wins_when_that_is_everything():
 def test_concentrated_profit_shows_up_as_the_gap_between_the_two():
     """The whole point: one afternoon carrying a headline return."""
     slips_ = graded(1, 99, dec=400.0)
-    whole = cb.summarise(slips_)["return_per_100"]
-    rest = cb.summarise(slips_)["return_ex_top10"]
+    whole = cb.summarize(slips_)["return_per_100"]
+    rest = cb.summarize(slips_)["return_ex_top10"]
     assert whole > 200 and rest == pytest.approx(-100.0)
 
 

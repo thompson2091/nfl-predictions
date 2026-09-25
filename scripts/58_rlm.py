@@ -10,7 +10,7 @@ is 10.9% — and a page that prints a hit rate without an n manufactures exactly
 that belief at scale.
 
 And every row is scored against the CLOSING price of the sides it selects, not
-against a flat 52.38%. A rule that picks favourites beats a coin flip by
+against a flat 52.38%. A rule that picks favorites beats a coin flip by
 construction; beating the coin is not beating the book.
 """
 from __future__ import annotations

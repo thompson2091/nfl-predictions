@@ -133,7 +133,7 @@ def _pattern_probs(p: np.ndarray, rho: float = 0.0,
     """Probability of each of the 2^n who-scored patterns, index = bitmask.
 
     With `rho` zero this is the product form. Non-zero up-weights same-direction
-    pairs and down-weights opposing ones, renormalised so it stays a proper
+    pairs and down-weights opposing ones, renormalized so it stays a proper
     distribution.
 
     **The adjustment applies only between TEAMMATES.** What
@@ -208,7 +208,7 @@ def assumed_price(probability, decimal, *, top_n: int = ASSUMED_FROM_TOP
     and +123 off the same slate under the other order.
 
     A median rather than a mean: the tail is long, and one +2500 reserve drags
-    a mean somewhere no reader would recognise.
+    a mean somewhere no reader would recognize.
 
     `None` when no player on this market carries a price at all — a real state
     three weeks before a season opens, and one the caller has to answer for

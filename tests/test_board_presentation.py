@@ -145,7 +145,7 @@ def test_highlight_tier_assigns_each_row_its_measured_tier(frame, rule):
 
 
 def test_price_floor_excludes_short_favourites(frame, rule):
-    """A -250 favourite with a big edge is still not a backing tier."""
+    """A -250 favorite with a big edge is still not a backing tier."""
     assert bp.highlight_tier(frame, rule).iloc[4] == ""
     del rule["tiers"]["exclude_below_odds"]
     assert bp.highlight_tier(frame, rule).iloc[4] == "Strong"
@@ -335,7 +335,7 @@ def test_a_pooled_positive_built_on_one_good_season_is_called_out():
     econ = _econ("positive")
     econ["by_season"][1]["verdict"] = "negative"
     do, _ = bp.bet_guidance(econ, 3)
-    assert any("Be sceptical of the headline" in line for line in do)
+    assert any("Be skeptical of the headline" in line for line in do)
     assert any("only profitable in 1 season out of 2" in line for line in do)
 
 

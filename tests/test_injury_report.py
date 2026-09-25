@@ -31,7 +31,7 @@ def test_practice_participation_is_normalised_on_the_verb_not_the_spelling(mod):
     """nflverse writes "Did Not Participate In Practice" and "Full
     Participation in Practice" — different verbs AND different capitalisation,
     so matching one exact string left the other untouched."""
-    assert mod._practice("Did Not Participate In Practice") == "Did not practise"
+    assert mod._practice("Did Not Participate In Practice") == "Did not practice"
     assert mod._practice("Limited Participation in Practice") == "Limited"
     assert mod._practice("Full Participation in Practice") == "Full"
     assert mod._practice(None) is None
@@ -57,8 +57,8 @@ def test_a_designation_outranks_a_practice_note(mod):
     """Out, Doubtful, Questionable, then whoever missed practice."""
     assert mod._STATUS_ORDER["Out"] < mod._STATUS_ORDER["Doubtful"]
     assert mod._STATUS_ORDER["Questionable"] < 3 + mod._PRACTICE_ORDER[
-        "Did not practise"]
-    assert (mod._PRACTICE_ORDER["Did not practise"]
+        "Did not practice"]
+    assert (mod._PRACTICE_ORDER["Did not practice"]
             < mod._PRACTICE_ORDER["Limited"] < mod._PRACTICE_ORDER["Full"])
 
 

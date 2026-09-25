@@ -115,8 +115,8 @@ SPEC_BY_MARKET = {s.market: s for s in MARKET_SPECS}
 #:
 #: fliff also posts **both sides** of anytime TD, which no `us` book does. That
 #: turns `fair_prob` into a real two-sided de-vig for the market we actually
-#: bet, instead of the one-sided `expected_scorers` normalisation whose own
-#: docstring records it moving a favourite from 41% to 49% as book coverage
+#: bet, instead of the one-sided `expected_scorers` normalization whose own
+#: docstring records it moving a favorite from 41% to 49% as book coverage
 #: thinned. See blend.devig_market.
 DEFAULT_REGIONS: str = "us,us2"
 
@@ -146,7 +146,7 @@ DEFAULT_MARKETS: tuple[str, ...] = ("first_td", "anytime_td", "receptions",
                                    "rushing_yards", "receiving_yards",
                                    "passing_yards")
 
-#: Over/under outcomes are normalised onto the yes/no vocabulary the archive
+#: Over/under outcomes are normalized onto the yes/no vocabulary the archive
 #: already speaks. "Over" is the side that wins when the player does more,
 #: which is exactly what "Yes" means on an anytime-TD ticket, so they share one
 #: word and every downstream `side == "yes"` filter keeps working unchanged.
@@ -246,7 +246,7 @@ def parse_event_markets(
                 "implied_prob": round(p_yes, 4),
                 # Vig removed where the book posts both sides. Over/under
                 # markets always do, which is why they need none of the
-                # one-sided normalisation in blend.devig_market.
+                # one-sided normalization in blend.devig_market.
                 #
                 # Derived, not raw: `implied_prob` and `overround` below keep
                 # both sides, so this column can be recomputed under any method

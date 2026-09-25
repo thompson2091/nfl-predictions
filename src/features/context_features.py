@@ -76,7 +76,7 @@ def _build_dc_old_format(depth_charts: pl.DataFrame) -> pl.DataFrame:
 
 
 #: Skill positions the candidate pool is drawn from. The new feed also carries
-#: line and defence; nothing downstream asks about a starting guard.
+#: line and defense; nothing downstream asks about a starting guard.
 _OFF_POSITIONS = ("QB", "RB", "WR", "TE", "FB")
 
 

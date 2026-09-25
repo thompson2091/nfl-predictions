@@ -32,7 +32,7 @@ def test_softmax_normalises_within_each_group_not_across_them():
     assert p[:2].sum() == pytest.approx(1.0)
     assert p[2:].sum() == pytest.approx(1.0)
     # and the total is the number of groups, not 1 — the giveaway if the
-    # normalisation were global.
+    # normalization were global.
     assert p.sum() == pytest.approx(2.0)
 
 

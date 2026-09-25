@@ -11,7 +11,7 @@ essentially never occur and takes it from the handful that do.
 So this reads the record instead. For a game hung at a given spread and total,
 it finds every past game hung at roughly the same numbers and reports what
 actually happened in them. The lumpiness comes for free because it was never
-modelled away.
+modeled away.
 
 **WHAT IT CANNOT DO IS PRICE AN EXACT SCORELINE.** With 2,927 graded games in
 the archive a window this narrow holds a few hundred, and a scoreline seen
@@ -77,7 +77,7 @@ def comparables(spread: float, total: float,
     """Past games hung at roughly these numbers.
 
     `spread` is signed the way the schedule signs it: POSITIVE when the home
-    team is favoured. Getting that backwards mirrors the whole distribution
+    team is favored. Getting that backwards mirrors the whole distribution
     and produces a confident, exactly wrong answer, so it is asserted against
     the schedule's own convention rather than assumed.
     """
@@ -116,23 +116,31 @@ def summary(spread: float, total: float, home: str = "HOME",
 
     # Margin, in buckets that mean something to a bettor: who won, and whether
     # it was inside a field goal, a touchdown, or more.
-    bands = [("Home by 15+", pl.col("margin") >= 15),
-             ("Home by 8-14", (pl.col("margin") >= 8) & (pl.col("margin") < 15)),
-             ("Home by 4-7", (pl.col("margin") >= 4) & (pl.col("margin") < 8)),
-             ("Home by 1-3", (pl.col("margin") >= 1) & (pl.col("margin") < 4)),
-             ("Tie", pl.col("margin") == 0),
-             ("Away by 1-3", (pl.col("margin") <= -1) & (pl.col("margin") > -4)),
-             ("Away by 4-7", (pl.col("margin") <= -4) & (pl.col("margin") > -8)),
-             ("Away by 8-14", (pl.col("margin") <= -8) & (pl.col("margin") > -15)),
-             ("Away by 15+", pl.col("margin") <= -15)]
+    # THE BOUNDS TRAVEL WITH THE BAND.
+    #
+    # `lo` and `hi` below are the Wilson interval on the PERCENTAGE, not the
+    # margin. A page wanting to mark the band a finished game landed in has to
+    # know the margin edges, and the only other way to get them is to parse
+    # "SEA by 8-14" back out of a label that is built for reading. `mlo` and
+    # `mhi` are inclusive margin bounds, home-positive, null where open.
+    bands = [("Home by 15+", pl.col("margin") >= 15, 15, None),
+             ("Home by 8-14", (pl.col("margin") >= 8) & (pl.col("margin") < 15), 8, 14),
+             ("Home by 4-7", (pl.col("margin") >= 4) & (pl.col("margin") < 8), 4, 7),
+             ("Home by 1-3", (pl.col("margin") >= 1) & (pl.col("margin") < 4), 1, 3),
+             ("Tie", pl.col("margin") == 0, 0, 0),
+             ("Away by 1-3", (pl.col("margin") <= -1) & (pl.col("margin") > -4), -3, -1),
+             ("Away by 4-7", (pl.col("margin") <= -4) & (pl.col("margin") > -8), -7, -4),
+             ("Away by 8-14", (pl.col("margin") <= -8) & (pl.col("margin") > -15), -14, -8),
+             ("Away by 15+", pl.col("margin") <= -15, None, -15)]
     out["margins"] = []
-    for name, expr in bands:
+    for name, expr, mlo, mhi in bands:
         k = c.filter(expr).height
         lo, hi = _wilson(k, n)
         out["margins"].append({
             "band": name.replace("Home", home).replace("Away", away),
             "n": k, "pct": round(k / n * 100, 1),
-            "lo": round(lo * 100, 1), "hi": round(hi * 100, 1)})
+            "lo": round(lo * 100, 1), "hi": round(hi * 100, 1),
+            "mlo": mlo, "mhi": mhi})
 
     # Total points, against the posted number and in bands around it.
     over = c.filter(pl.col("total") > total).height
@@ -162,7 +170,7 @@ def for_card(card: dict, hist: pl.DataFrame | None = None) -> dict | None:
     """Straight from a site card, with the sign convention handled once.
 
     The card's `spread` is signed toward the home side and NEGATIVE when the
-    home team is favoured — it is a betting line, not a margin. The schedule's
+    home team is favored — it is a betting line, not a margin. The schedule's
     `spread_line` is the other way round. Flipping it here, once, is why no
     caller has to remember which of the two it is holding.
     """
@@ -212,8 +220,8 @@ def ladders(spread: float, total: float, home: str, away: str,
     # came for is in the middle rather than at an end.
     steps = sorted({round(total + d * 2) + 0.5 for d in range(-4, 5)})
     out["total"] = {"posted": total, "rows": [over("total", t) for t in steps]}
-    # And the spread, as "how often did the favourite win by more than X".
-    # Signed the schedule's way: positive `spread` means home favoured.
+    # And the spread, as "how often did the favorite win by more than X".
+    # Signed the schedule's way: positive `spread` means home favored.
     sp_steps = sorted({round(spread + d * 2) + 0.5 for d in range(-4, 5)})
     out["spread"] = {"posted": spread,
                      "rows": [over("margin", t) for t in sp_steps]}
@@ -221,7 +229,7 @@ def ladders(spread: float, total: float, home: str, away: str,
 
 
 def ladders_for_card(card: dict, hist: pl.DataFrame | None = None) -> dict | None:
-    """As `for_card`: the site's spread is negative when home is favoured."""
+    """As `for_card`: the site's spread is negative when home is favored."""
     sp, tot = card.get("spread"), card.get("total")
     if sp is None or tot is None:
         return None
@@ -240,7 +248,7 @@ def scenarios(spread: float, total: float, home: str, away: str,
     can happen and nobody can tell which of them overlap. A partition can be
     read straight down: these are all the ways it goes, and the column adds up.
 
-    The favourite is named rather than "home", because "home by 8-14" is a
+    The favorite is named rather than "home", because "home by 8-14" is a
     sentence a reader has to translate and "KC by 8-14" is not.
 
     Nothing here is a projection of THIS game. It is the record of games the
@@ -255,8 +263,8 @@ def scenarios(spread: float, total: float, home: str, away: str,
     if n == 0:
         return out
 
-    # Margin from the FAVOURITE's point of view, so the bands read the same
-    # way whichever side is favoured.
+    # Margin from the FAVORITE's point of view, so the bands read the same
+    # way whichever side is favored.
     m = pl.col("margin") if spread > 0 else -pl.col("margin")
     bands = [
         ("pulls away", f"{fav} pulls away", m >= 15),
@@ -283,7 +291,7 @@ def scenarios(spread: float, total: float, home: str, away: str,
     out["cells"] = cells
 
     # The headline numbers a reader wants without reading a table. These DO
-    # overlap each other and are labelled separately for that reason.
+    # overlap each other and are labeled separately for that reason.
     def share(expr):
         k = c.filter(expr).height
         lo, hi = _wilson(k, n)
@@ -325,7 +333,7 @@ def calibration(hist: pl.DataFrame | None = None, bins: int = 10) -> dict:
     Measured 2026-09-25 over 2,692 games with a usable comparable set: the
     weighted mean gap between predicted and observed is 1.17pp on the home
     win, and in the 66-76% band — the one that Thursday game sat in — the
-    favourite won 70.1% of 518 games. So a 70% that loses is a 70% behaving
+    favorite won 70.1% of 518 games. So a 70% that loses is a 70% behaving
     correctly, three times in ten.
 
     Slow: it is O(n^2) over three thousand games, a few seconds. Called by the
@@ -382,7 +390,7 @@ def win_curve(hist: pl.DataFrame | None = None) -> dict:
     the observed rate in a window, which is right for the distribution's
     SHAPE and wrong for a single probability near a pick'em: the window is
     two points wide, the crossover is noisy, and at a model spread of -0.7
-    (home favoured by 0.7) the window returned 48.5% for the home side. The
+    (home favored by 0.7) the window returned 48.5% for the home side. The
     page then printed "our model: PIT by 0.7" beside "CIN 51.5%", two
     statements from the same model pointing opposite ways.
 
@@ -392,7 +400,7 @@ def win_curve(hist: pl.DataFrame | None = None) -> dict:
 
     Monotone across the range and ragged across the middle — 47.5% at a
     pick'em on 242 games is within noise of 50 and still prints as "the away
-    team is favoured". A logistic fit through all of it crosses 50 where the
+    team is favored". A logistic fit through all of it crosses 50 where the
     spread says it should and is defensible at every point in between.
 
     Fitted by Newton-Raphson on two parameters; no dependency, and at three
@@ -424,7 +432,7 @@ def win_curve(hist: pl.DataFrame | None = None) -> dict:
 
 def win_prob(spread: float, curve: dict | None = None,
              hist: pl.DataFrame | None = None) -> float | None:
-    """P(home wins) at a SCHEDULE-signed spread — positive means home favoured."""
+    """P(home wins) at a SCHEDULE-signed spread — positive means home favored."""
     import math
 
     c = curve or win_curve(hist)

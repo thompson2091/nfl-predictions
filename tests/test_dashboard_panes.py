@@ -7,13 +7,13 @@ that already happened once while it was being written, and each is silent:
 
   * both parlay builders shared their legs, because the picker reached for
     `S.cover` directly rather than the state it was handed;
-  * a saved player the board no longer carries has to keep a labelled row,
+  * a saved player the board no longer carries has to keep a labeled row,
     because a row that vanishes looks exactly like one never added;
   * on first TD, two players from one game cannot both score first, so those
     combinations are impossible rather than merely correlated.
 
 The payload here is synthetic and tiny. Building the real one runs six scoring
-passes, and none of the behaviour above depends on a real slate — what it needs
+passes, and none of the behavior above depends on a real slate — what it needs
 is two markets, a same-game pair, and a player with no price.
 
     pytest tests/test_liked_list.py -v
@@ -109,7 +109,7 @@ PAYLOAD = {
     # The count market's payload is a different shape from a TD market's and
     # deliberately so: a player, a line, and the same player again at another
     # book's line. `thin` is what a one-book consensus is marked with, and the
-    # fixture carries one because "shown but marked" is the behaviour under
+    # fixture carries one because "shown but marked" is the behavior under
     # test — dropping it would hide the only price there is.
     "receptions": {
         "season": 2026, "week": 2, "problem": "", "model": True,

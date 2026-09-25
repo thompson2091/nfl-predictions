@@ -256,7 +256,7 @@ def cmd_baseline(a) -> int:
     """
     markets = (a.market,) if a.market else H.MARKETS
     result = _run({}, "baseline (gate tier)", markets)
-    summary = H.summarise(result)
+    summary = H.summarize(result)
     H.save(result, a.id)
     _print_summary(summary)
 
@@ -292,7 +292,7 @@ def _experiment(a, tier: str) -> int:
               "A screen never promotes anything.")
 
     result = _run(spec["overlay"], tier, markets, models=models)
-    summary = H.summarise(result)
+    summary = H.summarize(result)
     H.save(result, spec["id"])
     _print_summary(summary)
 
@@ -647,7 +647,7 @@ def cmd_noise_floor(a) -> int:
             "note": f"Champion reference run (seed {base_seed}), from the noise "
                     f"floor measurement.",
             "feature_hash": results[0]["meta"]["feature_hash"],
-            "seed": base_seed, "summary": H.summarise(results[0]),
+            "seed": base_seed, "summary": H.summarize(results[0]),
             "verdict": "CHAMPION", "comparisons": [],
         })
         print(f"\nChampion set to '{champion_run}'.")

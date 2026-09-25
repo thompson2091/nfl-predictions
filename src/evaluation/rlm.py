@@ -9,7 +9,7 @@ moves a number.
 
 What is derivable is the move itself, from the open and close this project now
 archives. A side is "reverse" when the market moved away from it while it was
-the side you would expect tickets on — the favourite, or the over. That is a
+the side you would expect tickets on — the favorite, or the over. That is a
 proxy and it is stated as one: without ticket counts the popular side has to be
 assumed rather than observed, and the assumption is only usually right.
 
@@ -36,7 +36,7 @@ MIN_MOVE_PP = 1.0
 #: Break-even at -110, which is what a SPREAD or TOTAL is quoted at. It is the
 #: wrong yardstick for a moneyline and that mistake is easy to make: the first
 #: version of `evaluate` compared every definition to it and reported "moneyline
-#: moved toward this side" as clearing at 62.3%. Those sides are favourites
+#: moved toward this side" as clearing at 62.3%. Those sides are favorites
 #: priced at 56.8% — beating a coin flip is not beating THEM. Every definition
 #: is now scored against the price it would actually be taken at, and this
 #: constant survives only to label the spread and total markets.
@@ -54,16 +54,16 @@ def _wilson(hits: int, n: int, z: float = 1.96) -> tuple[float, float]:
         return (0.0, 1.0)
     p = hits / n
     d = 1 + z * z / n
-    centre = (p + z * z / (2 * n)) / d
+    center = (p + z * z / (2 * n)) / d
     half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
-    return (max(0.0, centre - half), min(1.0, centre + half))
+    return (max(0.0, center - half), min(1.0, center + half))
 
 
 def moves(seasons: list[int] | None = None) -> pl.DataFrame:
     """Open-to-close movement per game and market, joined to the outcome.
 
     One row per (game, market, side). `move_pp` is signed in that side's
-    favour: positive means the market came toward it.
+    favor: positive means the market came toward it.
     """
     from src.ingest.game_lines import LINES_PATH
 
@@ -155,7 +155,7 @@ def evaluate(seasons: list[int] | None = None,
              min_move: float = MIN_MOVE_PP) -> list[dict]:
     """Every definition, scored against the price it would be taken at.
 
-    **Not against a flat break-even.** A rule that selects favourites wins more
+    **Not against a flat break-even.** A rule that selects favorites wins more
     than half by construction, and comparing that to 52.38% reports an edge
     where there is none. What matters is the hit rate against the CLOSING
     implied probability of the very sides selected: win 58.9% of bets priced at
@@ -204,7 +204,7 @@ def evaluate(seasons: list[int] | None = None,
         # +$0.18 per $100 and one LOSING $3.78. Both readings were defensible
         # and neither was useful, because a hit rate cannot be compared to an
         # average price when the prices run from -450 to +381: the same 52%
-        # is a fortune on longshots and a catastrophe on favourites.
+        # is a fortune on longshots and a catastrophe on favorites.
         #
         # So the unit is the return on one flat stake. Each bet pays `dec - 1`
         # when it wins and -1 when it loses; the definition's edge is the mean

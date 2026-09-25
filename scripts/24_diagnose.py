@@ -64,7 +64,7 @@ def main(target_type: str, model_name: str, reuse: bool,
     from src.models.trainer import _filter_low_activity
     feats = pl.read_parquet(
         get_path("processed", target_type) / "features.parquet")
-    labelled = feats.filter(pl.col("season").is_in(seasons)
+    labeled = feats.filter(pl.col("season").is_in(seasons)
                             & pl.col("target").is_not_null())
 
     try:
@@ -77,7 +77,7 @@ def main(target_type: str, model_name: str, reuse: bool,
     report = {
         "target_type": target_type, "model": model_name,
         "seasons": seasons, "generated": date.today().isoformat(),
-        "pool": D.pool_ceiling(labelled, _filter_low_activity(labelled)),
+        "pool": D.pool_ceiling(labeled, _filter_low_activity(labeled)),
         "winnability": D.winnability(outcomes),
         "team_vs_player": D.team_vs_player(players),
         "slices": D.slices(players, outcomes),

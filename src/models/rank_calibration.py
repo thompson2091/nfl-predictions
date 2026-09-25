@@ -37,7 +37,7 @@ Measured on held-out data, this model's error depends on *where a player sits in
 its own ranking*, not just on the probability it assigned. For anytime-TD the #1
 pick is accurate, the #2 runs about 6 points hot, and everything from #4 down
 runs several points cold. That is a systematic bias the model cannot see, because
-nothing in its features encodes "you are this game's fourth-favourite".
+nothing in its features encodes "you are this game's fourth-favorite".
 
 The per-game level calibration already in the pipeline can't fix it: that applies
 one shift to a whole game, so it moves every rank together. This applies a shift
@@ -65,7 +65,7 @@ def would_be_applied(target_type: str, model_dir) -> bool:
 
     Both answers are currently False, and the reasons differ:
 
-      * `first_td` never reaches the correction at all. `predict()` normalises
+      * `first_td` never reaches the correction at all. `predict()` normalizes
         raw probabilities within the game and returns; only the anytime branch
         calls `_anchor_to_market`, which is where the correction lives.
         `scripts/10_backtest.py` branches the same way.
@@ -110,7 +110,7 @@ def _sigmoid(x):
 
 def fit_rank_calibration(df: pl.DataFrame, prob_col: str = "prob",
                          season_col: str | None = None) -> dict:
-    """Learn a per-rank logit shift from labelled data.
+    """Learn a per-rank logit shift from labeled data.
 
     Pass VALIDATION seasons; fitting on test produces a flattering, meaningless
     result.
