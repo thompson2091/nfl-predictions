@@ -941,15 +941,19 @@ function v3Game(gid) {
     + '<div class="sub" style="margin-top:8px">' + esc(v3Kick(c)) + '</div>'
     + v3WinBar(c)
     + v3Compare(c)    + '</div>'
+    // ASKING SITS DIRECTLY UNDER THE SCORE CARD.
+    //
+    // It is the first thing to do with a game rather than the last, and
+    // below the public split it fell under the fold on a phone: the control
+    // that answers anything was the one thing you had to scroll to find.
+    // Above the tab bar, so every tab has it.
+    + '<button class="askbtn" data-v3sheet="ask">'
+    + '<span>Ask about this game</span><i>\u2192</i></button>'
     // PUBLIC MONEY IS GAME CONTEXT, so it sits with the matchup above the
     // tabs rather than under whichever tab you happen to be on. The injury
     // report is a SECTION, not context, so it became a tab of its own —
     // under the matchup card it pushed every control two screens down.
     + v3PublicMoney(gid)
-    // ASKING IS REACHABLE FROM EVERY TAB, so it sits above the tab bar
-    // with the rest of the game's context rather than inside one section.
-    + '<button class="askbtn" data-v3sheet="ask">'
-    + '<span>Ask about this game</span><i>\u2192</i></button>'
     // ONE DISTRIBUTION, ONE TAB.
     //
     // Bets and Score were two renderings of the same thing: `score_dist`

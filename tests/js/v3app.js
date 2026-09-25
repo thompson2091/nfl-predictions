@@ -780,6 +780,18 @@ if (cards.length) {
     ok('the ask control is on the ' + t + ' tab',
        app().indexOf('data-v3sheet="ask"') >= 0);
   });
+  // ABOVE THE PUBLIC SPLIT, not below it. Under that block it fell past the
+  // fold on a phone: the control that answers anything was the one you had
+  // to scroll to find.
+  V.gameTab = 'notes'; render();
+  const gh = app();
+  const askAt = gh.indexOf('data-v3sheet="ask"');
+  const pubAt = gh.indexOf('Share of bets');
+  ok('the ask control sits under the score card',
+     askAt >= 0 && (pubAt < 0 || askAt < pubAt),
+     'ask at ' + askAt + ', public split at ' + pubAt);
+  ok('and above the tab bar', askAt < gh.indexOf('data-v3gtab="players"'));
+
   // And it opens over whichever tab raised it, rather than navigating away.
   V.gameTab = 'edge'; render();
   const before = V.gameTab;

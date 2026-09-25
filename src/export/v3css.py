@@ -55,6 +55,14 @@ body{margin:0;background:var(--bg);color:var(--ink);
   gap:12px;height:52px;padding:0 16px;background:var(--bg)}
 a{color:var(--ours);text-decoration:none}
 button,input,select{font-family:inherit;font-size:inherit;color:inherit}
+/* SIXTEEN PIXELS, ON EVERY CONTROL YOU CAN FOCUS.
+   iOS Safari zooms the page when a form control is focused whose computed
+   font-size is under 16px, and it does NOT zoom back out afterwards: tap the
+   search box once and the whole board stays magnified until you pinch it
+   back. The rule is on the elements rather than on each component, so a new
+   control cannot reintroduce it by inheriting the 15px body size. Raising
+   `body` instead would reflow every card to fix five controls. */
+input,select,textarea{font-size:16px}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--ours);outline-offset:2px}
 .num{font-variant-numeric:tabular-nums}
@@ -69,7 +77,7 @@ button{cursor:pointer}
   font-size:13px;color:var(--mut)}
 .wk--past{border-color:var(--warn);background:var(--warnbg);color:var(--warn);
   font-weight:600}
-.wk select{border:0;background:transparent;font-size:13px;color:inherit;
+.wk select{border:0;background:transparent;font-size:16px;color:inherit;
   font-weight:inherit;padding:0;margin:0}
 .past{margin:12px 0 0;padding:10px 14px;border-radius:12px;
   background:var(--warnbg);color:var(--warn);font-size:13px;line-height:18px}
@@ -114,7 +122,7 @@ button{cursor:pointer}
 .picker--on{border-color:var(--ours);background:var(--oursbg)}
 .picker .eyebrow{flex-shrink:0}
 .picker select{flex:1;min-width:0;border:0;background:transparent;height:42px;
-  font-size:15px;font-weight:600}
+  font-size:16px;font-weight:600}
 .dirbtn{flex-shrink:0;height:32px;padding:0 10px;border-radius:8px;
   border:1px solid var(--btnline);background:var(--inset);font-size:13px;
   font-weight:600;color:var(--mut)}
@@ -122,7 +130,7 @@ button{cursor:pointer}
 /* ---- search ---- */
 .search{position:relative;margin-top:12px}
 .search input{width:100%;height:44px;padding:0 40px 0 14px;border-radius:12px;
-  border:1px solid var(--btnline);background:var(--card);font-size:15px;
+  border:1px solid var(--btnline);background:var(--card);font-size:16px;
   -webkit-appearance:none;appearance:none}
 .search input::-webkit-search-cancel-button{display:none}
 .searchx{position:absolute;right:6px;top:6px;width:32px;height:32px;
@@ -278,6 +286,9 @@ button{cursor:pointer}
 .btn[aria-pressed=true]{background:var(--goodbg);color:var(--good);
   border-color:var(--good)}
 .ask{display:flex;gap:8px;margin-top:12px}
+/* No font-size here on purpose: the 16px floor above covers it, and a
+   number written here is a number that can be lowered without anyone
+   connecting it to the zoom. */
 .ask input{flex:1;min-width:0;height:44px;padding:0 12px;border-radius:12px;
   border:1px solid var(--btnline);background:var(--inset)}
 .ask button{width:44px;height:44px;border-radius:12px;border:0;
@@ -396,8 +407,8 @@ button{cursor:pointer}
 .gsel{display:flex;align-items:center;gap:4px;min-width:0;flex:1;
   justify-content:flex-end}
 .gsel select{min-width:0;max-width:190px;height:36px;border-radius:10px;
-  border:1px solid var(--btnline);background:var(--card);font-size:13px;
-  font-weight:600;padding:0 6px}
+  border:1px solid var(--btnline);background:var(--card);font-size:16px;
+  font-weight:600;padding:0 4px}
 .gstep{width:36px;height:36px;border-radius:10px;border:1px solid var(--btnline);
   background:var(--card);color:var(--ink);font-size:18px;line-height:1;
   flex-shrink:0}

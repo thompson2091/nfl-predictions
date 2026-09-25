@@ -216,6 +216,8 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "an old tab name does not render an empty screen",
                  "the ask control is on the edge tab",
                  "tapping it opens the ask sheet",
+                 "the ask control sits under the score card",
+                 "and above the tab bar",
                  "and does not leave the tab",
                  "the notes tab opens with how the game may unfold",
                  "the public split sits above the tab bar",
@@ -428,3 +430,35 @@ def test_v3_does_not_share_a_service_worker_cache_with_v2():
                   "built": "2026-09-18T01:19:25+00:00", "markets": [],
                   "results": {}})
     assert "v3-" in out["sw.js"]
+
+
+def test_no_focusable_control_is_small_enough_to_zoom_ios():
+    """iOS SAFARI ZOOMS THE PAGE AND DOES NOT ZOOM BACK OUT.
+
+    Focus a form control whose computed font-size is under 16px and mobile
+    Safari magnifies the whole document, leaving it that way until the reader
+    pinches back. The board is read on a phone, so every control you can
+    focus — the search box, the ask box, the week picker, the game switcher,
+    the ladder fields — has to clear the floor.
+
+    Falsified by lowering any of them, including by deleting the base rule
+    and letting a control inherit the 15px body size.
+    """
+    import importlib as _il
+    import re
+
+    css = _il.import_module("src.export.v3css").css()
+    # The base rule has to exist, or every control inherits `body`.
+    assert re.search(r"input\s*,\s*select\s*,\s*textarea\s*\{[^}]*"
+                     r"font-size:\s*16px", css), (
+        "the 16px floor on input/select/textarea is gone; controls now "
+        "inherit the body size")
+    bad = []
+    for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", css):
+        sel = sel.strip()
+        if "::" in sel or not re.search(r"\b(input|select|textarea)\b", sel):
+            continue
+        m = re.search(r"font-size:\s*(\d+(?:\.\d+)?)px", body)
+        if m and float(m.group(1)) < 16:
+            bad.append((sel.splitlines()[-1].strip(), m.group(1) + "px"))
+    assert not bad, f"controls below the 16px floor: {bad}"
