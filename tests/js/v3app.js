@@ -20,7 +20,8 @@ const x = loadPage(process.argv[2], process.argv[3],
    'V3BETTYPES',
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
-   'v3Sharp', 'v3SharpSides', 'V3RATIO_SMALL']);
+   'v3Sharp', 'v3SharpSides', 'V3RATIO_SMALL',
+   'v3NowImplied', 'v3Clv', 'v3ClvNote']);
 const { V, render, v3Screen, v3Games, v3Game, v3Picks, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
         rowsFor, served, DATA } = x;
@@ -1044,6 +1045,55 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('the sharp block is on the game screen',
      app().indexOf('Where the bigger bets are') >= 0);
   V.game = null; V.tab = 'props';
+}
+
+
+// ── The move since open, compared like for like ─────────────────────────
+//
+// `openImplied` is raw and `book` is de-vigged. Subtracting one from the
+// other measured the overround, not the market, and only ever downward: on
+// the live board 316 of 814 rows carried the move with the wrong sign, and
+// the closing-line note — this project's one measured claim — read 16% where
+// the backtest says 60%.
+{
+  const { v3NowImplied, v3Clv, v3ClvNote } = x;
+
+  ok('the current price is read raw, margin and all',
+     Math.abs(v3NowImplied({ odds: -345 }) - 0.7753) < 0.001,
+     String(v3NowImplied({ odds: -345 })));
+  ok('and an underdog price too',
+     Math.abs(v3NowImplied({ odds: 205 }) - 0.3279) < 0.001,
+     String(v3NowImplied({ odds: 205 })));
+  ok('a row with no price has no implied number',
+     v3NowImplied({}) === null);
+
+  // Kyren Williams, from the board the bug was found on. Opened -260
+  // (0.7222 raw), now -345 (0.7753 raw): the market came 5.3pp toward him.
+  // The de-vigged 0.608 would call that a 11.4-point move AWAY.
+  const moved = { openImplied: 0.7222, odds: -345, book: 0.608,
+                  modelOnly: 0.80, kind: 'td' };
+  const c = v3Clv([moved]);
+  ok('a market that came toward the pick is counted as toward',
+     c && c.n === 1 && c.toward === 1, JSON.stringify(c));
+
+  // And the reverse, so the fix is not simply "always true".
+  const away = { openImplied: 0.7222, odds: -200, book: 0.60,
+                 modelOnly: 0.80, kind: 'td' };
+  const c2 = v3Clv([away]);
+  ok('a market that drifted away is not counted as toward',
+     c2 && c2.n === 1 && c2.toward === 0, JSON.stringify(c2));
+
+  // ONLY ROWS RATED ABOVE THE OPEN. "The price moved" is not the claim.
+  const notours = { openImplied: 0.7222, odds: -345, book: 0.608,
+                    modelOnly: 0.50, kind: 'td' };
+  ok('a pick we rated below the open is not counted at all',
+     v3Clv([notours]) === null, JSON.stringify(v3Clv([notours])));
+
+  // Under a handful the share is noise and must not be printed.
+  ok('three picks are too few to report a share',
+     v3ClvNote([moved, moved, moved], 'picks') === '');
+  ok('four are enough',
+     v3ClvNote([moved, moved, moved, moved], 'picks').indexOf('4 of 4') >= 0);
 }
 
 done();

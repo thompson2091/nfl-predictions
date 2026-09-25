@@ -666,8 +666,10 @@ function v3Detail(row) {
     ? v3Dash(american(row.best)) + (row.bestBook ? ' at ' + row.bestBook : '')
     : null);
   add('Opened at', has(row.openOdds) ? v3Dash(american(row.openOdds)) : null);
-  if (has(row.openImplied) && has(row.book)) {
-    const mv = (row.book - row.openImplied) * 100;
+  // Raw against raw. See `v3NowImplied`: against `book` this read the
+  // overround and flipped the sign on 316 of 814 rows.
+  if (has(row.openImplied) && has(v3NowImplied(row))) {
+    const mv = (v3NowImplied(row) - row.openImplied) * 100;
     add('Moved', (mv > 0 ? '+' : '') + mv.toFixed(1) + 'pp since open');
   }
   add('Line', has(row.line) ? row.line + ' ' + (unitOf(row.key) || '') : null);
@@ -2416,10 +2418,32 @@ function v3Correlation(legs) {
 // Counted ONLY on rows we rated above the open. "The price moved" is not the
 // claim; "it moved our way on the ones we disagreed about" is, and counting
 // the rest would dilute it toward 50% by construction.
+// LIKE FOR LIKE, OR THE DIFFERENCE IS NOT A MOVE.
+//
+// `openImplied` is the RAW implied probability of the opening price. It is
+// kept raw deliberately — `opening_prices` says so in as many words: "the
+// implied figure is always there, and comparing it to the board's implied
+// price is like for like — both carry the book's margin, so the difference is
+// the market moving rather than the margin changing."
+//
+// `book` is the DE-VIGGED number. Subtracting the raw open from the de-vigged
+// now measures the overround, not the market, and it does so in one direction:
+// the de-vig only ever lowers a touchdown price, so the difference reads
+// negative whatever the market did.
+//
+// Measured on the live board the day this was found: of 814 priced rows, 316
+// carried the move with the WRONG SIGN. Kyren Williams showed "-12.0pp" on a
+// market that had come 8.6pp toward him. It also drove the closing-line note,
+// which is this project's one measured claim — a slip of five picks the market
+// had moved toward reported "0 of 5".
+function v3NowImplied(row) {
+  return has(row.odds) ? 1 / amToDec(row.odds) : null;
+}
+
 function v3Clv(rows) {
   let n = 0, toward = 0;
   for (const r of rows || []) {
-    const open = r.openImplied, now = r.book, ours = betProb(r);
+    const open = r.openImplied, now = v3NowImplied(r), ours = betProb(r);
     if (!has(open) || !has(now) || !has(ours)) continue;
     if (ours <= open) continue;          // we did not rate it above the open
     n++;
