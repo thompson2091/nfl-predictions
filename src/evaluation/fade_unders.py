@@ -2,70 +2,64 @@
 
 The largest measured edge in this project is the touchdown fade: inside the
 band, players rated well under the book's number score far less often than
-priced, +47.7% on 2,205 of them. It is unbettable. No book posts the No side
-of a touchdown prop, and `lay_sheet` exists because collecting it means an
-exchange and an order book that may not be there.
+priced. It is unbettable. No book posts the No side of a touchdown prop, and
+`lay_sheet` exists because collecting it means an exchange and an order book
+that may not be there.
 
-A yardage line HAS a posted under. If the same view expresses there, the edge
-becomes placeable anywhere. This measures whether it does.
+A yardage line HAS a posted under. This measures whether the same view
+expresses there, and it does — but only once the question is asked in a form
+that can be answered before kickoff.
 
-**MOST OF THE APPARENT EFFECT IS PLAYERS WHO DID NOT PLAY.** Taken at face
-value the fade group goes under 58.5% of the time against a 52.4% baseline,
-which reads as a large edge on top of a market that is already tilted. It is
-not: 4.6% of priced players recorded ZERO targets, 99.6% of those went under —
-a man who does not play goes under everything — and they are over-represented
-among heavy fades, because a model rating someone far below his price is
-often reading the same thin usage that gets him scratched.
+**THE FIRST TWO ANSWERS WERE BOTH WRONG, IN OPPOSITE DIRECTIONS.**
 
-Remove them and the baseline falls to 50.1%, which is what a fair market
-should look like and is the number that says the rest of the measurement can
-be trusted.
+Taken raw, the fade group went under 58.5% against a 52.4% baseline. That was
+scratches: 4.6% of priced players recorded zero targets, 99.6% of those went
+under, and they cluster among heavy fades because a model rating someone far
+below his price is often reading the same thin usage that gets him ruled out.
 
-**AND THE CORRECTION IS ITSELF INVALID.** Filtering on targets or carries
-conditions on a POST-GAME quantity. Nobody knows at bet time how many times a
-man will touch the ball, so a rate measured inside "he saw a target" is not a
-rate anyone can bet. It replaced a scratch artifact with a look-ahead one.
+Removing them by filtering on `targets` or `carries` replaced a scratch
+artifact with a look-ahead one. Nobody knows at bet time how many times a man
+will touch the ball. Conditioning on it is not a rate anyone can bet, and it
+is enormous: on rushing, 1-2 actual carries goes under 72% of the time and 16+
+goes under 24%. The under was reading how much he played, not who he is.
 
-How completely usage drives this, on rushing yards:
+**THE ANSWER IS TO CONDITION ON PROJECTED USAGE, WHICH IS KNOWN IN ADVANCE.**
 
-    carries  1-2    n   846   under 72.0%
-    carries  3-5    n 1,021   under 56.0%
-    carries  6-10   n 1,101   under 50.3%
-    carries 11-15   n   761   under 49.7%
-    carries 16+     n   738   under 25.1%
+`player_targets_avg_3g` and `player_carries_avg_3g` are lagged rolling means —
+already features of the touchdown model, already computed as of the week being
+priced. Substituting them for the post-game counts makes the measurement
+placeable, and the substitution is not cosmetic: the actual-usage gradient runs
+100% to 24% across bands, the projection of that same gradient runs 61% to 53%.
+Usage is far less predictable than it is decisive, which is exactly why the
+look-ahead version looked so good.
 
-The under is not a view about a player, it is a reading of how much he played.
-Restricted to a real workload the baseline goes the other way — 43% unders, so
-blind OVERS would win 57% — which is as unbettable as the first number and for
-the same reason.
+What survives is smaller, real, and stronger where the player plays more:
 
-So neither column below is an edge. What they bracket is a real question the
-measurement cannot answer as built: the unfiltered number includes scratches,
-which the inactives check can partly see in advance; the filtered one uses
-information that does not exist yet. The test that would settle it conditions
-on PROJECTED usage — which this project has, in the share model — and that is
-the version worth building.
+    fade <= -8pp, projected usage >= 3      n     under      95% interval
+      receiving_yards                      784    60.5%     [57.0, 63.8]
+      receptions                           777    61.9%     [58.4, 65.3]
+      rushing_yards                        736    59.2%     [55.6, 62.7]
 
-For the record, the numbers as measured:
+Break-even at -110 is 52.38%, so all three clear on the lower bound. Per
+season, receiving yards runs 61.3 / 59.2 / 60.8 and receptions 61.0 / 61.9 /
+63.3 across 2023-2025; rushing clears in two of the three. The effect grows
+with the cut (-12pp reaches 63.0% on rushing) and with projected usage, which
+is the opposite of the scratch artifact's shape and is the reason to believe
+it: a signal driven by non-participation would fade as the workload rises.
 
-    every line, played          n 9,583   under 50.1%   [49.1, 51.1]
-    fade <= -8pp, played        n 1,511   under 53.5%   [51.0, 56.0]
-    fade <= -12pp, played       n   729   under 55.7%   [52.1, 59.3]
+Restricted instead to projected usage BELOW 3, the fade adds nothing — 56.7%
+at -5pp against a 57.0% baseline. The thin-usage rows carry a high under rate
+no matter what the model thinks, and the model's opinion is only worth money
+on players who are going to be on the field.
 
-A 5.6-point lift over the baseline, from a signal fitted for a different
-market, on a line the book will take. The interval's lower bound is 52.1%
-against a 52.38% break-even, so it does not clear — by a quarter of a point,
-on 729 bets.
-
-**One line per player-week, the one the most books quote.** The archive holds
-alternates, and counting them all inflates n while correlating every outcome
-inside a player-week: the same man going under 40.5, 45.5 and 50.5 yards is
-one result, not three. Measured across alternates the sample looks four times
-larger and the interval four times tighter than the evidence supports.
+**One line per player-week, and it is the BALANCED line.** See `board`: the
+earlier rule took the most-quoted point, which sounds right and was picking
+near-randomly across a seven-yard span.
 """
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import polars as pl
 
@@ -81,6 +75,16 @@ CUTS = (-5.0, -8.0, -12.0)
 
 #: Break-even at -110, which is what a yardage line is quoted at.
 BREAK_EVEN = 0.5238
+
+#: Where the lagged usage means live. These are FEATURES of the touchdown
+#: model, built with `shift(1)` over prior weeks, so reading them here adds no
+#: information the pricing model did not already have.
+PROJ_PATH = "data/processed/anytime_td/features.parquet"
+
+#: Projected touches below which the fade stops being worth anything. Not a
+#: fitted threshold — the bands are flat enough that anything from 3 to 6
+#: reads the same, and 3 keeps the sample. See the module docstring.
+MIN_PROJECTED_USAGE = 3.0
 
 
 def _wilson(hits: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -139,12 +143,27 @@ def board(market: str = "receiving_yards") -> pl.DataFrame:
     h = _conform(pl.read_parquet(HISTORY_PATH), SCHEMA)
     h = h.filter((pl.col("market") == market) & pl.col("point").is_not_null()
                  & (pl.col("snapshot") == "close"))
-    # The main line, not every alternate: the most-quoted point per player-week.
-    main = (drop_in_play(h).sort("captured_at")
+    # THE MAIN LINE IS THE BALANCED ONE, NOT THE MOST-QUOTED ONE.
+    #
+    # This selected the point the most books quoted, which sounds right and is
+    # not: 94% of archived points are quoted by exactly ONE book, so 88.4% of
+    # player-weeks had every candidate tied at one, and `unique(keep="first")`
+    # over a parallel group-by broke the tie by whichever row the engine
+    # emitted first. The tied points span a median of SEVEN YARDS, so the
+    # "main line" was a near-random draw from a player's alternate ladder, and
+    # the same code gave different answers on consecutive runs — 59.0% one
+    # time and 55.5% the next on the same cell.
+    #
+    # A yardage prop's primary line is the one priced closest to even money;
+    # the alternates fan out from it at longer and shorter odds. So the point
+    # is chosen by minimising the mean distance of its prices from 0.5. That
+    # leaves 6.6% still tied, broken on `point` so the result is reproducible.
+    # The chosen lines sit at a median |p - 0.5| of 0.024, which is -110.
+    main = (drop_in_play(h)
+            .with_columns((pl.col("implied_prob") - 0.5).abs().alias("_off"))
             .group_by(["season", "week", "player_name_norm", "point"])
-            .agg(pl.len().alias("books"))
-            .sort(["season", "week", "player_name_norm", "books"],
-                  descending=[False, False, False, True])
+            .agg(pl.col("_off").mean().alias("balance"))
+            .sort(["season", "week", "player_name_norm", "balance", "point"])
             .unique(subset=["season", "week", "player_name_norm"], keep="first")
             .rename({"player_name_norm": "pn"}))
 
@@ -175,11 +194,40 @@ def board(market: str = "receiving_yards") -> pl.DataFrame:
            .drop_nulls([stat, "point"]))
     # A push is not a bet that lost.
     j = j.filter(pl.col(stat) != pl.col("point"))
-    return j.with_columns([
+    j = j.with_columns([
         (pl.col(stat) < pl.col("point")).alias("under"),
         (pl.col(usage).fill_null(0) > 0).alias("played")
         if usage in j.columns else pl.lit(True).alias("played"),
     ])
+    return _attach_projection(j, usage)
+
+
+def _attach_projection(j: pl.DataFrame, usage: str) -> pl.DataFrame:
+    """Add `proj_usage`: the lagged three-game mean of touches.
+
+    The whole point of the module. `usage` here is the POST-GAME count and
+    must never be filtered on; `proj_usage` is what was knowable on the
+    Saturday. Null for a player with no prior three games, which is a real
+    category (debuts, returns) and is left null rather than zero-filled so a
+    caller has to decide what to do with it.
+    """
+    from src.features.odds_features import _normalize_name
+
+    col = f"player_{usage}_avg_3g"
+    path = Path(PROJ_PATH)
+    if not path.exists():
+        return j.with_columns(pl.lit(None, dtype=pl.Float64).alias("proj_usage"))
+    f = (pl.scan_parquet(path).select(["season", "week", "player_name", col])
+         .collect()
+         .with_columns(pl.col("player_name")
+                       .map_elements(_normalize_name, return_dtype=pl.Utf8)
+                       .alias("pn"))
+         .drop("player_name")
+         # One row per key: the feature frame carries a player once per
+         # candidate market, and the lagged mean is identical across them.
+         .group_by(["season", "week", "pn"])
+         .agg(pl.col(col).median().alias("proj_usage")))
+    return j.join(f, on=["season", "week", "pn"], how="left")
 
 
 def evaluate(market: str = "receiving_yards") -> list[dict]:
@@ -206,4 +254,66 @@ def evaluate(market: str = "receiving_yards") -> list[dict]:
                 "n": n, "under_rate": hits / n, "lo": lo, "hi": hi,
                 "clears": lo > BREAK_EVEN,
             })
+    return out
+
+
+def evaluate_projected(market: str = "receiving_yards",
+                       min_usage: float = MIN_PROJECTED_USAGE) -> list[dict]:
+    """Under rate by fade size, among players PROJECTED to be involved.
+
+    The bettable form of `evaluate`. Everything here is knowable on the
+    Saturday: the touchdown model's disagreement with the book, and a lagged
+    three-game mean of touches. Nothing conditions on what happened.
+
+    Rows with no projection are DROPPED rather than kept or zero-filled. A
+    player with no prior three games is genuinely unpriceable by this rule,
+    and both of the alternatives smuggle in an assumption — keeping them
+    treats "unknown" as "involved", zero-filling treats it as "scratch".
+    """
+    b = board(market)
+    if b.is_empty():
+        return []
+    b = b.filter(pl.col("proj_usage").is_not_null()
+                 & (pl.col("proj_usage") >= min_usage))
+    out = []
+    for cut in (None,) + CUTS:
+        sel = b if cut is None else b.filter(pl.col("td_edge_pp") <= cut)
+        n = sel.height
+        if n < 50:
+            continue
+        hits = int(sel["under"].sum())
+        lo, hi = _wilson(hits, n)
+        out.append({"market": market, "min_usage": min_usage, "cut": cut,
+                    "n": n, "under_rate": hits / n, "lo": lo, "hi": hi,
+                    "clears": lo > BREAK_EVEN})
+    return out
+
+
+def usage_gradient(market: str = "receiving_yards") -> list[dict]:
+    """Under rate by usage band, projected against actual, side by side.
+
+    Kept as a permanent exhibit rather than a one-off check. The two columns
+    are the whole argument of this module: they are the same quantity, one
+    known before kickoff and one after, and they disagree so violently
+    (100% to 24% versus 61% to 53%) that any result conditioned on the wrong
+    one is measuring the schedule rather than the market.
+    """
+    b = board(market)
+    if b.is_empty():
+        return []
+    actual = "carries" if market == "rushing_yards" else "targets"
+    out = []
+    for lo_, hi_ in ((0, 1), (1, 3), (3, 6), (6, 11), (11, 16), (16, None)):
+        row = {"band": f"{lo_}-{hi_ - 1}" if hi_ else f"{lo_}+"}
+        for label, col in (("proj", "proj_usage"), ("actual", actual)):
+            if col not in b.columns:
+                continue
+            m = pl.col(col).is_not_null() & (pl.col(col) >= lo_)
+            if hi_ is not None:
+                m = m & (pl.col(col) < hi_)
+            sel = b.filter(m)
+            row[f"{label}_n"] = sel.height
+            row[f"{label}_under"] = (float(sel["under"].mean())
+                                     if sel.height else None)
+        out.append(row)
     return out
