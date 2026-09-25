@@ -216,9 +216,10 @@ python scripts/58_deploy.py --dry-run
 ```
 
 The board carries the week's props on every market, a page per game (notes,
-players, bets, final-score distribution, matchup edges, injuries), a bet slip,
-a ladder calculator, and a week picker that reaches back over graded weeks with
-winners and losers colour-coded.
+players, outcome, matchup edges, injuries), a bet slip, a ladder calculator,
+and a week picker that reaches back over graded weeks with winners and losers
+colour-coded. Outcome holds the final-score table and the ladder of lines
+together, because `score_dist` answers both from one set of comparable games.
 
 Each game page also has an **Ask box**: a typed question answered against a
 brief this repo publishes for that game, with web search available for things
