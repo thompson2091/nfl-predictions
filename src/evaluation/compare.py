@@ -238,7 +238,13 @@ def regate(rows: list[dict], clv_rows: list[dict]) -> list[dict]:
             continue
         clv = by_pair.get((row["market"], row["model"],
                            row.get("against") or row["model"]))
-        verdict, by = _decide(row["top1"], row["guards_tripped"], clv)
+        # `gate` keeps Top-1 at `top1`; `seed_gate` keeps it under `top_k[1]`.
+        # Reading only the first silently skipped every settled row.
+        top1 = row.get("top1") or (row.get("top_k") or {}).get(1)
+        if top1 is None:
+            out.append(row)
+            continue
+        verdict, by = _decide(top1, row.get("guards_tripped") or [], clv)
         out.append({**row, "verdict": verdict, "decided_by": by, "clv": clv})
     return out
 

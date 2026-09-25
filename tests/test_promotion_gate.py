@@ -160,3 +160,29 @@ def test_the_gate_checks_that_its_guard_bands_describe_this_matrix():
     j = src.index("noise = _noise_bands()")
     assert "_noise_is_current" in src[j:j + 700], (
         "the check must run where the gate reads the bands")
+
+
+def test_the_settle_measures_the_instrument_the_gate_promotes_on():
+    """THE TWO INSTRUMENTS HAVE TO MEET SOMEWHERE.
+
+    The gate measures CLV but reads Top-1 at one seed. `settle-overlay`
+    averaged Top-1 across seeds and measured no CLV at all. So the strongest
+    CLV on record — both families on anytime TD, +1.22pp at 5.35 se — was
+    rejected by a gate on a Top-1 of -0.62pp that the settle then showed was
+    -0.12pp once the seed was averaged out. Neither command could reach the
+    right verdict alone.
+    """
+    import pathlib
+
+    src = pathlib.Path("scripts/23_experiment.py").read_text()
+    assert "def _settle_clv" in src, "the settle still measures no CLV"
+    i = src.index("def cmd_settle_overlay")
+    body = src[i:i + 4000]
+    assert "_settle_clv(" in body, "the settle does not call it"
+    assert '"clv": clv_rows' in body, (
+        "the settle's CLV must reach the ledger, or it cannot be read back")
+    # Per seed, because the settle's question is whether a result HOLDS.
+    j = src.index("def _settle_clv")
+    assert "seeds_ahead" in src[j:j + 3000], (
+        "a mean across seeds without the count is the single-seed problem "
+        "again, one level up")

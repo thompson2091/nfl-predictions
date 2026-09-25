@@ -472,6 +472,62 @@ def cmd_settle(a) -> int:
     return 0
 
 
+def _settle_clv(baseline: list, candidate: list, markets, seeds) -> list:
+    """Closing-line value at every seed, not just the one a gate happened on.
+
+    THE TWO INSTRUMENTS NEVER MET. The gate measures CLV but reads Top-1 at a
+    single seed; this settles Top-1 across seeds and measured no CLV at all.
+    So the strongest CLV result on record — both families on anytime TD,
+    +1.22pp at 5.35 se — was rejected by a gate on a Top-1 of -0.62pp that
+    this command then showed was -0.12pp once the seed was averaged out.
+    Neither run could produce the right verdict on its own.
+
+    Paired per seed and reported per seed, because the settle's question is
+    whether a result HOLDS rather than how big it is at the seed it was found
+    at. `seeds_ahead` is the number that answers it.
+    """
+    out = []
+    for market in markets:
+        model = production_model(market)
+        per = []
+        for base, cand in zip(baseline, candidate):
+            row = CLV.paired_clv(base, cand, market=market, model=model,
+                                 against=model)
+            if row is not None:
+                per.append(row)
+        if not per:
+            continue
+        deltas = [r["delta"] for r in per]
+        mean = sum(deltas) / len(deltas)
+        # The spread ACROSS seeds, which is the uncertainty this command
+        # exists to measure. A mean over five seeds whose own spread swamps
+        # it is the same non-result a single seed would have reported.
+        if len(deltas) > 1:
+            var = sum((d - mean) ** 2 for d in deltas) / (len(deltas) - 1)
+            se = (var / len(deltas)) ** 0.5
+        else:
+            se = per[0]["se"]
+        ahead = sum(1 for d in deltas if d > 0)
+        row = {"market": market, "model": model, "against": model,
+               "n_compared": per[0]["n_compared"], "seeds": len(per),
+               "champion": sum(r["champion"] for r in per) / len(per),
+               "candidate": sum(r["candidate"] for r in per) / len(per),
+               "delta": mean, "se": se,
+               "se_multiple": (mean / se) if se > 0 else 0.0,
+               "seeds_ahead": ahead,
+               "per_seed": [round(d, 5) for d in deltas]}
+        out.append(row)
+        print(f"\n  CLV, seed by seed  {market} / {model}")
+        print(f"    {row['champion']:.2%} -> {row['candidate']:.2%}  "
+              f"{mean * 100:+.2f}pp  ({row['se_multiple']:+.2f} se across "
+              f"{len(per)} seeds, n={row['n_compared']:,} per seed)")
+        print(f"    ahead in {ahead} of {len(per)} seeds: "
+              + ", ".join(f"{d * 100:+.2f}" for d in deltas))
+    if not out:
+        print("\n  CLV: not measurable for these runs.")
+    return out
+
+
 def cmd_settle_overlay(a) -> int:
     """Settle an overlay against the champion recipe, seed by matched seed.
 
@@ -518,6 +574,15 @@ def cmd_settle_overlay(a) -> int:
                                 against=model, against_runs=baseline))
     print("\nSeed-averaged, overlay vs champion recipe at matched seeds:\n")
     print(C.format_seed_gate(rows))
+    clv_rows = _settle_clv(baseline, candidate, markets, seeds)
+    # ONE RULE, BOTH COMMANDS. The settle's own verdict read Top-K alone, so
+    # the command that exists to remove seed noise from a decision could not
+    # reach the decision the gate would have made on the same evidence.
+    rows = C.regate(rows, clv_rows)
+    if any(r.get("decided_by") == "clv" for r in rows):
+        print("\n  Re-decided on closing-line value, with Top-1 inside its "
+              "own noise band.")
+        print(C.format_seed_gate(rows))
 
     append_ledger({
         "id": spec["id"], "kind": "experiment", "tier": "settle-overlay",
@@ -525,7 +590,7 @@ def cmd_settle_overlay(a) -> int:
         "git": git_state(), "overlay": spec["overlay"],
         "note": f"overlay vs '{a.baseline}' recipe, {a.seeds} seeds, "
                 f"seed-averaged: " + spec.get("note", ""),
-        "seed": seeds, "summary": {},
+        "seed": seeds, "summary": {}, "clv": clv_rows,
         "verdict": _overall_verdict(rows, markets, decisive_on="model"),
         "comparisons": [{k: v for k, v in r.items() if k != "top_k"}
                         | {"top1": {kk: vv for kk, vv in r["top_k"][1].items()
