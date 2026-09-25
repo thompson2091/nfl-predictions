@@ -61,6 +61,24 @@ MIN_MOVE_PP = 1.0
 #: they are imported lazily so this module can be read without polars.
 FADE_CUT = -8.0
 
+#: Below this many prior games in the slot, a coach's rate is noise wearing a
+#: number. `situational_features` defines it and says why in as many words:
+#: so "69.4% in prime time" cannot be printed off 36 games without the 36.
+MIN_COACH_GAMES = 20
+
+#: A rest gap worth a sentence, in days. Below three it is the ordinary
+#: difference between a Sunday and a Monday game.
+MIN_REST_GAP = 3
+
+#: Said on every coaching note, because the alternative is a page that implies
+#: an edge the project has twice measured and not found. `situational_features`
+#: tested thirteen of these on 2,853 games: not one clears the vig, and the
+#: coach cover rate is used hard by the model while changing nothing out of
+#: sample, which is what fitting noise looks like from the inside.
+COACH_CAVEAT = ("Tested on 2,853 past games, angles like this one do not beat "
+                "the bookmaker's cut on their own. It is background, not a "
+                "reason to bet.")
+
 
 def _num(x, nd=1):
     return None if x is None else round(float(x), nd)
@@ -107,6 +125,7 @@ def select(payload: dict, card: dict) -> list[dict]:
     notes: list[dict] = []
     notes += _line_notes(payload, card, gid)
     notes += _player_notes(payload, card, gid)
+    notes += _coach_notes(card)
     for i, n in enumerate(notes):
         n["id"] = f"{gid}:{n['kind']}"
         n["order"] = i
@@ -367,6 +386,96 @@ def _player_notes(payload: dict, card: dict, gid: str) -> list[dict]:
     return out
 
 
+def _rate(card: dict, side: str, stat: str) -> tuple:
+    """A rate and its sample size, or (None, None) when it has no business
+    being printed. The two always travel together."""
+    n = card.get(f"{side}_coach_{stat}_games_prior"
+                 if stat == "prime" else f"{side}_coach_games_prior")
+    r = card.get(f"{side}_coach_prime_ats_rate_prior" if stat == "prime"
+                 else f"{side}_coach_ats_rate_prior")
+    if r is None or not n:
+        return (None, None)
+    return (r, n)
+
+
+def _coach_notes(card: dict) -> list[dict]:
+    """The handicapper's situational angles, as context and labelled as such.
+
+    **SELECTION IS ON THE SITUATION, NEVER ON THE RECORD.** A note fires
+    because the game is in prime time or because one side is on a short week —
+    facts about the fixture, fixed before any outcome is looked at. Choosing
+    instead to show the games where a coach happens to have a lopsided record
+    would manufacture the appearance of signal out of 32 coaches and a
+    thousand slices, which is precisely the search this project's own tests
+    exist to catch. The record is then reported whatever it says, including
+    when it says nothing.
+    """
+    out = []
+    ch, ca = card.get("coach_home"), card.get("coach_away")
+    if not (ch and ca):
+        return out
+    home, away = card.get("home"), card.get("away")
+
+    if card.get("prime_slot"):
+        # Only coaches with a real sample in the slot. A prime-time rate off
+        # nine games is the number this threshold exists to suppress.
+        parts, stats = [], []
+        for side, name, team in (("home", ch, home), ("away", ca, away)):
+            r, n = _rate(card, side, "prime")
+            if r is None or n < MIN_COACH_GAMES:
+                continue
+            cov = int(round(r * n))
+            stats.append({"v": f"{cov}-{n - cov}", "l": f"{name}, prime time"})
+            parts.append(f"{name} has covered {cov} of {n} prime-time games "
+                         f"({_pct(r)})")
+        if parts:
+            out.append({
+                "kind": "coach_prime", "cat": "Coaching", "context": True,
+                "stats": stats,
+                "brief": ("This is a prime-time game. " + ". ".join(parts)
+                          + ". Covering means the team beat the betting line, "
+                          "not merely won. " + COACH_CAVEAT),
+                "fallback": ("A prime-time game. " + " ".join(
+                    p + "." for p in parts)),
+                "pick": f"{away} at {home} on the spread",
+            })
+
+    # Rest. One side short or rested and the other not — a fact about the
+    # schedule, known months in advance and priced by the book accordingly.
+    hs, as_ = card.get("home_is_short_week"), card.get("away_is_short_week")
+    hb, ab = card.get("home_is_off_bye"), card.get("away_is_off_bye")
+    gap = card.get("home_rest_diff")
+    bits, figs = [], []
+    if hs and not as_:
+        bits.append(f"{home} is on a short week and {away} is not")
+    elif as_ and not hs:
+        bits.append(f"{away} is on a short week and {home} is not")
+    if hb and not ab:
+        bits.append(f"{home} is coming off a bye")
+    elif ab and not hb:
+        bits.append(f"{away} is coming off a bye")
+    if has_num(gap) and abs(gap) >= MIN_REST_GAP:
+        side, other = (home, away) if gap > 0 else (away, home)
+        figs.append({"v": f"{abs(int(gap))} days", "l": f"{side} extra rest"})
+        if not bits:
+            bits.append(f"{side} has had {abs(int(gap))} more days off "
+                        f"than {other}")
+    if bits:
+        out.append({
+            "kind": "rest", "cat": "Coaching", "context": True,
+            "stats": figs,
+            "brief": (". ".join(b[0].upper() + b[1:] for b in bits)
+                      + ". " + COACH_CAVEAT),
+            "fallback": ". ".join(b[0].upper() + b[1:] for b in bits) + ".",
+            "pick": f"{away} at {home} on the spread",
+        })
+    return out
+
+
+def has_num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
 # ---------------------------------------------------------------- phrasing
 
 
@@ -428,6 +537,8 @@ RULES, all of them hard:
 - A note marked unproven must read as a lean, not a call.
 - A note marked avoid is about a bet NOT to place.
 - A note marked measured has real historical backing; it may say so plainly.
+- A note marked context is background only. Never imply it is a reason to bet,
+  and keep whatever caveat its facts carry.
 - No exclamation marks, no hype, no "smash", "lock" or "value play".
 
 Notes:
@@ -463,8 +574,8 @@ def phrase(notes: list[dict], card: dict, use_cache: bool = True) -> list[dict]:
         return notes
     listing = "\n".join(
         f'- id "{n["id"]}": {n["brief"]}'
-        + "".join(f" [{f}]" for f in ("unproven", "avoid", "measured")
-                  if n.get(f))
+        + "".join(f" [{f}]" for f in ("unproven", "avoid", "measured",
+                                      "context") if n.get(f))
         for n in notes)
     try:
         resp = client.messages.create(

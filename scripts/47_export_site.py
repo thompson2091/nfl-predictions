@@ -738,12 +738,70 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     _attach_finals(cards, season, week)
     _attach_model(cards, season, week)
     _attach_kickoff(cards, season, week)
+    _attach_coaching(cards, season, week)
     # Sorted by kickoff where it is known, so the list reads as a weekend
     # rather than as an alphabet. Games with no time sort last rather than
     # first: a missing kickoff is usually a game the schedule has not
     # finalised, and burying it is better than opening the page with it.
     return rows, sorted(cards.values(),
                         key=lambda c: (c.get("kick_sort") or "9", c["game_id"]))
+
+
+def _attach_coaching(cards: dict, season: int | None,
+                     week: int | None) -> None:
+    """Each side's coach, and his record BEFORE this game.
+
+    Straight from `situational_features.coach_form`, which is the same
+    computation the model is fed — the page must not re-derive an as-of
+    record, because a second implementation is a second chance to forget the
+    `shift(1)` and print a coach's cover rate including the game it describes.
+
+    **These are context and the page has to say so.** Every angle in that
+    module was tested on 2,853 games and not one clears the vig; the coach
+    cover rate specifically is used hard by the model and changes nothing out
+    of sample, which is what fitting noise looks like from the inside. The
+    counts travel with the rates for the same reason: "69.4% in prime time"
+    off 36 games is a sentence that should not be printable without the 36.
+    """
+    if not (season and week):
+        return
+    import polars as pl
+
+    from src.utils.paths import get_path
+
+    try:
+        from src.features.situational_features import coach_form
+        f = coach_form(pl.read_parquet(get_path("raw") / "schedules.parquet"),
+                       season, week)
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  coach form unavailable ({e})", file=sys.stderr)
+        return
+    if f is None or f.is_empty():
+        return
+    by_game: dict = {}
+    for r in f.iter_rows(named=True):
+        by_game.setdefault(r["game_id"], []).append(r)
+    # `coach_form` is keyed by the nflverse game id and the cards by the team
+    # pair the odds archive uses, so the two are matched on the teams inside
+    # each row rather than by reformatting either id.
+    for rows in by_game.values():
+        home = [r for r in rows if r.get("at_home") == 1]
+        away = [r for r in rows if r.get("at_home") == 0]
+        if not (home and away):
+            continue
+        c = cards.get(f"{away[0]['team']}_{home[0]['team']}")
+        if not c:
+            continue
+        c["prime_slot"] = bool(home[0].get("is_prime_slot"))
+        for side, r in (("home", home[0]), ("away", away[0])):
+            c[f"coach_{side}"] = r.get("coach")
+            for k in ("coach_games_prior", "coach_played_prior",
+                      "coach_ats_rate_prior", "coach_win_rate_prior",
+                      "coach_prime_games_prior", "coach_prime_ats_rate_prior",
+                      "is_short_week", "is_off_bye", "rest_diff"):
+                v = r.get(k)
+                c[f"{side}_{k}"] = (round(float(v), 4)
+                                    if isinstance(v, float) else v)
 
 
 def _attach_kickoff(cards: dict, season: int | None, week: int | None) -> None:

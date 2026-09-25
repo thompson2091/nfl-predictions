@@ -580,7 +580,11 @@ function v3Note(n) {
   const figs = (n.stats || []).map(s =>
     '<div class="fig"><b class="num">' + esc(s.v) + '</b><span>' + esc(s.l)
     + '</span></div>').join('');
-  const flag = n.measured ? '<span class="tag tag--good">Measured</span>'
+  // `context` before the rest: a coaching note that renders unlabelled reads
+  // as a reason to bet, and `situational_features` measured thirteen of these
+  // on 2,853 games without one of them clearing the vig.
+  const flag = n.context ? '<span class="tag">Context, not an edge</span>'
+    : n.measured ? '<span class="tag tag--good">Measured</span>'
     : n.unproven ? '<span class="tag tag--warn">Unproven</span>'
     : n.avoid ? '<span class="tag tag--bad">Avoid</span>' : '';
   const on = !!V.picks['note:' + n.id];

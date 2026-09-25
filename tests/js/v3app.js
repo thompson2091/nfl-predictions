@@ -97,6 +97,18 @@ if (cards.length) {
     ok('game tab ' + gt + ' says something',
        textOf({ _html: html }).join('').trim().length > 40);
   });
+  // A coaching note must arrive labelled. Unlabelled, a 69% prime-time
+  // record beside a priced pick reads as a reason to bet, and
+  // `situational_features` measured thirteen of these without one clearing
+  // the vig.
+  V.game = cards[0].game_id; V.gameTab = 'notes'; V.cat = 'all';
+  try { render(); } catch (e) { /* reported above */ }
+  const notes = (DATA.notes || {})[cards[0].game_id] || [];
+  if (notes.some(n => n.context)) {
+    ok('a coaching note is labelled as context',
+       app().indexOf('Context, not an edge') >= 0);
+  }
+
   // A game that is not on the board must say so rather than throwing.
   V.game = 'NOT_AGAME';
   let e = null;

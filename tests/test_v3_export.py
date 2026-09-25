@@ -83,6 +83,12 @@ def payload_v3():
          "stats": [{"v": "35%", "l": "our chance"}, {"v": "27%", "l": "books'"}],
          "why": "We make him likelier than the price implies.",
          "pick": "Tucker Kraft to score"},
+        {"id": "ATL_GB:coach_prime", "kind": "coach_prime", "cat": "Coaching",
+         "title": "LaFleur has covered 25 of 36 prime-time games",
+         "context": True,
+         "stats": [{"v": "25-11", "l": "Matt LaFleur, prime time"}],
+         "why": "Covering means beating the line, not merely winning.",
+         "pick": "ATL at GB on the spread"},
     ]}
     # An index shaped exactly as `_split_history` leaves it: weeks lifted out
     # into files, `has` naming which of them exist.
@@ -108,7 +114,8 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
     # And that the enriched fixture actually reached them, rather than
     # reporting "not exercised" and passing.
     for path in ("a past week renders", "game tab notes renders",
-                 "game tab bets renders"):
+                 "game tab bets renders",
+                 "a coaching note is labelled as context"):
         assert path in r.stdout, f"{path!r} never ran:\n{r.stdout}"
 
 

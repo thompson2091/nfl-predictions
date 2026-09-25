@@ -71,12 +71,12 @@ def _haversine_miles(lat1, lon1, lat2, lon2) -> pl.Expr:
     return 2 * r * a.sqrt().arcsin()
 
 
-def build_situational_features(schedules: pl.DataFrame) -> pl.DataFrame:
-    """Per team-game: the slot it sits in, the rest around it, and coach form.
+def team_game_form(schedules: pl.DataFrame) -> pl.DataFrame:
+    """Per team-game: the slot, the rest around it, and the coach's as-of form.
 
-    One row per (game_id, team). Returns only the new columns plus the keys,
-    so the caller decides what to join and nothing here can quietly replace an
-    existing column.
+    One row per (game_id, team), INCLUDING the coach's name. The model gets
+    this minus `_PRESENTATION_ONLY`; the page gets all of it. Written once so
+    there is one as-of computation rather than two.
     """
     from src.features.stadium_coords import STADIUM_COORDS
 
@@ -139,9 +139,42 @@ def build_situational_features(schedules: pl.DataFrame) -> pl.DataFrame:
         (pl.col("rest") >= BYE_REST_DAYS).cast(pl.Int8).alias("is_off_bye"),
         (pl.col("opp_rest") >= BYE_REST_DAYS).cast(pl.Int8).alias("opp_off_bye"),
     ])
-    tg = _coach_history(tg)
-    return tg.drop(["_date", "_push", "covered", "won", "coach", "stadium",
-                    "rest", "opp_rest"], strict=False)
+    return _coach_history(tg)
+
+
+#: Columns the MODEL must not see. `coach` is an identity, not a measurement,
+#: and the rest/date columns are inputs to the derived ones rather than
+#: features in their own right.
+_PRESENTATION_ONLY = ["_date", "_push", "covered", "won", "coach", "stadium",
+                      "rest", "opp_rest"]
+
+
+def build_situational_features(schedules: pl.DataFrame) -> pl.DataFrame:
+    """Per team-game: the slot it sits in, the rest around it, and coach form.
+
+    One row per (game_id, team). Returns only the new columns plus the keys,
+    so the caller decides what to join and nothing here can quietly replace an
+    existing column.
+    """
+    tg = team_game_form(schedules)
+    if tg.is_empty():
+        return tg
+    return tg.drop(_PRESENTATION_ONLY, strict=False)
+
+
+def coach_form(schedules: pl.DataFrame, season: int, week: int) -> pl.DataFrame:
+    """The same frame the model sees, PLUS the coach's name, for one week.
+
+    The page needs to say "Matt LaFleur" where the model needs only a rate, so
+    `coach` is dropped for the model and kept here. Both come out of
+    `team_game_form`, which is the point: a second as-of computation written
+    for the page would be a second chance to forget the `shift(1)`, and the
+    page would then print a record that includes the game it is describing.
+    """
+    tg = team_game_form(schedules)
+    if tg.is_empty():
+        return tg
+    return tg.filter((pl.col("season") == season) & (pl.col("week") == week))
 
 
 def _coach_history(tg: pl.DataFrame) -> pl.DataFrame:
@@ -164,25 +197,50 @@ def _coach_history(tg: pl.DataFrame) -> pl.DataFrame:
     prime_cov = pl.when(graded & (pl.col("is_prime_slot") == 1)) \
         .then(pl.col("covered")).otherwise(0)
 
+    # WINNING AND COVERING HAVE DIFFERENT DENOMINATORS.
+    #
+    # A push is a real game that was won or lost; it is simply not a cover. So
+    # the cover rate runs over graded games and the win rate over PLAYED ones,
+    # and using `coach_games_prior` for both divided wins by a count that
+    # excludes every push — the same denominator mismatch that put 2,236 bad
+    # rows through `coordinator_features`.
+    played = pl.col("won").is_not_null()
+    one_played = pl.when(played).then(1).otherwise(0)
+    # AND `won` MUST BE NULL-GUARDED BEFORE THE CUMULATIVE SUM.
+    #
+    # `cum_sum` PROPAGATES nulls: one unplayed game and every later row for
+    # that coach is null. `cov` was guarded with `otherwise(0)` and `won` was
+    # not, so in 2026 the cover rate was missing on 4 rows of 544 and the win
+    # rate on 452 — every row from the first unscheduled game onward, which is
+    # precisely the set being predicted. The feature was fully populated
+    # through training and empty at serve time, which is worse than absent:
+    # it ranked 22 of 174 on data where it existed and contributed nothing
+    # where it was used.
+    won_safe = pl.when(played).then(pl.col("won")).otherwise(0)
+
     over = ["coach"]
     tg = tg.with_columns([
         one.cum_sum().over(over).shift(1).over(over).alias("coach_games_prior"),
+        one_played.cum_sum().over(over).shift(1).over(over)
+          .alias("coach_played_prior"),
         cov.cum_sum().over(over).shift(1).over(over).alias("_cov_prior"),
-        pl.col("won").cum_sum().over(over).shift(1).over(over).alias("_won_prior"),
+        won_safe.cum_sum().over(over).shift(1).over(over).alias("_won_prior"),
         prime.cum_sum().over(over).shift(1).over(over).alias("coach_prime_games_prior"),
         prime_cov.cum_sum().over(over).shift(1).over(over).alias("_prime_cov_prior"),
     ])
     n = pl.col("coach_games_prior")
     pn = pl.col("coach_prime_games_prior")
+    wn = pl.col("coach_played_prior")
     return tg.with_columns([
         pl.col("coach_games_prior").fill_null(0),
+        pl.col("coach_played_prior").fill_null(0),
         pl.col("coach_prime_games_prior").fill_null(0),
         # Null, not 0.5, when there is no history. A coach with no prior games
         # has no rate; inventing one hands the model a fact that is really an
         # absence, and LightGBM handles a null natively.
         pl.when(n > 0).then(pl.col("_cov_prior") / n)
           .otherwise(None).alias("coach_ats_rate_prior"),
-        pl.when(n > 0).then(pl.col("_won_prior") / n)
+        pl.when(wn > 0).then(pl.col("_won_prior") / wn)
           .otherwise(None).alias("coach_win_rate_prior"),
         pl.when(pn >= MIN_COACH_GAMES).then(pl.col("_prime_cov_prior") / pn)
           .otherwise(None).alias("coach_prime_ats_rate_prior"),

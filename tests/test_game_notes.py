@@ -145,3 +145,80 @@ def test_thresholds_leave_a_quiet_game_quiet():
     p["games"]["cards"][0]["model_total"] = 44.5
     kinds = {n["kind"] for n in gn.select(p, p["games"]["cards"][0])}
     assert "line_gap" not in kinds and "total_gap" not in kinds
+
+
+def _coach_card(**over):
+    c = {"game_id": "ATL_GB", "home": "GB", "away": "ATL",
+         "coach_home": "Matt LaFleur", "coach_away": "Raheem Morris",
+         "prime_slot": True,
+         "home_coach_prime_games_prior": 36,
+         "home_coach_prime_ats_rate_prior": 0.694,
+         "away_coach_prime_games_prior": 9,
+         "away_coach_prime_ats_rate_prior": 0.889,
+         "home_coach_games_prior": 100, "away_coach_games_prior": 40,
+         "home_is_short_week": 0, "away_is_short_week": 0,
+         "home_is_off_bye": 0, "away_is_off_bye": 0, "home_rest_diff": 0}
+    c.update(over)
+    return c
+
+
+def test_a_thin_prime_time_record_is_not_printed_at_all():
+    """`situational_features.MIN_COACH_GAMES` exists for this sentence.
+
+    Its own comment: so the page can refuse to print "69.4% in prime time"
+    off 36 games without saying 36. A coach with nine prime-time games has a
+    rate that is noise wearing a number, and 8-1 is the most persuasive thing
+    on the page precisely because it is the least reliable.
+    """
+    n = gn._coach_notes(_coach_card())
+    prime = [x for x in n if x["kind"] == "coach_prime"]
+    assert prime, "the qualifying coach should still be shown"
+    blob = prime[0]["brief"] + json.dumps(prime[0]["stats"])
+    assert "Morris" not in blob, "nine prime-time games is not a record"
+    assert "LaFleur" in blob
+
+
+def test_every_rate_travels_with_its_sample_size():
+    """A percentage without an n is the number this project keeps deleting."""
+    for note in gn._coach_notes(_coach_card()):
+        if "%" not in note["brief"]:
+            continue
+        assert "of 36" in note["brief"] or "36" in json.dumps(note["stats"]), (
+            f"{note['kind']} prints a rate with no denominator")
+
+
+def test_coaching_notes_are_selected_by_the_situation_not_the_record():
+    """Otherwise 32 coaches and a thousand slices manufacture a signal.
+
+    Selecting the games where a coach happens to have a lopsided record is a
+    search over outcomes. The fixture below keeps the eye-catching 69% record
+    and takes away the prime-time slot; nothing should fire.
+    """
+    n = gn._coach_notes(_coach_card(prime_slot=False))
+    assert not [x for x in n if x["kind"] == "coach_prime"], (
+        "the record did not change; only the situation did")
+
+
+def test_a_coaching_note_says_it_is_not_an_edge():
+    """Thirteen of these were tested on 2,853 games and none clears the vig.
+
+    An unlabelled coaching card beside a priced pick reads as a reason to bet.
+    """
+    for note in gn._coach_notes(_coach_card(away_is_off_bye=1)):
+        assert note.get("context") is True, f"{note['kind']} is unlabelled"
+        assert "not a reason to bet" in note["brief"]
+
+
+def test_rest_notes_name_the_side_that_has_the_advantage():
+    short = gn._coach_notes(_coach_card(prime_slot=False, home_is_short_week=1))
+    assert any("GB is on a short week" in x["fallback"] for x in short)
+    bye = gn._coach_notes(_coach_card(prime_slot=False, away_is_off_bye=1))
+    assert any("ATL is coming off a bye" in x["fallback"] for x in bye)
+    # A gap both sides share is not a gap.
+    same = gn._coach_notes(_coach_card(prime_slot=False, home_is_short_week=1,
+                                       away_is_short_week=1))
+    assert not [x for x in same if x["kind"] == "rest"]
+
+
+def test_a_game_with_no_coach_on_file_is_skipped_rather_than_half_rendered():
+    assert gn._coach_notes(_coach_card(coach_home=None)) == []
