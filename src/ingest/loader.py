@@ -221,7 +221,8 @@ def load_schedules(seasons: list[int]) -> pl.DataFrame:
     df = _load("schedules", nfl.load_schedules, seasons)
     df = normalize_teams(df, ["home_team", "away_team"])
     _report_coverage("Schedules", df, seasons)
-    return _write(df, "schedules.parquet")
+    return _write(_keep_other_seasons(df, "schedules.parquet"),
+                  "schedules.parquet")
 
 
 def load_snap_counts(seasons: list[int]) -> pl.DataFrame:

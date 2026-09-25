@@ -1032,6 +1032,23 @@ def _et_clock(t: str | None) -> str | None:
     return f"{h12}:{m} {ap} ET"
 
 
+def _score_calibration() -> dict | None:
+    """Leave-one-out calibration, computed once per build.
+
+    On the card because it is the only thing that makes the model's
+    probabilities readable AS probabilities: a 70% that loses is either a
+    calibrated 70% or a broken one, and the difference is not visible from
+    any single game. A few seconds, O(n^2) over three thousand games.
+    """
+    try:
+        from src.models.score_dist import calibration
+        c = calibration()
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  score calibration unavailable ({e})", file=sys.stderr)
+        return None
+    return c if c.get("n") else None
+
+
 def model_cards() -> list[dict]:
     """Every model this project serves, in one shape.
 
@@ -1142,6 +1159,7 @@ def model_cards() -> list[dict]:
                           "total, counted"),
             "n_train": n,
             "features": ["spread_line", "total_line"],
+            "calibration": _score_calibration(),
             "note": ("Nothing is smoothed. NFL scores are built from 3s and "
                      "7s, so 27-24 happens far more often than 28-25, and a "
                      "parametric fit spreads probability onto scorelines that "

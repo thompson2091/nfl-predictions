@@ -954,7 +954,23 @@ function v3Compare(c) {
   const a = line('Sportsbooks', c.spread, c.total, '');
   const b = line('Our model', c.model_spread, c.model_total, ' cmp--ours');
   if (!a && !b) return '';
-  return '<div class="two" style="margin-top:16px">' + a + b + '</div>';
+  // THE OTHER SIDE OF THE PROJECTION, BESIDE IT.
+  //
+  // A point estimate is the whole headline and the distribution was a tab
+  // away. On 25 September Atlanta won at Green Bay by 21 as a road dog: the
+  // page said "GB 23.8-22.2" and every number looked wrong, while the same
+  // build had an outright Atlanta win at 28.5% — which is not a long shot,
+  // and is a number nobody saw without changing tabs. Said here, a projection
+  // reads as the middle of a distribution rather than as a forecast.
+  const u = c.unfold;
+  const note = (u && !u.thin && u.headline)
+    ? '<p class="help" style="margin-top:8px">A projection is the middle of a '
+      + 'range, not a call. In ' + u.n + ' games priced like this one, '
+      + esc(u.dog) + ' won outright <b>'
+      + u.headline.upset.pct.toFixed(0) + '%</b> of the time and '
+      + u.headline.one_score.pct.toFixed(0) + '% finished within one score.</p>'
+    : '';
+  return '<div class="two" style="margin-top:16px">' + a + b + '</div>' + note;
 }
 
 function v3GameNotes(gid, cats, shown) {

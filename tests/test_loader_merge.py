@@ -19,9 +19,17 @@ import pytest
 SRC = Path(__file__).resolve().parents[1] / "src/ingest/loader.py"
 
 #: Files whose rows are keyed by season and are therefore destroyable by a
-#: single-season refresh. `schedules` is excluded: it is always loaded whole.
+#: single-season refresh.
+#:
+#: `schedules.parquet` was left OUT of this list on the reasoning that it is
+#: always loaded whole. That reasoning was wrong within the hour: fetching one
+#: game's final score meant `load_schedules([2026])`, and 3,300 rows became
+#: 272. "This one is always called with every season" is a claim about every
+#: caller that will ever exist, which is not a claim anyone can make — so the
+#: list is now every season-keyed file, with no exceptions and no judgement.
 SEASON_KEYED = ["rosters.parquet", "pbp.parquet", "weekly_stats.parquet",
-                "snap_counts.parquet", "injuries.parquet"]
+                "snap_counts.parquet", "injuries.parquet",
+                "schedules.parquet"]
 
 
 def test_every_season_keyed_loader_merges_rather_than_replaces():

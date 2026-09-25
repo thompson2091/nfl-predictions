@@ -126,3 +126,41 @@ def test_the_headline_numbers_are_labelled_as_overlapping():
     assert set(sc["headline"]) == {"one_score", "blowout", "upset",
                                    "shootout", "grind"}
     assert all("lo" in v and "hi" in v for v in sc["headline"].values())
+
+
+def test_calibration_leaves_the_game_out_of_its_own_prediction():
+    """Otherwise the prediction contains its answer and the curve is perfect.
+
+    Falsified by dropping the `j == i` skip: every game would be scored
+    against a comparable set that includes it, and a model cannot be wrong
+    about a game it has already seen the result of.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1]
+           / "src/models/score_dist.py").read_text()
+    body = src[src.index("def calibration"):]
+    assert "if j == i:" in body and "continue" in body
+
+
+@pytest.mark.skipif(sd.history().height < 500, reason="needs the real archive")
+def test_the_distribution_is_calibrated_within_a_couple_of_points():
+    """A 70% that loses is a 70% behaving correctly, three times in ten.
+
+    This is the check that decides whether a bad result was a bad model. On
+    2026-09-25 Atlanta won at Green Bay by 21 as a road dog and every headline
+    number looked wrong — while the same page had the outright Atlanta win at
+    28.5%.
+    """
+    c = sd.calibration()
+    assert c["n"] > 1000, f"only {c['n']} games had a usable comparable set"
+    assert c["mean_gap_pp"] < 4.0, (
+        f"predicted and observed differ by {c['mean_gap_pp']}pp on average; "
+        f"this model is not calibrated and its probabilities cannot be read "
+        f"as probabilities")
+    # And no single well-populated bin is wildly off.
+    for b in c["bins"]:
+        if b["n"] < 50:
+            continue
+        assert abs(b["happened"] - b["said"]) < 10.0, (
+            f"the {b['said']}% bin came in at {b['happened']}% on {b['n']} games")
