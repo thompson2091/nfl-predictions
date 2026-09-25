@@ -250,6 +250,52 @@ feeds context on the board, not a feature any model trains on.
 
 ---
 
+## 3c. Action Network — tickets AND money, including the moneyline
+
+| | |
+|---|---|
+| Provider | Action Network, read from the page `robots.txt` permits |
+| Access | None. `https://www.actionnetwork.com/nfl/public-betting`, one request a capture |
+| Used by | `src/ingest/action_public.py` |
+| Archive | `data/archive/action_public.parquet` |
+
+Answers the two questions Sportsbook Review cannot:
+
+- **The moneyline.** SBR returns 0% on every moneyline on every game.
+  Re-checked against the live feed on 2026-09-25: 0 of 14 games carried a
+  moneyline split while all 14 carried a spread one.
+- **Money as well as tickets.** Tickets count bets; money counts dollars, and
+  the two disagreeing is the only public-betting signal with a mechanism
+  behind it. Atlanta at Green Bay in week 3 took **11% of the tickets and 46%
+  of the money** — a few large bets, which is a different fact from a crowd.
+
+Read from the page's `__NEXT_DATA__`, not from
+`api.actionnetwork.com/web/v2/scoreboard/publicbetting/nfl`. The API is
+cleaner and returns the same numbers, but `api.actionnetwork.com/robots.txt`
+answers 403 through their CDN, so there is nothing to read consent from; the
+page is explicitly permitted and costs the same one request.
+
+Caution: an undocumented payload on a page that can be redesigned. A missing
+key raises rather than returning nothing, which is the whole reason the
+server-rendered state is parsed instead of the HTML.
+
+Traps already handled:
+
+- **An outcome published as 0% on both sides is the feed declining**, not a
+  side nobody backed. Dropped rather than archived, exactly as SBR's empty
+  moneylines are.
+- **One book only.** The page carries seven and their percentages differ,
+  because their customers do. `PERCENT_BOOK` is the one the site's own config
+  uses, so the archive's week-over-week drift means the money moved rather
+  than the page listing a different book first.
+- **`JAC` is `JAX`** in the schedule.
+
+The two feeds are kept in separate payload keys and never averaged. They are
+different books with different customers, and a blended number would describe
+a population that does not exist.
+
+---
+
 ## 4. Fitted artifacts (derived, not sourced)
 
 Written by `make train` into `models/<target_type>/`, refit every run.

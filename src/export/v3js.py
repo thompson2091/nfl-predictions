@@ -1173,6 +1173,65 @@ function v3Moved(gid) {
     + '</div>';
 }
 
+// TICKETS COUNT BETS; MONEY COUNTS DOLLARS. THE GAP IS THE SIGNAL.
+//
+// Sportsbook Review publishes tickets only, and nothing at all on the
+// moneyline. Action Network publishes both, on all three markets, so this is
+// the moneyline block the section never had — and the one number on this
+// page that says something a crowd size cannot: a side taking 11% of the
+// tickets and 46% of the money is a few large bets, not a public opinion.
+// Atlanta at Green Bay read exactly that in week 3.
+//
+// A gap needs to be worth a sentence before it gets one. Under
+// `V3GAP_SMALL` the two shares are the same bet, rounded differently.
+const V3GAP_SMALL = 8;
+
+function v3Splits(gid) {
+  const all = (DATA.games || {}).splits || {};
+  let blk = all[gid];
+  if (!blk) {
+    for (const k of Object.keys(all)) {
+      if (v3Same(k, gid)) { blk = all[k]; break; }
+    }
+  }
+  return blk || null;
+}
+
+function v3SplitRow(label, m) {
+  if (!m || !m.sides || !m.sides.length) return '';
+  const top = m.sides[0];
+  if (top.tickets == null || top.money == null) return '';
+  const w = Math.round(top.tickets);
+  const gap = top.gap;
+  const big = has(gap) && Math.abs(gap) >= V3GAP_SMALL;
+  return '<div class="pub">'
+    + '<div class="pub__h"><span class="eyebrow">' + esc(label) + '</span> '
+    + '<span class="sub num">' + esc(top.side) + ' \u00b7 '
+    + top.tickets.toFixed(0) + '% of bets, ' + top.money.toFixed(0)
+    + '% of the money</span></div>'
+    + '<div class="bar" role="img" aria-label="' + esc(top.side) + ' '
+    + w + ' percent of bets">'
+    + '<span class="h num" style="width:' + w + '%;justify-content:flex-start">'
+    + esc(top.side) + ' ' + top.tickets.toFixed(0) + '%</span>'
+    + '<span class="a num" style="width:' + (100 - w)
+    + '%;justify-content:flex-end">'
+    + (w >= 97 ? '' : (m.sides[1] ? esc(m.sides[1].side) + ' '
+        + (m.sides[1].tickets == null ? '' : m.sides[1].tickets.toFixed(0) + '%')
+        : '')) + '</span></div>'
+    + (big
+       ? '<p class="help" style="margin-top:6px">'
+         + (gap > 0
+            ? esc(top.side) + ' has ' + Math.abs(gap).toFixed(0) + ' points '
+              + 'more of the MONEY than of the bets \u2014 fewer, larger '
+              + 'wagers than the ticket count suggests.'
+            : esc(top.side) + ' has ' + Math.abs(gap).toFixed(0) + ' points '
+              + 'less of the money than of the bets \u2014 a lot of small '
+              + 'tickets without the money behind them.')
+         + '</p>'
+       : '')
+    + '</div>';
+}
+
 function v3PublicMoney(gid) {
   const pub = ((DATA.games || {}).public || {})[gid];
   if (!pub) {
@@ -1234,9 +1293,12 @@ function v3PublicMoney(gid) {
       + '</div>';
   }).join('');
   const mv = v3Moved(gid);
-  if (!blocks && !mv) return '';
+  const sp = v3Splits(gid);
+  const ml = sp ? v3SplitRow('To win (moneyline)', sp.moneyline) : '';
+  if (!blocks && !mv && !ml) return '';
   return '<div class="card"><div class="name">Where the public is</div>'
     + mv
+    + ml
     + blocks
     + '<p class="help">Share of bets placed, from Sportsbook Review. A crowd '
     + 'being on one side is not evidence it is wrong \u2014 this project has '
@@ -1247,9 +1309,15 @@ function v3PublicMoney(gid) {
     // declining to publish rather than a market nobody bet. Drawing a 0% bar
     // would be stating a number nobody stated; saying nothing would read as
     // an oversight. The price move above is what there is.
-    + (pub.h2h ? ''
-       : '<p class="help">No ticket split for the moneyline: the feed '
-         + 'publishes none, on any game. Its price move is above.</p>')
+    + (ml
+       ? '<p class="help">The moneyline split is Action Network\u2019s, which '
+         + 'publishes money as well as tickets. The spread and total bars are '
+         + 'Sportsbook Review\u2019s, which publishes neither the moneyline '
+         + 'nor the money \u2014 two books, two customer bases, kept '
+         + 'apart rather than averaged into a crowd that does not exist.</p>'
+       : '<p class="help">No ticket split for the moneyline: Sportsbook '
+         + 'Review publishes none, on any game. Its price move is '
+         + 'above.</p>')
     + '</div>';
 }
 

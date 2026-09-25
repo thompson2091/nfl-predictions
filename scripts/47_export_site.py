@@ -1750,6 +1750,19 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
                 payload["games"]["lines"] = lines
         except Exception as e:                                   # noqa: BLE001
             print(f"  public money unavailable ({e})", file=sys.stderr)
+        # TICKETS AND MONEY, AND THE MONEYLINE, which the other feed has
+        # neither of. Kept in its own key rather than merged into `public`:
+        # the two are different books with different customers, and a page
+        # that silently averaged them would be reporting a population that
+        # does not exist.
+        try:
+            from src.ingest.action_public import week_view as action_view
+
+            act = action_view(s, w)
+            if act:
+                payload["games"]["splits"] = act
+        except Exception as e:                                   # noqa: BLE001
+            print(f"  ticket/money splits unavailable ({e})", file=sys.stderr)
     # And a flat lookup, so any board row can show a designation without the
     # page walking sixteen games to find one player. Keyed by the same
     # qualified name the boards use.
