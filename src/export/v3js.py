@@ -1058,6 +1058,47 @@ function v3Injuries(c, full) {
     + 'Designations can change up to 90 minutes before kickoff.</p></div>';
 }
 
+// WHERE THE LINE OPENED AND WHERE IT IS NOW.
+//
+// Shown WITH the ticket split rather than apart from it, because the pair is
+// the story: a crowd piled onto one side while the number moved the other way
+// is money outvoting tickets, and either number alone is half of it.
+//
+// The open is the GAME WEEK's, not the lookahead line posted in May. A
+// three-point move since May is a season of news; a three-point move since
+// Tuesday is this week's money.
+function v3Moved(gid) {
+  const L = ((DATA.games || {}).lines || {})[gid];
+  if (!L) return '';
+  const c = (v3GameSet().cards || []).filter(x => x.game_id === gid)[0] || {};
+  const bits = [];
+  const sp = L.spreads, to = L.totals;
+  if (sp && has(sp.open) && has(sp.now)) {
+    // Signed toward the HOME side, as the cards are. A move toward the home
+    // team is the number getting more negative.
+    const toward = sp.move < 0 ? c.home : c.away;
+    bits.push(['Spread',
+      (sp.open < 0 ? c.home + ' ' + sp.open : c.away + ' -' + sp.open),
+      (sp.now < 0 ? c.home + ' ' + sp.now : c.away + ' -' + sp.now),
+      Math.abs(sp.move) < 0.25 ? 'unmoved'
+        : Math.abs(sp.move) + ' toward ' + toward]);
+  }
+  if (to && has(to.open) && has(to.now)) {
+    bits.push(['Total', String(to.open), String(to.now),
+      Math.abs(to.move) < 0.25 ? 'unmoved'
+        : Math.abs(to.move) + ' ' + (to.move > 0 ? 'up' : 'down')]);
+  }
+  if (!bits.length) return '';
+  return '<div class="moved">'
+    + '<div class="eyebrow">Since this week\u2019s line went up'
+    + (sp && sp.open_at ? ' (' + esc(sp.open_at) + ')' : '') + '</div>'
+    + bits.map(b => '<div class="moved__r"><span>' + esc(b[0]) + '</span>'
+        + '<span class="num">' + esc(b[1]) + ' \u2192 <b>' + esc(b[2])
+        + '</b></span>'
+        + '<span class="sub">' + esc(b[3]) + '</span></div>').join('')
+    + '</div>';
+}
+
 function v3PublicMoney(gid) {
   const pub = ((DATA.games || {}).public || {})[gid];
   if (!pub) {
@@ -1077,9 +1118,22 @@ function v3PublicMoney(gid) {
     const w = Math.round(top.pct);
     // The line move on the SAME side the tickets are on, so the two can
     // disagree visibly rather than sitting in separate paragraphs.
-    const mv = rows.filter(r => r.market === mk && r.outcome === top.side)
-      .map(r => r.move_pp).filter(has)[0];
-    const against = has(mv) && mv < -0.5;
+    // AGAINST THE CROWD, measured on the real opening line where we have
+    // one. The archived open/close pair is two captures minutes apart on some
+    // weeks; the feed's history is the line as it actually moved.
+    const L = ((DATA.games || {}).lines || {})[gid] || {};
+    const card = (v3GameSet().cards || []).filter(x => x.game_id === gid)[0] || {};
+    let mv = null;
+    if (mk === 'totals' && L.totals && has(L.totals.move)) {
+      mv = top.side === 'Over' ? L.totals.move : -L.totals.move;
+    } else if (mk === 'spreads' && L.spreads && has(L.spreads.move)) {
+      mv = top.side === card.home ? -L.spreads.move : L.spreads.move;
+    }
+    if (mv == null) {
+      mv = rows.filter(r => r.market === mk && r.outcome === top.side)
+        .map(r => r.move_pp).filter(has)[0];
+    }
+    const against = has(mv) && mv < -0.25;
     return '<div class="pub">'
       + '<div class="pub__h"><span class="eyebrow">' + esc(label[mk] || mk)
       + '</span> '
@@ -1101,12 +1155,14 @@ function v3PublicMoney(gid) {
       + (against
          ? '<p class="help" style="margin-top:6px">Most tickets are on '
            + esc(top.side) + ' and the price has moved AWAY from it '
-           + '(\u2212' + Math.abs(mv).toFixed(1) + 'pp). That is money '
+           + '(' + Math.abs(mv).toFixed(1) + ' against it). That is money '
            + 'disagreeing with the crowd.</p>' : '')
       + '</div>';
   }).join('');
-  if (!blocks) return '';
+  const mv = v3Moved(gid);
+  if (!blocks && !mv) return '';
   return '<div class="card"><div class="name">Where the public is</div>'
+    + mv
     + blocks
     + '<p class="help">Share of bets placed, from Sportsbook Review. A crowd '
     + 'being on one side is not evidence it is wrong \u2014 this project has '

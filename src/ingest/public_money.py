@@ -55,6 +55,18 @@ USER_AGENT = ("nfl-predictions/1.0 (personal research project; "
 #: reason to be quick about it.
 DELAY_SECONDS = 2.0
 
+#: How far before kickoff the "game week" starts. Seven days: the number the
+#: schedule itself uses, and a line posted eight days out is answering a
+#: different question from one posted on the Wednesday.
+WEEK_OPEN_DAYS = 7
+
+#: A spread or total is quoted near even money on both sides. An entry priced
+#: beyond this is not that market: `bet_rivers_co` posted `homeSpread: 0` at
+#: -334 on NYJ at DET, which is a moneyline in the spread history, and taking
+#: it as the current line turned a Detroit -6.5 into a pick'em and reported a
+#: 7.5-point move that never happened.
+MAX_LINE_ODDS = 200
+
 #: Do not re-capture a date inside this window. Running the script twice in an
 #: afternoon should cost one request, not two, and must not write a second row
 #: that makes the drift look like movement.
@@ -65,6 +77,36 @@ MIN_GAP_MINUTES = 60
 RENAMES = {"JAC": "JAX"}
 
 ARCHIVE = Path("data/archive/public_money.parquet")
+
+#: The opening and current line, from the SAME request. Sportsbook Review
+#: ships a timestamped price history per book — 47 spread entries on an
+#: ordinary game, back to the day the line went up — so a true opening number
+#: costs nothing extra once the consensus page has been fetched.
+#:
+#: This is strictly better than the two-snapshot `game_lines` archive for the
+#: one question it answers: that one has an "open" only if the capture script
+#: ran early enough, and on week 3 of 2026 it did not — its open and close
+#: were four minutes apart. See `games()` in the exporter.
+LINES = Path("data/archive/line_history.parquet")
+
+LINE_SCHEMA = {
+    "captured_at": pl.Utf8, "season": pl.Int64, "week": pl.Int64,
+    "game_id": pl.Utf8, "market": pl.Utf8,
+    # The EARLIEST and LATEST price this feed holds, across every book it
+    # lists, with the time each was posted.
+    # TWO OPENS, because they are different facts. `open_*` is the earliest
+    # price the feed holds, which on this board is a LOOKAHEAD line posted in
+    # May; `wk_*` is the earliest inside the game week. A three-point move
+    # since May is a season's worth of news and says nothing about what money
+    # did this week, which is what reverse line movement is about.
+    "open_at": pl.Utf8, "open_point": pl.Float64, "open_home_odds": pl.Int64,
+    "open_away_odds": pl.Int64,
+    "wk_at": pl.Utf8, "wk_point": pl.Float64, "wk_home_odds": pl.Int64,
+    "wk_away_odds": pl.Int64,
+    "now_at": pl.Utf8, "now_point": pl.Float64, "now_home_odds": pl.Int64,
+    "now_away_odds": pl.Int64,
+    "books": pl.Int64, "source": pl.Utf8,
+}
 
 SCHEMA = {
     # When this row was read. The reason the file is an archive: one row per
@@ -105,6 +147,117 @@ def _fetch(date: str, league: str = LEAGUE) -> list[dict]:
     d = json.loads(m.group(1))
     return ((d.get("props") or {}).get("pageProps") or {}) \
         .get("oddsTableModel", {}).get("gameRows") or []
+
+
+def parse_lines(rows: list[dict], captured_at: str) -> pl.DataFrame:
+    """Opening and current line per game and market, across all books.
+
+    The open is the EARLIEST timestamp any book posted, not the first entry of
+    the first book: books come up at different times and taking the first
+    listed one would make the "opening line" depend on the order the feed
+    happens to return.
+    """
+    out = []
+    for r in rows:
+        g = r.get("gameView") or {}
+        home, away = _team(g.get("homeTeam")), _team(g.get("awayTeam"))
+        if not (home and away):
+            continue
+        gid = f"{away}_{home}"
+        views = [v for v in ((r.get("oddsViews") or [])
+                             + (r.get("openingLineViews") or [])) if v]
+        for market, key, pt in (("spreads", "spreadHistory", "homeSpread"),
+                                ("totals", "totalHistory", "total"),
+                                ("h2h", "moneyLineHistory", None)):
+            odds = ("overOdds", "underOdds") if market == "totals" \
+                else ("homeOdds", "awayOdds")
+            pts = []
+            for v in views:
+                for e in (v.get(key) or []):
+                    if not e.get("oddsDate"):
+                        continue
+                    pts.append(e)
+            if not pts:
+                continue
+            if market != "h2h":
+                pts = [e for e in pts
+                       if all(abs(_int(e.get(o)) or 110) <= MAX_LINE_ODDS
+                              for o in odds if e.get(o) is not None)]
+            if not pts:
+                continue
+            pts.sort(key=lambda e: e["oddsDate"])
+            first, last = pts[0], pts[-1]
+            # The earliest price inside the game week. Falls back to the
+            # overall open when the feed holds nothing that recent, which is
+            # visible because `wk_at` then equals `open_at`.
+            kick = str(g.get("startDate") or "")[:10]
+            wk = first
+            if kick:
+                from datetime import date, timedelta
+                try:
+                    cut = (date.fromisoformat(kick)
+                           - timedelta(days=WEEK_OPEN_DAYS)).isoformat()
+                    inside = [e for e in pts if e["oddsDate"][:10] >= cut]
+                    if inside:
+                        wk = inside[0]
+                except ValueError:
+                    pass
+            out.append({
+                "captured_at": captured_at, "season": None, "week": None,
+                "game_id": gid, "market": market,
+                "open_at": first["oddsDate"],
+                "open_point": (float(first[pt]) if pt and first.get(pt) is not None
+                               else None),
+                "open_home_odds": _int(first.get(odds[0])),
+                "open_away_odds": _int(first.get(odds[1])),
+                "wk_at": wk["oddsDate"],
+                "wk_point": (float(wk[pt]) if pt and wk.get(pt) is not None
+                             else None),
+                "wk_home_odds": _int(wk.get(odds[0])),
+                "wk_away_odds": _int(wk.get(odds[1])),
+                "now_at": last["oddsDate"],
+                # THE MEDIAN OF EACH BOOK'S LATEST, not the single most recent
+                # row anywhere. One book's bad entry then moves the reported
+                # line by itself, which is exactly how a -334 "spread" became
+                # the current number on a game everyone else had at -6.5.
+                "now_point": _consensus_now(views, key, pt, odds),
+                "now_home_odds": _int(last.get(odds[0])),
+                "now_away_odds": _int(last.get(odds[1])),
+                "books": len([v for v in views if v.get(key)]),
+                "source": "sportsbookreview",
+            })
+    if not out:
+        return pl.DataFrame(schema=LINE_SCHEMA)
+    return pl.DataFrame(out, schema=LINE_SCHEMA)
+
+
+def _consensus_now(views: list, key: str, pt: str | None,
+                   odds: tuple) -> float | None:
+    """The median of each book's most recent posting for this market."""
+    if not pt:
+        return None
+    latest = []
+    for v in views:
+        rows = [e for e in (v.get(key) or [])
+                if e.get("oddsDate") and e.get(pt) is not None
+                and all(abs(_int(e.get(o)) or 110) <= MAX_LINE_ODDS
+                        for o in odds if e.get(o) is not None)]
+        if rows:
+            rows.sort(key=lambda e: e["oddsDate"])
+            latest.append(float(rows[-1][pt]))
+    if not latest:
+        return None
+    latest.sort()
+    n = len(latest)
+    return (latest[n // 2] if n % 2
+            else round((latest[n // 2 - 1] + latest[n // 2]) / 2, 2))
+
+
+def _int(v):
+    try:
+        return int(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _team(t: dict | None) -> str | None:
@@ -173,9 +326,13 @@ def _stamp_week(df: pl.DataFrame) -> pl.DataFrame:
              .unique(subset=["game_id"], keep="last"))
     except Exception:                                            # noqa: BLE001
         return df
+    # The CALLER's columns, not a hard-coded list. This selected
+    # `list(SCHEMA)` — the ticket schema — so stamping the line-history frame
+    # would have silently dropped every column the line history adds.
+    cols = df.columns
     return (df.drop(["season", "week"])
             .join(s, on="game_id", how="left")
-            .select(list(SCHEMA)))
+            .select(cols))
 
 
 def game_days(season: int, week: int) -> list[str]:
@@ -217,13 +374,16 @@ def refresh(season: int, week: int, force: bool = False) -> pl.DataFrame:
         if not recent.is_empty():
             return pl.DataFrame(schema=SCHEMA)
 
-    frames = []
+    frames, lines = [], []
     for i, day in enumerate(game_days(season, week)):
         if i:
             time.sleep(DELAY_SECONDS)
-        frames.append(parse(_fetch(day), stamp))
+        raw = _fetch(day)
+        frames.append(parse(raw, stamp))
+        lines.append(parse_lines(raw, stamp))
     if not frames:
         return pl.DataFrame(schema=SCHEMA)
+    _write_lines(lines, stamp)
     got = _stamp_week(pl.concat(frames))
     # The same game appears on every date the page is asked for, because the
     # date filter is loose. One row per (capture, game, market, side).
@@ -232,10 +392,76 @@ def refresh(season: int, week: int, force: bool = False) -> pl.DataFrame:
     if got.is_empty():
         return got
     ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
-    out = pl.concat([have, got]) if not have.is_empty() else got
+    # `diagonal_relaxed`: this schema has grown once already (the game-week
+    # open was added beside the lookahead one) and an archive that refuses to
+    # widen forces a choice between losing history and losing the new column.
+    out = (pl.concat([have, got], how="diagonal_relaxed")
+           if not have.is_empty() else got)
     out.unique(subset=["captured_at", "game_id", "market", "side"],
                keep="last").write_parquet(ARCHIVE)
     return got
+
+
+def _write_lines(frames: list, stamp: str) -> None:
+    """Archive the opening and current line, from the same fetch.
+
+    Failures here do NOT fail the capture: the ticket percentages are the
+    thing this script exists for, and losing them because a price history
+    changed shape would be trading the certain for the incidental.
+    """
+    try:
+        got = _stamp_week(pl.concat([f for f in frames if not f.is_empty()]))
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  line history not captured ({e})")
+        return
+    if got.is_empty():
+        return
+    got = got.unique(subset=["captured_at", "game_id", "market"], keep="first")
+    LINES.parent.mkdir(parents=True, exist_ok=True)
+    have = pl.read_parquet(LINES) if LINES.exists() else pl.DataFrame(
+        schema=LINE_SCHEMA)
+    # `diagonal_relaxed`: this schema has grown once already (the game-week
+    # open was added beside the lookahead one) and an archive that refuses to
+    # widen forces a choice between losing history and losing the new column.
+    out = (pl.concat([have, got], how="diagonal_relaxed")
+           if not have.is_empty() else got)
+    out.unique(subset=["captured_at", "game_id", "market"],
+               keep="last").write_parquet(LINES)
+
+
+def line_view(season: int, week: int) -> dict:
+    """Per game and market: where the line opened and where it is now.
+
+    `move` is signed toward the HOME side on a spread and toward the OVER on
+    a total, matching how the cards sign everything else.
+    """
+    if not LINES.exists():
+        return {}
+    d = pl.read_parquet(LINES).filter(
+        (pl.col("season") == season) & (pl.col("week") == week))
+    if d.is_empty():
+        return {}
+    d = d.sort("captured_at").unique(subset=["game_id", "market"], keep="last")
+    out: dict = {}
+    for r in d.iter_rows(named=True):
+        blk = out.setdefault(r["game_id"], {})
+        move = (None if r["wk_point"] is None or r["now_point"] is None
+                else round(r["now_point"] - r["wk_point"], 1))
+        season_move = (None if r["open_point"] is None or r["now_point"] is None
+                       else round(r["now_point"] - r["open_point"], 1))
+        blk[r["market"]] = {
+            # `open` is the GAME WEEK's open, because that is the one a move
+            # is measured from. The lookahead number is kept beside it rather
+            # than instead of it.
+            "open": r["wk_point"], "now": r["now_point"], "move": move,
+            "lookahead": r["open_point"], "lookahead_move": season_move,
+            "open_at": (r["wk_at"] or "")[:10],
+            "lookahead_at": (r["open_at"] or "")[:10],
+            "books": r["books"],
+            "open_odds": [r["open_home_odds"], r["open_away_odds"]],
+            "now_odds": [r["now_home_odds"], r["now_away_odds"]],
+        }
+    return out
 
 
 def week_view(season: int, week: int) -> dict:

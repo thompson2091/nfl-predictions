@@ -326,6 +326,13 @@ button{cursor:pointer}
   border:1px solid var(--btnline);text-align:left}
 .choose b{font-size:17px;font-weight:700}
 
+/* ---- how the line has moved ---- */
+.moved{margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.moved__r{display:grid;grid-template-columns:62px 1fr auto;align-items:baseline;
+  gap:10px;padding:4px 0;font-size:14px}
+.moved__r b{font-weight:700}
+.moved__r .sub{font-size:12px;text-align:right}
+
 /* ---- where the public is ---- */
 .pub{margin-top:12px}
 .pub__h{display:flex;align-items:baseline;justify-content:space-between;

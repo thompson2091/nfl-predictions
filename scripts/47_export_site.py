@@ -1700,10 +1700,17 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     # 50/50" because nothing was archived would be inventing a fact.
     if payload["games"]:
         try:
-            from src.ingest.public_money import week_view
+            from src.ingest.public_money import line_view, week_view
             pub = week_view(s, w)
             if pub:
                 payload["games"]["public"] = pub
+            # The opening line and the move, from the same fetch. A TRUE
+            # open: the two-snapshot `game_lines` archive only has one if the
+            # capture ran early enough, and on week 3 its open and close were
+            # four minutes apart.
+            lines = line_view(s, w)
+            if lines:
+                payload["games"]["lines"] = lines
         except Exception as e:                                   # noqa: BLE001
             print(f"  public money unavailable ({e})", file=sys.stderr)
     # And a flat lookup, so any board row can show a designation without the
