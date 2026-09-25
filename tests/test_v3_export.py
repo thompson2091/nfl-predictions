@@ -462,3 +462,36 @@ def test_no_focusable_control_is_small_enough_to_zoom_ios():
         if m and float(m.group(1)) < 16:
             bad.append((sel.splitlines()[-1].strip(), m.group(1) + "px"))
     assert not bad, f"controls below the 16px floor: {bad}"
+
+
+def test_the_app_bar_is_not_shorter_than_the_header_inside_it():
+    """TWO BOXES CANNOT BOTH OWN THE HEADER'S HEIGHT.
+
+    `.appbar` was a fixed 52px and `v3Header` rendered `.hd` inside it asking
+    for 52px plus a 12px margin plus the safe-area inset. The overflow was
+    centred, so it bled downward and the brand row sat almost on top of the
+    game switcher beneath it on a phone.
+
+    Falsified by giving either one a fixed height again.
+    """
+    import importlib as _il
+    import re
+
+    css = _il.import_module("src.export.v3css").css()
+
+    def rule(sel):
+        m = re.search(re.escape(sel) + r"\s*\{([^}]*)\}", css)
+        assert m, f"{sel} is gone"
+        return m.group(1)
+
+    bar, hd = rule(".appbar"), rule(".hd")
+    assert not re.search(r"(^|;)\s*height:", bar), (
+        ".appbar sets a fixed height again; it must size to its content")
+    assert not re.search(r"(^|;)\s*height:", hd), (
+        ".hd sets a height inside a bar that already sizes to it")
+    assert "margin-top" not in hd, (
+        ".hd adds a margin inside the bar that already pads itself")
+    # The inset belongs to whichever box actually touches the top of the
+    # screen, and that is the bar.
+    assert "safe-area-inset-top" in bar, (
+        ".appbar must carry the notch inset; nothing above it does")

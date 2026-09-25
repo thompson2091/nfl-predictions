@@ -51,8 +51,15 @@ body{margin:0;background:var(--bg);color:var(--ink);
   padding-left:env(safe-area-inset-left,0px);
   padding-right:env(safe-area-inset-right,0px);
   padding-bottom:var(--s5)}
+/* THE BAR SIZES ITSELF TO WHAT IS IN IT.
+   It was a fixed 52px holding a header that asked for 52px of its own plus
+   a 12px margin and the safe-area inset — about 64px of content in a 52px
+   box. `align-items:center` then bled the overflow downward, so the brand
+   row and the game switcher under it nearly touched at the top of a phone.
+   One box owns the spacing: this one. */
 .appbar{flex:none;display:flex;align-items:center;justify-content:space-between;
-  gap:12px;height:52px;padding:0 16px;background:var(--bg)}
+  gap:12px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;
+  background:var(--bg)}
 a{color:var(--ours);text-decoration:none}
 button,input,select{font-family:inherit;font-size:inherit;color:inherit}
 /* SIXTEEN PIXELS, ON EVERY CONTROL YOU CAN FOCUS.
@@ -69,8 +76,10 @@ button{cursor:pointer}
 .wrap{max-width:560px;margin:0 auto;padding:0 16px}
 
 /* ---- header and the week picker, which is global on purpose ---- */
+/* No height and no margin here: `.appbar` owns both, and two owners is what
+   made the header overflow its own bar. */
 .hd{display:flex;align-items:center;justify-content:space-between;gap:12px;
-  height:52px;margin-top:calc(12px + env(safe-area-inset-top,0px))}
+  width:100%;min-height:40px}
 .hd__b{font-family:var(--serif);font-size:19px;font-weight:600}
 .wk{display:flex;align-items:center;gap:6px;height:36px;padding:0 10px;
   border-radius:10px;border:1px solid var(--btnline);background:var(--card);
@@ -403,7 +412,7 @@ button{cursor:pointer}
 
 /* ---- moving between games without going back ---- */
 .gamenav{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  margin-top:4px}
+  margin-top:10px;margin-bottom:2px}
 .gsel{display:flex;align-items:center;gap:4px;min-width:0;flex:1;
   justify-content:flex-end}
 .gsel select{min-width:0;max-width:190px;height:36px;border-radius:10px;
