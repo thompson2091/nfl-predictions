@@ -741,12 +741,14 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     _attach_coaching(cards, season, week)
     _attach_scores(cards)
     _attach_injuries(cards, season, week)
+    script_fits = _attach_script_risk(cards)
     # Sorted by kickoff where it is known, so the list reads as a weekend
     # rather than as an alphabet. Games with no time sort last rather than
     # first: a missing kickoff is usually a game the schedule has not
     # finalised, and burying it is better than opening the page with it.
     return rows, sorted(cards.values(),
-                        key=lambda c: (c.get("kick_sort") or "9", c["game_id"]))
+                        key=lambda c: (c.get("kick_sort") or "9",
+                                       c["game_id"])), script_fits
 
 
 def _attach_scores(cards: dict) -> None:
@@ -921,6 +923,52 @@ def _attach_injuries(cards: dict, season: int | None,
                 and not x["rest"]
                 and (x["status"] in ("Out", "Doubtful")
                      or (not x["status"] and x["practice"] == "Did not practise")))
+
+
+#: Board market key to the weekly-stats column it settles against. The
+#: touchdown markets are absent on purpose: `script_risk` is fitted on
+#: continuous production, and a touchdown is a rare event whose script
+#: sensitivity is a different measurement this has not made.
+_SCRIPT_MARKETS = {"rush": "rushing_yards", "recyds": "receiving_yards",
+                   "rec": "receptions", "passyds": "passing_yards"}
+
+
+def _attach_script_risk(cards: dict) -> dict:
+    """Per game and side: which markets are riding on how the game goes.
+
+    Fitted once for the whole build — `fit()` reads every player-game since
+    2015 — and evaluated per card against that card's own comparable games.
+    """
+    try:
+        from src.models.script_risk import fit, risk
+        from src.models.score_dist import history
+        fits = fit()
+        hist = history()
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  script risk unavailable ({e})", file=sys.stderr)
+        return {}
+    if not fits or hist.is_empty():
+        return {}
+    for c in cards.values():
+        blk = {}
+        for team in (c.get("home"), c.get("away")):
+            if not team:
+                continue
+            for pos in ("RB", "WR", "TE", "QB"):
+                for board_key, stat in _SCRIPT_MARKETS.items():
+                    got = risk(f"{pos}|{stat}", c, team, fits, hist)
+                    if got and got["script_dependent"]:
+                        blk[f"{team}|{pos}|{board_key}"] = {
+                            "tilt": got["tilt"], "spread": got["spread"],
+                            "band": got["worst_band"],
+                            "mult": got["worst_mult"], "p": got["worst_p"]}
+        if blk:
+            c["script"] = blk
+    # RETURNED, not stashed in `cards`. Putting it there made it a card, and
+    # the next thing to sort the cards by kickoff went looking for its
+    # `game_id`.
+    return {k: {"swing": v["swing"], "n": v["n"], "mult": v["mult"]}
+            for k, v in fits.items() if v["script_dependent"]}
 
 
 def _attach_coaching(cards: dict, season: int | None,
@@ -1281,11 +1329,13 @@ def games(season: int | None, week: int | None) -> dict:
     # correctly, leave a moneyline alone, and silently fail to pair any spread
     # at all — every spread would then read as fair at its vigged price.
     book_rows = b.to_dicts()
-    rows, cards = _enrich_lines(book_rows, moves, season, week)
+    rows, cards, script_fits = _enrich_lines(book_rows, moves, season, week)
 
 
     return {"season": season, "week": week, "rows": rows,
             "cards": cards,
+            # Why a market is flagged, once, rather than repeated per card.
+            "script_fits": script_fits,
             "min_books": MIN_BOOKS,
             "games": int(b["game_id"].n_unique()),
             # Not `bool(moves)`: a week holding two copies of the same capture
@@ -1437,7 +1487,9 @@ def games_past(season: int | None, current: int | None) -> dict:
         # then attach the result. Renaming first and enriching second put the
         # two views on different key names and the shared helper on a
         # `best_odds` that no longer existed.
-        rows, cards = _enrich_lines(b.to_dicts(), None, season, wk)
+        # Past weeks get no script risk: it is a thing to know BEFORE a
+        # game, and these are graded.
+        rows, cards, _ = _enrich_lines(b.to_dicts(), None, season, wk)
         for r in rows:
             k = (r["game_id"], r["market"], str(r["outcome"]), r["point"])
             # Absent, not false, on a push or an ungraded line: a push is not

@@ -159,6 +159,7 @@ const v3Dash = s => String(s == null ? '' : s).replace(/-/g, '−');
 // has the book baked into it and would grade the book against itself.
 function v3Value(row) {
   const ev = ev100(row);
+  const scr = v3Script(row);
   if (!has(ev)) return ['', ''];
   if (ev >= 5) return ['Good value', 'tag tag--good'];
   if (ev <= -10) return ['Pricey', 'tag tag--bad'];
@@ -474,6 +475,7 @@ function v3Row(row) {
     + (row.status && row.status !== 'ACT'
        ? '<span class="tag tag--warn">' + esc(row.status) + '</span>' : '');
   const ev = ev100(row);
+  const scr = v3Script(row);
   // The strip carries the numbers the old board carried, on the row, so the
   // common case needs no tap: our number, the book's, the gap, and what the
   // gap is worth. Asked for: "I kinda liked being able to see all of the data
@@ -506,6 +508,7 @@ function v3Row(row) {
     + (v[0] ? '<span class="' + v[1] + '">' + v[0] + '</span>' : '')
     + warn
     + (row.thin ? '<span class="tag tag--warn">Thin market</span>' : '')
+    + (scr ? '<span class="tag tag--warn">Script risk</span>' : '')
     + '<span class="tag">' + (open ? 'Hide detail' : 'More') + '</span>'
     + '</div></div></button>'
     + '<div class="rowacts">'
@@ -524,6 +527,28 @@ function v3Row(row) {
 // same row id v2 uses. Sharing the store means a player starred in v2 is
 // starred here — two lists under two keys would be the same feature twice,
 // disagreeing.
+// WHAT THIS PICK IS RIDING ON.
+//
+// A projection assumes a game. Thursday's Green Bay backs were projected on
+// an ordinary afternoon and spent the second half three scores behind, and
+// nothing on the page had said the number assumed a game that did not happen.
+//
+// `script_risk` measures how much each market moves with the final margin —
+// rushing a lot, receiving barely — and `score_dist` says how likely each
+// margin is here. Only flagged where BOTH are true: the market is genuinely
+// script-dependent, and this game has a real chance of the script that hurts.
+function v3Script(row) {
+  const g = ((DATA.games || {}).cards || []).filter(
+    c => v3Same(c.game_id, row.gameId))[0];
+  const sc = g && g.script;
+  if (!sc || !row.team || !row.pos) return null;
+  const hit = sc[row.team + '|' + row.pos + '|' + row.key];
+  // Below a one-in-eight chance of the bad script this is a caveat nobody
+  // needs; the flag is worth having only while it could actually happen.
+  if (!hit || hit.p < 0.12) return null;
+  return hit;
+}
+
 function v3Star(row) {
   const on = isFav(row.id);
   return '<button class="star" data-v3fav="' + esc(row.id) + '" '
@@ -569,6 +594,15 @@ function v3Detail(row) {
   add('Board rank', has(row.rank) ? '#' + row.rank : null);
   add('Position', row.pos);
   add('Availability', row.status);
+  const scr = v3Script(row);
+  if (scr) {
+    add('If the game goes badly',
+        Math.round((1 - scr.mult) * 100) + '% lower, and there is a '
+        + Math.round(scr.p * 100) + '% chance of it');
+    add('Script tilt', scr.tilt > 1
+        ? '+' + Math.round((scr.tilt - 1) * 100) + '% on the likely scripts'
+        : Math.round((scr.tilt - 1) * 100) + '% on the likely scripts');
+  }
   const rep = (DATA.injuries || {})[row.player];
   if (rep) {
     add('Injury report', rep.s + (rep.i ? ' \u00b7 ' + rep.i : ''));
