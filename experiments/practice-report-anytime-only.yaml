@@ -1,0 +1,69 @@
+id: 2026.09.25-practice-report-anytime-only
+note: Add the Wed/Thu/Fri practice report to anytime TD ONLY. The two-market version
+  regressed first TD on closing-line value (-0.46pp, -1.73 se) and on Top-1; first
+  TD is left exactly as served here.
+overlay:
+  models:
+    include_feature_families_by_target:
+      anytime_td:
+      - _build_game_context_features
+      - build_box_features
+      - build_depth_chart_features
+      - build_game_features
+      - build_goalline_features
+      - build_injury_features
+      - build_matchup_interaction_features
+      - build_momentum_features
+      - build_opening_drive_features
+      - build_opponent_features
+      - build_pace_features
+      - build_personnel_features
+      - build_player_redzone_features
+      - build_player_rolling_features
+      - build_player_share_features
+      - build_player_target_history
+      - build_practice_features
+      - build_qb_features
+      - build_receiver_features
+      - build_score_first_features
+      - build_snap_features
+      - build_td_proxy_features
+      - build_td_streak_features
+      - build_team_features
+      - build_team_target_tendency
+      first_td:
+      - _build_game_context_features
+      - build_box_features
+      - build_coach_features
+      - build_coverage_features
+      - build_depth_chart_features
+      - build_first_half_features
+      - build_game_features
+      - build_goalline_features
+      - build_injury_features
+      - build_interaction_features
+      - build_matchup_interaction_features
+      - build_momentum_features
+      - build_odds_features
+      - build_opening_drive_features
+      - build_opp_target_features
+      - build_opponent_features
+      - build_opponent_position_features
+      - build_pace_features
+      - build_personnel_features
+      - build_player_redzone_features
+      - build_player_rolling_features
+      - build_player_share_features
+      - build_player_target_history
+      - build_qb_features
+      - build_receiver_features
+      - build_rushing_efficiency_features
+      - build_score_first_features
+      - build_situational_features
+      - build_snap_features
+      - build_td_proxy_features
+      - build_td_streak_features
+      - build_team_features
+      - build_team_redzone_features
+      - build_team_target_tendency
+      - build_vegas_features
