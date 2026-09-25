@@ -183,6 +183,36 @@ def payload_v3():
          "why": "Covering means beating the line, not merely winning.",
          "pick": "ATL at GB on the spread"},
     ]}
+    # TICKET AND MONEY SPLITS, shaped as `action_public.week_view` leaves
+    # them. Carolina is here on purpose: a 7-point gap, under every threshold
+    # that earns a sentence, and three times the average bet — the case a gap
+    # ranking silently drops.
+    p.setdefault("games", {})["splits"] = {
+        "ATL_GB": {
+            "moneyline": {"captures": 3, "sides": [
+                {"side": "GB", "odds": -250, "tickets": 89.0, "money": 54.0,
+                 "gap": -35.0, "ratio": 0.15},
+                {"side": "ATL", "odds": 205, "tickets": 11.0, "money": 46.0,
+                 "gap": 35.0, "ratio": 6.89}]},
+            "spread": {"captures": 3, "sides": [
+                {"side": "GB", "odds": -110, "tickets": 53.0, "money": 40.0,
+                 "gap": -13.0, "ratio": 0.59},
+                {"side": "ATL", "odds": -110, "tickets": 47.0, "money": 60.0,
+                 "gap": 13.0, "ratio": 1.69}]},
+            "total": {"captures": 3, "sides": [
+                {"side": "Over", "odds": -110, "tickets": 50.0, "money": 55.0,
+                 "gap": 5.0, "ratio": 1.22},
+                {"side": "Under", "odds": -110, "tickets": 50.0, "money": 45.0,
+                 "gap": -5.0, "ratio": 0.82}]},
+        },
+        "CAR_CLE": {
+            "moneyline": {"captures": 3, "sides": [
+                {"side": "CAR", "odds": -146, "tickets": 89.0, "money": 96.0,
+                 "gap": 7.0, "ratio": 2.97},
+                {"side": "CLE", "odds": 120, "tickets": 11.0, "money": 4.0,
+                 "gap": -7.0, "ratio": 0.34}]},
+        },
+    }
     # An index shaped exactly as `_split_history` leaves it: weeks lifted out
     # into files, `has` naming which of them exist.
     p["history"] = {"anytime_td": {"has": [1, 2],
@@ -237,6 +267,12 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "an over/under row prints the stat it settled on",
                  "the normalizer carries the count through",
                  "a settled row shows what they actually had",
+                 "the sharp block reads all three markets, not just the moneyline",
+                 "and ranks them by ratio, biggest bet first",
+                 "a side backed by ordinary-sized bets is left out",
+                 "a heavily backed side with the money behind it still surfaces",
+                 "the card refuses to call itself a tip",
+                 "the sharp block is on the game screen",
                  "and changing the stake keeps it open too",
                  "the bar opens the slip rather than navigating",
                  "tapping it opens the slip sheet",

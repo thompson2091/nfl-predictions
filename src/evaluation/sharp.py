@@ -80,7 +80,16 @@ def splits(seasons: list[int] | None = None) -> pl.DataFrame:
     # Dollars per ticket, then the same figure on the other side of the same
     # market. A market with anything other than two sides is dropped rather
     # than compared against a partial denominator.
-    d = d.with_columns((pl.col("money_pct") / pl.col("tickets_pct")).alias("dpt"))
+    #
+    # ONE DEFINITION. `action_public.dollars_per_ticket` is what the game page
+    # renders from, so the number on screen and the number being graded here
+    # are the same arithmetic rather than two copies of it.
+    from src.ingest.action_public import dollars_per_ticket
+
+    d = d.with_columns(
+        pl.struct(["tickets_pct", "money_pct"]).map_elements(
+            lambda r: dollars_per_ticket(r["tickets_pct"], r["money_pct"]),
+            return_dtype=pl.Float64).alias("dpt"))
     key = ["captured_at", "game_id", "market"]
     both = (d.group_by(key)
             .agg([pl.len().alias("_n"), pl.col("dpt").sum().alias("_dpt_sum")])

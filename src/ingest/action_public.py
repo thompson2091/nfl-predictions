@@ -211,6 +211,43 @@ def refresh(season: int, week: int, force: bool = False) -> pl.DataFrame:
     return got
 
 
+def dollars_per_ticket(tickets: float | None, money: float | None) -> float | None:
+    """Money share over ticket share, or None if either is missing.
+
+    The average bet on a side, in units of the average bet overall. It is only
+    meaningful against the other side of the same market — see `ratio`.
+    """
+    if tickets is None or money is None or tickets <= 0:
+        return None
+    return money / tickets
+
+
+def ratio(tickets: float | None, money: float | None,
+          other_tickets: float | None, other_money: float | None) -> float | None:
+    """How much bigger the average bet on this side is than on the other.
+
+    **THE RAW GAP IS THE WRONG STATISTIC AND IT FLATTERS UNDERDOGS.** Money
+    share minus ticket share is capped by the ticket share: a side already
+    holding 89% of the tickets can gain at most 11 points however large its
+    bets are, while a side on 11% has 89 points to play with. Ranking on the
+    gap therefore ranks on how unpopular a side is, not on how big its money
+    is. Carolina at 89% of tickets and 96% of the money is the case that
+    exposes it — a 7-point gap, and three times the average bet.
+
+    Reciprocal between the two sides rather than equal and opposite, which is
+    what makes it readable as "2x the average bet" from either end.
+
+    One definition, used by `week_view` for the page and by
+    `evaluation.sharp` for the measurement, so the number on screen and the
+    number being graded cannot drift apart.
+    """
+    a = dollars_per_ticket(tickets, money)
+    b = dollars_per_ticket(other_tickets, other_money)
+    if a is None or b is None or b <= 0:
+        return None
+    return a / b
+
+
 def week_view(season: int, week: int) -> dict:
     """The latest capture per side, plus how far it has drifted this week.
 
@@ -244,6 +281,10 @@ def week_view(season: int, week: int) -> dict:
             # THE WHOLE POINT. Money above tickets is fewer, larger bets on
             # that side; below is the crowd without the money behind it.
             "gap": None if (t is None or m is None) else round(m - t, 1),
+            # And the same fact as a ratio, which is what actually ranks: the
+            # gap is bounded by the ticket share, so it sorts by unpopularity.
+            # Filled in below, once both sides of the market are known.
+            "ratio": None,
             "drift_tickets": (None if (t is None or r["open_tickets"] is None)
                               else round(t - r["open_tickets"], 1)),
             "drift_money": (None if (m is None or r["open_money"] is None)
@@ -251,5 +292,14 @@ def week_view(season: int, week: int) -> dict:
         })
     for game in out.values():
         for blk in game.values():
-            blk["sides"].sort(key=lambda s: -(s["tickets"] or 0))
+            sides = blk["sides"]
+            # The ratio needs the other side, so it is filled once the market
+            # is complete. A market the feed published half of keeps None
+            # rather than being compared against a partial denominator.
+            if len(sides) == 2:
+                for one, other in ((sides[0], sides[1]), (sides[1], sides[0])):
+                    r = ratio(one["tickets"], one["money"],
+                              other["tickets"], other["money"])
+                    one["ratio"] = None if r is None else round(r, 2)
+            sides.sort(key=lambda s: -(s["tickets"] or 0))
     return out

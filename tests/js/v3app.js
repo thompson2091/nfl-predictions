@@ -19,7 +19,8 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3Num', 'v3Rows', 'v3LadderSummary', 'v3Questions', 'v3AskSend',
    'V3BETTYPES',
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
-   'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow']);
+   'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
+   'v3Sharp', 'v3SharpSides', 'V3RATIO_SMALL']);
 const { V, render, v3Screen, v3Games, v3Game, v3Picks, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
         rowsFor, served, DATA } = x;
@@ -996,6 +997,53 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('a settled row shows what they actually had',
      v3PastRow(g[0]).indexOf('2 TDs') >= 0, v3PastRow(g[0]));
   V.market = 'anytime_td';
+}
+
+
+// ── Where the bigger bets are ───────────────────────────────────────────
+//
+// The dollar share, across all three markets. Every check here is a way the
+// gap-based version got it wrong.
+{
+  const { v3Sharp, v3SharpSides, V3RATIO_SMALL } = x;
+
+  const sides = v3SharpSides('ATL_GB');
+  ok('the sharp block reads all three markets, not just the moneyline',
+     sides.length >= 2 && sides.some(s => s.market === 'Spread'),
+     JSON.stringify(sides));
+  ok('and ranks them by ratio, biggest bet first',
+     sides.every((s, i) => i === 0 || sides[i - 1].ratio >= s.ratio),
+     JSON.stringify(sides.map(s => s.ratio)));
+  ok('a side backed by ordinary-sized bets is left out',
+     sides.every(s => s.ratio >= V3RATIO_SMALL),
+     JSON.stringify(sides));
+
+  // THE CASE A GAP RANKING DROPS. Carolina is 89% of the tickets AND 96% of
+  // the money: a 7-point gap, under every threshold on this card, and three
+  // times the average bet.
+  const car = v3SharpSides('CAR_CLE');
+  ok('a heavily backed side with the money behind it still surfaces',
+     car.length === 1 && car[0].side === 'CAR', JSON.stringify(car));
+  ok('and is named by its ratio rather than its gap',
+     v3Sharp('CAR_CLE').indexOf('3.0\u00d7') >= 0
+       || v3Sharp('CAR_CLE').indexOf('3.0×') >= 0, v3Sharp('CAR_CLE'));
+
+  const html = v3Sharp('ATL_GB');
+  ok('the card names the side and both shares',
+     html.indexOf('ATL') >= 0 && html.indexOf('% of bets') >= 0
+       && html.indexOf('% of the money') >= 0);
+  // NOT A TIP. Whether the bigger money is the smarter money is exactly what
+  // has not been measured, and the card has to say so on its face.
+  ok('the card refuses to call itself a tip',
+     html.indexOf('not a') >= 0 && html.indexOf('not measured') >= 0, html);
+  ok('a game with no split shows no card',
+     v3Sharp('NOPE_NOPE') === '', v3Sharp('NOPE_NOPE'));
+
+  // And it reaches the actual game screen rather than only the function.
+  V.tab = 'games'; V.game = 'ATL_GB'; render();
+  ok('the sharp block is on the game screen',
+     app().indexOf('Where the bigger bets are') >= 0);
+  V.game = null; V.tab = 'props';
 }
 
 done();

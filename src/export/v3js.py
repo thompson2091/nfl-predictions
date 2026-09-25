@@ -1010,6 +1010,9 @@ function v3Game(gid) {
     // report is a SECTION, not context, so it became a tab of its own —
     // under the matchup card it pushed every control two screens down.
     + v3PublicMoney(gid)
+    // Directly under it, because it is the other half of the same feed: the
+    // bars above are the ticket share and this is the dollar share.
+    + v3Sharp(gid)
     // ONE DISTRIBUTION, ONE TAB.
     //
     // Bets and Score were two renderings of the same thing: `score_dist`
@@ -1367,6 +1370,69 @@ function v3PublicMoney(gid) {
        : '<p class="help">No ticket split for the moneyline: Sportsbook '
          + 'Review publishes none, on any game. Its price move is '
          + 'above.</p>')
+    + '</div>';
+}
+
+// WHERE THE BIG MONEY IS, ACROSS ALL THREE MARKETS.
+//
+// The bars above are ticket shares. This is the other half of the same feed:
+// the share of the DOLLARS, which only Action Network publishes, on the
+// moneyline, the spread and the total alike.
+//
+// **Ranked on the ratio, not the gap.** Money share minus ticket share is
+// capped by the ticket share — a side already holding 89% of the tickets can
+// gain at most 11 points however large its bets are — so the gap sorts by how
+// unpopular a side is. Carolina at 89% of tickets and 96% of the money is the
+// case that exposes it: a 7-point gap, which is under the threshold that earns
+// a sentence anywhere else on this card, and three times the average bet.
+//
+// Nothing here is a claim that the big money is right. That is precisely what
+// has not been measured yet, and the note says so.
+const V3RATIO_SMALL = 1.5;
+
+const V3SHARPMKT = [['moneyline', 'To win'], ['spread', 'Spread'],
+                    ['total', 'Total']];
+
+function v3SharpSides(gid) {
+  const sp = v3Splits(gid);
+  if (!sp) return [];
+  const out = [];
+  V3SHARPMKT.forEach(m => {
+    const blk = sp[m[0]];
+    if (!blk || !blk.sides) return;
+    blk.sides.forEach(s => {
+      if (!has(s.ratio) || s.ratio < V3RATIO_SMALL) return;
+      out.push({ market: m[1], side: s.side, ratio: s.ratio,
+                 tickets: s.tickets, money: s.money });
+    });
+  });
+  return out.sort((a, b) => b.ratio - a.ratio);
+}
+
+function v3Sharp(gid) {
+  const rows = v3SharpSides(gid);
+  if (!rows.length) return '';
+  return '<div class="card"><div class="name">Where the bigger bets are</div>'
+    + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:6px">'
+    + 'Tickets count bets; money counts dollars. These sides are carrying a '
+    + 'bigger average bet than the other side of the same market.</p>'
+    + '<div class="list" style="margin-top:10px">'
+    + rows.map(r => '<div class="row"><div class="row__m">'
+        + '<div class="row__t"><div style="min-width:0">'
+        + '<div class="name">' + esc(r.side) + '</div>'
+        + '<div class="sub">' + esc(r.market) + ' · '
+        + r.tickets.toFixed(0) + '% of bets, ' + r.money.toFixed(0)
+        + '% of the money</div>'
+        + '</div><div class="chance"><b class="num">' + r.ratio.toFixed(1)
+        + '×</b><span class="eyebrow">the bet</span></div>'
+        + '</div></div></div>').join('')
+    + '</div>'
+    + '<p class="help">A side at 2× is backed by bets twice the size of '
+    + 'the ones on the other side. <b style="color:var(--ink)">This is not a '
+    + 'tip.</b> Whether the bigger money is the smarter money is exactly what '
+    + 'this project has not measured — the split archive began on '
+    + '25 September and the first week whose opening line, splits and close '
+    + 'all land in order is the first one that can answer it.</p>'
     + '</div>';
 }
 

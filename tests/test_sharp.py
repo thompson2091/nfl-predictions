@@ -204,3 +204,53 @@ def test_the_live_archive_refuses_rather_than_printing_noise():
     text = sharp.report()
     if sharp.paired().is_empty():
         assert "before a close" in text
+
+
+# ── the shared definition, which the page renders and this module grades ──
+
+def test_the_ratio_is_reciprocal_between_the_two_sides():
+    """What makes it readable from either end. The gap is equal and opposite;
+    the ratio is reciprocal, so "2x the average bet" on one side is the same
+    statement as "half" on the other."""
+    from src.ingest.action_public import ratio
+
+    a = ratio(11, 46, 89, 54)
+    b = ratio(89, 54, 11, 46)
+    assert a * b == pytest.approx(1.0, abs=1e-9)
+    assert a == pytest.approx(6.89, abs=0.01)
+
+
+def test_the_gap_and_the_ratio_disagree_and_the_ratio_is_the_one_that_ranks():
+    """CAROLINA. 89% of the tickets and 96% of the money is a 7-point gap —
+    under the 8-point threshold that earns a sentence anywhere on the game
+    card — and three times the average bet. Ranking on the gap drops it."""
+    from src.ingest.action_public import ratio
+
+    gap = 96 - 89
+    r = ratio(89, 96, 11, 4)
+    assert gap < 8, "the gap would be called small"
+    assert r > 2.5, "while the average bet is more than double"
+
+
+def test_a_missing_share_yields_no_ratio_rather_than_a_zero():
+    """ABSENT IS NOT ZERO. The feed declines to publish some outcomes, and a
+    ratio of 0 would be a claim nobody made."""
+    from src.ingest.action_public import dollars_per_ticket, ratio
+
+    assert dollars_per_ticket(None, 46) is None
+    assert dollars_per_ticket(0, 46) is None, "no division by a zero share"
+    assert ratio(11, 46, None, 54) is None
+    assert ratio(11, 46, 89, None) is None
+
+
+def test_the_page_and_the_measurement_share_one_definition(wire):
+    """Two copies of this arithmetic would drift, and the drift would be
+    invisible: the game page would rank one way and the graded table another,
+    both plausible."""
+    from src.ingest.action_public import ratio
+
+    wire([_split("A_B", "moneyline", "A", 11, 46),
+          _split("A_B", "moneyline", "B", 89, 54)],
+         [_line("A_B", "h2h", "A", 0.3, "open", "x")])
+    got = sharp.splits().filter(pl.col("side") == "A")["ratio"][0]
+    assert got == pytest.approx(ratio(11, 46, 89, 54), abs=1e-9)
