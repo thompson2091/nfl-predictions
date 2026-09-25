@@ -373,3 +373,61 @@ def calibration(hist: pl.DataFrame | None = None, bins: int = 10) -> dict:
                     "n": len(vals)})
     return {"n": len(rows), "bins": out,
             "mean_gap_pp": round(gap / len(rows) * 100, 2)}
+
+
+def win_curve(hist: pl.DataFrame | None = None) -> dict:
+    """P(home wins) as a smooth, monotone function of the spread.
+
+    **Why not just count the comparable games.** `comparables` answers with
+    the observed rate in a window, which is right for the distribution's
+    SHAPE and wrong for a single probability near a pick'em: the window is
+    two points wide, the crossover is noisy, and at a model spread of -0.7
+    (home favoured by 0.7) the window returned 48.5% for the home side. The
+    page then printed "our model: PIT by 0.7" beside "CIN 51.5%", two
+    statements from the same model pointing opposite ways.
+
+    Observed rate by spread, on this archive:
+
+        -3  42.7%    -1  44.4%    0  47.5%    +1  54.5%    +3  59.0%
+
+    Monotone across the range and ragged across the middle — 47.5% at a
+    pick'em on 242 games is within noise of 50 and still prints as "the away
+    team is favoured". A logistic fit through all of it crosses 50 where the
+    spread says it should and is defensible at every point in between.
+
+    Fitted by Newton-Raphson on two parameters; no dependency, and at three
+    thousand rows it converges in under ten iterations.
+    """
+    h = history() if hist is None else hist
+    if h.height < 200:
+        return {}
+    x = h["spread_line"].to_numpy().astype(float)
+    y = (h["margin"].to_numpy() > 0).astype(float)
+    import numpy as np
+
+    b = np.zeros(2)
+    X = np.column_stack([np.ones_like(x), x])
+    for _ in range(50):
+        p = 1.0 / (1.0 + np.exp(-(X @ b)))
+        w = np.clip(p * (1 - p), 1e-9, None)
+        g = X.T @ (y - p)
+        hess = (X * w[:, None]).T @ X
+        try:
+            step = np.linalg.solve(hess, g)
+        except np.linalg.LinAlgError:
+            break
+        b = b + step
+        if np.max(np.abs(step)) < 1e-9:
+            break
+    return {"a": float(b[0]), "b": float(b[1]), "n": int(h.height)}
+
+
+def win_prob(spread: float, curve: dict | None = None,
+             hist: pl.DataFrame | None = None) -> float | None:
+    """P(home wins) at a SCHEDULE-signed spread — positive means home favoured."""
+    import math
+
+    c = curve or win_curve(hist)
+    if not c:
+        return None
+    return 1.0 / (1.0 + math.exp(-(c["a"] + c["b"] * float(spread))))

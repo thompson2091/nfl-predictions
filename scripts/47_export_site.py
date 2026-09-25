@@ -762,8 +762,10 @@ def _attach_scores(cards: dict) -> None:
     try:
         from src.models.score_dist import (for_card, history,
                                             ladders_for_card,
-                                            scenarios_for_card)
+                                            scenarios_for_card, win_curve,
+                                            win_prob)
         hist = history()
+        curve = win_curve(hist)
     except Exception as e:                                       # noqa: BLE001
         print(f"  score distribution unavailable ({e})", file=sys.stderr)
         return
@@ -779,21 +781,31 @@ def _attach_scores(cards: dict) -> None:
         unf = scenarios_for_card(c, hist)
         if unf:
             c["unfold"] = unf
-        # OUR MODEL'S WIN PROBABILITY, VIA THE SAME DISTRIBUTION.
+        # OUR MODEL'S WIN PROBABILITY, FROM THE MONOTONE CURVE.
         #
         # `game_model` predicts a margin and a total, not a chance of winning,
         # and turning one into the other needs a distribution. Asking the
         # empirical one what a game hung at OUR number actually won at is the
         # conversion, and it uses the record rather than a normal assumption
         # about margins — which is the same argument `score_dist` is built on.
-        if c.get("model_spread") is not None and c.get("model_total") is not None:
-            ours = for_card({"spread": c["model_spread"],
-                             "total": c["model_total"],
-                             "home": c.get("home"), "away": c.get("away")},
-                            hist)
-            if ours and not ours.get("thin") and ours.get("home_win"):
-                c["model_win_home"] = round(ours["home_win"]["pct"] / 100, 4)
-                c["model_win_n"] = ours["n"]
+        #
+        # NOT the comparable window. That is right for the distribution's
+        # shape and wrong for a single probability near a pick'em: it is two
+        # points wide and its crossover is noisy, so a model spread of -0.7
+        # (home favoured) came back as 48.5% for the home side, and the page
+        # printed "our model: PIT by 0.7" beside "CIN 51.5%" — two statements
+        # from the same model pointing opposite ways on one card.
+        #
+        # `win_prob` is a logistic fit through all 2,928 graded games. It is
+        # monotone by construction, so the projected score and the win
+        # probability can no longer disagree about who is favoured.
+        if c.get("model_spread") is not None:
+            # The card signs its spread negative when HOME is favoured; the
+            # curve is fitted on the schedule's opposite convention.
+            got = win_prob(-float(c["model_spread"]), curve)
+            if got is not None:
+                c["model_win_home"] = round(got, 4)
+                c["model_win_n"] = curve.get("n")
 
 
 #: Positions whose availability moves a player market. The report lists the

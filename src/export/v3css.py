@@ -358,7 +358,9 @@ button{cursor:pointer}
   flex-direction:column;gap:2px}
 .cmp--ours{background:var(--oursbg)}
 .cmp--ours .eyebrow{color:var(--ours)}
-.cmp b{font-size:19px;font-weight:700}
+.cmp__t{font-size:17px;font-weight:700;line-height:20px}
+.cmp__s{font-size:19px;font-weight:700;line-height:23px;
+  white-space:nowrap}
 
 /* ---- the score ladder ---- */
 .ltab__h,.ltab__r{display:grid;grid-template-columns:96px 52px 1fr;

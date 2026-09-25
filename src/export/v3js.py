@@ -682,6 +682,20 @@ function v3Explainer() {
     + 'what to bet.</p></div>';
 }
 
+// THE ADJUSTED WIN PROBABILITY, derived the same way everywhere.
+//
+// `game_blend` fits a weight on the SPREAD; the win probability has to move
+// by the same fraction, or the adjusted number on the list and the adjusted
+// bar on the game page are two different quantities with one name.
+function v3AdjWin(c) {
+  if (!c || !c.blend || !has(c.blend.spread) || !has(c.spread)
+      || !has(c.model_spread) || !has(c.win_home) || !has(c.model_win_home))
+    return null;
+  const denom = c.model_spread - c.spread;
+  const w = denom ? (c.blend.spread - c.spread) / denom : 0;
+  return c.win_home + w * (c.model_win_home - c.win_home);
+}
+
 function v3Kick(c) {
   const when = [c.kick_day, c.kick_et].filter(Boolean).join(' ');
   return when + (c.prime ? ' · prime time' : '');
@@ -699,8 +713,29 @@ function v3Games() {
       + 'an odds archive, and until it runs there is nothing here to show.'
       + '</p></div></div>';
   }
+  // THE LEAN IS DERIVED FROM THE NUMBER THE CARD PRINTS.
+  //
+  // It used to come from the sign of `model_spread` while the percentage came
+  // from `model_win_home`, and on a near-pick'em the two disagree: CIN at PIT
+  // had the model at -0.7 (home favoured, so the tag said "picks the other
+  // side") and the model win probability at 48.5% for the home side, which
+  // favours the AWAY team. Both honest, both from the model, contradicting
+  // each other on the same card. Where a win probability exists it decides,
+  // because it is the one on screen.
   const lean = c => {
-    if (!has(c.spread) || !has(c.model_spread)) return ['', ''];
+    const haveP = has(c.win_home) && has(c.model_win_home);
+    if (!haveP && (!has(c.spread) || !has(c.model_spread))) return ['', ''];
+    if (haveP) {
+      const d = (c.model_win_home - c.win_home) * 100;
+      if ((c.win_home >= 0.5) !== (c.model_win_home >= 0.5))
+        return ['Our model picks the other side', 'tag tag--warn'];
+      if (Math.abs(d) < 3) return ['Our model agrees', 'tag'];
+      // "Closer" and "by more" are about the FAVOURITE, so the sign has to be
+      // read from the favourite's side rather than from the home side.
+      const towardFav = (c.win_home >= 0.5) ? d > 0 : d < 0;
+      return [towardFav ? 'Our model: by more' : 'Our model: a closer game',
+              'tag tag--ours'];
+    }
     const d = c.model_spread - c.spread;
     if ((c.spread < 0) !== (c.model_spread < 0))
       return ['Our model picks the other side', 'tag tag--warn'];
@@ -734,18 +769,28 @@ function v3Games() {
     // saying so. Read together the two contradict each other. Book, model and
     // the gap are now labelled, and the lean becomes a summary of numbers
     // that are on the screen rather than a claim about numbers that are not.
+    // EVERY CELL NAMES ITS TEAM. "63.0% CIN · book" beside a bare "51.5%
+    // model" reads as two teams' numbers, and on this very card the model's
+    // 51.5% belongs to the SAME side as the book's 63% — so the reader who
+    // assumes otherwise gets the direction backwards.
     const mw = has(c.model_win_home) ? c.model_win_home : null;
+    const aw = v3AdjWin(c);
     const side = has(c.win_home) && c.win_home >= 0.5 ? c.home : c.away;
-    const bookPct = !has(c.win_home) ? null
-      : (side === c.home ? c.win_home : c.win_away);
-    const modelPct = mw == null ? null : (side === c.home ? mw : 1 - mw);
+    const forSide = v => v == null ? null
+      : (side === c.home ? v : 1 - v);
+    const bookPct = forSide(has(c.win_home) ? c.win_home : null);
+    const modelPct = forSide(mw);
+    const adjPct = forSide(aw);
     const gap = (bookPct == null || modelPct == null) ? null
       : (modelPct - bookPct) * 100;
+    const cell = (label, v) => v == null ? ''
+      : v3Cell(label, esc(side) + ' ' + v3Pct(v, 1));
     const strip = bookPct == null ? ''
-      : '<span class="strip num" style="grid-template-columns:repeat(3,auto);'
-        + 'justify-content:start;gap:18px">'
-        + v3Cell(side + ' \u00b7 book', v3Pct(bookPct, 1))
-        + (modelPct == null ? '' : v3Cell('model', v3Pct(modelPct, 1)))
+      : '<span class="strip num" style="grid-template-columns:repeat(4,auto);'
+        + 'justify-content:start;gap:16px">'
+        + cell('book', bookPct)
+        + cell('model', modelPct)
+        + cell('adjusted', adjPct)
         + (gap == null ? '' : v3Cell('gap', (gap > 0 ? '+' : '')
             + gap.toFixed(1) + 'pp',
             Math.abs(gap) < 3 ? '' : (gap > 0 ? 'good' : 'bad')))
@@ -1000,13 +1045,8 @@ function v3WinBar(c) {
   // it is small — which is the useful part. It says how far the model has
   // earned the right to move the book, and "about a seventh of the way" is a
   // more honest answer than either number alone.
-  if (has(c.win_home) && has(c.model_win_home) && c.blend
-      && has(c.blend.spread) && has(c.spread) && has(c.model_spread)) {
-    const denom = (c.model_spread - c.spread);
-    const w = denom ? (c.blend.spread - c.spread) / denom : 0;
-    bars.push(['Adjusted', c.win_home + w * (c.model_win_home - c.win_home),
-               null]);
-  }
+  const aw = v3AdjWin(c);
+  if (aw != null) bars.push(['Adjusted', aw, null]);
   if (!bars.length) return '';
   return '<div style="margin-top:16px;display:flex;flex-direction:column;'
     + 'gap:10px">'
@@ -1036,17 +1076,19 @@ function v3Compare(c) {
     if (!has(sp) || !has(tot)) return '';
     const hh = tot / 2 - sp / 2, aa = tot / 2 + sp / 2;
     const lead = hh >= aa ? c.home : c.away;
+    // TEAM ON ITS OWN LINE, SCORE UNDER IT. Three boxes across at phone
+    // width and "CIN 23.0-19.5" wrapped mid-score, reading as two numbers on
+    // two rows.
+    //
+    // One decimal on the score: rounding turned a 0.6-point model margin into
+    // "LA 22-22", a projected tie built from numbers that did not say one.
     return '<div class="cmp' + (cls || '') + '">'
       + '<span class="eyebrow">' + esc(label) + '</span>'
-      // ONE DECIMAL. Rounding to whole numbers turned a 0.6-point model
-      // margin into "LA 22-22" — a projected tie, next to a line that says
-      // otherwise, from numbers that did not say it either. Whole numbers
-      // read better on a blowout and lie on a close game, and the close game
-      // is the one anyone is reading this box for.
-      + '<b class="num">' + esc(lead) + ' ' + Math.max(hh, aa).toFixed(1)
+      + '<b class="cmp__t">' + esc(lead) + '</b>'
+      + '<b class="num cmp__s">' + Math.max(hh, aa).toFixed(1)
       + '\u2013' + Math.min(hh, aa).toFixed(1) + '</b>'
-      + '<span class="sub num">' + esc(sp < 0 ? c.home : c.away) + ' by '
-      + Math.abs(sp) + ' \u00b7 ' + tot + ' pts</span></div>';
+      + '<span class="sub num">by ' + Math.abs(sp) + ' \u00b7 ' + tot
+      + ' pts</span></div>';
   };
   const a = line('Sportsbooks', c.spread, c.total, '');
   const b = line('Our model', c.model_spread, c.model_total, ' cmp--ours');
@@ -1881,7 +1923,12 @@ document.addEventListener('change', ev => {
 
 //: The actions that change which SCREEN you are on. Everything else edits the
 //: screen you are already looking at and must not move you.
-const V3NAV = { v3tab: 1, v3game: 1, v3back: 1, v3gtab: 1, v3mkt: 1 };
+//: `v3gtab` is NOT here. Switching section inside a game is not leaving the
+//: page — you are looking at the same matchup — and sending the reader to the
+//: top means scrolling back down past the card, the bars and the public split
+//: every time they compare two tabs. `v3mkt` is out for the same reason: the
+//: rows change, the page does not.
+const V3NAV = { v3tab: 1, v3game: 1, v3back: 1 };
 
 function v3Do(kind, v) {
   if (V3NAV[kind]) V.top = true;

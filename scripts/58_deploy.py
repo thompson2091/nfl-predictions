@@ -71,9 +71,20 @@ class Session:
         self.target, self.dry = target, dry
         self.sock = str(Path(tempfile.mkdtemp()) / "cm")
 
+    #: A key dedicated to this deploy, used when it exists. Named rather than
+    #: left to ssh's defaults because this machine has two dozen keys for
+    #: other things and offering all of them can exhaust the server's auth
+    #: attempt limit before reaching the right one.
+    KEY = Path.home() / ".ssh" / "id_ed25519_squarespro"
+
     def _base(self) -> list[str]:
-        return ["-o", "ControlMaster=auto", "-o", f"ControlPath={self.sock}",
+        opts = ["-o", "ControlMaster=auto", "-o", f"ControlPath={self.sock}",
                 "-o", "ControlPersist=120"]
+        if self.KEY.exists():
+            # `IdentitiesOnly` so ssh uses THIS key rather than adding it to
+            # the pile it already offers.
+            opts += ["-i", str(self.KEY), "-o", "IdentitiesOnly=yes"]
+        return opts
 
     def open(self) -> bool:
         if self.dry:
@@ -188,17 +199,21 @@ def main() -> int:
     target = f"{user}@{host}"
 
     if a.setup_keys:
+        key = Session.KEY
         print(f"""
-To stop typing the password, once:
+To stop typing the password, run this once:
 
-    ssh-keygen -t ed25519            # if you have no key yet; press enter through
-    ssh-copy-id {target}
+    {'' if key.exists() else 'ssh-keygen -t ed25519 -N "" -f ' + str(key)}
+    ssh-copy-id -i {key}.pub {target}
 
-That is it. This script, scp and ssh all pick the key up automatically, and no
-credential is stored anywhere in this repo.
+It will ask for the server password one final time. After that this script,
+scp and ssh all find the key by themselves.
 
-Do NOT put the password in .env. It is the root account of a public web server,
-and a dotfile ends up in shell history, in backups and in crash reports.
+Key present: {'yes, at ' + str(key) if key.exists() else 'no'}
+
+Do NOT put the password in .env. It is the root account of a public web
+server, and a dotfile ends up in shell history, in backups and in crash
+reports.
 """)
         return 0
 

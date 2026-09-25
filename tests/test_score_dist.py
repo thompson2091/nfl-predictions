@@ -164,3 +164,52 @@ def test_the_distribution_is_calibrated_within_a_couple_of_points():
             continue
         assert abs(b["happened"] - b["said"]) < 10.0, (
             f"the {b['said']}% bin came in at {b['happened']}% on {b['n']} games")
+
+
+@pytest.mark.skipif(sd.history().height < 500, reason="needs the real archive")
+def test_the_win_curve_is_monotone_in_the_spread():
+    """A probability that is not monotone contradicts the score beside it.
+
+    The comparable window is two points wide and its crossover is noisy: at a
+    model spread of -0.7 (home favoured) it returned 48.5% for the home side,
+    and the page printed "our model: PIT by 0.7" next to "CIN 51.5%" — two
+    statements from the same model pointing opposite ways on one card.
+    """
+    c = sd.win_curve()
+    assert c and c["b"] > 0, "a bigger home spread must mean a likelier home win"
+    last = -1.0
+    for sp in range(-14, 15):
+        p = sd.win_prob(sp, c)
+        assert p > last, f"not monotone at {sp}"
+        last = p
+
+
+@pytest.mark.skipif(sd.history().height < 500, reason="needs the real archive")
+def test_the_curve_crosses_even_money_near_a_pick_em():
+    """Not exactly at zero — the fit says +0.39, which is a real, small
+    property of the archive rather than something to round away — but a
+    crossover far from zero would mean the sign convention is inverted."""
+    c = sd.win_curve()
+    cross = -c["a"] / c["b"]
+    assert abs(cross) < 1.5, f"crosses 50% at a spread of {cross:.2f}"
+    assert sd.win_prob(-7, c) < 0.35 and sd.win_prob(7, c) > 0.65
+
+
+@pytest.mark.skipif(sd.history().height < 500, reason="needs the real archive")
+def test_the_curve_is_calibrated_too():
+    """Smooth and monotone is not the same as right."""
+    import polars as pl
+
+    h = sd.history()
+    c = sd.win_curve(h)
+    d = h.with_columns([
+        pl.col("spread_line").map_elements(
+            lambda s: sd.win_prob(s, c), return_dtype=pl.Float64).alias("p"),
+        (pl.col("margin") > 0).cast(pl.Int8).alias("y")])
+    for lo, hi in ((0.0, 0.35), (0.35, 0.5), (0.5, 0.65), (0.65, 1.0)):
+        b = d.filter((pl.col("p") >= lo) & (pl.col("p") < hi))
+        if b.height < 100:
+            continue
+        said, got = float(b["p"].mean()), float(b["y"].mean())
+        assert abs(got - said) < 0.06, (
+            f"{lo}-{hi}: said {said:.3f}, happened {got:.3f} on {b.height}")
