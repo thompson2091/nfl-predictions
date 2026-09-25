@@ -117,6 +117,26 @@ function install() {
     get hash() { return hash; },
     set hash(v) { hash = v; globalThis.fireWin('hashchange', {}); },
   };
+  // A history stack that actually stacks, so a page using `pushState` for
+  // the back gesture can be exercised rather than merely not crashed.
+  const stack = [];
+  globalThis.history = {
+    get length() { return stack.length; },
+    get state() { return stack.length ? stack[stack.length - 1].state : null; },
+    pushState(state, _t, url) { stack.push({ state, url }); hash = url || hash; },
+    replaceState(state, _t, url) {
+      if (stack.length) stack[stack.length - 1] = { state, url };
+      else stack.push({ state, url });
+      hash = url || hash;
+    },
+    back() {
+      if (stack.length < 2) return;
+      stack.pop();
+      const top = stack[stack.length - 1];
+      hash = top.url || hash;
+      globalThis.fireWin('popstate', { state: top.state });
+    },
+  };
   globalThis.scrollTo = () => {};
   globalThis.scrollX = 0; globalThis.scrollY = 0;
   globalThis.setTimeout = globalThis.setTimeout || (fn => fn());

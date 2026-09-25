@@ -72,11 +72,24 @@ const V3MKT = [
 const V3HIST = { any: 'anytime_td', first: 'first_td', rec: 'receptions',
   rush: 'rushing_yards', recyds: 'receiving_yards', passyds: 'passing_yards' };
 
+// Every column you can order the board by. `get` returns null where a row
+// has no value, and nulls sort last in BOTH directions — a row with no price
+// is not the best-priced row, and it is not the worst either.
+const V3SORTS = [
+  ['ours', 'Our chance', r => betProb(r)],
+  ['book', 'Book chance', r => r.book],
+  ['edge', 'Edge', r => r.edge],
+  ['ev', 'EV per $100', r => ev100(r)],
+  ['odds', 'Odds', r => has(r.dec) ? r.dec : null],
+  ['proj', 'Projection', r => has(r.proj) ? r.proj : null],
+  ['player', 'Name', r => r.player],
+];
+
 const V3KEY = 'picksix.v3';
 const V3SHOW = 25;
 
 const V = Object.assign({
-  tab: 'week', market: 'any', sort: 'likely', filter: 'all',
+  tab: 'week', market: 'any', sort: 'ours', desc: true, filter: 'all',
   week: null, game: null, gameTab: 'notes', cat: 'all',
   picks: {}, betType: 'parlay', stake: 10, shown: V3SHOW,
   ask: '', answer: '', saved: false,
@@ -92,13 +105,33 @@ function v3Save() {
   try {
     localStorage.setItem(V3KEY, JSON.stringify({
       market: V.market, sort: V.sort, filter: V.filter, picks: V.picks,
-      betType: V.betType, stake: V.stake, game: V.game }));
+      betType: V.betType, stake: V.stake, game: V.game,
+      desc: V.desc }));
   } catch (e) { /* private window, blocked storage — the app still works */ }
 }
 
 // ── small helpers ───────────────────────────────────────────────────────
 
-const v3Pct = p => !has(p) ? '—' : (p < 0.1 ? (p * 100).toFixed(1) : Math.round(p * 100)) + '%';
+// THREE ID SCHEMES, ONE KEY.
+//
+// Cards and game rows carry `ATL_GB`; the player boards carry
+// `2026_03_ATL_GB`. Comparing them raw matched nothing, and matching nothing
+// renders as "no priced players in this game" — a legitimate state, so the
+// Who-scores tab shipped permanently empty and said something reasonable
+// while doing it. The Python side has `_game_key` for the same reason.
+function v3Key(gid) {
+  const b = String(gid || '').split('_');
+  return b.length >= 2 ? b.slice(-2).join('_') : String(gid || '');
+}
+const v3Same = (a, b) => v3Key(a) === v3Key(b);
+
+// `d` decimals, default none above 10%. A spread and a total are coin flips
+// by construction, so a whole-number percentage prints 50% on every one of
+// them and hides the only thing that varies — which is the vig, and is the
+// reason one side of a total is worth taking over the other.
+const v3Pct = (p, d) => !has(p) ? '—'
+  : (d != null ? (p * 100).toFixed(d)
+     : p < 0.1 ? (p * 100).toFixed(1) : Math.round(p * 100)) + '%';
 const v3Win = (s, o) => o < 0 ? s * 100 / -o : s * o / 100;
 const v3Dash = s => String(s == null ? '' : s).replace(/-/g, '−');
 
@@ -130,6 +163,11 @@ function v3Line(row) {
   const side = row.take === 'under' ? 'Under' : 'Over';
   const proj = has(row.proj) ? ' · we project ' + row.proj.toFixed(1) : '';
   return side + ' ' + row.line + (u ? ' ' + u : '') + proj;
+}
+
+function v3MktLabel() {
+  const m = V3MKT.filter(x => x[0] === V.market)[0];
+  return m ? m[1].toLowerCase() : V.market;
 }
 
 function v3Fixture(row) {
@@ -181,13 +219,32 @@ function v3PastBanner() {
 
 const V3CACHE = {};
 
+// A FAILED FETCH IS NOT AN EMPTY WEEK, AND SAYING SO IS THE WHOLE FIX.
+//
+// `.catch(() => [])` turned every failure into "no rows", which renders as
+// "no priced picks recorded" — indistinguishable from a week that genuinely
+// had none. The commonest failure is not a missing file: it is opening
+// index.html from the filesystem, where the browser blocks `fetch` for
+// `file://` outright. Every past week on every market came back empty and
+// the page explained it away.
 function v3Fetch(market, week, then) {
   const k = market + ':' + week;
   if (V3CACHE[k]) { then(V3CACHE[k]); return; }
   const path = (DATA.history_path || 'data/h-{market}-{week}.json')
     .replace('{market}', market).replace('{week}', String(week));
-  fetch(path).then(r => r.ok ? r.json() : []).catch(() => [])
-    .then(rows => { V3CACHE[k] = rows || []; then(V3CACHE[k]); });
+  const fail = why => { V3CACHE[k] = { error: why }; then(V3CACHE[k]); };
+  let p;
+  try { p = fetch(path); } catch (e) { fail(String(e)); return; }
+  p.then(r => {
+    if (!r.ok) { fail('the server answered ' + r.status + ' for ' + path); return; }
+    return r.json().then(rows => { V3CACHE[k] = { rows: rows || [] };
+                                   then(V3CACHE[k]); });
+  }).catch(e => fail(
+    location.protocol === 'file:'
+      ? 'past weeks are separate files, and a browser will not let a page '
+        + 'opened from your filesystem read them. Serve the folder over http '
+        + '(python3 -m http.server) and they will load.'
+      : 'could not load ' + path + ' (' + e + ')'));
 }
 
 // A graded row, normalised onto the same field names the live rows use, so
@@ -228,37 +285,64 @@ function v3Week() {
     '<button class="mkt" data-v3mkt="' + m[0] + '" aria-pressed="'
     + (m[0] === V.market) + '">' + esc(m[1]) + '</button>').join('');
 
-  const sortHelp = V.sort === 'likely'
-    ? 'Highest chance first. Likely picks usually pay less.'
-    : 'Where the price is best compared with our chance. Riskier, bigger payouts.';
   const filterHelp = {
     all: '',
     short: 'Our shortlist: the picks this project would actually place.',
     fade: 'Players priced above our number. These are bets to LEAVE ALONE, '
-        + 'not bets to place — no book posts the other side.',
+        + 'not bets to place \u2014 no book posts the other side.',
   }[V.filter] || '';
 
   return '<div class="wrap">'
     + v3PastBanner()
     + '<h1 class="h1">' + esc(V.week == null ? cur[3] : 'Week ' + V.week) + '</h1>'
-    + '<p class="lede">Our number next to the sportsbook’s, in plain '
-    + 'English.' + (V.week == null ? ' Tap + to add a player to your picks.' : '')
+    + '<p class="lede">Our number next to the sportsbook\u2019s.'
+    + (V.week == null ? ' Tap a row for everything we know about it.' : '')
     + '</p>'
     + '<div class="mkts">' + mkts + '</div>'
     + '<p class="help">' + esc(cur[2]) + '</p>'
-    + v3Watch()
+    + v3GamePicker()
     + '<div class="seg seg--3">'
     + v3Seg('v3filter', [['all', 'Everyone'], ['short', 'Shortlist'],
                          ['fade', 'Fades']], V.filter)
     + '</div>'
     + (filterHelp ? '<p class="help">' + esc(filterHelp) + '</p>' : '')
-    + '<div class="seg seg--2">'
-    + v3Seg('v3sort', [['likely', 'Most likely'], ['value', 'Best value']], V.sort)
-    + '</div>'
-    + '<p class="help">' + esc(sortHelp) + '</p>'
+    + v3SortBar()
     + '<div class="list" id="v3rows">' + v3Rows() + '</div>'
     + v3Explainer()
     + '</div>';
+}
+
+// THE GAME FILTER, AND IT SURVIVES THE MARKET.
+//
+// Asked for directly: "a lot of times I'm looking at a specific game and
+// clicking between the markets and need to reselect the game every time".
+// `v3Do` deliberately leaves `V.game` alone on a market change.
+function v3GamePicker() {
+  const cards = (DATA.games || {}).cards || [];
+  if (!cards.length) return '';
+  const opts = ['<option value="">All games</option>'].concat(
+    cards.map(c => '<option value="' + esc(c.game_id) + '"'
+      + (V.game === c.game_id ? ' selected' : '') + '>'
+      + esc(c.away + ' at ' + c.home) + '</option>')).join('');
+  return '<div class="picker' + (V.game ? ' picker--on' : '') + '">'
+    + '<span class="eyebrow">Game</span>'
+    + '<select data-v3gamesel aria-label="Filter to one game">' + opts
+    + '</select></div>';
+}
+
+// Sort by any column, either way. The two presets the casual reader wants are
+// just two of the columns, so there is one control rather than a tidy pair
+// that cannot express "order by expected value ascending".
+function v3SortBar() {
+  const opts = V3SORTS.map(c => '<option value="' + c[0] + '"'
+    + (V.sort === c[0] ? ' selected' : '') + '>' + esc(c[1]) + '</option>')
+    .join('');
+  return '<div class="picker">'
+    + '<span class="eyebrow">Sort by</span>'
+    + '<select data-v3sortsel aria-label="Sort the board">' + opts + '</select>'
+    + '<button class="dirbtn" data-v3dir="1" aria-label="'
+    + (V.desc ? 'Highest first' : 'Lowest first') + '">'
+    + (V.desc ? '\u2193 High' : '\u2191 Low') + '</button></div>';
 }
 
 function v3Seg(attr, opts, on) {
@@ -267,13 +351,20 @@ function v3Seg(attr, opts, on) {
 }
 
 function v3Sorted(rows) {
+  const col = V3SORTS.filter(c => c[0] === V.sort)[0] || V3SORTS[0];
+  const get = col[2];
   const out = rows.slice();
-  if (V.sort === 'value') {
-    out.sort((a, b) => (ev100(b) == null ? -1e9 : ev100(b))
-                     - (ev100(a) == null ? -1e9 : ev100(a)));
-  } else {
-    out.sort((a, b) => (betProb(b) || 0) - (betProb(a) || 0));
-  }
+  out.sort((a, b) => {
+    const x = get(a), y = get(b);
+    // Nulls last whichever way the arrow points. Flipping the direction
+    // should reorder the rows that HAVE a value, not promote the ones that
+    // do not to the top of the board.
+    if (x == null && y == null) return 0;
+    if (x == null) return 1;
+    if (y == null) return -1;
+    const c = typeof x === 'string' ? x.localeCompare(y) : x - y;
+    return V.desc ? -c : c;
+  });
   return out;
 }
 
@@ -290,19 +381,26 @@ function v3Rows() {
       });
       return '<div class="empty">Loading week ' + V.week + '…</div>';
     }
-    let rows = v3Graded(mk, V3CACHE[k]).filter(r => r.priced);
-    if (V.game) rows = rows.filter(r => r.gameId === V.game
-                                     || fixtureOf(r.gameId) === V.game);
+    // A FAILURE IS NOT AN EMPTY WEEK. See `v3Fetch`: the commonest cause is
+    // the page being opened from the filesystem, where the browser refuses
+    // to fetch the week files at all, and the old code rendered that as "no
+    // priced picks recorded" — which is what a genuinely empty week says.
+    if (V3CACHE[k].error) {
+      return '<div class="empty"><b>Week ' + V.week + ' did not load.</b><br>'
+        + esc(V3CACHE[k].error) + '</div>';
+    }
+    let rows = v3Graded(mk, V3CACHE[k].rows).filter(r => r.priced);
+    if (V.game) rows = rows.filter(r => v3Same(r.gameId, V.game));
     if (!rows.length) return '<div class="empty">No priced picks recorded '
-      + 'for week ' + V.week + ' on this market.</div>';
+      + 'for week ' + V.week + ' on this market. The week loaded; the board '
+      + 'carried no priced rows for it.</div>';
     return v3Sorted(rows).slice(0, V.shown).map(v3PastRow).join('')
       + v3MoreBtn(rows.length);
   }
 
   let rows = rowsFor(V.market, V.filter === 'all' ? null : V.filter)
     .filter(r => r.priced && !r.blocked);
-  if (V.game) rows = rows.filter(r => r.gameId === V.game
-                                   || fixtureOf(r.gameId) === V.game);
+  if (V.game) rows = rows.filter(r => v3Same(r.gameId, V.game));
   if (!rows.length) {
     return '<div class="empty">' + (V.filter === 'fade'
       ? 'Nothing on this market is priced far enough above our number to '
@@ -323,26 +421,93 @@ function v3Row(row) {
   const v = v3Value(row);
   const inSlip = !!V.picks[row.id];
   const line = v3Line(row);
+  const open = V.open === row.id;
   const warn = row.status && row.status !== 'ACT'
     ? '<span class="tag tag--warn">' + esc(row.status) + '</span>' : '';
-  return '<div class="row"><div class="row__m">'
+  const ev = ev100(row);
+  // The strip carries the numbers the old board carried, on the row, so the
+  // common case needs no tap: our number, the book's, the gap, and what the
+  // gap is worth. Asked for: "I kinda liked being able to see all of the data
+  // in the main view as opposed to clicking in."
+  const strip = '<div class="strip num">'
+    + v3Cell('Ours', v3Pct(betProb(row), 1))
+    + v3Cell('Book', v3Pct(row.book, 1))
+    + v3Cell('Edge', has(row.edge) ? (row.edge > 0 ? '+' : '')
+        + row.edge.toFixed(1) + 'pp' : '\u2014',
+        has(row.edge) ? (row.edge > 0 ? 'good' : 'bad') : '')
+    + v3Cell('EV/$100', has(ev) ? (ev > 0 ? '+$' : '\u2212$')
+        + Math.abs(ev).toFixed(2) : '\u2014',
+        has(ev) ? (ev > 0 ? 'good' : 'bad') : '')
+    + '</div>';
+  return '<div class="row' + (open ? ' row--open' : '') + '">'
+    + '<button class="rowbtn" data-v3open="' + esc(row.id) + '" '
+    + 'aria-expanded="' + open + '"><div class="row__m">'
     + '<div class="row__t"><div style="min-width:0">'
     + '<div class="name">' + esc(row.player) + '</div>'
     + '<div class="sub">' + esc(v3Fixture(row)) + '</div>'
     + (line ? '<div class="line">' + esc(line) + '</div>' : '')
-    + '</div><div class="chance"><b class="num">' + v3Pct(betProb(row))
-    + '</b><span class="eyebrow">Our chance</span></div></div>'
-    + '<div class="tags">'
+    + '</div><div class="chance">'
     + (has(row.odds) ? '<span class="pill num">' + v3Dash(american(row.odds))
         + '</span>' : '')
     + '<span class="sub num">' + esc(v3Payout(row)) + '</span>'
+    + '</div></div>'
+    + strip
+    + '<div class="tags">'
     + (v[0] ? '<span class="' + v[1] + '">' + v[0] + '</span>' : '')
     + warn
-    + '</div></div>'
+    + (row.thin ? '<span class="tag tag--warn">Thin market</span>' : '')
+    + '<span class="tag">' + (open ? 'Hide detail' : 'More') + '</span>'
+    + '</div></div></button>'
     + '<button class="add" data-v3pick="' + esc(row.id) + '" aria-pressed="'
     + inSlip + '" aria-label="' + (inSlip ? 'Remove ' : 'Add ')
-    + esc(row.player) + '">' + (inSlip ? '✓' : '+') + '</button>'
+    + esc(row.player) + '">' + (inSlip ? '\u2713' : '+') + '</button>'
+    + (open ? v3Detail(row) : '')
     + '</div>';
+}
+
+function v3Cell(label, value, tone) {
+  return '<span class="cell"><b' + (tone ? ' class="' + tone + '"' : '')
+    + '>' + value + '</b><i>' + esc(label) + '</i></span>';
+}
+
+// Everything the board knows about one row. Asked for: "I kinda thought that
+// clicking on this condensed view of a player would show full stats."
+//
+// Built from fields that may be absent, so each is emitted only when it has a
+// value — a detail panel of eleven em-dashes says less than four real numbers.
+function v3Detail(row) {
+  const f = [];
+  const add = (l, v) => { if (v != null && v !== '') f.push([l, v]); };
+  add('Our chance', v3Pct(betProb(row), 1));
+  if (has(row.modelOnly) && row.modelOnly !== betProb(row))
+    add('Model alone', v3Pct(row.modelOnly, 1));
+  if (has(row.ours) && row.ours !== betProb(row))
+    add('Blended', v3Pct(row.ours, 1));
+  add('Book\u2019s chance', v3Pct(row.book, 1));
+  add('Edge', has(row.edge)
+    ? (row.edge > 0 ? '+' : '') + row.edge.toFixed(1) + 'pp' : null);
+  add('Price', has(row.odds) ? v3Dash(american(row.odds)) : null);
+  add('Best price', has(row.best)
+    ? v3Dash(american(row.best)) + (row.bestBook ? ' at ' + row.bestBook : '')
+    : null);
+  add('Opened at', has(row.openOdds) ? v3Dash(american(row.openOdds)) : null);
+  if (has(row.openImplied) && has(row.book)) {
+    const mv = (row.book - row.openImplied) * 100;
+    add('Moved', (mv > 0 ? '+' : '') + mv.toFixed(1) + 'pp since open');
+  }
+  add('Line', has(row.line) ? row.line + ' ' + (unitOf(row.key) || '') : null);
+  add('We project', has(row.proj) ? row.proj.toFixed(1) : null);
+  if (has(row.lo) && has(row.hi))
+    add('Likely range', row.lo.toFixed(1) + ' to ' + row.hi.toFixed(1));
+  add('Books quoting', has(row.nBooks) ? String(row.nBooks) : null);
+  add('Board rank', has(row.rank) ? '#' + row.rank : null);
+  add('Position', row.pos);
+  add('Availability', row.status);
+  add('Our read', row.read);
+  return '<div class="detail"><dl>'
+    + f.map(x => '<div><dt>' + esc(x[0]) + '</dt><dd class="num">' + x[1]
+        + '</dd></div>').join('')
+    + '</dl></div>';
 }
 
 // A settled row. The colour IS the information: green won, red lost, grey
@@ -459,6 +624,7 @@ function v3Games() {
     + '<h1 class="h1">Games</h1>'
     + '<p class="lede">Who the sportsbooks expect to win, and where our model '
     + 'sees it differently. Tap a game for the notes.</p>'
+    + v3Watch()
     + '<div class="card"><div class="stats">'
     + '<div class="stat"><span class="eyebrow">Games</span><b class="num">'
     + cards.length + '</b></div>'
@@ -516,12 +682,35 @@ function v3Game(gid) {
     + '<span class="sub">' + esc(v3LineTxt(c, true)) + '</span></div>'
     + '</div></div>'
     + '<div class="seg seg--3">'
-    + v3Seg('v3gtab', [['notes', 'Game notes'], ['players', 'Who scores'],
+    + v3Seg('v3gtab', [['notes', 'Game notes'], ['players', 'Players'],
                        ['bets', 'Game bets']], V.gameTab)
     + '</div>'
+    + v3PublicMoney()
     + (V.gameTab === 'players' ? v3GamePlayers(gid)
      : V.gameTab === 'bets' ? v3GameBets(gid)
      : v3GameNotes(gid, cats, shown))
+    + '</div>';
+}
+
+// PUBLIC MONEY IS NOT HERE, AND THE PAGE SAYS SO RATHER THAN LEAVING A GAP.
+//
+// "72% of tickets are on the Eagles" is the first thing a handicapper reaches
+// for and this project cannot show it: The Odds API does not sell bet
+// percentages, and the services that publish them are scraped rather than
+// licensed. What IS derivable from the archive is the line MOVE, which is
+// what the ticket count is usually a proxy FOR — money moves a number and
+// tickets do not — so that is offered in its place, with its own measured
+// result attached rather than an implication.
+function v3PublicMoney() {
+  return '<div class="card"><div class="eyebrow">What share of bets is on '
+    + 'each side?</div>'
+    + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:6px">'
+    + 'We do not have it. Ticket percentages are not sold by the odds feed '
+    + 'this runs on. The closest real signal is which way the price moved, '
+    + 'which is on the Game bets tab \u2014 money moves a number, tickets '
+    + 'mostly do not.</p>'
+    + '<p class="help">Tested here: following line moves won 52% of 1,341 '
+    + 'bets, about \u22126% per bet. It is information, not an edge.</p>'
     + '</div>';
 }
 
@@ -617,7 +806,7 @@ function v3Ask(gid) {
 
 function v3Questions(gid) {
   const rows = rowsFor('any', null).filter(
-    r => r.priced && (r.gameId === gid || fixtureOf(r.gameId) === gid));
+    r => r.priced && v3Same(r.gameId, gid));
   if (!rows.length) return [];
   const byP = rows.slice().sort((a, b) => (betProb(b) || 0) - (betProb(a) || 0));
   const byV = rows.slice().sort((a, b) => (ev100(b) || -1e9) - (ev100(a) || -1e9));
@@ -646,23 +835,23 @@ function v3Questions(gid) {
 }
 
 function v3GamePlayers(gid) {
-  const rows = rowsFor('any', null).filter(
-    r => r.priced && (r.gameId === gid || fixtureOf(r.gameId) === gid));
-  if (!rows.length) return '<div class="card">No priced touchdown market for '
-    + 'this game yet.</div>';
+  const rows = rowsFor(V.market, null).filter(
+    r => r.priced && v3Same(r.gameId, gid));
+  if (!rows.length) return '<div class="card">No priced ' + esc(v3MktLabel())
+    + ' market for this game yet.</div>';
   return '<h2 class="h1" style="font-size:22px;line-height:28px;margin-top:20px">'
-    + 'Who might score</h2>'
-    + '<p class="help">Chance to score a touchdown at any point in the game.</p>'
+    + 'Players \u00b7 ' + esc(v3MktLabel()) + '</h2>'
+    + '<p class="help">Every priced player in this game on the market you '
+    + 'have selected. Switch markets on This week and this follows.</p>'
     + '<div class="list">'
-    + rows.sort((a, b) => (betProb(b) || 0) - (betProb(a) || 0))
-        .map(v3Row).join('') + '</div>';
+    + v3Sorted(rows).map(v3Row).join('') + '</div>';
 }
 
 // The game markets, as bets rather than as a read-out. This is what v2's
 // Bets tab carries and the first v3 sketch dropped.
 function v3GameBets(gid) {
   const rows = ((DATA.games || {}).rows || []).filter(
-    r => r.game_id === gid || fixtureOf(r.game_id) === gid);
+    r => v3Same(r.game_id, gid));
   if (!rows.length) return '<div class="card">No game lines captured for this '
     + 'game.</div>';
   const label = { h2h: 'To win', spreads: 'Spread', totals: 'Total' };
@@ -683,7 +872,7 @@ function v3GameBets(gid) {
           + '<div class="sub">best ' + v3Dash(american(r.best)) + ' at '
           + esc(r.best_book || '') + ' · ' + (r.n_books || 0)
           + ' books</div></div>'
-          + '<div class="chance"><b class="num">' + v3Pct(r.fair)
+          + '<div class="chance"><b class="num">' + v3Pct(r.fair, 1)
           + '</b><span class="eyebrow">Fair chance</span></div></div>'
           + '<div class="tags"><span class="pill num">'
           + v3Dash(american(r.consensus)) + '</span>' + tag
@@ -910,9 +1099,42 @@ function v3Fab() {
     + '<span style="font-weight:600">See payout</span></a>';
 }
 
-function render() {
+// A BACK STACK, because a phone has a back gesture and a browser has a
+// button and neither of them knew this app existed. Every navigation pushes;
+// `popstate` restores. Only the fields that name a SCREEN are in the entry —
+// putting the whole of `V` in there would make changing a sort order a
+// history step, and twelve taps of Back would be twelve sort orders.
+function v3Where() {
+  return { tab: V.tab, game: V.game, gameTab: V.gameTab, week: V.week,
+           market: V.market };
+}
+
+let v3Booted = false;
+
+function v3Push() {
+  // Guarded. A page without `history.pushState` still has to render — the
+  // back gesture is an enhancement, and losing it must not lose the app.
+  if (typeof history === 'undefined' || !history.pushState) return;
+  const w = v3Where();
+  const hash = '#/' + w.tab + (w.game ? '/' + w.game + '/' + w.gameTab : '');
+  const at = (typeof location !== 'undefined' && location.hash) || '';
+  try {
+    if (!v3Booted) { history.replaceState(w, '', hash); v3Booted = true; }
+    else if (at !== hash) history.pushState(w, '', hash);
+    else history.replaceState(w, '', hash);
+  } catch (e) { /* file:// refuses pushState in some browsers */ }
+}
+
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('popstate', ev => {
+    if (ev && ev.state) { Object.assign(V, ev.state); render(true); }
+  });
+}
+
+function render(fromHistory) {
   const app = document.getElementById('app');
   if (!app) return;
+  if (!fromHistory) v3Push();
   app.innerHTML = '<div class="wrap">' + v3Header() + '</div>'
     + v3Screen() + v3Fab() + v3Nav();
   v3Save();
@@ -923,7 +1145,7 @@ function render() {
 // throwing — which is why `test_every_v3_control_is_handled` exists.
 const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3pick', 'v3more',
                   'v3game', 'v3back', 'v3gtab', 'v3cat', 'v3note', 'v3type',
-                  'v3stake', 'v3kind', 'v3ask'];
+                  'v3stake', 'v3kind', 'v3ask', 'v3open', 'v3dir'];
 
 document.addEventListener('click', ev => {
   let node = ev.target;
@@ -938,10 +1160,15 @@ document.addEventListener('click', ev => {
 
 document.addEventListener('change', ev => {
   const t = ev.target;
-  if (t && t.getAttribute && t.getAttribute('data-v3week') != null) {
+  if (!t || !t.getAttribute) return;
+  if (t.getAttribute('data-v3week') != null) {
     V.week = t.value === '' ? null : Number(t.value);
-    V.shown = V3SHOW;
-    render();
+    V.shown = V3SHOW; V.open = null; render();
+  } else if (t.getAttribute('data-v3gamesel') != null) {
+    V.game = t.value === '' ? null : t.value;
+    V.shown = V3SHOW; V.open = null; render();
+  } else if (t.getAttribute('data-v3sortsel') != null) {
+    V.sort = t.value; render();
   }
 });
 
@@ -954,6 +1181,10 @@ function v3Do(kind, v) {
     case 'v3sort': V.sort = v; break;
     case 'v3filter': V.filter = v; V.shown = V3SHOW; break;
     case 'v3more': V.shown = 1e9; break;
+    // Tapping the open row closes it: one open at a time, so the board does
+    // not turn into a wall of detail panels you have to close individually.
+    case 'v3open': V.open = V.open === v ? null : v; break;
+    case 'v3dir': V.desc = !V.desc; break;
     case 'v3pick':
       if (V.picks[v]) delete V.picks[v]; else V.picks[v] = true; break;
     case 'v3note':

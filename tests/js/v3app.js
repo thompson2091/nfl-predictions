@@ -13,7 +13,7 @@ const x = loadPage(process.argv[2], process.argv[3],
   ['V', 'render', 'v3Screen', 'v3Week', 'v3Games', 'v3Game', 'v3Slip',
    'v3Ladder', 'v3Header', 'v3Nav', 'v3Rows', 'v3Do', 'V3TABS', 'V3MKT',
    'V3CLICKS', 'V3HIST', 'v3Questions', 'v3Value', 'v3Outcomes', 'v3Legs',
-   'rowsFor', 'served', 'DATA']);
+   'rowsFor', 'served', 'DATA', 'V3SORTS', 'v3Sorted', 'V3CACHE', 'v3Same']);
 const { V, render, v3Screen, v3Games, v3Game, v3Slip, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
         rowsFor, served, DATA } = x;
@@ -174,5 +174,101 @@ const handled = new Set(V3CLICKS.concat(['v3week']));
 const dead = [...seen].filter(k => !handled.has(k));
 ok('every control the screens emit is wired', dead.length === 0,
    'emitted and never handled: ' + dead.join(', '));
+
+
+// ── The back stack ──────────────────────────────────────────────────────
+//
+// A phone has a back gesture and a browser has a button, and neither knew
+// this app existed: every screen was one history entry, so Back left the app
+// entirely from anywhere inside it.
+if (cards.length) {
+  V.tab = 'week'; V.game = null; V.open = null;
+  render();
+  const depth = history.length;
+  v3Do('v3game', cards[0].game_id);
+  ok('opening a game pushes a history entry', history.length === depth + 1);
+  ok('and the app is on that game', V.game === cards[0].game_id);
+  history.back();
+  ok('back returns to the screen before it', V.game == null,
+     'game is still ' + V.game);
+  // Sorting is not navigation. Putting all of V in the entry would make
+  // twelve taps of Back replay twelve sort orders.
+  const d2 = history.length;
+  v3Do('v3dir', '1');
+  ok('changing the sort direction is not a history step',
+     history.length === d2);
+}
+
+// ── Sorting, on every column and in both directions ─────────────────────
+V.tab = 'week'; V.game = null; V.week = null;
+x.V3SORTS.forEach(col => {
+  V.sort = col[0];
+  [true, false].forEach(desc => {
+    V.desc = desc;
+    let e = null;
+    try { render(); } catch (ex) { e = ex; }
+    ok('sorted by ' + col[0] + (desc ? ' desc' : ' asc'), !e,
+       e && (e.message + '\n' + e.stack));
+  });
+});
+// Nulls last whichever way the arrow points: flipping the direction should
+// reorder the rows that HAVE a value, not promote the ones that do not.
+V.sort = 'proj'; V.market = 'any';
+const withNulls = x.rowsFor('any', null).filter(r => r.priced);
+if (withNulls.length > 2 && withNulls.every(r => r.proj == null)) {
+  ok('a column no row has does not reorder anything', true);
+} else {
+  V.desc = true;
+  const first = x.v3Sorted(withNulls)[0];
+  V.desc = false;
+  const firstAsc = x.v3Sorted(withNulls)[0];
+  ok('nulls never lead the board',
+     (first == null || first.proj !== undefined)
+     && (firstAsc == null || firstAsc.proj !== undefined));
+}
+V.sort = 'ours'; V.desc = true;
+
+// ── A row opens to show everything ──────────────────────────────────────
+const someRow = x.rowsFor('any', null).filter(r => r.priced)[0];
+if (someRow) {
+  V.tab = 'week'; V.open = null; render();
+  const closed = app();
+  v3Do('v3open', someRow.id);
+  const opened = app();
+  ok('tapping a row opens its detail', opened.indexOf('class="detail"') >= 0);
+  ok('and the closed board had none', closed.indexOf('class="detail"') < 0);
+  v3Do('v3open', someRow.id);
+  ok('tapping it again closes it', app().indexOf('class="detail"') < 0);
+  V.open = null;
+}
+
+// ── The game filter survives a market change ────────────────────────────
+if (cards.length) {
+  V.tab = 'week'; V.game = cards[0].game_id; V.market = 'any';
+  render();
+  v3Do('v3mkt', 'first');
+  ok('changing market keeps the selected game', V.game === cards[0].game_id);
+  ok('and the picker still shows it',
+     app().indexOf('data-v3gamesel') >= 0);
+  V.game = null; V.market = 'any';
+}
+
+// ── A failed week fetch is not an empty week ────────────────────────────
+//
+// `.catch(() => [])` made every failure render as "no priced picks recorded",
+// which is what a real empty week says. Opening the page from the filesystem
+// blocks `fetch` outright, so every past week on every market came back empty
+// and the page explained it away.
+const wk = ((DATA.history || {})[x.V3HIST.any] || {}).has || [];
+if (wk.length) {
+  V.market = 'any'; V.week = wk[0]; V.tab = 'week';
+  x.V3CACHE[x.V3HIST.any + ':' + wk[0]] = { error: 'blocked by the browser' };
+  render();
+  ok('a failed fetch says so', app().indexOf('did not load') >= 0);
+  ok('and does not claim the week was empty',
+     app().indexOf('No priced picks recorded') < 0);
+  delete x.V3CACHE[x.V3HIST.any + ':' + wk[0]];
+  V.week = null;
+}
 
 done();

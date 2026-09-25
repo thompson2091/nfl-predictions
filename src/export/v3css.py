@@ -81,13 +81,50 @@ button{cursor:pointer}
 .seg button[aria-pressed=true]{background:var(--card);color:var(--ink);
   box-shadow:0 1px 2px rgba(22,24,29,.12)}
 
+/* ---- pickers: game filter and sort, side by side on one line ---- */
+.picker{display:flex;align-items:center;gap:8px;margin-top:12px;padding:0 12px;
+  height:44px;border-radius:12px;background:var(--card);
+  border:1px solid var(--btnline)}
+.picker--on{border-color:var(--ours);background:var(--oursbg)}
+.picker .eyebrow{flex-shrink:0}
+.picker select{flex:1;min-width:0;border:0;background:transparent;height:42px;
+  font-size:15px;font-weight:600}
+.dirbtn{flex-shrink:0;height:32px;padding:0 10px;border-radius:8px;
+  border:1px solid var(--btnline);background:var(--inset);font-size:13px;
+  font-weight:600;color:var(--mut)}
+
+/* ---- the number strip: the old board's columns, on the row ---- */
+.rowbtn{flex:1;min-width:0;display:block;text-align:left;border:0;
+  background:transparent;padding:0;font:inherit;color:inherit}
+.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;
+  padding:8px 0 2px}
+.cell{display:flex;flex-direction:column;min-width:0}
+.cell b{font-size:15px;line-height:20px;font-weight:700}
+.cell b.good{color:var(--good)}
+.cell b.bad{color:var(--bad)}
+.cell i{font-style:normal;font-size:11px;line-height:14px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--mut2)}
+.row--open{background:var(--inset)}
+
+/* ---- the full-stat panel behind a row ---- */
+.detail{flex-basis:100%;width:100%;margin-top:4px;padding:12px;
+  border-radius:12px;background:var(--card);border:1px solid var(--line)}
+.detail dl{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:2px 12px}
+.detail dl>div{display:flex;justify-content:space-between;gap:8px;
+  padding:6px 0;border-bottom:1px solid var(--line3);min-width:0}
+.detail dt{font-size:13px;color:var(--mut);flex-shrink:0}
+.detail dd{margin:0;font-size:13px;font-weight:600;text-align:right;
+  min-width:0;overflow-wrap:anywhere}
+@media (max-width:420px){.detail dl{grid-template-columns:1fr}}
+
 /* ---- cards and lists ---- */
 .card{margin-top:16px;padding:16px;background:var(--card);border-radius:16px;
   box-shadow:0 1px 2px rgba(22,24,29,.06)}
 .list{margin-top:12px;background:var(--card);border-radius:16px;
   box-shadow:0 1px 2px rgba(22,24,29,.06);overflow:hidden}
-.row{display:flex;gap:8px;align-items:center;padding:12px 8px 12px 16px;
-  border-top:1px solid var(--line)}
+.row{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;
+  padding:12px 8px 12px 16px;border-top:1px solid var(--line)}
 .row:first-child{border-top:0}
 .row__m{display:flex;flex-direction:column;gap:8px;flex:1;min-width:0}
 .row__t{display:flex;justify-content:space-between;gap:12px}
