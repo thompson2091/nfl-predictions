@@ -116,7 +116,7 @@ def load_pbp(seasons: list[int]) -> pl.DataFrame:
               "will be empty.")
 
     _report_coverage("PBP", df, seasons)
-    return _write(df, "pbp.parquet")
+    return _write(_keep_other_seasons(df, "pbp.parquet"), "pbp.parquet")
 
 
 def load_weekly_stats(seasons: list[int]) -> pl.DataFrame:
@@ -132,7 +132,46 @@ def load_weekly_stats(seasons: list[int]) -> pl.DataFrame:
         df = df.with_columns(pl.col("team").alias("recent_team"))
     df = normalize_teams(df, ["recent_team"])
     _report_coverage("Weekly stats", df, seasons)
-    return _write(df, "weekly_stats.parquet")
+    return _write(_keep_other_seasons(df, "weekly_stats.parquet"), "weekly_stats.parquet")
+
+
+def _keep_other_seasons(df: pl.DataFrame, filename: str) -> pl.DataFrame:
+    """MERGE, never replace: seasons not asked for survive the write.
+
+    `_write` overwrites. Every loader here can be called with ONE season —
+    `56_inactives.py --refresh` does it fifteen times a week — and when it is,
+    a plain write deletes every other season in the file while nothing fails:
+    the current week still resolves, so the board, the candidates and the
+    checks all carry on.
+
+    It has happened twice. `load_rosters` replaced 2015-2026 with 2026 alone
+    and grading the odds archive silently went to 0% across 44,000 closing
+    prices, reported only as "grading will be sparse". `load_injuries` was
+    never given the same fix and did it again: 61,221 rows to 692, for the
+    same reason, a year later.
+
+    So it is a shared function rather than a paragraph repeated per loader,
+    and `test_every_season_keyed_loader_merges` fails on any loader that calls
+    `_write` without it. A caller that wants only the seasons it asked for
+    should filter what it READS, not the file everything else reads too.
+    """
+    if df.is_empty() or "season" not in df.columns:
+        return df
+    path = get_path("raw") / filename
+    if not path.exists():
+        return df
+    try:
+        prior = pl.read_parquet(path)
+        if "season" not in prior.columns:
+            return df
+        fresh = set(df["season"].unique().to_list())
+        keep = prior.filter(~pl.col("season").is_in(fresh))
+        if keep.height:
+            df = pl.concat([keep, df], how="diagonal_relaxed")
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  WARNING: could not merge existing {filename} ({e}) — "
+              f"writing only {sorted(set(df['season'].unique().to_list()))}")
+    return df
 
 
 def load_rosters(seasons: list[int]) -> pl.DataFrame:
@@ -173,32 +212,8 @@ def load_rosters(seasons: list[int]) -> pl.DataFrame:
             )
     df = normalize_teams(df, ["team"])
     _report_coverage("Rosters", df, seasons)
-    # MERGE, never replace. `_write` overwrites the file, and this loader is
-    # called with a single season by `56_inactives.py --refresh`, which runs
-    # fifteen times a week. Its first firing replaced rosters for 2015-2026
-    # with 2026 alone, and nothing failed: the current week still resolved, so
-    # the board, the candidates and the inactives check all carried on. What
-    # broke was everything keyed on an older season — grading the odds archive
-    # went from matching book names to gsis ids to matching none of them, 0%
-    # across 44,000 archived closing prices, reported only as "grading will be
-    # sparse". A later `make features` would have rebuilt the training
-    # population off the same hole.
-    #
-    # So seasons that were not asked for are kept. A caller wanting only the
-    # requested seasons should filter what it reads, not the file everything
-    # else reads too.
-    path = get_path("raw") / "rosters.parquet"
-    if path.exists():
-        try:
-            prior = pl.read_parquet(path)
-            fresh = set(df["season"].unique().to_list())
-            keep = prior.filter(~pl.col("season").is_in(fresh))
-            if keep.height:
-                df = pl.concat([keep, df], how="diagonal_relaxed")
-        except Exception as e:                                   # noqa: BLE001
-            print(f"  WARNING: could not merge existing rosters ({e}) — "
-                  f"writing only {sorted(set(df['season'].unique().to_list()))}")
-    return _write(df, "rosters.parquet")
+    return _write(_keep_other_seasons(df, "rosters.parquet"),
+                  "rosters.parquet")
 
 
 def load_schedules(seasons: list[int]) -> pl.DataFrame:
@@ -214,7 +229,7 @@ def load_snap_counts(seasons: list[int]) -> pl.DataFrame:
     df = _load("snap_counts", nfl.load_snap_counts, seasons)
     df = normalize_teams(df, ["team"])
     _report_coverage("Snap counts", df, seasons)
-    return _write(df, "snap_counts.parquet")
+    return _write(_keep_other_seasons(df, "snap_counts.parquet"), "snap_counts.parquet")
 
 
 def _load_ngs(stat_type: str, seasons: list[int], filename: str) -> pl.DataFrame:
@@ -262,7 +277,7 @@ def load_injuries(seasons: list[int]) -> pl.DataFrame:
         return df
     df = normalize_teams(df, ["team"])
     _report_coverage("Injuries", df, seasons)
-    return _write(df, "injuries.parquet")
+    return _write(_keep_other_seasons(df, "injuries.parquet"), "injuries.parquet")
 
 
 def load_depth_charts(seasons: list[int]) -> pl.DataFrame:
