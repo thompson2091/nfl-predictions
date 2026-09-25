@@ -22,6 +22,28 @@ scoring environment of trailing games — more possessions, longer fields, more
 red-zone trips per drive — which is a team-rate question, not a share question,
 and would belong in the joint model's lambda rather than in player features.
 
+**THAT SECOND IDEA HAS NOW BEEN TESTED TOO, AND IT IS ALSO NO.**
+
+`joint.fit_team_rate` regresses team touchdowns on the betting lines, so it
+reads the market's scoring environment and cannot disagree with it.
+`models/game_model` predicts team points and never sees a line, which makes it
+exactly the second opinion this paragraph was asking for. Added to the rate's
+design and scored out of sample by season on Poisson deviance — the loss the
+rate is fitted under:
+
+    2021  -0.00230      2024  +0.00445
+    2022  +0.00050      2025  -0.00068
+    2023  +0.05007      pooled, 2,515 team-games:  +0.01015
+
+Better in two seasons of five and worse pooled. The lines already carry the
+scoring environment more accurately than a model built without them, which is
+the same answer `game_model` gives on margin and total directly.
+
+So the underdog residual is not a share effect and not a team-rate one either,
+at least not one reachable from team form. What is left is that it lives in
+the share model's inputs rather than its structure, or that it is not a real
+effect at the sample sizes here.
+
 
 The one residual that survived every fix this project made: players on underdog
 teams score more often than the model says, and the gap scales with the spread.
