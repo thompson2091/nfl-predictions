@@ -328,20 +328,31 @@ def test_fades_are_offered_beside_the_other_filters():
     assert "LEAVE ALONE" in src or "leave alone" in src.lower()
 
 
-def test_the_slip_states_its_independence_assumption():
-    """Two players in one game are not independent, and the page says so.
+def test_the_slip_prices_two_picks_in_one_game_together():
+    """It used to STATE the assumption; it corrects it now.
 
     The error runs one way — a same-game parlay is worth more than the product
-    for team-mates and less across sides — so a page that prints the product
-    without saying it is a page that quietly misprices the most common slip
-    anyone builds.
+    for team-mates and less across sides — and the slip printed the product
+    with a sentence underneath admitting it. The sentence is a number now:
+    legs sharing a game are taken across the margin bands rather than through
+    them, at a strength fitted on 341,044 measured pairs.
+
+    Falsified by dropping the correction back to a caveat: `v3CorrNote` would
+    stop calling `v3Correlation`, or the fitted exponent would stop being
+    read from the payload.
     """
     from src.export import v3js
 
     src = v3js.js()
-    i = src.index("function v3Outcomes")
-    assert "independent" in src[i - 900:i].lower(), "unstated in the code"
-    assert "independent" in src[i:i + 4000].lower(), "unstated on the page"
+    assert "function v3Correlation" in src, "no same-game correction at all"
+    assert "v3CorrNote(legs)" in src, "the slip does not call it"
+    # The strength is fitted, not written in the page.
+    i = src.index("function v3JointOne")
+    body = src[i:i + 2500]
+    assert "correlation || {}).k" in body, (
+        "the exponent must come from the fitted payload, not from a literal")
+    # And the flip is what makes opposite sides anti-correlate.
+    assert "V3FLIP" in body, "a leg on the away bench must read the game flipped"
 
 
 def test_the_ask_box_never_sends_its_own_context():

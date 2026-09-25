@@ -158,15 +158,13 @@ def _run(overlay: dict, tier: str, markets, seed=None, models=None) -> dict:
                  keep_rows=True)
 
 
-def _print_clv(champion: dict | None, candidate: dict,
-               comparisons: list[dict]) -> list[dict]:
-    """Paired closing-line value beside the Top-K gate, on the same pairs.
+def _clv_rows(champion: dict | None, candidate: dict,
+              comparisons: list[dict]) -> list[dict]:
+    """Paired closing-line value on the same pairs the gate compares.
 
-    Reported, not gated. Top-1 stays the promotion rule; this is a second
-    reading with roughly fifteen times the observations, which is what makes it
-    worth printing next to a metric that cannot resolve a half-point. Where the
-    two disagree, that is information about the change rather than a tie to be
-    broken by whichever number is larger.
+    GATED, NOT MERELY REPORTED. It used to sit under a verdict Top-1 had
+    already decided, which is how line movement came to be rejected at 4.66 se
+    on ~18,000 closes because Top-1 moved 0.23 se on 1,131 games.
     """
     if champion is None:
         return []
@@ -176,9 +174,15 @@ def _print_clv(champion: dict | None, candidate: dict,
                              model=c["model"], against=c.get("against"))
         if row is not None:
             rows.append(row)
+    return rows
+
+
+def _print_clv(rows: list[dict]) -> list[dict]:
+    """The CLV table, printed once the verdict it helped decide is known."""
     if not rows:
         print("\nClosing-line value: not measurable for this run — no "
-              "open/close pairs overlap the folds it scored.")
+              "open/close pairs overlap the folds it scored. The verdict "
+              "rests on Top-1 alone.")
         return []
 
     # A model the overlay did not touch scores identically on both sides, so
@@ -188,7 +192,8 @@ def _print_clv(champion: dict | None, candidate: dict,
     moved = [r for r in rows if r["discordant"]]
     unchanged = len(rows) - len(moved)
 
-    print("\nClosing-line value (reported, not gated):\n")
+    print(f"\nClosing-line value (promotes at {C.CLV_PROMOTION_SE:.0f} se "
+          f"while Top-1 holds):\n")
     last_market = None
     for row in sorted(moved, key=lambda r: (r["market"], r["model"])):
         if row["market"] != last_market:
@@ -299,10 +304,15 @@ def _experiment(a, tier: str) -> int:
                       "standard error, and any AUC/Brier regression trips. Run "
                       "`make noise-floor` to fix that.")
             comparisons = C.compare_all(champion, result, noise=noise)
+            # CLV IS PART OF THE RULE NOW, so it is measured BEFORE the
+            # verdict rather than printed under one already decided. The gate
+            # table therefore prints after it is known, not before.
+            clv_rows = _clv_rows(champion, result, comparisons)
+            comparisons = C.regate(comparisons, clv_rows)
             print(f"\nAgainst champion '{champion_ref['run']}':\n")
             print(C.format_gate(comparisons))
+            _print_clv(clv_rows)
             verdict = _overall_verdict(comparisons, markets)
-            clv_rows = _print_clv(champion, result, comparisons)
     else:
         print("\nNo champion recorded — run `23_experiment.py baseline` first. "
               "Reporting this run's own numbers only.")

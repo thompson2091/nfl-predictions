@@ -1,4 +1,4 @@
-.PHONY: all ingest targets candidates features train predict clean parity-frame \
+.PHONY: all ingest targets candidates features train predict clean parity-frame \ books
 	docker-build docker-up docker-down docker-logs docker-shell \
 	docker-pipeline docker-prod docker-prod-down docker-build-amd64 \
 	backtest walkforward longshot economics clusters evaluate wager wager-report \
@@ -64,6 +64,12 @@ open-line:
 
 clv:
 	$(PYTHON) scripts/13_clv.py
+
+# Which book is slow, and which is generous — they are not the same
+# book. Reads the per-book archive the odds capture has been writing
+# for three seasons.
+books:
+	$(PYTHON) scripts/59_book_speed.py
 
 # What survives every measurement, for one week: the side these markets sell,
 # the disagreement sizes closing-line value has not moved against, priced at

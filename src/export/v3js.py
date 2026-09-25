@@ -374,6 +374,13 @@ function v3Week() {
     + (V.week == null ? ' Tap a row for everything we know about it.' : '')
     + '</p>'
     + v3MarketControls()
+    // ONLY ON A LIVE WEEK. On a graded week the prices stopped moving and
+    // "the market has moved toward us on 9 of 14" is a fact about the past
+    // dressed as one about a board you could still bet.
+    + (V.week == null
+       ? v3ClvNote(rowsFor(V.market, null).filter(r => r.priced && !r.blocked),
+                   'of the picks on this market')
+       : '')
     + v3GamePicker()
     + v3Search()
     + v3SortBar()
@@ -1862,6 +1869,180 @@ function v3Slip() {
 // The page says so rather than burying it, because the error runs one way —
 // a same-game parlay's true chance is HIGHER than the product for players on
 // the same side, and lower across sides.
+// ── same-game correlation ───────────────────────────────────────────────
+//
+// TWO PICKS IN ONE GAME ARE NOT INDEPENDENT, and the slip has said so in
+// small print under a number that assumed they were. They are close to
+// independent GIVEN HOW THE GAME GOES, so the chance is taken across the
+// margin bands rather than through them:
+//
+//     P(all land) = SUM over bands  P(band) * PRODUCT P(leg | band)
+//
+// `DATA.games.bands` is that partition per game, counted over games the
+// market priced alike; `script_fits` moves each leg within a band, fitted per
+// position and market. A leg on the away bench reads the same game flipped,
+// which is what makes two opposing backs pull against each other.
+//
+// Each leg is rescaled to keep its own marginal, so the single-leg number the
+// board shows never moves — only the joint does.
+//
+// Mirrors `src/models/correlation.py`, and a test runs both on the same
+// inputs and fails if they disagree.
+const V3FLIP = { 'won big': 'lost big', 'won': 'lost', 'close': 'close',
+                 'lost': 'won', 'lost big': 'won big' };
+const V3BANDS = ['won big', 'won', 'close', 'lost', 'lost big'];
+
+function v3Cond(p, mult, probs) {
+  let tilt = 0;
+  for (const b of V3BANDS) tilt += (probs[b] || 0) * mult[b];
+  if (!(tilt > 0)) return null;
+  const out = {};
+  for (const b of V3BANDS) {
+    if (!(probs[b] > 0)) continue;
+    out[b] = Math.min(1, Math.max(0, p * mult[b] / tilt));
+  }
+  return out;
+}
+
+// One game's legs, priced together. Legs from other games stay independent of
+// these, which is the same assumption the slip already makes between games.
+function v3JointOne(gid, legs) {
+  const g = (v3GameSet().cards || []).filter(c => v3Same(c.game_id, gid))[0];
+  const probs = g && g.bands;
+  if (!probs || legs.length < 2) return null;
+  const fits = (DATA.games || {}).script_fits || {};
+  const conds = [];
+  for (const leg of legs) {
+    const p = betProb(leg);
+    if (p == null) return null;
+    const f = fits[leg.pos + '|' + V3SCRIPTSTAT[leg.key]];
+    if (!f) { const flat = {}; for (const b in probs) flat[b] = p;
+              conds.push(flat); continue; }
+    const home = leg.team === g.home;
+    const mult = {};
+    for (const b of V3BANDS) mult[b] = f.mult[home ? b : V3FLIP[b]];
+    const c = v3Cond(p, mult, probs);
+    if (!c) return null;
+    conds.push(c);
+  }
+  let together = 0, independent = 1;
+  for (const b in probs) {
+    let q = probs[b];
+    for (const c of conds) q *= (c[b] || 0);
+    together += q;
+  }
+  for (const leg of legs) independent *= betProb(leg);
+  if (!(independent > 0)) return null;
+  const k = ((DATA.games || {}).correlation || {}).k || 1;
+  return { independent: independent,
+           lift: Math.pow(together / independent, k) };
+}
+
+//: Board market key to the stat `script_fits` is keyed by.
+const V3SCRIPTSTAT = { rush: 'rushing_yards', recyds: 'receiving_yards',
+                       rec: 'receptions', passyds: 'passing_yards',
+                       any: 'carries', first: 'carries' };
+
+// The whole slip: every game's legs corrected, games independent of each
+// other. Returns the combined multiplier and which games moved.
+function v3Correlation(legs) {
+  const byGame = {};
+  for (const leg of legs) {
+    const k = v3Key(leg.gameId);
+    (byGame[k] = byGame[k] || []).push(leg);
+  }
+  let lift = 1, moved = 0, games = 0;
+  for (const k of Object.keys(byGame)) {
+    if (byGame[k].length < 2) continue;
+    games++;
+    const r = v3JointOne(k, byGame[k]);
+    if (!r || r.lift == null) continue;
+    lift *= r.lift;
+    if (Math.abs(r.lift - 1) >= 0.005) moved++;
+  }
+  return games ? { lift: lift, games: games, moved: moved } : null;
+}
+
+// ── closing-line value, while it is still happening ────────────────────
+//
+// THE ONE CLAIM THIS PROJECT HAS ACTUALLY PROVEN, AND IT WAS INVISIBLE.
+//
+// No model here beats its market on raw output. What the archive shows is
+// that the market MOVES TOWARD the players we rate above the opening price —
+// about 60% of the time against a 54% shuffle null, over ~18,000 closes. That
+// is measured in a backtest nobody reading the board can see.
+//
+// Every row already carries `openImplied`, so the same thing is checkable
+// live: of the picks we rated above the number the book opened, how many has
+// the market since come toward? It is the project's own claim, counted on
+// this week's board, before the games are played.
+//
+// Counted ONLY on rows we rated above the open. "The price moved" is not the
+// claim; "it moved our way on the ones we disagreed about" is, and counting
+// the rest would dilute it toward 50% by construction.
+function v3Clv(rows) {
+  let n = 0, toward = 0;
+  for (const r of rows || []) {
+    const open = r.openImplied, now = r.book, ours = betProb(r);
+    if (!has(open) || !has(now) || !has(ours)) continue;
+    if (ours <= open) continue;          // we did not rate it above the open
+    n++;
+    if (now > open) toward++;
+  }
+  return n ? { n: n, toward: toward, pct: toward / n } : null;
+}
+
+function v3ClvNote(rows, what) {
+  const c = v3Clv(rows);
+  // Under a handful of picks the share is noise and printing it invites a
+  // reader to draw a conclusion from four coin flips.
+  if (!c || c.n < 4) return '';
+  return '<p class="help">Since these lines opened, the market has moved '
+    + 'toward our number on <b>' + c.toward + ' of ' + c.n + '</b> '
+    + esc(what) + ' we rated above the opening price'
+    + (c.pct >= 0.5 ? '' : '') + '. Over three seasons that has run near 60%, '
+    + 'against 54% for a shuffled list — it is the one edge this project has '
+    + 'measured, and it is about the PRICE moving, not about the bet '
+    + 'winning.</p>';
+}
+
+// THE CAVEAT BECOMES A NUMBER.
+//
+// It used to read "two players in the same game are not independent — on the
+// same team a parlay is worth a little more than this says, on opposite
+// teams a little less", under a number that had not been corrected. It is
+// corrected now, so the note says which way and by how much, and says
+// nothing at all when no two picks share a game.
+function v3CorrNote(legs) {
+  const c = v3Correlation(legs);
+  if (!c || !c.games) {
+    return '<p class="help">No two picks here are in the same game, so '
+      + 'multiplying the chances is the right answer.</p>';
+  }
+  const pct = Math.abs(c.lift - 1) * 100;
+  if (pct < 0.5) {
+    return '<p class="help">Two of these picks share a game. Priced together '
+      + 'rather than multiplied, which changes the answer by less than half '
+      + 'a point here.</p>';
+  }
+  const up = c.lift > 1;
+  return '<p class="help">' + (c.games > 1 ? 'Some of these picks share a '
+      + 'game' : 'Two of these picks share a game')
+    + ', so they are priced TOGETHER rather than multiplied: '
+    + (up ? 'they want the same kind of game, which makes this land '
+          : 'the game that helps one tends to hurt the other, which makes '
+            + 'this land ')
+    + pct.toFixed(1) + '% ' + (up ? 'more' : 'less') + ' often than '
+    + 'multiplying the chances says. Counted over '
+    + v3Num2((((DATA.games || {}).correlation || {}).n) || 0)
+    + ' past pairs.</p>';
+}
+
+//: Thousands separators, for a count that runs to six figures.
+function v3Num2(n) {
+  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
 function v3Outcomes(legs, stake) {
   const n = legs.length;
   const d = legs.map(l => l.dec), p = legs.map(l => betProb(l));
@@ -1925,9 +2106,8 @@ function v3Outcomes(legs, stake) {
     + '<span class="sub">Made many times, this averages about '
     + (ev >= 0 ? '+' : '−') + '$' + Math.abs(ev).toFixed(2)
     + ' a go, if our chances are right.</span></div>'
-    + '<p class="help">Chances assume each pick is independent. Two players in '
-    + 'the same game are not — on the same team a parlay is worth a little '
-    + 'more than this says, on opposite teams a little less.</p>'
+    + v3CorrNote(legs)
+    + v3ClvNote(legs, 'of your picks')
     + '</div>';
 }
 

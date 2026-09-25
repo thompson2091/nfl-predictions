@@ -21,8 +21,17 @@ than what the random seed produces on its own is not a difference.
 `gate` implements the promotion rule agreed for this project:
 
     paired Top-1 improvement >= 1 standard error of the paired difference,
+    OR closing-line value >= 2 standard errors while Top-1 is not worse than
+    its own noise band,
     AND no guard metric (Top-3, Top-5, AUC, Brier) worse by more than its
     own noise band.
+
+The CLV route exists because the first instrument cannot see effects this
+project cares about. Top-1 is 1,131 games; CLV is ~18,000 closes. Judging on
+Top-1 alone rejected the strongest result in the ledger — line movement, CLV
++1.03pp at 4.66 se, p=3.5e-06 — on a Top-1 delta of 0.23 se, which is inside
+the noise band by construction. CLV is not a rubber stamp: every weather
+variant scored negative CLV and was rejected on it too.
 
 A tripped guard is reported, not auto-rejected: a candidate can still be
 promoted as KEPT_WITH_JUSTIFICATION, which forces the reason into the version
@@ -43,6 +52,26 @@ GUARDS = {"top3": +1, "top5": +1, "auc": +1, "brier": -1}
 
 #: How many standard errors of paired improvement a candidate needs on Top-1.
 PROMOTION_SE = 1.0
+
+#: And on CLV, which is a different instrument and needs a stricter bar.
+#:
+#: TOP-1 ALONE CANNOT SEE AN EFFECT THIS PROJECT CARES ABOUT.
+#:
+#: Top-1 is 1,131 games against a ~0.5pp seed band. CLV is ~18,000 player-game
+#: closes. Judging a feature only on the first instrument rejected the
+#: strongest result in the ledger: `2026.09.22-add-market-movement` moved CLV
+#: +1.03pp at 4.66 se (p=3.5e-06) and was REJECTED because Top-1 moved +0.18pp
+#: at 0.23 se — inside the noise band by construction. Five other experiments
+#: were rejected at CLV of 2 se or better.
+#:
+#: CLV is not a rubber stamp. Every weather variant scored NEGATIVE CLV and was
+#: rejected; `first-td-anytime-prior` scored -6.26 se. It discriminates, and it
+#: agrees with Top-1 wherever Top-1 has the power to see anything.
+#:
+#: Two standard errors rather than one, because this is the second question
+#: asked of the same candidate and the bar for the weaker-evidence route has to
+#: be higher than for the direct one.
+CLV_PROMOTION_SE = 2.0
 
 
 def paired_top_k(champion: pl.DataFrame, candidate: pl.DataFrame,
@@ -165,7 +194,56 @@ def untouched(comparison: dict) -> bool:
     return True
 
 
-def gate(comparison: dict) -> dict:
+def clv_wins(clv: dict | None) -> bool:
+    """Did CLV move far enough to carry a promotion on its own?"""
+    if not clv:
+        return False
+    se = clv.get("se") or 0.0
+    return se > 0 and (clv.get("delta") or 0.0) >= CLV_PROMOTION_SE * se
+
+
+def _decide(top1: dict, tripped: list, clv: dict | None) -> tuple[str, str]:
+    """The promotion rule, in one place so both entry points share it.
+
+    Top-1 promotes on its own. CLV promotes only while Top-1 is not
+    MATERIALLY WORSE — a candidate that buys closing-line value by giving up
+    the board's own accuracy has not earned anything, and "not worse" is
+    measured against the same noise band the guards use rather than against
+    zero, because Top-1 cannot resolve a tenth of a point either way.
+    """
+    wins_top1 = top1["se"] > 0 and top1["delta"] >= PROMOTION_SE * top1["se"]
+    band = top1.get("noise_band") or top1.get("se") or 0.0
+    top1_not_worse = -(top1.get("delta") or 0.0) <= band
+    wins_clv = clv_wins(clv) and top1_not_worse
+
+    if not (wins_top1 or wins_clv):
+        return "REJECTED", "top1" if wins_top1 else ""
+    by = "top1" if wins_top1 else "clv"
+    return ("PROMOTED" if not tripped else "GUARD_TRIPPED"), by
+
+
+def regate(rows: list[dict], clv_rows: list[dict]) -> list[dict]:
+    """Re-decide gated rows once CLV is known, matching on the same pair.
+
+    CLV is measured from the champion and candidate runs, which is work the
+    gate does not do, so the verdict is settled in two passes rather than one.
+    A row with no CLV counterpart keeps the verdict Top-1 gave it.
+    """
+    by_pair = {(r["market"], r["model"], r.get("against") or r["model"]): r
+               for r in (clv_rows or [])}
+    out = []
+    for row in rows:
+        if row["verdict"] == "UNCHANGED":
+            out.append(row)
+            continue
+        clv = by_pair.get((row["market"], row["model"],
+                           row.get("against") or row["model"]))
+        verdict, by = _decide(row["top1"], row["guards_tripped"], clv)
+        out.append({**row, "verdict": verdict, "decided_by": by, "clv": clv})
+    return out
+
+
+def gate(comparison: dict, clv: dict | None = None) -> dict:
     """Apply the promotion rule to one (market, model) comparison.
 
     Returns the verdict plus every number behind it, because a verdict without
@@ -185,7 +263,7 @@ def gate(comparison: dict) -> dict:
         return {
             "market": comparison["market"], "model": comparison["model"],
             "against": comparison.get("against", comparison["model"]),
-            "verdict": "UNCHANGED",
+            "verdict": "UNCHANGED", "decided_by": "", "clv": None,
             "top1": top1, "top_k": comparison["top_k"],
             "guards_tripped": [], "row": comparison["row"],
             "rule": "not scored: the two runs are identical here",
@@ -211,23 +289,21 @@ def gate(comparison: dict) -> dict:
             tripped.append({"metric": key, "delta": delta, "band": band,
                             "worse_by": worse_by})
 
-    if wins_top1 and not tripped:
-        verdict = "PROMOTED"
-    elif wins_top1:
-        verdict = "GUARD_TRIPPED"       # promotable only with a justification
-    else:
-        verdict = "REJECTED"
+    verdict, decided_by = _decide(top1, tripped, clv)
 
     return {
         "market": comparison["market"], "model": comparison["model"],
         "against": comparison.get("against", comparison["model"]),
         "verdict": verdict,
+        "decided_by": decided_by,
+        "clv": clv,
         "top1": top1,
         "top_k": comparison["top_k"],
         "guards_tripped": tripped,
         "row": comparison["row"],
-        "rule": f"paired Top-1 >= {PROMOTION_SE} se, no guard worse than its "
-                f"noise band",
+        "rule": f"paired Top-1 >= {PROMOTION_SE} se, OR CLV >= "
+                f"{CLV_PROMOTION_SE} se with Top-1 not worse than its noise "
+                f"band; no guard worse than its noise band",
     }
 
 
@@ -488,7 +564,20 @@ def format_gate(rows: list[dict]) -> str:
         # against the one that is live.
         label = (r["model"] if against == r["model"]
                  else f"{r['model']} vs served {against}")
-        lines.append(f"{r['market']} / {label}: {r['verdict']}")
+        # WHICH INSTRUMENT DECIDED IT. A promotion carried by closing-line
+        # value while Top-1 sat still is a different claim from one Top-1 made,
+        # and the reader has to be able to tell them apart without opening the
+        # ledger.
+        by = r.get("decided_by")
+        tag = {"clv": "  (on closing-line value)",
+               "top1": "  (on Top-1)"}.get(by, "")
+        lines.append(f"{r['market']} / {label}: {r['verdict']}{tag}")
+        c = r.get("clv")
+        if c:
+            lines.append(
+                f"    CLV    {c['champion']:.1%} -> {c['candidate']:.1%}  "
+                f"{c['delta']*100:+.2f}pp  ({c['se_multiple']:+.2f} se, "
+                f"p={c['p_value']:.2g}, n={c['n_compared']})")
         if r.get("incomparable"):
             lines.append(f"    NOT COMPARABLE: {r['incomparable']}")
         if r["verdict"] == "UNCHANGED":

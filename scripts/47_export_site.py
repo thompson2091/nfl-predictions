@@ -978,11 +978,36 @@ def _attach_script_risk(cards: dict) -> dict:
                             "mult": got["worst_mult"], "p": got["worst_p"]}
         if blk:
             c["script"] = blk
+        # THE BAND PARTITION ITSELF, so the slip can price two legs against
+        # each other rather than multiplying them. Five numbers a game. Read
+        # from the HOME side; a leg on the away bench reads the same game
+        # flipped, which is what makes two opposing backs anti-correlate.
+        try:
+            from src.models.script_risk import band_probabilities
+
+            bands = band_probabilities(c, c.get("home"), hist)
+            if bands:
+                c["bands"] = {k: round(v, 4) for k, v in bands.items()}
+        except Exception:                                        # noqa: BLE001
+            pass
     # RETURNED, not stashed in `cards`. Putting it there made it a card, and
     # the next thing to sort the cards by kickoff went looking for its
     # `game_id`.
     return {k: {"swing": v["swing"], "n": v["n"], "mult": v["mult"]}
             for k, v in fits.items() if v["script_dependent"]}
+
+
+def _correlation_fit() -> dict:
+    """The same-game correction's fitted exponent, with its provenance."""
+    try:
+        from src.models.correlation import fit_strength
+
+        f = fit_strength()
+        return {k: f.get(k) for k in
+                ("k", "model_lift", "measured_lift", "n", "seasons_used")}
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  correlation fit unavailable ({e})", file=sys.stderr)
+        return {}
 
 
 def _attach_blend(cards: dict) -> None:
@@ -1419,6 +1444,10 @@ def games(season: int | None, week: int | None) -> dict:
             "cards": cards,
             # Why a market is flagged, once, rather than repeated per card.
             "script_fits": script_fits,
+            # The fitted strength of the same-game correction, so the page
+            # applies exactly what `correlation.fit_strength` measured rather
+            # than a second opinion about it.
+            "correlation": _correlation_fit(),
             "min_books": MIN_BOOKS,
             "games": int(b["game_id"].n_unique()),
             # Not `bool(moves)`: a week holding two copies of the same capture
