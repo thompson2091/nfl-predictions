@@ -76,7 +76,29 @@ def best_vs_consensus(season: int, week: int, market: str = "anytime_td",
                  pl.col("odds").sort_by("_imp").first().alias("best_odds"),
                  pl.col("_imp").min().alias("_best_imp"),
                  pl.col("_imp").median().alias("_consensus_imp"),
-                 pl.col("bookmaker").sort_by("_imp").first().alias("best_book"),
+                 # TIES BREAK BY NAME, AND THE TIE IS THE COMMON CASE.
+                 #
+                 # Sorting on the price alone leaves every tied book equally
+                 # eligible and `first` takes whichever the sort happened to
+                 # leave in front, which polars does not promise to keep stable
+                 # between runs. Measured on 2026 week 3 anytime TD: 254 of 538
+                 # players — 47% — had two or more books level at the best
+                 # price, one had eight, and three consecutive builds of the
+                 # same archive named a different book each time. The page then
+                 # reported "best price at fanduel" and "at betparx" on
+                 # successive deploys with no market movement behind it.
+                 #
+                 # Alphabetical is arbitrary, and deliberately so: there is
+                 # nothing in this archive that makes one tied book better than
+                 # another, and inventing a preference would be a claim. What
+                 # it buys is that the same archive always answers the same
+                 # way. `n_best` carries how many were level, so a reader can
+                 # see that the name is one of several rather than the only
+                 # book with that price.
+                 pl.col("bookmaker").sort_by(["_imp", "bookmaker"]).first()
+                   .alias("best_book"),
+                 (pl.col("bookmaker").filter(pl.col("_imp") == pl.col("_imp").min())
+                    .n_unique()).alias("n_best"),
                  pl.col("bookmaker").n_unique().alias("n_books"),
              ]))
     return out.with_columns([

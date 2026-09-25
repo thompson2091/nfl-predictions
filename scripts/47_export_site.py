@@ -131,7 +131,11 @@ def results(season: int, week: int) -> dict[str, str]:
         if pool.height == 0:
             continue
         out.update(_week_results(season, wk, pool))
-    return out
+    # SORTED, because `unique` does not promise an order and this is built by
+    # iterating it. The keys and values were identical between builds and only
+    # their order moved, which changes nothing a reader sees and makes every
+    # rebuild a diff — hiding the real churn this was found alongside.
+    return dict(sorted(out.items()))
 
 
 def _week_results(season: int, week: int, pool: pl.DataFrame) -> dict[str, str]:
@@ -211,7 +215,14 @@ def opening_prices(season: int, week: int) -> dict[str, dict]:
     h = (h.with_columns([
             n_books.alias("_nb"),
             (pl.col("point") - med).abs().fill_null(0.0).alias("_off")])
-          .sort(["_nb", "_off"], descending=[True, False])
+          # `point` LAST, so equidistant lines cannot swap between runs. Two
+          # alternate lines sit either side of the median at the same depth —
+          # 219.5 and 221.5 around 220.5 — and with only depth and distance to
+          # sort on, `first` took whichever the sort left in front. Two builds
+          # of one unchanged archive then reported different opening lines,
+          # and every move-since-open derived from them changed with it.
+          .sort(["_nb", "_off", "point"], descending=[True, False, False],
+                nulls_last=True)
           .unique(subset=["market", "player_name_norm"], keep="first")
           .drop(["_nb", "_off"]))
     out = {}

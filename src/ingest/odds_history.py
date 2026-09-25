@@ -619,12 +619,20 @@ def best_prices(season: int, week: int, market: str = "anytime_td",
                     keep="last"))
 
     # Longest price wins: for a "Yes" bet, higher American odds pay more.
-    return (df.sort("odds", descending=True)
+    #
+    # `bookmaker` is the second sort key because the first one does not settle
+    # it. Books tie at the best price on about half of all players, and with
+    # only `odds` to sort on `first` returns whichever the sort left in front —
+    # which varies between runs. Same fix and same reasoning as
+    # `line_shopping.best_vs_consensus`, which is the path the site reads.
+    return (df.sort(["odds", "bookmaker"], descending=[True, False])
               .group_by(["game_id", "player_name_norm"])
               .agg([
                   pl.col("player_name_raw").first(),
                   pl.col("odds").first().alias("best_odds"),
                   pl.col("bookmaker").first().alias("best_book"),
+                  (pl.col("bookmaker").filter(pl.col("odds") == pl.col("odds").max())
+                     .n_unique()).alias("n_best"),
                   pl.col("odds").median().alias("median_odds"),
                   pl.col("odds").count().alias("n_books"),
               ]))

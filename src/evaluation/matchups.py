@@ -106,7 +106,15 @@ def board(season: int, week: int, snapshot: str = "close") -> pl.DataFrame:
                 .map_elements(_prob_to_american, return_dtype=pl.Int64)
                 .alias("consensus_odds"),
             ])
-            .sort(["game_id", "market", "outcome"]))
+            # `point` IS PART OF THE KEY, so it is part of the sort. A market
+            # carries several lines at once — the spread at 9.0 and at 9.5 are
+            # two rows with the same game, market and outcome — and sorting on
+            # the first three left their order to whatever the group_by
+            # happened to produce. Two builds of one unchanged archive then
+            # emitted the same rows in a different order, which reads
+            # downstream as the numbers having changed. `nulls_last` because a
+            # moneyline's point is null and has to land somewhere fixed.
+            .sort(["game_id", "market", "outcome", "point"], nulls_last=True))
 
 
 def movement(season: int, week: int) -> pl.DataFrame:

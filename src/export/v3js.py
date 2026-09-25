@@ -662,8 +662,18 @@ function v3Detail(row) {
   add('Edge', has(row.edge)
     ? (row.edge > 0 ? '+' : '') + row.edge.toFixed(1) + 'pp' : null);
   add('Price', has(row.odds) ? v3Dash(american(row.odds)) : null);
+  // NAMING ONE BOOK IMPLIES IT IS THE ONLY ONE. Books tie at the best price
+  // on about half of all players — 254 of 538 on one week's anytime board, one
+  // of them eight deep — and the name shown is the alphabetically first of
+  // them, which is arbitrary by design. Saying how many were level is what
+  // keeps "at ballybet" from reading as "only at ballybet".
   add('Best price', has(row.best)
-    ? v3Dash(american(row.best)) + (row.bestBook ? ' at ' + row.bestBook : '')
+    ? v3Dash(american(row.best))
+      + (row.bestBook ? ' at ' + row.bestBook : '')
+      + (has(row.bestN) && row.bestN > 1
+         ? ' and ' + (row.bestN - 1) + ' other'
+           + (row.bestN > 2 ? ' books' : ' book')
+         : '')
     : null);
   add('Opened at', has(row.openOdds) ? v3Dash(american(row.openOdds)) : null);
   // Raw against raw. See `v3NowImplied`: against `book` this read the

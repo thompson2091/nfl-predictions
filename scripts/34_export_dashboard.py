@@ -371,6 +371,13 @@ def _american(o) -> str | None:
         return None
 
 
+def _i(x):
+    """A whole number that survives JSON, or None. A pandas merge that found
+    no match leaves NaN, and `int(nan)` raises rather than returning null."""
+    v = _f(x)
+    return None if v is None else int(v)
+
+
 def _f(x):
     """A float that survives JSON: NaN and inf are not valid JSON literals."""
     if x is None:
@@ -448,8 +455,9 @@ def players(season: int, week: int, target_type: str, model: str,
     b = board.to_pandas() if board.height else None
     if b is not None:
         if shop is not None and "player_name_norm" in b.columns:
-            b = b.merge(shop[["player_name_norm", "best_odds", "best_book"]],
-                        on="player_name_norm", how="left")
+            b = b.merge(
+                shop[["player_name_norm", "best_odds", "best_book", "n_best"]],
+                on="player_name_norm", how="left")
         if inj is not None and "player_id" in b.columns and "player_id" in inj.columns:
             b = b.merge(inj[["player_id", "report_status", "is_blocked"]],
                         on="player_id", how="left")
@@ -484,6 +492,10 @@ def players(season: int, week: int, target_type: str, model: str,
                 "best": _american(r.get("best_odds")),
                 "best_book": (r.get("best_book")
                               if isinstance(r.get("best_book"), str) else None),
+                # How many books were level at that price. The named one is
+                # the alphabetically first of them, which is arbitrary — this
+                # is what stops the name reading as the only book offering it.
+                "n_best": _i(r.get("n_best")),
                 "priced_rank": int(r["priced_rank"]),
                 "at_rank": _f(rates.get(int(r["priced_rank"]))),
                 "ours": _f(r.get("probability")),

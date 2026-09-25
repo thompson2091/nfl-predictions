@@ -107,8 +107,31 @@ def summary(spread: float, total: float, home: str = "HOME",
         return out
 
     # Exact scorelines. Oriented home-first, and counted rather than rated.
+    #
+    # TIES AT THE TOP ARE THE NORMAL CASE, NOT THE EXCEPTION. An exact
+    # scoreline is a handful of games out of a few hundred, so several of them
+    # sit level constantly: on the 2026 week-3 board, 10 of 16 games had a tied
+    # most-common score and one had SIX level at two games each. Sorting on the
+    # count alone left `head` to pick whichever the sort happened to leave in
+    # front, which is not stable between runs — two builds of one unchanged
+    # archive called Atlanta at Green Bay 23-20 and then 31-24, and the page
+    # labels that number "most likely final score".
+    #
+    # Ties break toward the scoreline nearest the posted numbers: closest total
+    # first, then closest margin. Unlike an alphabetical tiebreak that is not
+    # merely stable, it is the right answer — among equally common scorelines,
+    # the one sitting where this game is actually priced is the most
+    # representative of it. `spread` is positive when the home team is favored,
+    # so the expected home margin is `+spread`.
     sc = (c.group_by(["home_score", "away_score"]).agg(pl.len().alias("k"))
-          .sort("k", descending=True).head(top))
+          .with_columns([
+              ((pl.col("home_score") + pl.col("away_score")) - total)
+                .abs().alias("_dtot"),
+              ((pl.col("home_score") - pl.col("away_score")) - spread)
+                .abs().alias("_dsprd")])
+          .sort(["k", "_dtot", "_dsprd", "home_score", "away_score"],
+                descending=[True, False, False, True, True])
+          .head(top))
     out["scores"] = [
         {"home": int(r["home_score"]), "away": int(r["away_score"]),
          "n": int(r["k"]), "pct": round(r["k"] / n * 100, 1)}
@@ -163,6 +186,14 @@ def summary(spread: float, total: float, home: str = "HOME",
     # sample sizes the top scoreline is usually under 4%.
     if out["scores"]:
         out["modal"] = out["scores"][0]
+        # HOW MANY WERE LEVEL WITH IT. "Most likely final score" is a fair
+        # label for one scoreline standing alone and an overstatement when six
+        # are tied, which is the commoner case. Counted across the whole
+        # distribution rather than the truncated `scores` list, or a tie
+        # falling past `top` would go unreported.
+        out["modal_tied"] = int(
+            (c.group_by(["home_score", "away_score"]).agg(pl.len().alias("k"))
+             .filter(pl.col("k") == out["modal"]["n"])).height)
     return out
 
 

@@ -70,7 +70,17 @@ def render(payload: dict) -> dict[str, str]:
                     v3_js()])
 
     payload, extra = _split_history(payload)
-    data = (json.dumps(payload, separators=(",", ":"), allow_nan=False)
+    # `sort_keys` KILLS A WHOLE CLASS OF CHURN IN ONE LINE.
+    #
+    # Several dicts in this payload are built by iterating something whose
+    # order polars does not promise — `unique`, `group_by` — so their keys
+    # came out in a different order on every build. The keys and the values
+    # were identical; only the order moved. That changes nothing a reader
+    # sees, and it made every rebuild a diff, which is worse than cosmetic:
+    # it buries the churn that DOES matter under noise nobody can read past.
+    # Sorting here fixes every such dict at once instead of one at a time.
+    data = (json.dumps(payload, separators=(",", ":"), allow_nan=False,
+                       sort_keys=True)
             .replace("</", "<\\/"))
     brand = payload.get("brand") or "Pick Six"
     short = brand.split()[0] if len(brand) > 12 else brand

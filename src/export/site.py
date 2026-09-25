@@ -930,7 +930,8 @@ function rowsFor(key, view) {
     // publishes the model number directly and the two coincide there.
     edge: has(r.book) ? ((has(r.model_only) ? r.model_only : r.ours) - r.book) * 100 : null,
     odds: r.odds_num, dec: r.dec, priced: !!r.priced,
-    best: r.best, bestBook: r.best_book, read: r.read, rank: r.rank,
+    best: r.best, bestBook: r.best_book, bestN: r.n_best,
+    read: r.read, rank: r.rank,
     status: r.status, blocked: r.blocked, pos: r.pos,
     openOdds: r.open_odds, openImplied: r.open_implied,
   }));

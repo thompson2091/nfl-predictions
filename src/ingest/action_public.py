@@ -301,5 +301,9 @@ def week_view(season: int, week: int) -> dict:
                     r = ratio(one["tickets"], one["money"],
                               other["tickets"], other["money"])
                     one["ratio"] = None if r is None else round(r, 2)
-            sides.sort(key=lambda s: -(s["tickets"] or 0))
+            # THE NAME BREAKS THE TIE. A total split 50/50 leaves both
+            # sides equal on the only key, so their order came out however
+            # the sort happened to leave them and flipped between builds —
+            # which reads on the page as the heavier side having changed.
+            sides.sort(key=lambda s: (-(s["tickets"] or 0), s["side"] or ""))
     return out
