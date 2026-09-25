@@ -1138,6 +1138,30 @@ function v3Moved(gid) {
       Math.abs(to.move) < 0.25 ? 'unmoved'
         : Math.abs(to.move) + ' ' + (to.move > 0 ? 'up' : 'down')]);
   }
+  // THE MONEYLINE MOVES TOO, and it was the one market this block left out.
+  //
+  // `open`/`now`/`move` are null on a moneyline because it has no point, so
+  // the block that reads those skipped it. The PRICES are there, and the
+  // price is the whole market: a side going +120 -> +110 has shortened, and
+  // shortening is money arriving.
+  //
+  // Read as implied chance rather than as the raw number, because -142 to
+  // -130 and +120 to +110 are moves of different sizes in the same direction
+  // and only the probability says which is bigger. `amToDec` is the one
+  // conversion in this codebase; 1/decimal is its implied chance.
+  const ml = L.h2h, oo = ml && ml.open_odds, no = ml && ml.now_odds;
+  if (oo && no && has(oo[0]) && has(oo[1]) && has(no[0]) && has(no[1])) {
+    // Stored [away, home], as the archive stores them.
+    const shift = i => 1 / amToDec(no[i]) - 1 / amToDec(oo[i]);
+    const sides = [[c.away, 0], [c.home, 1]];
+    for (const [team, i] of sides) {
+      const d = shift(i) * 100;
+      bits.push([team + ' to win', v3Dash(oo[i]), v3Dash(no[i]),
+                 Math.abs(d) < 0.25 ? 'unmoved'
+                   : d > 0 ? 'shortened ' + d.toFixed(1) + 'pp'
+                           : 'drifted ' + Math.abs(d).toFixed(1) + 'pp']);
+    }
+  }
   if (!bits.length) return '';
   return '<div class="moved">'
     + '<div class="eyebrow">Since this week\u2019s line went up'
@@ -1217,7 +1241,16 @@ function v3PublicMoney(gid) {
     + '<p class="help">Share of bets placed, from Sportsbook Review. A crowd '
     + 'being on one side is not evidence it is wrong \u2014 this project has '
     + 'not measured that. It is worth seeing next to which way the price '
-    + 'moved.</p></div>';
+    + 'moved.</p>'
+    // THE MONEYLINE SPLIT IS ABSENT, NOT ZERO, and the difference matters.
+    // The feed returns 0% on every moneyline on every game, which is it
+    // declining to publish rather than a market nobody bet. Drawing a 0% bar
+    // would be stating a number nobody stated; saying nothing would read as
+    // an oversight. The price move above is what there is.
+    + (pub.h2h ? ''
+       : '<p class="help">No ticket split for the moneyline: the feed '
+         + 'publishes none, on any game. Its price move is above.</p>')
+    + '</div>';
 }
 
 // THE CHANCE OF WINNING, BOOK AND MODEL, ON THE SAME SCALE.

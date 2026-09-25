@@ -506,3 +506,28 @@ def test_the_app_bar_is_not_shorter_than_the_header_inside_it():
     # screen, and that is the bar.
     assert "safe-area-inset-top" in bar, (
         ".appbar must carry the notch inset; nothing above it does")
+
+
+def test_the_moneyline_move_is_shown_even_though_its_split_is_not():
+    """THE PRICE IS THERE; THE TICKET SPLIT IS NOT, AND THEY ARE DIFFERENT.
+
+    `lines[gid].h2h` carries `open_odds` and `now_odds`, but `open`, `now`
+    and `move` are null because a moneyline has no point — so the block that
+    reads those skipped the market entirely. Sportsbook Review returns 0% on
+    every moneyline on every game, which is the feed declining to publish
+    rather than a market nobody bet, so no bar is drawn and the page says why.
+
+    Falsified by drawing a 0% moneyline bar, or by dropping the move again.
+    """
+    from src.export import v3js
+
+    src = v3js.js()
+    i = src.index("function v3Moved")
+    body = src[i:i + 3000]
+    assert "L.h2h" in body, "the moneyline move is not read"
+    assert "amToDec" in body, (
+        "the move must be read as implied chance; -142 to -130 and +120 to "
+        "+110 are different sizes in the same direction")
+    assert "to win" in body, "the moneyline rows are not labelled"
+    # And the absent split is stated rather than drawn as zero.
+    assert "publishes none" in src, "the missing split is unexplained"
