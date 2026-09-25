@@ -172,3 +172,31 @@ def test_nothing_the_reader_types_can_reach_the_brief():
     src = inspect.getsource(askctx)
     for bad in ("request", "POST", "$_GET", "input("):
         assert bad not in src, f"{bad!r} suggests caller-supplied context"
+
+
+def test_every_player_row_carries_its_team():
+    """PLAYERS CHANGE TEAMS, AND THE MODEL'S MEMORY IS OLDER THAN THE DATA.
+
+    The rows were names and prices, so "what team does he play for" was
+    answered from training rather than from this week's roster. Jerry Jeudy
+    played for Denver through 2023 and Cleveland from 2024; a model asked
+    about him with no team in front of it will answer confidently and be a
+    season or two behind.
+    """
+    p = _payload()
+    for r in p["markets"][0]["players"]:
+        r["team"] = "CLE"
+        r["pos"] = "WR"
+    b = askctx.for_game(p, _card())
+    rows = b["players"]["anytime touchdown"]["likeliest"]
+    assert rows, "no rows to check"
+    for r in rows:
+        assert r.get("team") == "CLE", r
+        assert r.get("pos") == "WR", r
+
+
+def test_the_brief_says_which_week_the_rosters_are_from():
+    """A team with no date on it is a claim the reader cannot age-check."""
+    b = askctx.for_game(_payload(), _card())
+    note = b["roster_note"]
+    assert "week 3" in note and "2026" in note, note

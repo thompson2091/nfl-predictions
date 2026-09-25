@@ -122,6 +122,14 @@ $system = "You answer questions about one NFL game for a betting site read by "
   . "numbers mean and let the reader decide. Two short paragraphs at most. "
   . "Plain English; spell out any jargon you use.\n\n"
   . "A negative spread means the HOME team is favoured.\n\n"
+  // PLAYERS CHANGE TEAMS, AND THE MODEL'S MEMORY IS OLDER THAN THE DATA.
+  // Asked which team a player is on, a model with no team in front of it
+  // answers from training and sounds certain doing it. The rosters below are
+  // ingested weekly and are the authority, so say which one wins.
+  . "The teams, prices and projections below are THIS WEEK'S, ingested for "
+  . "this game. Players change teams between seasons. If the data disagrees "
+  . "with what you remember about a player's team, the data is right and "
+  . "your memory is out of date — use the data and do not correct it.\n\n"
   . "THE DATA:\n" . $ctx;
 
 $body = array(

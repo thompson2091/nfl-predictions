@@ -107,6 +107,9 @@ def for_game(payload: dict, card: dict) -> dict:
         "kickoff": " ".join(x for x in (card.get("kick_day"),
                                         card.get("kick_et")) if x),
         "prime_time": bool(card.get("prime")),
+        "roster_note": (f"every team below is this player's team in week "
+                        f"{payload.get('week')} of {payload.get('season')}, "
+                        f"from the roster ingested for this week"),
         "market": {"spread": card.get("spread"), "total": card.get("total"),
                    "home_win_pct": _round(card.get("win_home")),
                    "note": "spread is negative when the HOME team is favoured"},
@@ -277,7 +280,13 @@ def _players(payload: dict, key: str, gid: str) -> dict:
                 if _game_key(p.get("game_id") or "") == gid and p.get("priced")]
         return _two_ways(
             rows,
-            lambda p: {"player": p["player"], "odds": p.get("odds_num"),
+            # TEAM TRAVELS WITH THE PLAYER.
+            #
+            # Without it the rows are names and prices, so a question about
+            # who a player plays for is answered from the model's training
+            # rather than from this week's roster — and players change teams.
+            lambda p: {"player": p["player"], "team": p.get("team"),
+                       "pos": p.get("pos"), "odds": p.get("odds_num"),
                        "our_pct": _round((p.get("model_only")
                                           or p.get("ours")), 3),
                        "book_pct": _round(p.get("book"), 3),
@@ -291,7 +300,8 @@ def _players(payload: dict, key: str, gid: str) -> dict:
             and r.get("point") is not None]
     return _two_ways(
         rows,
-        lambda r: {"player": r["player_name"], "line": r.get("point"),
+        lambda r: {"player": r["player_name"], "team": r.get("team"),
+                   "line": r.get("point"),
                    "odds": r.get("odds"), "we_project": _round(r.get("proj"), 1),
                    "our_pct": _round(r.get("ours"), 3),
                    "book_pct": _round(r.get("fair_prob"), 3),
