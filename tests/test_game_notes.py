@@ -206,7 +206,8 @@ def test_a_coaching_note_says_it_is_not_an_edge():
     """
     for note in gn._coach_notes(_coach_card(away_is_off_bye=1)):
         assert note.get("context") is True, f"{note['kind']} is unlabelled"
-        assert "not a reason to bet" in note["brief"]
+        assert "2,853" in note["brief"], (
+            "the measured figure is what makes this context rather than a tip")
 
 
 def test_rest_notes_name_the_side_that_has_the_advantage():
@@ -222,3 +223,74 @@ def test_rest_notes_name_the_side_that_has_the_advantage():
 
 def test_a_game_with_no_coach_on_file_is_skipped_rather_than_half_rendered():
     assert gn._coach_notes(_coach_card(coach_home=None)) == []
+
+
+def test_a_note_may_not_recommend_the_opposite_of_its_own_numbers():
+    """Our 22% against the book's 15% came back headlined "price may be too high".
+
+    Every figure was sourced and the arithmetic was right; the DIRECTION was
+    inverted. In betting jargon "the price is too high" means the odds are
+    generous, which is the opposite of what an ordinary reader hears — and the
+    same card said "Good value" two lines below its own headline.
+    """
+    assert not gn._direction_is_consistent(
+        "Caleb Douglas touchdown price may be too high", "back")
+    assert not gn._direction_is_consistent("Great value on Penix", "avoid")
+    assert gn._direction_is_consistent(
+        "We make Douglas likelier than his price does", "back")
+    assert gn._direction_is_consistent("A price to leave alone", "avoid")
+    # A note with no declared lean is not second-guessed.
+    assert gn._direction_is_consistent("anything at all", None)
+
+
+def test_an_inverted_note_falls_back_rather_than_printing():
+    p = _payload()
+    n = [x for x in gn.select(p, p["games"]["cards"][0])
+         if x["kind"] == "td_value"][0]
+    before = n["why"]
+    gn._apply([n], {n["id"]: {"title": "Priced too high",
+                              "why": "He is pricey at this number."}})
+    assert n.get("inverted") is True
+    assert n["why"] == before
+
+
+def test_the_value_and_fade_notes_declare_which_way_they_lean():
+    """The guard cannot fire on a note that never said what it was."""
+    p = _payload()
+    notes = {x["kind"]: x for x in gn.select(p, p["games"]["cards"][0])}
+    assert notes["td_value"]["lean"] == "back"
+    assert notes["td_fade"]["lean"] == "avoid"
+
+
+def test_an_add_button_only_exists_where_it_adds_something():
+    """It used to appear on every note and add a string nobody could bet.
+
+    The slip is keyed by BOARD ROW ID. A line, shop or coaching note has no
+    row, so it now carries no `pick_id` and renders no button — automatic,
+    rather than a weekly chore of wiring them by hand.
+    """
+    p = _payload()
+    notes = {x["kind"]: x for x in gn.select(p, p["games"]["cards"][0])}
+    assert notes["td_value"]["pick_id"] == "any|Tucker Kraft"
+    for kind in ("line_gap", "move", "shop"):
+        assert "pick_id" not in notes.get(kind, {}), (
+            f"{kind} has no board row and must offer no button")
+
+
+def test_a_yardage_pick_id_uses_the_board_key_not_the_target_name():
+    """`receiving_yards|...` resolves to nothing; the board's key is `recyds`.
+
+    An id that does not resolve gives a button that silently does nothing,
+    which is the failure this whole change was meant to remove.
+    """
+    p = _payload()
+    notes = {x["kind"]: x for x in gn.select(p, p["games"]["cards"][0])}
+    edge = notes.get("yards_edge_receiving_yards")
+    assert edge and edge["pick_id"] == "recyds|Austin Hooper|7.5"
+    assert gn.BOARD_KEY["receiving_yards"] == "recyds"
+
+
+def test_money_is_written_with_two_decimal_places():
+    """"$39.4" is not a price."""
+    assert gn._money(39.4) == "39.40"
+    assert gn._money(5) == "5.00"

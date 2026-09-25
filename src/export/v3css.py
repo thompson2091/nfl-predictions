@@ -33,9 +33,26 @@ def tokens_css() -> str:
 COMPONENTS = """
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
+html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);
   font:15px/1.4 var(--sans);-webkit-font-smoothing:antialiased;
-  padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+  overflow:hidden}
+
+/* ---- the app frame: a fixed shell with one scrolling pane ----
+   Copied in structure from v2, which had it right. A page that scrolls its
+   BODY under fixed bars fights the address bar on every phone: the viewport
+   changes height as you scroll and the bottom bar jumps. A flex column that
+   owns the window does not have that problem, and it is why v2's chrome feels
+   like an app and the first v3 did not. */
+.app{position:fixed;inset:0;display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top,0px)}
+.scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  padding-left:env(safe-area-inset-left,0px);
+  padding-right:env(safe-area-inset-right,0px);
+  padding-bottom:var(--s5)}
+.appbar{flex:none;display:flex;align-items:center;justify-content:space-between;
+  gap:12px;height:52px;padding:0 16px;background:var(--bg)}
 a{color:var(--ours);text-decoration:none}
 button,input,select{font-family:inherit;font-size:inherit;color:inherit}
 button{cursor:pointer}
@@ -76,6 +93,10 @@ button{cursor:pointer}
   margin-top:16px}
 .seg--2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .seg--3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.seg--4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.seg--4 button{font-size:13px}
+.rowacts{display:flex;flex-direction:column;align-items:center;gap:2px;
+  flex-shrink:0}
 .seg button{height:36px;border:0;border-radius:10px;font-size:15px;
   font-weight:500;background:transparent;color:var(--mut)}
 .seg button[aria-pressed=true]{background:var(--card);color:var(--ink);
@@ -96,8 +117,10 @@ button{cursor:pointer}
 /* ---- the number strip: the old board's columns, on the row ---- */
 .rowbtn{flex:1;min-width:0;display:block;text-align:left;border:0;
   background:transparent;padding:0;font:inherit;color:inherit}
-.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;
+.strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;
   padding:8px 0 2px}
+@media (max-width:400px){.strip{grid-template-columns:repeat(3,minmax(0,1fr));
+  row-gap:8px}}
 .cell{display:flex;flex-direction:column;min-width:0}
 .cell b{font-size:15px;line-height:20px;font-weight:700}
 .cell b.good{color:var(--good)}
@@ -176,6 +199,22 @@ button{cursor:pointer}
 .g__m{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
 .kick{font-size:12px;color:var(--mut2);font-weight:600}
 .chev{flex-shrink:0;color:var(--mut)}
+
+/* ---- one betting line, both sides, with what the book keeps ---- */
+.lineblk{margin-top:8px;padding:12px 14px;background:var(--card);
+  border-radius:16px;box-shadow:0 1px 2px rgba(22,24,29,.06)}
+.lineblk--main{border:1px solid var(--ours)}
+.lineblk>.tag{margin-bottom:8px}
+.side{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:8px 0;border-top:1px solid var(--line3)}
+.side:first-of-type{border-top:0}
+.side__n{display:flex;flex-direction:column;gap:2px;min-width:0}
+.side__n b{font-size:17px;font-weight:600}
+.side__p{display:flex;flex-direction:column;align-items:flex-end;gap:2px;
+  flex-shrink:0}
+.hold{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);
+  font-size:13px;line-height:18px;color:var(--mut)}
+.hold b{color:var(--ink)}
 
 /* ---- game detail ---- */
 .back{height:44px;display:inline-flex;align-items:center;gap:2px;
@@ -264,6 +303,65 @@ button{cursor:pointer}
   color:var(--ours);display:inline-flex;align-items:center;
   justify-content:center;font-size:13px;font-weight:700}
 
+/* ---- two big choosers instead of a page of radio buttons ---- */
+.chooser{display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-top:16px}
+.choose{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  min-height:60px;padding:10px 14px;border-radius:14px;background:var(--card);
+  border:1px solid var(--btnline);text-align:left}
+.choose b{font-size:17px;font-weight:700}
+
+/* ---- moving between games without going back ---- */
+.gamenav{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin-top:4px}
+.gsel{display:flex;align-items:center;gap:4px;min-width:0;flex:1;
+  justify-content:flex-end}
+.gsel select{min-width:0;max-width:190px;height:36px;border-radius:10px;
+  border:1px solid var(--btnline);background:var(--card);font-size:13px;
+  font-weight:600;padding:0 6px}
+.gstep{width:36px;height:36px;border-radius:10px;border:1px solid var(--btnline);
+  background:var(--card);color:var(--ink);font-size:18px;line-height:1;
+  flex-shrink:0}
+
+/* ---- book against model, same shape both sides ---- */
+.cmp{padding:12px;border-radius:12px;background:var(--inset);display:flex;
+  flex-direction:column;gap:2px}
+.cmp--ours{background:var(--oursbg)}
+.cmp--ours .eyebrow{color:var(--ours)}
+.cmp b{font-size:19px;font-weight:700}
+
+/* ---- the score ladder ---- */
+.ltab__h,.ltab__r{display:grid;grid-template-columns:96px 52px 1fr;
+  align-items:center;gap:10px;padding:6px 0}
+.ltab__h{font-size:11px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--mut2);border-bottom:1px solid var(--line)}
+.ltab__r{border-top:1px solid var(--line3);font-size:14px}
+.ltab__r:first-of-type{border-top:0}
+.ltab__r--on{background:var(--oursbg);border-radius:8px;
+  box-shadow:0 0 0 6px var(--oursbg);position:relative}
+.ltab__r span:nth-child(2){font-weight:700}
+.ltab__r i{font-style:normal;font-size:11px;color:var(--mut2);
+  margin-left:8px;white-space:nowrap}
+.mini{display:inline-block;width:46%;height:8px;border-radius:999px;
+  background:var(--sunk);overflow:hidden;vertical-align:middle}
+.mini i{display:block;height:100%;background:var(--ours);margin:0}
+.quotes{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.quote{display:inline-flex;align-items:baseline;gap:5px;padding:6px 10px;
+  border-radius:10px;background:var(--inset);font-size:13px}
+.quote b{font-weight:700}
+.quote i{font-style:normal;color:var(--mut2);font-size:12px}
+
+/* ---- final-score distribution ---- */
+.mrow{display:grid;grid-template-columns:96px 1fr 52px;align-items:center;
+  gap:10px;padding:5px 0}
+.mrow__l{font-size:13px;color:var(--mut)}
+.mrow__v{font-size:13px;font-weight:700;text-align:right}
+.mbar{height:10px;border-radius:999px;background:var(--sunk);overflow:hidden}
+.mbar i{display:block;height:100%;border-radius:999px;background:var(--ours)}
+.srow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  padding:7px 0;border-top:1px solid var(--line3)}
+.srow:first-child{border-top:0}
+.srow b{font-size:15px;font-weight:700}
+
 /* ---- ladder ---- */
 .rung{display:grid;grid-template-columns:56px minmax(0,1fr) minmax(0,1fr);
   align-items:center;min-height:56px;padding:6px 16px;
@@ -272,13 +370,81 @@ button{cursor:pointer}
 .rung--alt{background:var(--inset)}
 
 /* ---- nav ---- */
-.nav{position:fixed;left:0;right:0;bottom:0;height:84px;
-  padding-bottom:calc(28px + env(safe-area-inset-bottom,0px));
-  background:var(--card);box-shadow:0 -1px 0 rgba(22,24,29,.10);
-  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));z-index:6}
-.nav a{display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:2px;color:var(--mut);font-size:13px}
-.nav a[aria-current=page]{color:var(--ours);font-weight:600}
+/* THE HOME INDICATOR IS ADDED TO THE BAR'S HEIGHT, NOT TAKEN OUT OF IT.
+   The first version padded 28px INSIDE an 84px bar, which squeezed the tap
+   targets into 56px of a bar that looked 84px tall and left a slab of empty
+   white under the labels. v2 adds the inset to the height and pads by exactly
+   the inset, so the targets stay full size and nothing is wasted. */
+.tabbar{flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  height:calc(56px + env(safe-area-inset-bottom,0px));
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  padding-left:env(safe-area-inset-left,0px);
+  padding-right:env(safe-area-inset-right,0px);
+  background:var(--card);border-top:1px solid var(--line)}
+.tabbar a{display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:2px;color:var(--mut);font-size:11px;
+  font-weight:600;min-width:0;padding:0 2px}
+.tabbar a[aria-current=page]{color:var(--ours)}
+@media (max-width:360px){.tabbar a{font-size:10px}}
+
+/* ---- the slip bar, and swiping it away ----
+   The button is BEHIND the bar rather than revealed by it, so the movement
+   follows a thumb instead of playing an animation after one. */
+.slipwrap{position:relative;flex:none;overflow:hidden;background:var(--bad)}
+.slipdel{position:absolute;right:0;top:0;bottom:0;width:112px;border:0;
+  background:var(--bad);color:#fff;font-size:15px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  padding-right:env(safe-area-inset-right,0px)}
+.slipbar{position:relative;z-index:1;display:flex;align-items:center;gap:10px;
+  height:60px;padding:0 12px 0 16px;background:var(--ours);color:#fff;
+  transition:transform .18s ease}
+.slipwrap[data-swipe=open] .slipbar{transform:translateX(-112px)}
+.slipwrap[data-swipe=dragging] .slipbar{transition:none}
+.slipbar__count{min-width:26px;height:26px;border-radius:999px;
+  background:rgba(255,255,255,.22);display:inline-flex;align-items:center;
+  justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.slipbar__main{flex:1;min-width:0;display:flex;flex-direction:column}
+.slipbar__price{font-size:15px;font-weight:700}
+.slipbar__legs{font-size:12px;opacity:.85;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.slipbar__open{flex-shrink:0;height:36px;padding:0 14px;border-radius:10px;
+  border:0;background:#fff;color:var(--ours);font-size:14px;font-weight:700}
+.slipbar__x{flex-shrink:0;width:36px;height:36px;border-radius:10px;border:0;
+  background:rgba(255,255,255,.18);color:#fff;font-size:18px;line-height:1}
+
+/* ---- the bottom sheet ---- */
+.scrim{position:fixed;inset:0;background:rgba(22,24,29,.42);opacity:0;
+  pointer-events:none;transition:opacity .18s ease;z-index:20}
+.scrim.open{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--card);
+  border-radius:20px 20px 0 0;transform:translateY(100%);
+  transition:transform .22s cubic-bezier(.2,.8,.3,1);max-height:82dvh;
+  display:flex;flex-direction:column;box-shadow:0 -8px 40px rgba(22,24,29,.22)}
+.sheet.open{transform:none}
+.sheet__grab{flex:none;padding:8px 0 4px;display:flex;justify-content:center}
+.sheet__grab i{display:block;width:40px;height:4px;border-radius:999px;
+  background:var(--pend)}
+.sheet__head{flex:none;display:flex;align-items:center;
+  justify-content:space-between;padding:4px 16px 8px}
+.sheet__head b{font-size:19px;font-weight:700}
+.sheet__x{width:36px;height:36px;border-radius:999px;border:0;
+  background:var(--inset);color:var(--ink);font-size:18px}
+.sheet__body{flex:1;min-height:0;overflow-y:auto;padding:0 16px
+  calc(20px + env(safe-area-inset-bottom,0px))}
+
+/* ---- swipe a leg away ---- */
+.legwrap{position:relative;overflow:hidden;background:var(--bad)}
+.legdel{position:absolute;right:0;top:0;bottom:0;width:96px;border:0;
+  background:var(--bad);color:#fff;font-size:15px;font-weight:600}
+.legwrap>.row{position:relative;z-index:1;background:var(--card);
+  transition:transform .18s ease}
+.legwrap[data-swipe=open]>.row{transform:translateX(-96px)}
+.legwrap[data-swipe=dragging]>.row{transition:none}
+
+/* ---- favourites ---- */
+.star{flex-shrink:0;width:40px;height:40px;border-radius:10px;border:0;
+  background:transparent;color:var(--mut3);font-size:19px;line-height:1}
+.star[aria-pressed=true]{color:var(--star)}
 @media (max-width:380px){.h1{font-size:26px;line-height:32px}
   .mkts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 """

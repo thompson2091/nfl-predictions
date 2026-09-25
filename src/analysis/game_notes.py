@@ -61,6 +61,12 @@ MIN_MOVE_PP = 1.0
 #: they are imported lazily so this module can be read without polars.
 FADE_CUT = -8.0
 
+#: Target-type name to the key the BOARD uses for the same market. A row id is
+#: built from the board's key, so a note pointing at `receiving_yards|...`
+#: resolves to nothing and its Add button silently does nothing.
+BOARD_KEY = {"receiving_yards": "recyds", "rushing_yards": "rush",
+             "passing_yards": "passyds", "receptions": "rec"}
+
 #: Below this many prior games in the slot, a coach's rate is noise wearing a
 #: number. `situational_features` defines it and says why in as many words:
 #: so "69.4% in prime time" cannot be printed off 36 games without the 36.
@@ -75,9 +81,13 @@ MIN_REST_GAP = 3
 #: tested thirteen of these on 2,853 games: not one clears the vig, and the
 #: coach cover rate is used hard by the model while changing nothing out of
 #: sample, which is what fitting noise looks like from the inside.
-COACH_CAVEAT = ("Tested on 2,853 past games, angles like this one do not beat "
-                "the bookmaker's cut on their own. It is background, not a "
-                "reason to bet.")
+COACH_CAVEAT = ("Measured across 2,853 past games, a record like this one "
+                "does not beat the bookmaker's cut by itself.")
+
+
+def _money(x):
+    """Two decimal places, always. "$39.4" is not how money is written."""
+    return f"{float(x):.2f}"
 
 
 def _num(x, nd=1):
@@ -166,14 +176,15 @@ def _line_notes(payload: dict, card: dict, gid: str) -> list[dict]:
                       {"v": f"{mt} by {_num(mby)}", "l": "our model"}],
             "brief": (f"The book has {bt} by {_num(bby)}. Our team model has "
                       f"{mt} by {_num(mby)}, a gap of "
-                      f"{_num(abs(mod_sp - book_sp))} points. The model cannot "
-                      f"see the betting line and is unproven."),
+                      f"{_num(abs(mod_sp - book_sp))} points. The model is "
+                      f"built without sight of the betting line, so this is a "
+                      f"second opinion rather than a version of the same one."),
             "fallback": (f"The book makes it {bt} by {_num(bby)}; our model "
                          f"makes it {mt} by {_num(mby)}."
                          + ("" if same else " They disagree on the winner.")),
             "pick": f"{card['away'] if bt == card['home'] else card['home']} "
                     f"on the spread",
-            "unproven": True,
+            "model": True,
         })
     book_tot, mod_tot = card.get("total"), card.get("model_total")
     if book_tot is not None and mod_tot is not None \
@@ -186,11 +197,11 @@ def _line_notes(payload: dict, card: dict, gid: str) -> list[dict]:
             "brief": (f"The posted total is {_num(book_tot)} points. Our model "
                       f"expects {_num(mod_tot)}, which is "
                       f"{_num(abs(mod_tot - book_tot))} "
-                      f"{'higher' if higher else 'lower'}. Unproven model."),
+                      f"{'higher' if higher else 'lower'}."),
             "fallback": (f"Books set the total at {_num(book_tot)}; our model "
                          f"expects about {_num(mod_tot)}."),
             "pick": f"{'Over' if higher else 'Under'} {_num(book_tot)} points",
-            "unproven": True,
+            "model": True,
         })
 
     rows = [r for r in (payload.get("games") or {}).get("rows") or []
@@ -278,11 +289,18 @@ def _player_notes(payload: dict, card: dict, gid: str) -> list[dict]:
                           f"{_num((best.get('ours') or 0) * 100 - (best.get('book') or 0) * 100)}"
                           f" points higher — worth about "
                           f"{_num(best['ev'])} dollars per 100 staked. A $10 "
-                          f"bet returns ${_num(10 * (abs(best['odds_num']) / 100 if best['odds_num'] > 0 else 100 / abs(best['odds_num'])), 2)}."),
+                          f"bet returns "
+                          f"${_money(10 * (abs(best['odds_num']) / 100 if best['odds_num'] > 0 else 100 / abs(best['odds_num'])))}."),
                 "fallback": (f"{best['player']} is the best-priced touchdown "
                              f"bet in this game by our numbers."),
+                "lean": "back",
                 "pick": f"{best['player']} to score · "
                         f"{_odds(best.get('odds_num'))}",
+                # `rowsFor` builds a touchdown row id as `key|player`. Built
+                # here so the Add button adds the actual leg; a note whose
+                # subject is not a board row carries no id and renders no
+                # button, rather than a button that does nothing.
+                "pick_id": f"any|{best['player']}",
             })
         # The fade is drawn from every priced player, not just the
         # shortlist — being absent from the shortlist is not what makes a
@@ -306,6 +324,7 @@ def _player_notes(payload: dict, card: dict, gid: str) -> list[dict]:
                           f"side of a touchdown prop."),
                 "fallback": (f"{worst['player']} is priced well above our "
                              f"number. One to leave alone."),
+                "lean": "avoid",
                 "pick": f"Avoid {worst['player']} to score",
                 "avoid": True,
             })
@@ -381,6 +400,10 @@ def _player_notes(payload: dict, card: dict, gid: str) -> list[dict]:
                          f"{_num(r.get('point'))} {unit} line."),
             "pick": f"{r['player_name']} over {_num(r.get('point'))} {unit} · "
                     f"{_odds(r.get('odds'))}",
+            # An over/under row id is `key|player|point`, where `key` is the
+            # BOARD's market key rather than the target-type name.
+            "pick_id": (f"{BOARD_KEY[market]}|{r['player_name']}"
+                        f"|{r.get('point')}"),
         })
         break
     return out
@@ -479,6 +502,44 @@ def has_num(v) -> bool:
 # ---------------------------------------------------------------- phrasing
 
 
+#: Phrases that say a bet is worth taking, and phrases that say it is not.
+#: Checked against the note's own `lean`, because a sentence can be perfectly
+#: fluent, cite only sourced numbers, and still recommend the opposite of what
+#: the numbers say.
+#: Patterns rather than literals. A plain list caught "good value" and let
+#: "great value" through, which is the same claim with a different adjective —
+#: and the generated text is not drawn from a fixed vocabulary.
+_SAYS_BACK = re.compile(
+    r"\b(?:good|great|solid|strong|nice|real|excellent|clear)\s+value\b"
+    r"|\bbargain\b|\bunder-?priced\b|\bworth (?:a )?back\w*\b"
+    r"|\bbetter than the price\b|\bprice is too low\b|\bgenerous\b"
+    r"|\bunder-?valued\b|\bmore likely than (?:the |his )?price\b"
+    r"|\bworth (?:a )?(?:bet|play|look)\b", re.I)
+_SAYS_AVOID = re.compile(
+    r"\btoo high\b|\bover-?priced\b|\bavoid\b|\bpricey\b|\bexpensive\b"
+    r"|\bsteer clear\b|\bleave (?:it |him )?alone\b|\bnot worth\b"
+    r"|\bworse than the price\b|\bover-?valued\b|\bstay away\b"
+    r"|\bless likely than (?:the |his )?price\b", re.I)
+
+
+def _direction_is_consistent(text: str, lean: str) -> bool:
+    """A note that rates a player ABOVE his price must not call him pricey.
+
+    The failure this exists for, in full: our 22% against the book's 15% came
+    back headlined "touchdown price may be too high". Every figure in it was
+    sourced and the arithmetic was right; the direction was inverted. In
+    betting jargon "the price is too high" means the ODDS are generous, which
+    is the opposite of what a casual reader hears, and the card said "good
+    value" two lines below its own headline.
+    """
+    t = text or ""
+    if lean == "back":
+        return not _SAYS_AVOID.search(t)
+    if lean == "avoid":
+        return not _SAYS_BACK.search(t)
+    return True
+
+
 _NUM = re.compile(r"\d+(?:\.\d+)?")
 
 
@@ -534,11 +595,20 @@ RULES, all of them hard:
 - Use ONLY the numbers in that note's facts. Never introduce a number that is
   not there, and never round one that is.
 - Never advise. Explain what the number means; the reader decides.
-- A note marked unproven must read as a lean, not a call.
-- A note marked avoid is about a bet NOT to place.
+- A note marked model is our own team model's view. State it plainly as our
+  number against the book's. Do not hedge it, apologise for it, or call it
+  unproven, untested or a lean.
+- A note marked avoid is about a bet NOT to place: we rate the player BELOW
+  his price. Never call it good value.
+- A note marked back means we rate the player ABOVE his price, so the odds are
+  generous and the bet is worth considering. NEVER describe it as "priced too
+  high", "pricey", "overpriced" or "expensive". Those read to an ordinary
+  person as a warning, and this is the opposite of one.
+- Say which way the disagreement runs in plain words: "we make him likelier
+  than the price does", not "the price is off".
 - A note marked measured has real historical backing; it may say so plainly.
-- A note marked context is background only. Never imply it is a reason to bet,
-  and keep whatever caveat its facts carry.
+- A note marked context is background. Keep the measured figure its facts
+  carry, stated as a fact about the angle rather than as an apology.
 - No exclamation marks, no hype, no "smash", "lock" or "value play".
 
 Notes:
@@ -574,8 +644,9 @@ def phrase(notes: list[dict], card: dict, use_cache: bool = True) -> list[dict]:
         return notes
     listing = "\n".join(
         f'- id "{n["id"]}": {n["brief"]}'
-        + "".join(f" [{f}]" for f in ("unproven", "avoid", "measured",
+        + "".join(f" [{f}]" for f in ("model", "avoid", "measured",
                                       "context") if n.get(f))
+        + (f" [{n['lean']}]" if n.get("lean") else "")
         for n in notes)
     try:
         resp = client.messages.create(
@@ -605,6 +676,11 @@ def _apply(notes: list[dict], got: dict) -> list[dict]:
         if not (_numbers_are_sourced(title, n["brief"])
                 and _numbers_are_sourced(why, n["brief"])):
             n["unsourced"] = True
+            continue
+        lean = n.get("lean")
+        if lean and not (_direction_is_consistent(title, lean)
+                         and _direction_is_consistent(why, lean)):
+            n["inverted"] = True
             continue
         n["title"], n["why"] = title.strip(), why.strip()
     return notes

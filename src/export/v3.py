@@ -33,7 +33,14 @@ SHELL = """<!doctype html>
 <style>__FONTS__</style>
 <style>__CSS__</style>
 </head><body>
-<div id="app"></div>
+<div class="app">
+  <header class="appbar" id="appbar"></header>
+  <main class="scroll" id="scroll"><div id="app"></div></main>
+  <div id="slipbarHost"></div>
+  <nav class="tabbar" id="tabbar" aria-label="Main"></nav>
+</div>
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
 <script id="payload" type="application/json">__DATA__</script>
 <script>
 const DATA = JSON.parse(document.getElementById('payload').textContent);

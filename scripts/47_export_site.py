@@ -739,12 +739,53 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     _attach_model(cards, season, week)
     _attach_kickoff(cards, season, week)
     _attach_coaching(cards, season, week)
+    _attach_scores(cards)
     # Sorted by kickoff where it is known, so the list reads as a weekend
     # rather than as an alphabet. Games with no time sort last rather than
     # first: a missing kickoff is usually a game the schedule has not
     # finalised, and burying it is better than opening the page with it.
     return rows, sorted(cards.values(),
                         key=lambda c: (c.get("kick_sort") or "9", c["game_id"]))
+
+
+def _attach_scores(cards: dict) -> None:
+    """The empirical final-score distribution for every game that has a line.
+
+    `history()` is read ONCE and passed down. Read per card it is sixteen
+    full scans of the schedule for one week, which is the kind of cost that
+    only shows up as "the export got slow" months later.
+    """
+    try:
+        from src.models.score_dist import (for_card, history,
+                                            ladders_for_card)
+        hist = history()
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  score distribution unavailable ({e})", file=sys.stderr)
+        return
+    if hist.is_empty():
+        return
+    for c in cards.values():
+        got = for_card(c, hist)
+        if got:
+            c["scores"] = got
+        lad = ladders_for_card(c, hist)
+        if lad:
+            c["ladders"] = lad
+        # OUR MODEL'S WIN PROBABILITY, VIA THE SAME DISTRIBUTION.
+        #
+        # `game_model` predicts a margin and a total, not a chance of winning,
+        # and turning one into the other needs a distribution. Asking the
+        # empirical one what a game hung at OUR number actually won at is the
+        # conversion, and it uses the record rather than a normal assumption
+        # about margins — which is the same argument `score_dist` is built on.
+        if c.get("model_spread") is not None and c.get("model_total") is not None:
+            ours = for_card({"spread": c["model_spread"],
+                             "total": c["model_total"],
+                             "home": c.get("home"), "away": c.get("away")},
+                            hist)
+            if ours and not ours.get("thin") and ours.get("home_win"):
+                c["model_win_home"] = round(ours["home_win"]["pct"] / 100, 4)
+                c["model_win_n"] = ours["n"]
 
 
 def _attach_coaching(cards: dict, season: int | None,
@@ -946,6 +987,34 @@ def model_cards() -> list[dict]:
         })
     except Exception as e:                                       # noqa: BLE001
         print(f"  game model card unavailable ({e})", file=sys.stderr)
+    # The score distribution. A MODEL, and listed as one: it predicts a
+    # distribution over final scores and it is fitted — on the record rather
+    # than on parameters, which is a choice about form, not a demotion. Named
+    # here so the Model tab does not quietly omit a thing the game pages lean
+    # on.
+    try:
+        from src.models.score_dist import (MIN_COMPARABLES, SPREAD_TOL,
+                                           TOTAL_TOL, history)
+        n = history().height
+    except Exception:                                            # noqa: BLE001
+        n = 0
+    if n:
+        cards.append({
+            "key": "score_dist", "label": "Final score", "kind": "game",
+            "predicts": "how the game finishes, as a distribution",
+            "algorithm": ("empirical: past games priced within "
+                          f"{SPREAD_TOL} of the spread and {TOTAL_TOL} of the "
+                          "total, counted"),
+            "n_train": n,
+            "features": ["spread_line", "total_line"],
+            "note": ("Nothing is smoothed. NFL scores are built from 3s and "
+                     "7s, so 27-24 happens far more often than 28-25, and a "
+                     "parametric fit spreads probability onto scorelines that "
+                     "essentially never occur. The cost is ragged tails and "
+                     f"exact scorelines too thin to price; under "
+                     f"{MIN_COMPARABLES} comparable games it declines to draw "
+                     "a distribution at all."),
+        })
     return cards
 
 
@@ -1113,12 +1182,14 @@ def _attach_model(cards: dict, season: int | None = None,
                   week: int | None = None) -> None:
     """The vegas-blind model's score, where it can be produced.
 
-    **This is the one modelled number on the page and it is not validated.**
-    `game_model` is worse than the market on both margin and totals, by
-    design — it cannot see the line — and its only positive result is a
-    disagreement signal that has not survived a clean-room test. It is shown
-    because a second opinion is the point of the page and hidden numbers help
-    nobody, and it is labelled unproven everywhere it appears.
+    **Worse than the market on margin and totals, by design.** `game_model`
+    cannot see the line, which is the whole reason to show it: a second
+    opinion that has read the first one is not a second opinion. Its only
+    positive result is a disagreement signal that has not survived a
+    clean-room test, and that is recorded here rather than printed on the
+    page — the site presents it as our number against the book's and lets the
+    two disagree, which is what a reader can act on. The caveat belongs in the
+    code, where the person deciding whether to trust it can read it.
 
     Absent rather than wrong when the model cannot be built: a card with no
     model block reads as "no second opinion", which is true.
@@ -1344,6 +1415,17 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
         # one genuinely differ, and offering the board's here would
         # show weeks holding no prices at all.
         payload["games"]["past"] = games_past(s, w)
+    # What share of bets is on each side, if it has been captured. Absent
+    # rather than empty when it has not: a page saying "the public is split
+    # 50/50" because nothing was archived would be inventing a fact.
+    if payload["games"]:
+        try:
+            from src.ingest.public_money import week_view
+            pub = week_view(s, w)
+            if pub:
+                payload["games"]["public"] = pub
+        except Exception as e:                                   # noqa: BLE001
+            print(f"  public money unavailable ({e})", file=sys.stderr)
     payload["bets"] = bets(s)
     payload["models"] = model_cards()
 

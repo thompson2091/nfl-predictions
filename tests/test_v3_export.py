@@ -48,7 +48,29 @@ def payload_v3():
              "win_home": 0.684, "win_away": 0.316,
              "model_total": 47.6, "model_spread": -0.9,
              "model_home": 24.3, "model_away": 23.4,
-             "kick_day": "Thursday", "kick_et": "8:15 PM ET", "prime": True},
+             "kick_day": "Thursday", "kick_et": "8:15 PM ET", "prime": True,
+             "model_win_home": 0.55, "model_win_n": 380,
+             "scores": {"n": 403, "thin": False, "min_n": 60, "home": "GB",
+                        "away": "ATL", "total": 44.5, "mean_total": 46.4,
+                        "mean_margin": 6.3,
+                        "home_win": {"n": 287, "pct": 71.2, "lo": 66.6,
+                                     "hi": 75.4},
+                        "over": {"n": 207, "pct": 51.4, "lo": 46.5,
+                                 "hi": 56.2},
+                        "scores": [{"home": 31, "away": 24, "n": 4,
+                                    "pct": 1.0}],
+                        "margins": [{"band": "GB by 15+", "n": 106,
+                                     "pct": 26.3, "lo": 22.2, "hi": 30.8}]},
+             "ladders": {"n": 403, "thin": False, "home": "GB", "away": "ATL",
+                         "teams": [{"team": "GB", "rows": [
+                             {"line": 20.5, "n": 286, "pct": 71.0,
+                              "lo": 66.0, "hi": 75.0}]}],
+                         "total": {"posted": 44.5, "rows": [
+                             {"line": 44.5, "n": 207, "pct": 51.4,
+                              "lo": 46.5, "hi": 56.2}]},
+                         "spread": {"posted": 6.5, "rows": [
+                             {"line": 6.5, "n": 180, "pct": 44.7,
+                              "lo": 39.9, "hi": 49.6}]}}},
             {"game_id": "ARI_SF", "home": "SF", "away": "ARI",
              "total": 47.5, "spread": -8.5, "proj_home": 28.0, "proj_away": 19.5,
              "win_home": 0.78, "win_away": 0.22,
@@ -115,7 +137,9 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
     # reporting "not exercised" and passing.
     for path in ("a past week renders", "game tab notes renders",
                  "game tab bets renders",
-                 "a coaching note is labelled as context"):
+                 "a coaching note is labelled as context",
+                 "the final-score tab renders",
+                 "the bets tab is a ladder, not a list of books"):
         assert path in r.stdout, f"{path!r} never ran:\n{r.stdout}"
 
 
