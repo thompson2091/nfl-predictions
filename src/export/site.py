@@ -1118,6 +1118,8 @@ const S = {
   // Which reading of the game-line archive the Bets tab is showing.
   // Games, movement or the definitions built on it.
   bets: 'games',
+  // Which matchup cards are expanded on the Bets tab, by fixture label.
+  betsOpen: {},
   savedFilter: 'all',
   // Whether the page menu is showing. Narrow screens only — the CSS puts the
   // links back on one row above 900 and this stops being read.

@@ -388,6 +388,39 @@ EXTRA_CSS = """
 .blbar__f--won{background:var(--good)}
 .blbar__f--lost{background:var(--bad)}
 
+/* ---------- game list ---------- */
+/* Sixteen fixtures you can read at once. Two lines, not five columns: at
+   375px a spread, a total, a lean and a dollar figure will not sit beside a
+   matchup at a readable size, and the first thing a five-column row drops is
+   the one being scanned for. */
+.glh, .gl{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,88px) 22px;
+  grid-template-areas:"g l c" "m m c";
+  gap:2px var(--space-2);align-items:baseline;
+  padding:var(--space-3) var(--space-4);width:100%;text-align:left;
+}
+.glh{
+  grid-template-areas:"g l c";
+  font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-faint);border-bottom:var(--hairline) solid var(--separator);
+}
+.glh > span:nth-child(3){display:none}
+.glh > span:nth-child(2){grid-area:l;text-align:right}
+.glh > span:nth-child(4){display:none}
+.gl{background:none;border:0;color:var(--ink);border-top:var(--hairline) solid var(--separator)}
+.gl:first-of-type{border-top:0}
+.gl--open{background:var(--bg-inset)}
+.gl__g{grid-area:g;font-size:15px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.gl__l{grid-area:l;font-size:13px;color:var(--ink-muted);text-align:right}
+.gl__m{grid-area:m;font-size:12px;color:var(--ink-faint);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.gl__e{grid-area:l;grid-row:2;font-size:13px;text-align:right;color:var(--ink-muted)}
+.gl__e.good{color:var(--good)}
+.gl__c{grid-area:c;align-self:center;color:var(--ink-faint);transition:transform .15s}
+.gl--open .gl__c{transform:rotate(90deg)}
+
 /* ---------- model comparison ---------- */
 /* Ours beside the market's, on the same row. The number that matters is the
    gap, and two figures in separate cards cannot be subtracted by eye. */

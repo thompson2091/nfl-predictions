@@ -1093,7 +1093,7 @@ JS_EVENTS = r"""
 //: has it. A test holds this list against what the views actually emit.
 const CLICKS = ['tab', 'view', 'cbpool', 'betseg', 'pcard', 'del', 'open',
                 'fam', 'load', 'sheet', 'act', 'fav', 'fav2', 'add', 'add2',
-                'detail', 'set', 'drop', 'betgame'];
+                'detail', 'set', 'drop', 'betgame', 'gcard'];
 const CLICK_SEL = CLICKS.map(k => '[data-' + k + ']').join(',');
 
 function wire() {
@@ -1125,6 +1125,10 @@ function wire() {
     }
     if (d.cbpool) { S.cb.pool = d.cbpool; render(); return; }
     if (d.betseg) { S.bets = d.betseg; render(); return; }
+    // Expand in place. Several may be open at once — comparing two
+    // fixtures is the reason to open a second one.
+    if (d.gcard) { S.betsOpen[d.gcard] = !S.betsOpen[d.gcard];
+                   render(true); return; }
     // Chosen from the sheet now, so the sheet closes with it.
     // Writes the SHARED filter, so the choice follows you onto the boards.
     if ('betgame' in d) { S.fw.game = d.betgame || ''; SHEET = null;
@@ -1528,12 +1532,66 @@ function vBetsGames(g) {
 
   const cards = (g.cards || []);
   const pick = betsPick(cards);
-  const shown = pick ? [pick] : cards;
 
   let h = vBetsFilter(cards, g);
-  shown.forEach(c => { h += gameCard(c, g); });
-  if (!shown.length) h += vEmpty('No game selected', 'Clear the filter to see them all.');
+  // Filtered to one fixture: that card, open, and nothing to scan past.
+  if (pick) return h + gameCard(pick, g);
+
+  // Otherwise every game as one row each, because sixteen full cards is a
+  // page you scroll rather than read. The row carries what decides whether
+  // you open it — the number, our lean, and the best value on the board —
+  // and the card underneath is unchanged.
+  h += '<div class="sect"><div class="card">'
+    + '<div class="glh"><span>Game</span><span>Line</span>'
+    + '<span>' + (g.graded ? 'Result' : 'Our lean') + '</span>'
+    + '<span>' + (g.graded ? 'Final' : 'Best EV') + '</span></div>'
+    + cards.map(c => gameRow(c, g)).join('')
+    + '</div></div>';
+  // Open cards render under the list, so the list itself never reflows.
+  cards.filter(c => S.betsOpen[cardLabel(c)]).forEach(c => {
+    h += gameCard(c, g);
+  });
   return h;
+}
+
+// One fixture, in a row. Two lines rather than five columns: at 375px a
+// spread, a total, a lean and a dollar figure will not sit beside a matchup
+// at a readable size, and the thing that gets dropped first is the one you
+// are scanning for.
+function gameRow(c, g) {
+  const label = cardLabel(c);
+  const open = !!S.betsOpen[label];
+  const rows = (g.rows || []).filter(r => r.game_id === c.game_id);
+  const evs = rows.map(r => r.ev100).filter(has);
+  const best = evs.length ? Math.max.apply(null, evs) : null;
+  const fin = c.final_home != null && c.final_away != null;
+
+  const line = [
+    c.spread != null ? esc(c.home) + ' ' + (c.spread > 0 ? '+' : '') + c.spread : '',
+    c.total != null ? 'O/U ' + c.total : '',
+  ].filter(Boolean).join(' · ');
+
+  const lean = g.graded
+    ? (fin ? (c.final_home + c.final_away) + ' pts, '
+        + (c.total != null
+            ? ((c.final_home + c.final_away) > c.total ? 'over' : 'under') : '') : '')
+    : modelLean(c);
+
+  return '<button class="gl' + (open ? ' gl--open' : '') + '" data-gcard="'
+    + esc(label) + '" aria-expanded="' + (open ? 'true' : 'false') + '">'
+    + '<span class="gl__g">' + esc(label) + '</span>'
+    + '<span class="gl__l num">' + esc(line) + '</span>'
+    + '<span class="gl__m">' + esc(lean) + '</span>'
+    + '<span class="gl__e num' + (best != null && best > 0 ? ' good' : '') + '">'
+      + (g.graded
+          ? (fin ? c.final_away + '–' + c.final_home : '—')
+          : (best == null ? '—'
+              : (best > 0 ? '+$' + best.toFixed(2)
+                 : best < 0 ? '−$' + Math.abs(best).toFixed(2)
+                 : '$0.00')))
+    + '</span>'
+    + '<span class="gl__c">' + I.chev + '</span>'
+    + '</button>';
 }
 
 // The game filter and the week's headline. A sheet, not a row of pills:
@@ -1548,7 +1606,10 @@ function vBetsFilter(cards, g) {
     + keystat('Games', String(cards.length))
     + (g.graded
         ? keystat('Week', String(g.week), null, true)
-        : keystat('Best value', best == null ? '—' : '+$' + best.toFixed(2),
+        : keystat('Best value',
+                  best == null ? '—'
+                  : (best > 0 ? '+$' + best.toFixed(2)
+                     : best < 0 ? '−$' + Math.abs(best).toFixed(2) : '$0.00'),
                   best != null && best > 0 ? 'good' : null, true))
     + keystat('Books', '≥ ' + (g.min_books || 4), null, true)
     + '</div></div></div>';
