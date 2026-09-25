@@ -743,6 +743,7 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     _attach_injuries(cards, season, week)
     script_fits = _attach_script_risk(cards)
     _attach_blend(cards)
+    _attach_matchup(cards, season, week)
     # Sorted by kickoff where it is known, so the list reads as a weekend
     # rather than as an alphabet. Games with no time sort last rather than
     # first: a missing kickoff is usually a game the schedule has not
@@ -1008,6 +1009,41 @@ def _attach_blend(cards: dict) -> None:
     for c in cards.values():
         c["blend_w"] = cards_weights
         break
+
+
+def _attach_matchup(cards: dict, season: int | None,
+                    week: int | None) -> None:
+    """Offence-against-defence rates for each side, as differentials.
+
+    Built ONCE for the week and matched per card. Every rate is computed from
+    the games before this one; see `matchup_stats` for the as-of guarantee and
+    for what could not honestly be built.
+    """
+    if not (season and week):
+        return
+    try:
+        from src.models.matchup_stats import MIN_GAMES, MISSING, build, matchup
+        stats = build(season, week)
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  matchup stats unavailable ({e})", file=sys.stderr)
+        return
+    if not stats:
+        return
+    for c in cards.values():
+        rows = matchup(c, stats)
+        if not rows:
+            continue
+        # The sample travels with the numbers: two games in is two games in,
+        # and a page that hides that invites a reader to treat a 9% red zone
+        # rate off eleven snaps as a fact about a team.
+        c["matchup"] = {
+            "rows": rows,
+            "games": {t: stats[t]["games"] for t in (c.get("home"), c.get("away"))
+                      if t in stats},
+            "thin": any(stats[t]["games"] < MIN_GAMES
+                        for t in (c.get("home"), c.get("away")) if t in stats),
+            "missing": [{"what": w, "why": y} for w, y in MISSING],
+        }
 
 
 def _attach_coaching(cards: dict, season: int | None,

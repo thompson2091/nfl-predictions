@@ -332,6 +332,31 @@ button{cursor:pointer}
   gap:8px;flex-wrap:wrap;margin-bottom:5px}
 .pub .bar{height:30px}
 
+/* ---- matchup differentials ---- */
+.mx{padding:8px 0;border-top:1px solid var(--line3)}
+.mx:first-child{border-top:0}
+.mx__h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  font-size:14px}
+.mx__h i{font-style:normal;color:var(--mut2)}
+.mx__h b{font-weight:700}
+.mx__h b.good{color:var(--good)}
+.mx__h b.bad{color:var(--bad)}
+.mx__b{position:relative;height:8px;border-radius:999px;background:var(--sunk);
+  margin:5px 0 3px;overflow:hidden}
+.mx__b::before{content:'';position:absolute;left:50%;top:0;bottom:0;width:1px;
+  background:var(--mut3);z-index:1}
+.mx__b i{position:absolute;top:0;bottom:0;display:block;border-radius:999px}
+.mx__b i.r{left:50%;background:var(--good)}
+.mx__b i.l{right:50%;background:var(--bad)}
+.mx__f{font-size:12px;color:var(--mut)}
+.gap{display:flex;flex-direction:column;gap:2px;padding:8px 0;
+  border-top:1px solid var(--line3)}
+.gap:first-of-type{border-top:0}
+.gap b{font-size:14px;font-weight:600}
+.gap span{font-size:13px;color:var(--mut);line-height:18px}
+.seg--6{grid-template-columns:repeat(6,minmax(0,1fr))}
+.seg--6 button{font-size:11px;padding:0 1px}
+
 /* ---- injury report ---- */
 .injrow{display:flex;align-items:flex-start;gap:10px;padding:6px 0;
   border-top:1px solid var(--line3)}

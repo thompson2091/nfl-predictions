@@ -35,8 +35,15 @@ ok('the shell renders', !err, err && (err.message + '\n' + err.stack));
 ok('the nav carries every destination',
    V3TABS.every(t => app().indexOf('data-v3tab="' + t[0] + '"') >= 0));
 ok('the header names the brand', app().indexOf(DATA.brand) >= 0, DATA.brand);
-ok('and offers the week picker on every screen',
-   app().indexOf('data-v3week') >= 0);
+// The picker appears where a week means something. Slip and Ladder do not
+// vary by week, so it is ABSENT there rather than present and inert — which
+// is how it came to sit on the landing page changing nothing.
+ok('the board offers the week picker', app().indexOf('data-v3week') >= 0);
+V.tab = 'slip'; render();
+ok('and the slip does not', app().indexOf('data-v3week') < 0);
+V.tab = 'ladder'; render();
+ok('nor the ladder', app().indexOf('data-v3week') < 0);
+V.tab = 'props'; render();
 
 // ── Every tab ───────────────────────────────────────────────────────────
 V3TABS.forEach(t => {
@@ -648,5 +655,46 @@ ok('the first tab is Games', V3TABS[0][0] === 'games');
 ok('and the second is Props', V3TABS[1][0] === 'props');
 ok('there are no duplicate tab keys',
    new Set(V3TABS.map(t => t[0])).size === V3TABS.length);
+
+// ── The matchup tab ─────────────────────────────────────────────────────
+if (cards.length) {
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'edge'; V.week = null;
+  let e = null;
+  try { render(); } catch (ex) { e = ex; }
+  ok('the matchup tab renders', !e, e && (e.message + '\n' + e.stack));
+  if (cards[0].matchup) {
+    const h = app();
+    ok('and pairs one offence against the other defence',
+       h.indexOf('offence') >= 0 && h.indexOf('defence') >= 0);
+    // A gap has to read as a gap rather than as an oversight.
+    ok('and says what it could not build', h.indexOf('Not shown, and why') >= 0);
+  }
+  V.gameTab = 'notes'; V.game = null;
+}
+
+// ── A past week of GAMES ────────────────────────────────────────────────
+//
+// The selector was honoured only by the props board. Games then became the
+// landing page, so the picker sat on the first screen anyone sees and changed
+// nothing — the most convincing kind of broken.
+{
+  V.tab = 'games'; V.game = null;
+  const gw = Object.keys(((DATA.games || {}).past) || {}).map(Number);
+  if (gw.length) {
+    V.week = gw[0];
+    let e = null;
+    try { render(); } catch (ex) { e = ex; }
+    ok('a past week of games renders', !e, e && e.message);
+    const h = app();
+    ok('and the picker offers the weeks GAMES has',
+       h.indexOf('>Week ' + gw[0] + '<') >= 0);
+    ok('and the final score is on the row', h.indexOf('41') >= 0);
+    // A week the destination cannot show must not follow you into it.
+    v3Do('v3tab', 'slip');
+    ok('a week the next screen cannot show is dropped', V.week == null);
+    V.tab = 'games';
+  }
+  V.week = null;
+}
 
 done();

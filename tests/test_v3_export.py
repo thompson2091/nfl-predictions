@@ -51,6 +51,16 @@ def payload_v3():
              "kick_day": "Thursday", "kick_et": "8:15 PM ET", "prime": True,
              "model_win_home": 0.55, "model_win_n": 380,
              "blend": {"spread": -5.7, "total": 45.4},
+             "matchup": {"thin": False, "games": {"GB": 2, "ATL": 2},
+                         "missing": [{"what": "Four-man rush vs blitz",
+                                      "why": "field empty for 2026"}],
+                         "rows": [{"key": "early_down_success",
+                                   "label": "Early-down success",
+                                   "note": "Share of 1st and 2nd down plays.",
+                                   "higher_is_better": True, "proxy": False,
+                                   "sides": [{"offense": "ATL", "defense": "GB",
+                                              "off_val": 0.42, "def_val": 0.39,
+                                              "diff": 0.03, "edge": 0.03}]}]},
              "scores": {"n": 403, "thin": False, "min_n": 60, "home": "GB",
                         "away": "ATL", "total": 44.5, "mean_total": 46.4,
                         "mean_margin": 6.3,
@@ -107,6 +117,14 @@ def payload_v3():
              "win_home": 0.78, "win_away": 0.22,
              "kick_day": "Sunday", "kick_et": "4:25 PM ET", "prime": False},
         ],
+        # A past week of game lines, so the selector has somewhere to go on
+        # the screen that is now the landing page.
+        "past": {"2": {"cards": [
+            {"game_id": "DET_BUF", "home": "BUF", "away": "DET",
+             "total": 54.5, "spread": -5.5, "win_home": 0.681,
+             "win_away": 0.319, "final_home": 41, "final_away": 31,
+             "kick_day": "Sunday", "kick_et": "1:00 PM ET"}],
+            "rows": []}},
         "public": {"ATL_GB": {
             "spreads": {"captures": 2, "sides": [
                 {"side": "GB", "pct": 62.4, "open_pct": 55.0, "drift": 7.4},
@@ -182,7 +200,9 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "the notes tab opens with how the game may unfold",
                  "the public split sits above the tab bar",
                  "and the filters are inside the tab, under it",
-                 "search narrows the board"):
+                 "search narrows the board",
+                 "the matchup tab renders",
+                 "a past week of games renders"):
         assert path in r.stdout, f"{path!r} never ran:\n{r.stdout}"
 
 
@@ -217,8 +237,15 @@ def test_the_week_picker_is_global_rather_than_per_market():
     # Drawn by the header, which every screen renders.
     assert "data-v3week" in src
     i = src.index("function v3Header")
-    assert "data-v3week" in src[i:i + 900], (
+    assert "data-v3week" in src[i:i + 2600], (
         "the picker has to be in the header or it is per-screen again")
+    # And the weeks it offers must follow the SCREEN, because the two
+    # archives differ: the props board needs play-by-play, the games board
+    # needs archived lines, and a week can have one without the other.
+    assert "function v3Weeks" in src
+    w = src[src.index("function v3Weeks"):]
+    w = w[:w.index("\n}") + 2]
+    assert "V.tab === 'games'" in w and "past" in w
     # And switching market must not clear it. The market case is annotated;
     # what matters is that neither it nor the game filter touches V.week.
     case = src[src.index("case 'v3mkt':"):src.index("case 'v3sort':")]

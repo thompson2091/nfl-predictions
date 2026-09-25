@@ -198,13 +198,35 @@ function v3Fixture(row) {
 
 // ── the week picker, which is global ────────────────────────────────────
 
+// WHICH WEEKS THE PICKER OFFERS depends on the screen, because the two
+// archives genuinely differ: the props board needs play-by-play and the games
+// board needs archived LINES, and a week can have one without the other.
+// Offering a week the current screen cannot show is how the picker came to
+// look broken on the landing page.
 function v3Weeks() {
+  // Slip and Ladder do not vary by week, so they offer none — and because
+  // this one function decides, the header hides the control and `v3Do` drops
+  // a stale week on the way in, from the same answer.
+  if (V.tab === 'slip' || V.tab === 'ladder') return [];
+  if (V.tab === 'games') {
+    return Object.keys(((DATA.games || {}).past) || {})
+      .map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+  }
   const h = (DATA.history || {})[V3HIST[V.market]] || {};
   return (h.has || []).slice().sort((a, b) => a - b);
 }
 
 function v3Header() {
   const weeks = v3Weeks();
+  // No weeks offered, no control — rather than an empty one that looks
+  // usable. `v3Weeks` is the single answer to which weeks a screen has.
+  if (!weeks.length) {
+    return '<header class="hd">'
+      + '<div class="hd__b">' + esc(DATA.brand || 'Pick Six') + '</div>'
+      + '<div class="wk" style="border:0;background:transparent">'
+      + esc((DATA.season || '') + ' \u00b7 week ' + (DATA.week || ''))
+      + '</div></header>';
+  }
   const past = V.week != null;
   const opts = ['<option value="">This week</option>'].concat(
     weeks.map(w => '<option value="' + w + '"' +
@@ -355,7 +377,7 @@ function v3Week() {
 // clicking between the markets and need to reselect the game every time".
 // `v3Do` deliberately leaves `V.game` alone on a market change.
 function v3GamePicker() {
-  const cards = (DATA.games || {}).cards || [];
+  const cards = v3GameSet().cards || [];
   if (!cards.length) return '';
   const opts = ['<option value="">All games</option>'].concat(
     cards.map(c => '<option value="' + esc(c.game_id) + '"'
@@ -566,7 +588,7 @@ function v3Row(row) {
 // margin is here. Only flagged where BOTH are true: the market is genuinely
 // script-dependent, and this game has a real chance of the script that hurts.
 function v3Script(row) {
-  const g = ((DATA.games || {}).cards || []).filter(
+  const g = (v3GameSet().cards || []).filter(
     c => v3Same(c.game_id, row.gameId))[0];
   const sc = g && g.script;
   if (!sc || !row.team || !row.pos) return null;
@@ -703,14 +725,30 @@ function v3Kick(c) {
 
 // ── screen: games ───────────────────────────────────────────────────────
 
+// THE WEEK SELECTOR APPLIES HERE TOO.
+//
+// It was honoured only by the props board. Games then became the landing
+// page, so the picker sat in the header on the first screen anyone sees and
+// changed nothing — the most convincing kind of broken. The payload has
+// carried `games.past` all along.
+function v3GameSet() {
+  if (V.week == null) return DATA.games || {};
+  const p = ((DATA.games || {}).past || {})[String(V.week)];
+  return p ? { cards: p.cards || [], rows: p.rows || [], past: true }
+           : { cards: [], rows: [], past: true, absent: true };
+}
+
 function v3Games() {
-  const g = DATA.games || {};
+  const g = v3GameSet();
   const cards = g.cards || [];
   if (!cards.length) {
-    return '<div class="wrap"><h1 class="h1">Games</h1>'
-      + '<div class="card"><p class="lede" style="font-size:15px">No game '
-      + 'lines have been captured for this week yet. The board is built from '
-      + 'an odds archive, and until it runs there is nothing here to show.'
+    return '<div class="wrap">' + v3PastBanner() + '<h1 class="h1">Games</h1>'
+      + '<div class="card"><p class="lede" style="font-size:15px">'
+      + (g.absent
+         ? 'No game lines were archived for week ' + V.week + '.'
+         : 'No game lines have been captured for this week yet. The board is '
+           + 'built from an odds archive, and until it runs there is nothing '
+           + 'here to show.')
       + '</p></div></div>';
   }
   // THE LEAN IS DERIVED FROM THE NUMBER THE CARD PRINTS.
@@ -785,6 +823,19 @@ function v3Games() {
       : (modelPct - bookPct) * 100;
     const cell = (label, v) => v == null ? ''
       : v3Cell(label, esc(side) + ' ' + v3Pct(v, 1));
+    // THE RESULT, where the week has been played. Green when the side the
+    // book favoured won, red when it did not — the same three-valued mark
+    // the props board uses, because a game with no final is not a loss.
+    const played = has(c.final_home) && has(c.final_away);
+    const won = !played ? null
+      : (side === c.home ? c.final_home > c.final_away
+                         : c.final_away > c.final_home);
+    const finalTxt = !played ? ''
+      : '<span class="tags"><span class="' + (won ? 'tag tag--good'
+          : 'tag tag--bad') + '">' + esc(c.away) + ' ' + c.final_away
+        + '\u2013' + c.final_home + ' ' + esc(c.home) + '</span>'
+        + '<span class="sub">' + (won ? esc(side) + ' won' : esc(side)
+            + ' lost') + '</span></span>';
     const strip = bookPct == null ? ''
       : '<span class="strip num" style="grid-template-columns:repeat(4,auto);'
         + 'justify-content:start;gap:16px">'
@@ -801,15 +852,20 @@ function v3Games() {
       + '<span class="sub num">' + esc([fav, tot].filter(Boolean).join(' \u00b7 '))
       + '</span>'
       + strip
+      + finalTxt
       + (l[0] ? '<span class="tags"><span class="' + l[1] + '">' + l[0]
           + '</span></span>' : '')
       + '</div><span class="chev">\u203a</span></a>';
   }).join('');
 
   return '<div class="wrap">'
-    + '<h1 class="h1">Games</h1>'
-    + '<p class="lede">Who the sportsbooks expect to win, and where our model '
-    + 'sees it differently. Tap a game for the notes.</p>'
+    + v3PastBanner()
+    + '<h1 class="h1">' + (V.week == null ? 'Games' : 'Week ' + V.week) + '</h1>'
+    + '<p class="lede">' + (V.week == null
+      ? 'Who the sportsbooks expect to win, and where our model sees it '
+        + 'differently. Tap a game for the notes.'
+      : 'What the market and our model said before each of these kicked off, '
+        + 'with the final score.') + '</p>'
     + '<div class="card"><div class="stats">'
     + '<div class="stat"><span class="eyebrow">Games</span><b class="num">'
     + cards.length + '</b></div>'
@@ -848,7 +904,7 @@ function v3Games() {
 // ── screen: one game ────────────────────────────────────────────────────
 
 function v3Game(gid) {
-  const c = ((DATA.games || {}).cards || []).filter(x => x.game_id === gid)[0];
+  const c = (v3GameSet().cards || []).filter(x => x.game_id === gid)[0];
   if (!c) return '<div class="wrap"><a class="back" data-v3back="1">'
     + '‹ Games</a><div class="card">That game is not on this week’s '
     + 'board.</div></div>';
@@ -875,10 +931,10 @@ function v3Game(gid) {
     // report is a SECTION, not context, so it became a tab of its own —
     // under the matchup card it pushed every control two screens down.
     + v3PublicMoney(gid)
-    + '<div class="seg seg--5">'
+    + '<div class="seg seg--6">'
     + v3Seg('v3gtab', [['notes', 'Notes'], ['players', 'Players'],
                        ['bets', 'Bets'], ['score', 'Score'],
-                       ['inj', 'Injuries']], V.gameTab)
+                       ['edge', 'Matchup'], ['inj', 'Injuries']], V.gameTab)
     + '</div>'
     // THE TAB'S OWN CONTENT COMES FIRST, CONTEXT UNDER IT.
     //
@@ -891,6 +947,7 @@ function v3Game(gid) {
     + (V.gameTab === 'players' ? v3GamePlayers(gid)
      : V.gameTab === 'bets' ? v3GameBets(gid)
      : V.gameTab === 'score' ? v3GameScores(c)
+     : V.gameTab === 'edge' ? v3Matchup(c)
      : V.gameTab === 'inj' ? v3Injuries(c, true)
      : v3GameNotes(gid, cats, shown))
     + '</div>';
@@ -919,6 +976,64 @@ function v3Game(gid) {
 //
 // Skill positions are marked, because those are the ones that move a player
 // market. An Out guard matters to the game; an Out receiver matters to a prop.
+// OFFENCE AGAINST DEFENCE, AS DIFFERENTIALS.
+//
+// A raw rate is unreadable: "Cincinnati 36.4% early-down success" means
+// nothing without knowing what Pittsburgh's defence allows. Each row pairs
+// one side's offence with the other's defence and leads with the gap, which
+// is the number a reader can act on — and shows BOTH halves, because a
+// matchup has two and showing one is showing half a game.
+function v3Matchup(c) {
+  const m = c && c.matchup;
+  if (!m || !m.rows) {
+    return '<div class="card"><p class="lede" style="font-size:15px">No '
+      + 'play-by-play for this season yet, so there is nothing to compare.'
+      + '</p></div>';
+  }
+  const g = m.games || {};
+  const pct = v => (v * 100).toFixed(1) + '%';
+  const fmt = (k, v) => k === 'epa_play' ? (v >= 0 ? '+' : '') + v.toFixed(3)
+    : pct(v);
+  const row = (r, p) => {
+    // The bar is the EDGE, centred: right of the middle is an advantage for
+    // the offence, left is the defence winning it.
+    const e = r.key === 'epa_play' ? p.edge * 100 : p.edge * 100;
+    const w = Math.min(50, Math.abs(e) * (r.key === 'epa_play' ? 3 : 2.2));
+    const good = p.edge > 0;
+    return '<div class="mx">'
+      + '<div class="mx__h"><span>' + esc(p.offense) + ' offence <i>vs</i> '
+      + esc(p.defense) + ' defence</span>'
+      + '<b class="num ' + (good ? 'good' : 'bad') + '">'
+      + (p.edge > 0 ? '+' : '') + fmt(r.key, p.edge) + '</b></div>'
+      + '<div class="mx__b"><i class="' + (good ? 'r' : 'l') + '" style="width:'
+      + Math.max(2, w) + '%"></i></div>'
+      + '<div class="mx__f num">' + fmt(r.key, p.off_val) + ' against '
+      + fmt(r.key, p.def_val) + ' allowed</div>'
+      + '</div>';
+  };
+  return '<div class="card"><div class="eyebrow">Based on</div>'
+    + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:4px">'
+    + 'Every game each side has played this season BEFORE this one'
+    + (Object.keys(g).length
+       ? ' \u2014 ' + Object.keys(g).map(t => esc(t) + ' ' + g[t]).join(', ')
+       : '') + '.</p>'
+    + (m.thin ? '<p class="help">Two games or fewer. Treat every number here '
+        + 'as a first impression rather than a rate.</p>' : '')
+    + '</div>'
+    + m.rows.map(r =>
+        '<h2 class="h1" style="font-size:17px;line-height:22px;margin-top:20px">'
+        + esc(r.label)
+        + (r.proxy ? ' <span class="tag tag--warn">proxy</span>' : '') + '</h2>'
+        + '<p class="help">' + esc(r.note) + '</p>'
+        + '<div class="card">' + r.sides.map(p => row(r, p)).join('') + '</div>'
+      ).join('')
+    + (m.missing && m.missing.length
+       ? '<div class="card"><div class="name">Not shown, and why</div>'
+         + m.missing.map(x => '<div class="gap"><b>' + esc(x.what) + '</b>'
+             + '<span>' + esc(x.why) + '</span></div>').join('') + '</div>'
+       : '');
+}
+
 function v3Injuries(c, full) {
   const inj = c && c.injuries;
   if (!inj) return full
@@ -1016,7 +1131,7 @@ function v3PublicMoney(gid) {
 // and it keeps the tab you are on, so comparing the score ladders of four
 // games is four taps rather than twelve.
 function v3GameSwitch(gid) {
-  const cards = (DATA.games || {}).cards || [];
+  const cards = v3GameSet().cards || [];
   if (cards.length < 2) return '';
   let i = -1;
   cards.forEach((c, k) => { if (c.game_id === gid) i = k; });
@@ -1144,7 +1259,7 @@ function v3GameNotes(gid, cats, shown) {
 // because they add to more than everything that can happen and nothing on
 // screen says which of them overlap. This column adds up.
 function v3Unfold() {
-  const c = ((DATA.games || {}).cards || []).filter(
+  const c = (v3GameSet().cards || []).filter(
     x => x.game_id === V.game)[0];
   const u = c && c.unfold;
   if (!u || u.thin || !u.cells || !u.cells.length) return '';
@@ -1226,7 +1341,7 @@ function v3Questions(gid) {
   if (!rows.length) return [];
   const byP = rows.slice().sort((a, b) => (betProb(b) || 0) - (betProb(a) || 0));
   const byV = rows.slice().sort((a, b) => (ev100(b) || -1e9) - (ev100(a) || -1e9));
-  const c = ((DATA.games || {}).cards || []).filter(x => x.game_id === gid)[0] || {};
+  const c = (v3GameSet().cards || []).filter(x => x.game_id === gid)[0] || {};
   const out = [];
   if (byP[0]) out.push({ q: 'Who’s most likely to score?',
     a: byP[0].player + ', at ' + v3Pct(betProb(byP[0])) + '. '
@@ -1368,7 +1483,7 @@ function v3GameScores(c) {
 // gives a ladder rather than a single probability, so you can find YOUR
 // number rather than the one the book chose to lead with.
 function v3GameBets(gid) {
-  const c = ((DATA.games || {}).cards || []).filter(x => x.game_id === gid)[0];
+  const c = (v3GameSet().cards || []).filter(x => x.game_id === gid)[0];
   const L = c && c.ladders;
   const rows = ((DATA.games || {}).rows || []).filter(
     r => v3Same(r.game_id, gid));
@@ -1933,7 +2048,13 @@ const V3NAV = { v3tab: 1, v3game: 1, v3back: 1 };
 function v3Do(kind, v) {
   if (V3NAV[kind]) V.top = true;
   switch (kind) {
-    case 'v3tab': V.tab = v; V.game = null; V.shown = V3SHOW; break;
+    case 'v3tab': {
+      V.tab = v; V.game = null; V.shown = V3SHOW;
+      // A week the destination cannot show is dropped rather than carried
+      // into a screen that would render it empty.
+      if (V.week != null && v3Weeks().indexOf(V.week) < 0) V.week = null;
+      break;
+    }
     // The market changes; the GAME FILTER DOES NOT. Looking at one game and
     // clicking between markets should not mean re-picking the game each time.
     case 'v3mkt': V.market = v; V.shown = V3SHOW; break;
