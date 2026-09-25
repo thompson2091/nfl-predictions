@@ -135,3 +135,28 @@ def test_the_experiment_script_measures_clv_before_it_decides():
                                      "_overall_verdict(")]
     assert order == sorted(order), (
         "CLV must be measured and applied before the overall verdict")
+
+
+def test_the_gate_checks_that_its_guard_bands_describe_this_matrix():
+    """A BAND MEASURED ON ANOTHER FEATURE SET IS NOT A BAND.
+
+    `models/registry/noise_floor.json` was measured 2026-08-19 and recorded a
+    date and a git sha and nothing about the matrix. Every AUC and Brier
+    guard since — including the one that decided `add-market-movement` on
+    anytime TD, AUC worse by 0.00027 against a band of 0.00024 — was read
+    against bands describing a different feature set. `settle-overlay`
+    refused the same comparison outright, because it compares the saved runs
+    and those carry the hash.
+    """
+    import pathlib
+
+    src = pathlib.Path("scripts/23_experiment.py").read_text()
+    assert "def _noise_is_current" in src, "the gate does not check at all"
+    # Written, so the next measurement can be checked.
+    i = src.index("floor = C.noise_floor(results)")
+    assert "feature_hash" in src[i:i + 900], (
+        "the noise floor must record the matrix it was measured on")
+    # And read, before the verdict is printed.
+    j = src.index("noise = _noise_bands()")
+    assert "_noise_is_current" in src[j:j + 700], (
+        "the check must run where the gate reads the bands")

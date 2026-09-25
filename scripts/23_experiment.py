@@ -68,6 +68,28 @@ def _noise_bands():
     return raw.get("spread", raw)
 
 
+def _noise_is_current(result: dict) -> list[str]:
+    """Does the saved noise floor describe the matrix being gated?
+
+    A band measured on another feature set is not a band. `settle-overlay`
+    has always refused on this mismatch, because it compares the saved runs
+    and those carry a hash; the noise file did not, so the gate read whatever
+    was there. Returns the complaints, empty when it is safe to use.
+    """
+    raw = _read(NOISE)
+    if raw is None:
+        return []
+    saved = raw.get("feature_hash")
+    if not saved:
+        return [f"the noise floor carries no feature hash (measured "
+                f"{raw.get('measured', 'unknown')}), so the bands under every "
+                f"AUC and Brier guard cannot be checked against this matrix"]
+    now = (result.get("meta") or {}).get("feature_hash") or {}
+    bad = [f"{m}: bands measured on {saved[m]}, this run is on {now[m]}"
+           for m in now if m in saved and saved[m] != now[m]]
+    return bad
+
+
 # --------------------------------------------------------------------------
 # Registry side-files
 # --------------------------------------------------------------------------
@@ -299,6 +321,14 @@ def _experiment(a, tier: str) -> int:
                   "re-run `23_experiment.py baseline`.")
         if champion is not None:
             noise = _noise_bands()
+            stale = _noise_is_current(result)
+            if stale:
+                print("\n!! GUARD BANDS DO NOT DESCRIBE THIS FEATURE MATRIX.")
+                for line in stale:
+                    print(f"   {line}")
+                print("   Every AUC and Brier verdict below is read against a "
+                      "band measured elsewhere.\n   Re-run `make noise-floor "
+                      "SEEDS=5` before acting on this.")
             if noise is None:
                 print("\nNo noise floor measured — guards fall back to the paired "
                       "standard error, and any AUC/Brier regression trips. Run "
@@ -558,9 +588,20 @@ def cmd_noise_floor(a) -> int:
         print(f"\nChampion set to '{champion_run}'.")
 
     floor = C.noise_floor(results)
+    # THE MATRIX IT WAS MEASURED ON, RECORDED.
+    #
+    # Without it the gate cannot tell a current band from a five-week-old one
+    # measured on a different feature set, and it did not: the file on disk
+    # was measured 2026-08-19 and carried only a date and a git sha, so every
+    # AUC and Brier guard since then was read against a band that described
+    # another matrix. `settle-overlay` refuses on exactly this mismatch —
+    # it compares the saved RUNS, which do carry the hash — and the gate had
+    # nothing to compare.
     path = _write(NOISE, {"measured": datetime.now(timezone.utc)
                           .isoformat(timespec="seconds"),
-                          "seeds": seeds, "git": git_state(), "spread": floor})
+                          "seeds": seeds, "git": git_state(),
+                          "feature_hash": results[0]["meta"]["feature_hash"],
+                          "spread": floor})
     print("\nSeed-to-seed standard deviation (the band a guard must clear):")
     for market, models in floor.items():
         print(f"\n{market}")
