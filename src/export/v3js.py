@@ -946,10 +946,22 @@ function v3Game(gid) {
     // report is a SECTION, not context, so it became a tab of its own —
     // under the matchup card it pushed every control two screens down.
     + v3PublicMoney(gid)
-    + '<div class="seg seg--6">'
+    // ASKING IS REACHABLE FROM EVERY TAB, so it sits above the tab bar
+    // with the rest of the game's context rather than inside one section.
+    + '<button class="askbtn" data-v3sheet="ask">'
+    + '<span>Ask about this game</span><i>\u2192</i></button>'
+    // ONE DISTRIBUTION, ONE TAB.
+    //
+    // Bets and Score were two renderings of the same thing: `score_dist`
+    // answers both from ONE call to `comparables(spread, total)` — the same
+    // historical games — as a final-score table and as a ladder of lines.
+    // Reading "PIT by 5.2" against "% to hit over 24" meant moving between
+    // two tabs to see one distribution twice. Matchup stays separate because
+    // it answers WHY rather than WHAT.
+    + '<div class="seg seg--5">'
     + v3Seg('v3gtab', [['notes', 'Notes'], ['players', 'Players'],
-                       ['bets', 'Bets'], ['score', 'Score'],
-                       ['edge', 'Matchup'], ['inj', 'Injuries']], V.gameTab)
+                       ['out', 'Outcome'], ['edge', 'Matchup'],
+                       ['inj', 'Injuries']], V.gameTab)
     + '</div>'
     // THE TAB'S OWN CONTENT COMES FIRST, CONTEXT UNDER IT.
     //
@@ -960,8 +972,7 @@ function v3Game(gid) {
     // whichever tab you are on, which is exactly what should not be between
     // a control and the rows it controls.
     + (V.gameTab === 'players' ? v3GamePlayers(gid)
-     : V.gameTab === 'bets' ? v3GameBets(gid)
-     : V.gameTab === 'score' ? v3GameScores(c)
+     : V.gameTab === 'out' ? v3GameOutcome(c, gid)
      : V.gameTab === 'edge' ? v3Matchup(c)
      : V.gameTab === 'inj' ? v3Injuries(c, true)
      : v3GameNotes(gid, cats, shown))
@@ -1330,7 +1341,6 @@ function v3GameNotes(gid, cats, shown) {
     + 'numbers. Every figure below is computed; only the wording is written.</p>'
     + '<div class="cats">' + pills + '</div>'
     + shown.map(v3Note).join('')
-    + v3Ask(gid)
     + '<p class="help" style="margin-top:12px">These notes explain the game. '
     + 'They do not tell you what to bet.</p>';
 }
@@ -1415,10 +1425,14 @@ function v3Note(n) {
 // answers from lives on the server and is chosen by that id. A client that
 // could send its own context could send anything, and the endpoint would
 // become a general-purpose model billed to whoever owns the key.
-function v3Ask(gid) {
+//: `bare` drops the card and the heading, for the sheet — which draws both
+//: itself, and whose background is the card colour, so a card inside it is a
+//: panel on a panel with a shadow between them.
+function v3Ask(gid, bare) {
   const qs = v3Questions(gid);
   const a = V.answer;
-  return '<div class="card"><div class="name">Ask about this game</div>'
+  return (bare ? '<div>'
+          : '<div class="card"><div class="name">Ask about this game</div>')
     + '<p class="help">Quick answers below are computed from this page. The '
     + 'box asks our model, which can also look up news.</p>'
     + (qs.length ? '<div class="qs">' + qs.map((q, i) =>
@@ -1606,6 +1620,22 @@ function v3GamePlayers(gid) {
 // dozens of games and carries an interval; an exact scoreline is four games
 // in four hundred. Putting the scorelines first would be putting the least
 // reliable number in the biggest type.
+// HOW IT FINISHES, THEN WHAT THAT PAYS.
+//
+// The score table says where the distribution sits; the ladder says what it
+// means at each line a book posts. Same `comparables()` set behind both, so
+// they cannot disagree, and now they cannot be read apart either.
+//: `bets` and `score` were separate tabs before they became `out`. A saved
+//: session, a bookmark and a back entry can all still name one. ONE mapping,
+//: used by the click handler, the boot and `popstate` alike.
+function v3GTab(v) {
+  return (v === 'bets' || v === 'score') ? 'out' : v;
+}
+
+function v3GameOutcome(c, gid) {
+  return v3GameScores(c) + v3GameBets(gid);
+}
+
 function v3GameScores(c) {
   const d = c && c.scores;
   if (!d || !d.n) {
@@ -2002,6 +2032,14 @@ const V3SHEETS = {
   sort: () => v3SheetHTML('Sort by',
     V3SORTS.map(c => v3Opt(c[1], V.sort === c[0], '', 'v3sortpick', c[0]))
       .join('')),
+  // ASKING IS ABOUT WHATEVER YOU ARE LOOKING AT.
+  //
+  // The box lived at the bottom of the Notes tab, so a question prompted by
+  // a number on Matchup or Outcome meant leaving that number, scrolling past
+  // every note, asking, and navigating back. A tab of its own has the same
+  // fault and costs a sixth of the tab bar. In the sheet it opens over
+  // whichever tab raised the question and closes back onto it.
+  ask: () => v3SheetHTML('Ask about this game', v3Ask(V.game, true)),
 };
 
 function v3SheetHTML(title, body) {
@@ -2120,7 +2158,12 @@ function v3Push() {
 
 if (typeof window !== 'undefined' && window.addEventListener) {
   window.addEventListener('popstate', ev => {
-    if (ev && ev.state) { Object.assign(V, ev.state); V.top = true; render(true); }
+    if (ev && ev.state) {
+      Object.assign(V, ev.state);
+      // An entry pushed before Bets and Score merged still names one of them.
+      V.gameTab = v3GTab(V.gameTab);
+      V.top = true; render(true);
+    }
   });
 }
 
@@ -2292,11 +2335,11 @@ function v3Do(kind, v) {
       V.answerLive = false; break;
     case 'v3back': V.game = null; V.answer = ''; break;
     case 'v3gtab':
-      V.gameTab = v;
+      V.gameTab = v3GTab(v);
       // Opening Players on a market this game holds nothing on is the
       // commonest way the tab looks broken. Done here rather than in the
       // renderer, which must not write state.
-      if (v === 'players' && V.game) v3MarketForGame(V.game);
+      if (V.gameTab === 'players' && V.game) v3MarketForGame(V.game);
       break;
     case 'v3cat': V.cat = v; break;
     case 'v3type': V.betType = v; V.sheet = null; V.saved = false; break;
@@ -2383,6 +2426,10 @@ const V3SWIPE_OPEN = 96;
 // is rendering makes every render a state change, and the back stack started
 // pushing an entry every time the sort direction was flipped.
 if (V.tab === 'week') V.tab = 'props';
+
+// A remembered state naming a tab that no longer exists would select none
+// and render the notes with no pill lit.
+V.gameTab = v3GTab(V.gameTab);
 
 // A market that this export does not carry must not be the one the app opens
 // on, and a remembered market can outlive the build that had it.

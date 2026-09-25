@@ -283,6 +283,15 @@ button{cursor:pointer}
 .ask button{width:44px;height:44px;border-radius:12px;border:0;
   background:var(--ours);color:#fff;display:flex;align-items:center;
   justify-content:center}
+/* Asking is context, not a section: the control sits with the game's own
+   numbers above the tab bar, so a question raised on any tab is one tap away
+   and closes back onto the tab that raised it. */
+.askbtn{display:flex;align-items:center;justify-content:space-between;
+  width:100%;min-height:48px;margin-top:12px;padding:0 14px;
+  border-radius:14px;background:var(--card);color:var(--ink);
+  border:1px solid var(--btnline);font-size:15px;font-weight:600;
+  box-shadow:0 1px 2px rgba(22,24,29,.06)}
+.askbtn i{font-style:normal;color:var(--mut);font-size:17px}
 .qs{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .q{min-height:36px;padding:6px 12px;border-radius:999px;
   border:1px solid var(--btnline);background:var(--card);text-align:left;

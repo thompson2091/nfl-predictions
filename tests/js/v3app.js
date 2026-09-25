@@ -391,7 +391,11 @@ if (cards.length) {
 if (cards.length) {
   V.tab = 'games'; V.game = cards[0].game_id;
 
-  V.gameTab = 'score'; render();
+  // ONE DISTRIBUTION, ONE TAB. `score_dist` answers the final-score table
+  // and the ladder from a single `comparables(spread, total)` call, so they
+  // were two tabs rendering one thing and reading them together meant
+  // moving between them.
+  V.gameTab = 'out'; render();
   ok('the final-score tab renders', app().indexOf('How it finished') >= 0);
   ok('and leads with the bands rather than the exact scores',
      app().indexOf('How it finished') < app().indexOf('Most common exact'));
@@ -399,11 +403,23 @@ if (cards.length) {
   // The per-book listing printed eleven spreads a game, each with a fair
   // chance of 50% — because a spread IS a coin flip, so the column that
   // looked like information was the one quantity that cannot vary.
-  V.gameTab = 'bets'; render();
   const b = app();
   ok('the bets tab is a ladder, not a list of books',
      b.indexOf('ltab__r') >= 0);
   ok('and does not print a fair-chance column', b.indexOf('Fair chance') < 0);
+  ok('the outcome tab carries BOTH, score first then the ladder',
+     b.indexOf('How it finished') >= 0 && b.indexOf('ltab__r') >= 0
+     && b.indexOf('How it finished') < b.indexOf('ltab__r'));
+  ok('and the tab bar no longer offers them separately',
+     b.indexOf('data-v3gtab="bets"') < 0 && b.indexOf('data-v3gtab="score"') < 0);
+
+  // A bookmark, a back entry or a remembered session from before the merge
+  // still names a tab that no longer exists.
+  V.gameTab = 'bets';
+  x.v3Do('v3gtab', 'bets');
+  ok('an old tab name does not render an empty screen',
+     app().indexOf('How it finished') >= 0 || V.gameTab === 'out',
+     'gameTab=' + V.gameTab);
 
   // Our model belongs on the same scale as the book's, not two boxes away.
   V.gameTab = 'notes'; render();
@@ -752,10 +768,38 @@ if (cards.length) {
   }
 }
 
+// ── Asking is reachable from every tab ─────────────────────────────────
+//
+// The box lived at the bottom of Notes, so a question raised by a number on
+// Matchup or Outcome meant leaving that number, scrolling past every note,
+// asking, and navigating back.
+if (cards.length) {
+  V.tab = 'games'; V.game = cards[0].game_id;
+  ['notes', 'players', 'out', 'edge', 'inj'].forEach(t => {
+    V.gameTab = t; render();
+    ok('the ask control is on the ' + t + ' tab',
+       app().indexOf('data-v3sheet="ask"') >= 0);
+  });
+  // And it opens over whichever tab raised it, rather than navigating away.
+  V.gameTab = 'edge'; render();
+  const before = V.gameTab;
+  x.v3Do('v3sheet', 'ask');
+  const sheet = (document.getElementById('sheet') || {}).innerHTML || '';
+  ok('tapping it opens the ask sheet', sheet.indexOf('data-v3askform') >= 0);
+  ok('and does not leave the tab', V.gameTab === before);
+  ok('the sheet does not repeat its own heading inside the body',
+     sheet.split('Ask about this game').length - 1 === 1, sheet.slice(0, 200));
+  x.v3Do('v3close', '1');
+  ok('closing it returns to that tab', V.gameTab === before && !V.sheet);
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
 // ── The ask box sends a game id and a question, and nothing else ────────
 if (cards.length) {
+  // The box lives in the sheet now, reachable from every tab, so these
+  // states are read there rather than off the Notes tab.
   V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'notes';
-  V.answer = ''; V.asking = false; render();
+  V.answer = ''; V.asking = false; V.sheet = 'ask'; render();
   const h = app();
   ok('the ask box takes a typed question', h.indexOf('data-v3q2') >= 0);
   // The quick questions are computed from priced rows IN THIS GAME, so a
@@ -776,7 +820,8 @@ if (cards.length) {
   V.answerErr = ''; V.answer = 'An answer.'; V.answerLive = true; render();
   ok('and an answer is marked as the model\u2019s',
      app().indexOf('Answered by our model') >= 0);
-  V.answer = ''; V.answerLive = false; V.game = null; V.tab = 'props';
+  V.answer = ''; V.answerLive = false; V.sheet = null;
+  V.game = null; V.tab = 'props';
 }
 
 // ── Half splits on the matchup tab ──────────────────────────────────────
