@@ -81,3 +81,37 @@ def test_the_checker_would_catch_a_regression():
     # And does not fire on words that merely contain one.
     assert not pat.search("a parameter of the analysis")
     assert not pat.search("defensive offensive labels centered")
+
+
+def test_the_note_cache_key_includes_the_prompt():
+    """A CACHED NOTE MUST NOT OUTLIVE THE INSTRUCTIONS THAT WROTE IT.
+
+    Keyed on the brief alone, adding the American-spelling rule changed
+    nothing for four games: their briefs had not moved, so the cache served
+    the old wording and the live board kept the British spelling. Same trap
+    `ai_context_cache` is documented for — a key that omits half of what
+    determines the output.
+    """
+    import importlib
+    import inspect
+
+    gn = importlib.import_module("src.analysis.game_notes")
+    src = inspect.getsource(gn.phrase)
+    i = src.index("hashlib.sha256")
+    assert "PROMPT" in src[i:i + 320], (
+        "the cache key does not include the prompt, so a wording rule cannot "
+        "invalidate it")
+
+
+def test_the_prompts_ask_for_american_spelling():
+    """Both of them: the notes are written at build time, the Ask box live."""
+    import importlib
+    import pathlib as _p
+
+    gn = importlib.import_module("src.analysis.game_notes")
+    assert "AMERICAN SPELLING" in gn.PROMPT
+    php = _p.Path("deploy/ask.php").read_text()
+    assert "AMERICAN spelling" in php
+    # And the rule must not sit inside another sentence: an earlier edit
+    # spliced it between "Explain what the" and "numbers mean".
+    assert 'Plain English; spell out any jargon you use.\\n\\n"\n  . "Use AMERICAN' in php

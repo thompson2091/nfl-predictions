@@ -121,6 +121,8 @@ $system = "You answer questions about one NFL game for a betting site read by "
   . "Rules: no betting advice, no 'lock' or 'guaranteed'. Explain what the "
   . "numbers mean and let the reader decide. Two short paragraphs at most. "
   . "Plain English; spell out any jargon you use.\n\n"
+  . "Use AMERICAN spelling: favorite, defense, offense, color. This is "
+  . "American football read by Americans.\n\n"
   . "A negative spread means the HOME team is favored.\n\n"
   // PLAYERS CHANGE TEAMS, AND THE MODEL'S MEMORY IS OLDER THAN THE DATA.
   // Asked which team a player is on, a model with no team in front of it

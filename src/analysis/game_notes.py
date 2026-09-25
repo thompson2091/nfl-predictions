@@ -657,6 +657,9 @@ RULES, all of them hard:
 - A note marked context is background. Keep the measured figure its facts
   carry, stated as a fact about the angle rather than as an apology.
 - No exclamation marks, no hype, no "smash", "lock" or "value play".
+- AMERICAN SPELLING THROUGHOUT, never British: favorite, defense, offense,
+  color, behavior, analyze, center. This is American football read by
+  Americans.
 
 Notes:
 {notes}
@@ -674,8 +677,16 @@ def phrase(notes: list[dict], card: dict, use_cache: bool = True) -> list[dict]:
         return notes
     game = f"{card['away']} at {card['home']}"
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    # THE PROMPT IS PART OF THE KEY, because it is part of the answer.
+    #
+    # Keyed on the brief alone, a cached note outlived every change to the
+    # instructions that produced it: adding the American-spelling rule left
+    # four games still spelling it the British way on the live board, because
+    # their briefs had not moved and the cache had no way to know the wording
+    # rules had. Same trap `ai_context_cache` is documented for — a key that
+    # omits half of what determines the output.
     key = hashlib.sha256(
-        json.dumps([[n["id"], n["brief"]] for n in notes],
+        json.dumps([PROMPT, [[n["id"], n["brief"]] for n in notes]],
                    sort_keys=True).encode()).hexdigest()[:20]
     path = CACHE_DIR / f"{key}.json"
     if use_cache and path.exists():
