@@ -87,7 +87,7 @@ def team_games(target_type: str = "anytime_td",
     """
     from src.utils.paths import get_path
 
-    key = (target_type, played_only)
+    key = (target_type, played_only, "sit")
     if key in _FRAMES:
         return _FRAMES[key]
 
@@ -100,8 +100,8 @@ def team_games(target_type: str = "anytime_td",
     tg = (lf.select(keys + feats).collect()
             .unique(subset=keys, keep="first"))
 
-    sched = (pl.read_parquet(get_path("raw") / "schedules.parquet")
-             .filter(pl.col("game_type") == "REG"))
+    sched_all = pl.read_parquet(get_path("raw") / "schedules.parquet")
+    sched = sched_all.filter(pl.col("game_type") == "REG")
     if played_only:
         sched = sched.drop_nulls(["home_score", "away_score"])
     long = pl.concat([
@@ -112,6 +112,24 @@ def team_games(target_type: str = "anytime_td",
                       pl.col("away_score").alias("points"),
                       pl.lit(0).alias("home")])])
     out = tg.join(long, on=["game_id", "team"], how="inner")
+
+    # The situational family: slot, rest, and the coach's record BEFORE this
+    # game. Joined here rather than built into the player matrix because it is
+    # a property of the fixture, and because the player matrix already carries
+    # `rest_days`, `is_primetime` and `is_divisional` — the rest of it has
+    # nowhere else to live.
+    try:
+        from src.features.situational_features import \
+            build_situational_features
+
+        sit = build_situational_features(sched_all)
+        if not sit.is_empty():
+            before = out.height
+            out = out.join(sit.drop(["season", "week"], strict=False),
+                           on=["game_id", "team"], how="left")
+            assert out.height == before, "situational join fanned out"
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  situational features unavailable ({e})")
     # Every game must carry both sides, or a "total" is one team's score and
     # the model appears to disagree with the line by thirty points and be right.
     per = out.group_by("game_id").agg(pl.len().alias("n"))
