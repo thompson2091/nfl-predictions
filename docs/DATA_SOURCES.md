@@ -182,22 +182,71 @@ opening snapshot needs an eight-day window rather than seven.
 
 ---
 
-## 3. Anthropic API — situational context and edge commentary
+## 3. Anthropic API — wording, and the Ask box
 
 | | |
 |---|---|
 | Provider | Anthropic |
-| Access | `ANTHROPIC_API_KEY` in `.env`. Optional — the app degrades to a notice |
-| Used by | `src/prediction/ai_adjustments.py`, `src/analysis/game_analyst.py` |
-| Cache | `data/raw/ai_context_cache/*.json` |
+| Access | `ANTHROPIC_API_KEY` in `.env` (notes) and `/etc/picksix/anthropic.key` on the web host (Ask box). Optional in both cases |
+| Used by | `src/analysis/game_notes.py`, `deploy/ask.php` |
 
-Adjustments are bounded by `ai_context.max_adjustment` (±0.10).
+**No probability, edge or line on the board comes from a model call.** The two
+uses are wording and answering, and both are fenced.
 
-**Cache invalidation trap:** the cache key is
-`md5(season_week_gameid_targettype)` — it does **not** include the probabilities.
-Commentary generated against a broken model therefore survives a re-run and keeps
-narrating stale edges. **Clear `data/raw/ai_context_cache/` whenever the model or
-feature pipeline changes.**
+`game_notes.py` **selects** a note from the payload first — the numbers, the
+direction and the pick are decided before any call — and asks only for the
+phrasing. Two guards then check what came back:
+
+- `_numbers_are_sourced` compares every figure in the wording **numerically**
+  against the payload. A string comparison passed "6.5" beside a payload that
+  said 6.50.
+- `_direction_is_consistent` checks the wording backs the side the note picks.
+  A note about a player priced above our number came back recommending him;
+  the payload said avoid.
+
+A note that fails either guard ships in its written phrasing instead.
+
+`ask.php` answers typed questions on the published board against the brief in
+`data/ask/<GAME>.json`, with web search available for what the brief cannot
+know. Context is chosen by a validated game id on the server, never by the
+request. See [DEPLOY.md](DEPLOY.md) for limits and key placement.
+
+Caution: the older `src/prediction/ai_adjustments.py` can still move a
+probability by up to `ai_context.max_adjustment` (±0.10) and reads a cache
+keyed on `md5(season_week_gameid_targettype)` — which does **not** include the
+probabilities, so commentary written against a broken model survives a re-run.
+Nothing currently calls it. If you wire it back up, clear
+`data/raw/ai_context_cache/` on every model or feature change.
+
+---
+
+## 3b. SBR consensus — public money and line movement
+
+| | |
+|---|---|
+| Provider | Sportsbook Review, scraped |
+| Access | None. Public pages, `DELAY_SECONDS = 2.0` between requests |
+| Used by | `src/ingest/public_money.py` |
+| Archives | `data/archive/public_money.parquet` (tickets), `data/archive/line_history.parquet` (open and now, per market) |
+
+Two archives, because they answer different questions. Tickets say where the
+count of bets is; line history says whether the price moved with them or
+against them. Reverse line movement — the line moving **toward** the side
+taking fewer tickets — needs both, and neither is recoverable after kickoff.
+
+The consensus is the **median of each book's latest** capture, not a mean over
+every row, so a book that posts twice as often does not weight the number.
+
+Traps this feed has already produced:
+
+- **A moneyline in the spread column.** `bet_rivers_co` posted
+  `homeSpread: 0` at −334. Anything outside `MAX_LINE_ODDS` (±200) on a
+  spread or total is dropped.
+- **Captures too close together say nothing.** `MIN_GAP_MINUTES = 60`, and a
+  week opens `WEEK_OPEN_DAYS = 7` before kickoff.
+
+Caution: this is a scrape of a page that can change shape without warning. It
+feeds context on the board, not a feature any model trains on.
 
 ---
 

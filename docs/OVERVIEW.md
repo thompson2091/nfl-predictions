@@ -2,8 +2,9 @@
 
 What this repo is, what the models actually are, and where everything lives.
 Start here; [MODEL_ITERATION.md](MODEL_ITERATION.md) is how you change a model
-without fooling yourself, and [DATA_SOURCES.md](DATA_SOURCES.md) is where every
-number comes from and what is known to be wrong with it.
+without fooling yourself, [DATA_SOURCES.md](DATA_SOURCES.md) is where every
+number comes from and what is known to be wrong with it, and
+[DEPLOY.md](DEPLOY.md) is how the board reaches the web.
 
 A weekly NFL player-prop pipeline. It ingests nflverse data and sportsbook
 odds, trains a model per market, and publishes a board you read before a slate.
@@ -69,17 +70,35 @@ src/
   models/       joint model, count model, calibration, versioning + registry
   prediction/   THE SERVED PATH: predict, blend, bets, receptions, yards
   evaluation/   backtest, walk-forward, CLV, parity, cover, shortlists
-  export/       board builders: site.html and the site/v2 PWA
+  analysis/     game notes: selected from the payload, phrased by a model
+  export/       board builders: site.html, the v2 PWA, the v3 board, Ask briefs
   clustering/   player-type clusters
-scripts/        numbered pipeline stages, 01_ingest -> 51_export_app
-tests/          671 tests, mostly leakage and served-vs-evaluated parity
+scripts/        numbered pipeline stages, 01_ingest -> 58_deploy
+tests/          800 tests, mostly leakage and served-vs-evaluated parity
 config/         settings.yaml: splits, seasons, family allow-lists
 experiments/    config overlays, screened and gated before anything promotes
 models/         weights, fitted artifacts, versions/, registry/
 data/           raw/, processed/, archive/ (the odds history)
 output/         per-market backtests, metrics, published predictions
-site/           published boards; v2 is the installable one
+deploy/         ask.php and the .htaccess every deploy ships
+site/           published boards; v3 is what squarespro.com serves
 ```
+
+## What the board carries beyond the six markets
+
+Several modules exist only to answer questions the markets do not:
+
+| Module | Answers |
+|---|---|
+| `models/score_dist.py` | How this game is likely to finish, from games priced like it. Empirical, not parametric — NFL scores are lumpy around 3 and 7 |
+| `models/script_risk.py` | Which player props depend on the game script. Measured: an RB's rushing line swings 0.51 between blowout and shootout; a WR's receptions barely move |
+| `models/game_blend.py` | The fitted weight between the model's game line and the market's |
+| `models/matchup_stats.py` | Line play, pressure, early-down and two-minute edges, as differentials, split by half |
+| `ingest/public_money.py` | Ticket counts and the open-to-now line move, for reverse line movement |
+| `analysis/game_notes.py` | What is worth saying about a game, selected from the payload before any wording happens |
+| `export/askctx.py` | The per-game brief the Ask box answers against |
+
+[DEPLOY.md](DEPLOY.md) covers how the board is built, shipped and verified.
 
 ## How a week runs
 

@@ -39,7 +39,7 @@ Create a `.env` in the project root:
 
 ```
 ODDS_API_KEY=...        # optional — lets the pipeline snapshot sportsbook prices
-ANTHROPIC_API_KEY=...   # unused at present — see below
+ANTHROPIC_API_KEY=...   # optional — phrases game notes, and powers the Ask box
 ```
 
 `ODDS_API_KEY` is read by the **pipeline**, not the app: `make odds` snapshots
@@ -47,12 +47,22 @@ live prices into the archive at `data/archive/`, and the app reads that archive.
 Without the key the pipeline cannot capture new prices, but the app still runs
 against whatever is already archived.
 
-`ANTHROPIC_API_KEY` currently does nothing. `src/analysis/game_analyst.py` and
-`src/prediction/ai_adjustments.py` read it, but no page and no pipeline stage
-calls either module — the AI commentary panel was removed from the app along
-with the old Predictions tab. The modules and the `anthropic` dependency are
-kept for whoever restores the feature; the key is not needed to run anything
-that currently exists.
+`ANTHROPIC_API_KEY` is read in two places, neither of them the Streamlit app:
+
+- **`src/analysis/game_notes.py`** phrases the notes on a game page. It never
+  invents a number: a note is selected from the payload first, and the model
+  is asked only to word it. Two guards check the wording before it ships —
+  every figure must match one in the payload numerically, and the direction
+  must agree with the pick. Without the key the notes fall back to their
+  written phrasing.
+- **`deploy/ask.php`** answers typed questions on the published board. The key
+  lives on the **server**, at `/etc/picksix/anthropic.key`, never in the page.
+  Without it the endpoint reports that the service is not configured and the
+  board works in full, minus the box.
+
+The older `src/prediction/ai_adjustments.py` still reads the key and is still
+called by nothing. See [`docs/DEPLOY.md`](docs/DEPLOY.md) for the proxy, its
+rate limits and how the key is installed.
 
 ## Running the pipeline
 
@@ -181,12 +191,44 @@ streamlit run app.py
 ```
 
 Opens at <http://localhost:8501>. The sidebar selects the target type
-(first TD / anytime TD) and the model. Three tabs:
+(first TD / anytime TD) and the model. Six tabs:
 
-- **Predictions** — ranked player probabilities, model-vs-Vegas edges, and
-  optional AI-written analysis of the biggest disagreements
-- **Model Performance** — calibration curves and evaluation metrics
-- **Parlay Builder** — combine legs and see joint probabilities
+- **Shortlist** — the picks this project would actually place
+- **Full board** — every priced player, model against the de-vigged market
+- **Weekly results** — graded weeks, and what the board said beforehand
+- **Model performance** — calibration curves and evaluation metrics
+- **Betting reality** — what the record is after the vig, stated plainly
+- **Player types** — archetype clusters and the bet shapes they suit
+
+The old Predictions tab and its AI commentary panel are gone; the parlay
+views collapsed into Full board, which is the same table filtered.
+
+## The published board
+
+The Streamlit app is for exploring. What actually gets read before a slate is a
+static single-page board, built from the same payload and published to a web
+host.
+
+```bash
+python scripts/52_export_v3.py   # build into site/v3/
+python scripts/58_deploy.py      # build, upload, promote — one SSH connection
+python scripts/58_deploy.py --dry-run
+```
+
+The board carries the week's props on every market, a page per game (notes,
+players, bets, final-score distribution, matchup edges, injuries), a bet slip,
+a ladder calculator, and a week picker that reaches back over graded weeks with
+winners and losers colour-coded.
+
+Each game page also has an **Ask box**: a typed question answered against a
+brief this repo publishes for that game, with web search available for things
+the brief cannot know, such as late injury news. It is served by a small PHP
+proxy, `deploy/ask.php`, which holds the API key server-side and caps spend at
+15 questions per IP per hour and 300 a day.
+
+Read [`docs/DEPLOY.md`](docs/DEPLOY.md) before deploying: it covers the upload
+order, the cache headers that stop a deploy landing invisibly, how the key is
+installed, and what the host cannot do.
 
 ## Docker
 
@@ -249,8 +291,9 @@ Task settings that matter:
   default ephemeral storage.
 - **Secrets** — the serving task needs none. `ODDS_API_KEY` belongs on the
   pipeline task that runs `make odds`; pass it via the task definition's
-  `secrets` block (Secrets Manager / SSM). `ANTHROPIC_API_KEY` is not read by
-  anything that currently runs.
+  `secrets` block (Secrets Manager / SSM). `ANTHROPIC_API_KEY` belongs on the
+  same pipeline task if you want written game notes; the Ask box reads its own
+  copy on the web host and never from here.
 - **Authentication** — there is none in the app. Anyone who can reach the port
   gets the full board and the betting pages. Put it behind an authenticating
   proxy (ALB OIDC, Cognito, an identity-aware proxy) before exposing it.
@@ -296,9 +339,12 @@ src/
   prediction/       board pricing, availability, portfolio sizing
   presentation/     pure board-display rules (tiers, labels, money formatting)
   clustering/       player archetypes and bet shapes
-  analysis/         Claude-powered edge analysis (not currently wired up)
-  evaluation/       metrics and plots
+  analysis/         game notes: selected from the payload, phrased by a model
+  export/           the published boards (site/v2, site/v3) and the Ask briefs
+  evaluation/       metrics, plots, backtests, CLV
   utils/            config and path helpers
+deploy/             ask.php and the .htaccess the deploy ships
+site/               published boards; v3 is what squarespro.com serves
 notebooks/          exploratory notebooks
 ```
 
