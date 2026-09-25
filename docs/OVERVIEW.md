@@ -102,6 +102,13 @@ Several modules exist only to answer questions the markets do not:
 
 ## How a week runs
 
+Five launchd jobs run the week unattended. `scripts/public_money.sh` is the
+newest: four times a day, every day, capturing both public-split feeds. The
+split is easy to look up and the DRIFT is not — neither feed publishes
+history, so the path from Tuesday to kickoff exists only if something was
+recording while it happened. Each firing is a no-op inside its own hour, so a
+slot with nothing to do costs one request.
+
 `scripts/week_rollover.sh` (launchd) waits for nflverse to publish the weekly
 roster — before it lands, the upcoming week has 32 candidate rows and no people
 — then runs ingest, targets, candidates, features, predict, shortlist and the

@@ -438,3 +438,68 @@ def test_every_open_slot_precedes_the_season_s_earliest_kickoff_weekday():
     for day, _t in mod.open_slots():
         assert mod.WEEKDAYS[day] <= earliest_game_day, (
             f"open slot on {day} lands after the week's first kickoff wave")
+
+
+# ── the public-split capture runs itself ────────────────────────────────
+
+def test_the_public_split_job_is_scheduled_every_day_not_only_on_game_days():
+    """THE DRIFT IS THE PART THAT CANNOT BE BOUGHT BACK.
+
+    Anyone can read Sunday's percentage off a website. A side that opened at
+    50% and sat at 71% by kickoff is a different fact from one that was at
+    71% all week, and neither feed publishes history — so the only copy of
+    the path is the one this job makes while it happens.
+
+    A schedule that woke only for kickoffs would capture the destination and
+    none of the journey, so the entries carry no Weekday key at all.
+    """
+    import plistlib
+    from pathlib import Path
+
+    p = Path("config/launchd/com.mthompson.nfl-public-money.plist")
+    assert p.exists(), "the capture is not scheduled"
+    d = plistlib.loads(p.read_bytes())
+    slots = d["StartCalendarInterval"]
+    assert len(slots) >= 3, f"a few times a day, not {len(slots)}"
+    assert not any("Weekday" in s for s in slots), (
+        "restricted to certain days; the line opens Tuesday and the money "
+        "arrives all week")
+    hours = sorted(s["Hour"] for s in slots)
+    assert max(hours) - min(hours) >= 8, (
+        f"clustered into {max(hours) - min(hours)}h; four reads an hour "
+        "apart describe an hour, not a day")
+
+
+def test_the_public_split_job_runs_the_script_that_captures_both_feeds():
+    """One habit, not two. Sportsbook Review has no moneyline and no money
+    share; Action Network has both. A job that captured only one would leave
+    the other's week unrecoverable."""
+    import plistlib
+    from pathlib import Path
+
+    d = plistlib.loads(
+        Path("config/launchd/com.mthompson.nfl-public-money.plist").read_bytes())
+    wrapper = Path(d["ProgramArguments"][0])
+    assert wrapper.name == "public_money.sh"
+    src = Path("scripts/public_money.sh").read_text()
+    assert "57_public_money.py" in src
+    runner = Path("scripts/57_public_money.py").read_text()
+    assert "action_public" in runner and "public_money import" in runner, (
+        "the runner must capture both feeds")
+
+
+def test_the_wrapper_cannot_rely_on_a_login_shell():
+    """launchd hands a job a near-empty environment.
+
+    A wrapper that assumes a profile has run works by hand and silently never
+    runs unattended, which is the failure mode that leaves a season with no
+    archive and no error.
+    """
+    from pathlib import Path
+
+    src = Path("scripts/public_money.sh").read_text()
+    assert ".venv/bin/python" in src, "the interpreter must be found explicitly"
+    assert 'cd "$(dirname "$0")/.."' in src, (
+        "the job must set its own working directory")
+    assert "mtime" in src, (
+        "four runs a day for a season leaves hundreds of logs; prune them")

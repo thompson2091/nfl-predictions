@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.mthompson.nfl-public-money</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/mthompson/projects/personal/nfl-predictions/scripts/public_money.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions</string>
+  <!-- FOUR TIMES A DAY, EVERY DAY, because the drift is the whole point.
+       A single Sunday read gives a number anyone can look up; what cannot be
+       bought back is the path from Tuesday to kickoff, and it only exists if
+       something was recording while it happened.
+
+       Every day rather than game days: a line opens on Tuesday and the money
+       arrives across the whole week, so a schedule that woke only for kickoffs
+       would capture the destination and none of the journey.
+
+       The script is the guard, not this schedule. `refresh` is a no-op inside
+       its own hour, so a firing with nothing to do writes nothing and costs one
+       request. Spread across the day rather than clustered, because four reads
+       an hour apart describe an hour and four spread over sixteen describe a
+       day. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>10</integer></dict>
+  </array>
+  <!-- Ten past the hour, so this is not fetching at the same instant as the
+       odds capture on a shared connection. -->
+  <!-- If the Mac is asleep at the scheduled time, launchd runs the job as soon
+       as it wakes. A missed slot is a gap in the drift, not a failure. -->
+  <key>StandardOutPath</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions/logs/launchd_public_money.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions/logs/launchd_public_money.err</string>
+</dict>
+</plist>
