@@ -87,7 +87,7 @@ def team_games(target_type: str = "anytime_td",
     """
     from src.utils.paths import get_path
 
-    key = (target_type, played_only, "sit")
+    key = (target_type, played_only, "sit+co")
     if key in _FRAMES:
         return _FRAMES[key]
 
@@ -130,6 +130,21 @@ def team_games(target_type: str = "anytime_td",
             assert out.height == before, "situational join fanned out"
     except Exception as e:                                       # noqa: BLE001
         print(f"  situational features unavailable ({e})")
+
+    # And the coordinators, which are a level below the head coach the
+    # schedule already carries. Same as-of discipline: the cumulative runs
+    # over the PERSON, so a coordinator's record follows him between clubs.
+    try:
+        from src.features.coordinator_features import \
+            build_coordinator_features
+
+        co = build_coordinator_features(sched_all)
+        if not co.is_empty():
+            before = out.height
+            out = out.join(co, on=["game_id", "team"], how="left")
+            assert out.height == before, "coordinator join fanned out"
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  coordinator features unavailable ({e})")
     # Every game must carry both sides, or a "total" is one team's score and
     # the model appears to disagree with the line by thirty points and be right.
     per = out.group_by("game_id").agg(pl.len().alias("n"))
