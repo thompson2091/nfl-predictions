@@ -27,3 +27,8 @@
     Header set Cache-Control "no-store"
   </IfModule>
 </FilesMatch>
+
+# No directory listings. The briefs under data/ask/ are built for the proxy
+# to read server-side; a listing turns the whole set into one scrape. The
+# files stay readable by name, because the page fetches its own week data.
+Options -Indexes

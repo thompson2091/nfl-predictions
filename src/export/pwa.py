@@ -428,6 +428,43 @@ def render(payload: dict) -> dict[str, str]:
 HISTORY_PATH = "data/h-{market}-{week}.json"
 
 
+#: The two touchdown boards. `has_market_price` decides whether a row is on
+#: the board there; every other market has a line instead.
+_TD_MARKETS = ("anytime_td", "first_td")
+
+
+def _hist_game_key(gid: str) -> str:
+    """History rows carry `2026_02_CAR_ATL`; game cards carry `CAR_ATL`."""
+    parts = (gid or "").split("_")
+    return "_".join(parts[-2:]) if len(parts) >= 2 else (gid or "")
+
+
+def _priced_by_game(market: str, rows: list) -> dict:
+    """How many rows of this market each game would actually show.
+
+    ABSENT IS NOT FALSE. The first-TD prediction file has never carried
+    `has_market_price` at all, and reading a missing field as False marked
+    every row unpriced: the market rendered as "no priced picks recorded" on
+    every past week, which is exactly what a week with no board says. A
+    column that does not exist is unknown, and unknown rows still belong on
+    the board.
+    """
+    td = market in _TD_MARKETS
+    out: dict = {}
+    for r in rows:
+        if td:
+            p = r.get("has_market_price")
+            on = True if p is None else bool(p)
+        else:
+            on = r.get("line") is not None
+        if not on:
+            continue
+        k = _hist_game_key(r.get("game_id") or "")
+        if k:
+            out[k] = out.get(k, 0) + 1
+    return out
+
+
 def _split_history(payload: dict) -> tuple[dict, dict]:
     """Lift `history[market].weeks` into separate files, leaving an index.
 
@@ -454,6 +491,12 @@ def _split_history(payload: dict) -> tuple[dict, dict]:
         # `has` rather than the rows themselves: the page asks "is week 3
         # there" far more often than it asks for week 3.
         keep["has"] = sorted(int(k) for k in weeks if weeks[k])
+        # PER-GAME COUNTS, so a game screen can tell an empty market from an
+        # unfetched one without downloading it. Six markets for one week is
+        # roughly 900KB; this index is a few hundred bytes and answers the
+        # only question the game screen asks of a market it is not showing.
+        keep["by_game"] = {str(wk): _priced_by_game(market, rows)
+                           for wk, rows in weeks.items() if rows}
         index[market] = keep
     payload = {**payload, "history": index, "history_path": HISTORY_PATH}
     return payload, files

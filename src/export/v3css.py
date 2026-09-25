@@ -88,6 +88,11 @@ button{cursor:pointer}
   border:1px solid var(--btnline)}
 .mkt[aria-pressed=true]{background:var(--oursbg);color:var(--ours);
   border-color:var(--ours)}
+/* The per-game count. Inside a game a market can hold nothing, and the only
+   way to find out used to be to tap it and read an empty list. */
+.mkt i{font-style:normal;font-size:12px;color:var(--mut);margin-left:4px}
+.mkt--none{opacity:.55}
+.mkt--none i{color:var(--mut)}
 .help{margin:10px 2px 0;font-size:13px;line-height:18px;color:var(--mut)}
 .seg{display:grid;gap:2px;padding:2px;background:var(--seg);border-radius:12px;
   margin-top:16px}

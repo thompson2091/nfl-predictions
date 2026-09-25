@@ -304,7 +304,12 @@ function v3Graded(market, raw) {
     book: r.book, odds: r.odds, dec: has(r.odds) ? amToDec(r.odds) : null,
     line: r.line, proj: r.proj, lo: r.lo, hi: r.hi,
     edge: r.edge, take: r.side, rank: r.rank,
-    priced: td ? !!r.has_market_price : has(r.line),
+    // ABSENT IS NOT FALSE. The first-TD board has never carried
+    // `has_market_price`, so `!!undefined` marked all 500 rows unpriced and
+    // the market rendered "no priced picks recorded" on every past week —
+    // indistinguishable from a week whose board was genuinely empty.
+    priced: td ? (r.has_market_price == null ? true : !!r.has_market_price)
+               : has(r.line),
     actual: r.actual,
     won: td ? (has(r.scored) ? !!r.scored : null)
             : (r.won == null ? null : !!r.won),
@@ -326,9 +331,15 @@ function v3Screen() {
 // show them and a control added to one has to appear on the other.
 function v3MarketControls() {
   const cur = V3MKT.filter(m => m[0] === V.market)[0] || V3MKT[0];
-  const mkts = V3MKT.filter(m => served(m[0])).map(m =>
-    '<button class="mkt" data-v3mkt="' + m[0] + '" aria-pressed="'
-    + (m[0] === V.market) + '">' + esc(m[1]) + '</button>').join('');
+  // Inside a game each button carries how many players it holds, because a
+  // market can hold none and the only way to find out was to tap it.
+  const mkts = V3MKT.filter(m => served(m[0])).map(m => {
+    const n = V.game ? v3GameMkt(m[0], V.game) : null;
+    return '<button class="mkt' + (n === 0 ? ' mkt--none' : '')
+      + '" data-v3mkt="' + m[0] + '" aria-pressed="'
+      + (m[0] === V.market) + '">' + esc(m[1])
+      + (n === null ? '' : ' <i>' + n + '</i>') + '</button>';
+  }).join('');
   const filterHelp = {
     all: '',
     short: 'Our shortlist: the picks this project would actually place.',
@@ -469,9 +480,12 @@ function v3Rows() {
     let rows = v3Graded(mk, V3CACHE[k].rows).filter(r => r.priced);
     if (V.game) rows = rows.filter(r => v3Same(r.gameId, V.game));
     rows = v3Match(rows);
-    if (!rows.length) return '<div class="empty">No priced picks recorded '
-      + 'for week ' + V.week + ' on this market. The week loaded; the board '
-      + 'carried no priced rows for it.</div>';
+    if (!rows.length) {
+      if (V.game && !V.q) return v3GameEmpty(V.game);
+      return '<div class="empty">No priced picks recorded '
+        + 'for week ' + V.week + ' on this market. The week loaded; the board '
+        + 'carried no priced rows for it.</div>';
+    }
     return v3Sorted(rows).slice(0, V.shown).map(v3PastRow).join('')
       + v3MoreBtn(rows.length);
   }
@@ -485,6 +499,7 @@ function v3Rows() {
   if (V.game) rows = rows.filter(r => v3Same(r.gameId, V.game));
   rows = v3Match(rows);
   if (!rows.length) {
+    if (V.game && !V.q && V.filter === 'all') return v3GameEmpty(V.game);
     return '<div class="empty">' + (V.filter === 'fade'
       ? 'Nothing on this market is priced far enough above our number to '
         + 'flag this week.'
@@ -1512,6 +1527,56 @@ function v3Questions(gid) {
   return out;
 }
 
+// WHICH MARKETS THIS GAME ACTUALLY HAS PLAYERS ON.
+//
+// The Players tab opens on whatever market the board was left on, and the
+// board opens on "Scores a TD". Week 2 archived touchdown prices for two of
+// its sixteen games, so fourteen of them opened the tab on a market holding
+// nothing and said "no priced picks recorded for week 2 on this market" —
+// which reads as "this game has no players" rather than "not this one".
+//
+// Counted WITHOUT the filter and the search box: the question is whether the
+// game has players on a market at all, not whether the current view happens
+// to show them. `by_game` rides in the payload for the past-week case, so
+// this answers for six markets without fetching any of them.
+function v3GameMkt(mkey, gid) {
+  if (V.week == null) {
+    return rowsFor(mkey, null)
+      .filter(r => r.priced && !r.blocked && v3Same(r.gameId, gid)).length;
+  }
+  const blk = (DATA.history || {})[V3HIST[mkey]] || {};
+  return ((blk.by_game || {})[String(V.week)] || {})[v3Key(gid)] || 0;
+}
+
+function v3GameMkts(gid) {
+  return V3MKT.filter(m => served(m[0]) && v3GameMkt(m[0], gid) > 0);
+}
+
+//: Called from the click handlers, NEVER from a render. A render that
+//: rewrites `V` is how every sort flip came to push a history entry.
+function v3MarketForGame(gid) {
+  if (!gid || v3GameMkt(V.market, gid) > 0) return;
+  const m = v3GameMkts(gid)[0];
+  if (m) V.market = m[0];
+}
+
+// An empty market inside a game is nearly always the wrong market rather
+// than an empty game, so say which ones hold players and let them be tapped.
+function v3GameEmpty(gid) {
+  const ms = v3GameMkts(gid), wk = V.week == null ? '' : ' in week ' + V.week;
+  if (!ms.length) {
+    return '<div class="empty">No priced players in this game on any market'
+      + wk + '. The board is built from an odds archive; where it captured '
+      + 'no prices for a game there is nothing to show.</div>';
+  }
+  return '<div class="empty"><b>No players on this market for this game'
+    + wk + '.</b><br>This game has players on:<div class="mkts" '
+    + 'style="margin-top:10px">'
+    + ms.map(m => '<button class="mkt" data-v3mkt="' + esc(m[0]) + '">'
+        + esc(m[1]) + ' <i>' + v3GameMkt(m[0], gid) + '</i></button>').join('')
+    + '</div></div>';
+}
+
 // THE PLAYERS TAB IS THIS WEEK'S BOARD WITH THE GAME FIXED.
 //
 // It was a separate, cut-down list: one market, one sort, no filters, no
@@ -2165,7 +2230,11 @@ document.addEventListener('change', ev => {
   if (!t || !t.getAttribute) return;
   if (t.getAttribute('data-v3week') != null) {
     V.week = t.value === '' ? null : Number(t.value);
-    V.shown = V3SHOW; V.open = null; render();
+    V.shown = V3SHOW; V.open = null;
+    // A market that held players last week may hold none in this one, and
+    // the tab would go empty under a picker the reader just moved.
+    if (V.gameTab === 'players' && V.game) v3MarketForGame(V.game);
+    render();
   } else if (t.getAttribute('data-v3gamesel') != null) {
     V.game = t.value === '' ? null : t.value;
     V.shown = V3SHOW; V.open = null; render();
@@ -2222,7 +2291,13 @@ function v3Do(kind, v) {
       V.cat = 'all'; V.answer = ''; V.answerErr = ''; V.q2 = '';
       V.answerLive = false; break;
     case 'v3back': V.game = null; V.answer = ''; break;
-    case 'v3gtab': V.gameTab = v; break;
+    case 'v3gtab':
+      V.gameTab = v;
+      // Opening Players on a market this game holds nothing on is the
+      // commonest way the tab looks broken. Done here rather than in the
+      // renderer, which must not write state.
+      if (v === 'players' && V.game) v3MarketForGame(V.game);
+      break;
     case 'v3cat': V.cat = v; break;
     case 'v3type': V.betType = v; V.sheet = null; V.saved = false; break;
     case 'v3stake': V.stake = Number(v); V.sheet = null; V.saved = false; break;

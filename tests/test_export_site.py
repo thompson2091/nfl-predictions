@@ -198,3 +198,50 @@ def test_history_is_split_out_of_the_page_and_indexed():
     assert out["history_path"] == pwa.HISTORY_PATH
     # The caller's dict must survive: the exporter reuses it afterwards.
     assert "weeks" in payload["history"]["anytime_td"]
+
+
+def test_a_market_without_has_market_price_is_not_emptied():
+    """ABSENT IS NOT FALSE, on the board index the game screen reads.
+
+    The first-TD prediction file has never carried `has_market_price`. The
+    page read the missing field as False, marked all 500 rows unpriced, and
+    rendered "no priced picks recorded for week 2 on this market" — which is
+    what a week whose board was genuinely empty says, so First TD was empty
+    on every past week and explained itself away.
+    """
+    import importlib
+
+    pwa = importlib.import_module("src.export.pwa")
+    # Exactly the two shapes the exporter writes: anytime_td carries the
+    # column, first_td has never had it.
+    rows_first = [{"game_id": "2026_02_CAR_ATL", "player_name": "A"},
+                  {"game_id": "2026_02_CAR_ATL", "player_name": "B"}]
+    assert pwa._priced_by_game("first_td", rows_first) == {"CAR_ATL": 2}
+
+    rows_any = [{"game_id": "2026_02_CAR_ATL", "has_market_price": True},
+                {"game_id": "2026_02_CAR_ATL", "has_market_price": False}]
+    assert pwa._priced_by_game("anytime_td", rows_any) == {"CAR_ATL": 1}, (
+        "an explicit False is still off the board")
+
+
+def test_the_history_index_counts_priced_rows_per_game():
+    """The game screen must tell an empty market from an unfetched one.
+
+    Six markets for one week is roughly 900KB, so the screen cannot fetch
+    them to find out which hold players for the game being looked at. The
+    index answers it in a few hundred bytes.
+    """
+    import importlib
+
+    pwa = importlib.import_module("src.export.pwa")
+    payload = {"history": {"passing_yards": {"weeks": {"2": [
+        {"game_id": "2026_02_CAR_ATL", "line": 228.5},
+        {"game_id": "2026_02_CAR_ATL", "line": 238.5},
+        # No line: quoted nowhere, so not on the board.
+        {"game_id": "2026_02_CIN_HOU", "line": None},
+    ]}}}}
+    out, _ = pwa._split_history(payload)
+    by_game = out["history"]["passing_yards"]["by_game"]
+    assert by_game == {"2": {"CAR_ATL": 2}}, by_game
+    assert "CIN_HOU" not in by_game["2"], (
+        "a game with nothing quoted must be absent, not present as zero")

@@ -15,7 +15,8 @@ const x = loadPage(process.argv[2], process.argv[3],
    'V3CLICKS', 'V3HIST', 'v3Questions', 'v3Value', 'v3Outcomes', 'v3Legs',
    'rowsFor', 'served', 'DATA', 'V3SORTS', 'v3Sorted', 'V3CACHE', 'v3Same',
    'isFav', 'toggleFav', 'v3Slipbar', 'v3Sheet', 'V3SHEETS', 'v3Rungs',
-   'v3Num', 'v3Rows', 'v3LadderSummary', 'v3Questions', 'v3AskSend']);
+   'v3Num', 'v3Rows', 'v3LadderSummary', 'v3Questions', 'v3AskSend',
+   'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty']);
 const { V, render, v3Screen, v3Games, v3Game, v3Slip, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
         rowsFor, served, DATA } = x;
@@ -698,6 +699,57 @@ if (cards.length) {
     V.tab = 'games';
   }
   V.week = null;
+}
+
+// ── The Players tab must open on a market that HAS players ─────────────
+//
+// It opens on whatever market the board was left on, and the board opens on
+// "Scores a TD". Week 2 archived touchdown prices for two of its sixteen
+// games, so fourteen of them opened the tab on a market holding nothing and
+// said "no priced picks recorded for week 2 on this market" — which reads as
+// "this game has no players" rather than "not this one". Reported from the
+// live site: "digging into a historical game, clicking on players tab ...
+// there are no players there".
+{
+  const gw = Object.keys(((DATA.games || {}).past) || {}).map(Number);
+  const svd = V3MKT.filter(m => served(m[0])).map(m => m[0]);
+  const pastCards = gw.length
+    ? ((((DATA.games || {}).past) || {})[String(gw[0])] || {}).cards || [] : [];
+  if (gw.length && pastCards.length && svd.length >= 2) {
+    const wk = String(gw[0]), gid = pastCards[0].game_id;
+    // An index of the shape `_split_history` writes: the market the board
+    // opens on holds nothing for this game, a later one holds players.
+    DATA.history = DATA.history || {};
+    svd.forEach((k, i) => {
+      const hk = V3HIST[k];
+      DATA.history[hk] = DATA.history[hk] || {};
+      DATA.history[hk].has = [gw[0]];
+      DATA.history[hk].by_game = { [wk]: i === 0 ? {} : { [gid]: 7 } };
+    });
+    V.tab = 'games'; V.week = gw[0]; V.market = svd[0]; V.filter = 'all'; V.q = '';
+    ok('a market holding nothing for this game counts zero',
+       x.v3GameMkt(svd[0], gid) === 0);
+    ok('and one that holds players counts them',
+       x.v3GameMkt(svd[1], gid) === 7);
+    v3Do('v3game', gid);
+    v3Do('v3gtab', 'players');
+    ok('tapping Players lands on a market that has players',
+       V.market !== svd[0] && x.v3GameMkt(V.market, gid) > 0,
+       'landed on ' + V.market);
+
+    // And when NOTHING is quoted for the game, say so rather than blaming
+    // the market — the reader has no other market to try.
+    svd.forEach(k => { DATA.history[V3HIST[k]].by_game = { [wk]: {} }; });
+    const bare = x.v3GameEmpty(gid);
+    ok('a game with nothing quoted says so once',
+       bare.indexOf('any market') >= 0, bare.slice(0, 120));
+    // With somewhere to go, the empty state names it and makes it tappable.
+    DATA.history[V3HIST[svd[1]]].by_game = { [wk]: { [gid]: 7 } };
+    const hinted = x.v3GameEmpty(gid);
+    ok('otherwise it names the markets that do hold players',
+       hinted.indexOf('data-v3mkt="' + svd[1] + '"') >= 0, hinted.slice(0, 160));
+    V.week = null; V.game = null; V.gameTab = 'notes'; V.tab = 'games';
+  }
 }
 
 // ── The ask box sends a game id and a question, and nothing else ────────

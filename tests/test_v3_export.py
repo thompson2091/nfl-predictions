@@ -218,7 +218,10 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "the matchup tab renders",
                  "a past week of games renders",
                  "the ask box takes a typed question",
-                 "the matchup offers the halves"):
+                 "the matchup offers the halves",
+                 "tapping Players lands on a market that has players",
+                 "a game with nothing quoted says so once",
+                 "otherwise it names the markets that do hold players"):
         assert path in r.stdout, f"{path!r} never ran:\n{r.stdout}"
 
 
