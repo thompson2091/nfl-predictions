@@ -752,12 +752,20 @@ function v3Game(gid) {
     + v3Seg('v3gtab', [['notes', 'Notes'], ['players', 'Players'],
                        ['bets', 'Bets'], ['score', 'Final score']], V.gameTab)
     + '</div>'
-    + v3Injuries(c)
-    + v3PublicMoney(gid)
+    // THE TAB'S OWN CONTENT COMES FIRST, CONTEXT UNDER IT.
+    //
+    // The injury report and the public split sat between the tab bar and the
+    // content, so every filter and sort control on the Players tab was two
+    // screens below the tab you pressed to reach it: change a market, scroll
+    // back down, read, scroll up again. Both blocks are the same all week
+    // whichever tab you are on, which is exactly what should not be between
+    // a control and the rows it controls.
     + (V.gameTab === 'players' ? v3GamePlayers(gid)
      : V.gameTab === 'bets' ? v3GameBets(gid)
      : V.gameTab === 'score' ? v3GameScores(c)
      : v3GameNotes(gid, cats, shown))
+    + v3Injuries(c)
+    + v3PublicMoney(gid)
     + '</div>';
 }
 
@@ -829,7 +837,7 @@ function v3PublicMoney(gid) {
     const against = has(mv) && mv < -0.5;
     return '<div class="pub">'
       + '<div class="pub__h"><span class="eyebrow">' + esc(label[mk] || mk)
-      + '</span>'
+      + '</span> '
       + (has(top.drift)
          ? '<span class="sub num">' + (top.drift > 0 ? '+' : '\u2212')
            + Math.abs(top.drift).toFixed(1) + 'pp on ' + esc(top.side)
@@ -933,8 +941,13 @@ function v3Compare(c) {
     const lead = hh >= aa ? c.home : c.away;
     return '<div class="cmp' + (cls || '') + '">'
       + '<span class="eyebrow">' + esc(label) + '</span>'
-      + '<b class="num">' + esc(lead) + ' ' + Math.round(Math.max(hh, aa))
-      + '\u2013' + Math.round(Math.min(hh, aa)) + '</b>'
+      // ONE DECIMAL. Rounding to whole numbers turned a 0.6-point model
+      // margin into "LA 22-22" — a projected tie, next to a line that says
+      // otherwise, from numbers that did not say it either. Whole numbers
+      // read better on a blowout and lie on a close game, and the close game
+      // is the one anyone is reading this box for.
+      + '<b class="num">' + esc(lead) + ' ' + Math.max(hh, aa).toFixed(1)
+      + '\u2013' + Math.min(hh, aa).toFixed(1) + '</b>'
       + '<span class="sub num">' + esc(sp < 0 ? c.home : c.away) + ' by '
       + Math.abs(sp) + ' \u00b7 ' + tot + ' pts</span></div>';
   };
@@ -1223,7 +1236,10 @@ function v3GameBets(gid) {
     });
     return Object.keys(best).slice(0, 2).map(k => {
       const r = best[k];
-      const pt = has(r.point) ? ' ' + (r.point > 0 ? '+' : '') + r.point : '';
+      // A SPREAD is signed; a TOTAL is not. "Over +44.5" reads as a
+      // handicap and is just the number of points in the game.
+      const pt = !has(r.point) ? ''
+        : ' ' + (mk === 'spreads' && r.point > 0 ? '+' : '') + r.point;
       return '<span class="quote"><b>' + esc(k) + esc(pt) + '</b> '
         + v3Dash(american(r.best)) + '<i> at ' + esc(
           String(r.best_book || '').split(',')[0].trim()) + '</i></span>';

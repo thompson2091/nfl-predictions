@@ -61,6 +61,15 @@ def payload_v3():
                                     "pct": 1.0}],
                         "margins": [{"band": "GB by 15+", "n": 106,
                                      "pct": 26.3, "lo": 22.2, "hi": 30.8}]},
+             "injuries": {"GB": [{"player": "Jayden Reed", "pos": "WR",
+                                  "status": "Out", "injury": "Neck",
+                                  "practice": "Did not practise",
+                                  "rest": False}],
+                          "ATL": [{"player": "A.J. Terrell", "pos": "CB",
+                                   "status": None, "injury": "Groin",
+                                   "practice": "Did not practise",
+                                   "rest": False}]},
+             "injury_key": 1,
              "unfold": {"n": 403, "thin": False, "home": "GB", "away": "ATL",
                         "fav": "GB", "dog": "ATL", "total": 44.5,
                         "cells": [
@@ -97,6 +106,14 @@ def payload_v3():
              "win_home": 0.78, "win_away": 0.22,
              "kick_day": "Sunday", "kick_et": "4:25 PM ET", "prime": False},
         ],
+        "public": {"ATL_GB": {
+            "spreads": {"captures": 2, "sides": [
+                {"side": "GB", "pct": 62.4, "open_pct": 55.0, "drift": 7.4},
+                {"side": "ATL", "pct": 37.6, "open_pct": 45.0, "drift": -7.4}]},
+            "totals": {"captures": 2, "sides": [
+                {"side": "Over", "pct": 55.4, "open_pct": 55.4, "drift": None},
+                {"side": "Under", "pct": 44.6, "open_pct": 44.6,
+                 "drift": None}]}}},
         "rows": [
             {"game_id": "ATL_GB", "home": "GB", "away": "ATL", "market": "h2h",
              "outcome": "GB", "point": None, "consensus": -245, "best": -225,
@@ -161,7 +178,9 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a coaching note is labelled as context",
                  "the final-score tab renders",
                  "the bets tab is a ladder, not a list of books",
-                 "the notes tab opens with how the game may unfold"):
+                 "the notes tab opens with how the game may unfold",
+                 "the filters come before the injury report",
+                 "and before the public split"):
         assert path in r.stdout, f"{path!r} never ran:\n{r.stdout}"
 
 

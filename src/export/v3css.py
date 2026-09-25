@@ -310,6 +310,12 @@ button{cursor:pointer}
   border:1px solid var(--btnline);text-align:left}
 .choose b{font-size:17px;font-weight:700}
 
+/* ---- where the public is ---- */
+.pub{margin-top:12px}
+.pub__h{display:flex;align-items:baseline;justify-content:space-between;
+  gap:8px;flex-wrap:wrap;margin-bottom:5px}
+.pub .bar{height:30px}
+
 /* ---- injury report ---- */
 .injrow{display:flex;align-items:flex-start;gap:10px;padding:6px 0;
   border-top:1px solid var(--line3)}

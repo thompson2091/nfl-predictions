@@ -395,8 +395,11 @@ if (cards.length) {
   const h = app();
   ok('the win bar carries both the book and our model',
      h.indexOf('Sportsbooks') >= 0 && h.indexOf('Our model') >= 0);
-  ok('and the projected scores are whole numbers',
-     !/\d+\.\d\u2013/.test(h), 'a football score has no decimal point');
+  // A DECIMAL, not a whole number. Rounding turned a 0.6-point model margin
+  // into "LA 22-22" — a projected tie, from numbers that did not say one.
+  ok('the projected scores keep a decimal',
+     /\d+\.\d\u2013\d+\.\d/.test(h),
+     'whole numbers collapse a close game into a tie');
   V.game = null; V.tab = 'week'; V.gameTab = 'notes';
 }
 
@@ -465,6 +468,34 @@ if (cards.length) {
        u.cells.every(cl => h.indexOf(cl.pct.toFixed(0) + '%') >= 0));
   }
   V.game = null; V.tab = 'week'; V.gameTab = 'notes';
+}
+
+// ── Controls sit next to the rows they control ──────────────────────────
+//
+// The injury report and the public split rendered between the tab bar and
+// the tab content, so every filter on the Players tab was two screens below
+// the tab you pressed to reach it: change a market, scroll down, read, scroll
+// back up. Both blocks are identical all week and on every tab, which is
+// exactly what should not sit between a control and its rows.
+if (cards.length) {
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'players';
+  render();
+  const h = app();
+  const controls = h.indexOf('data-v3mkt=');
+  const injuries = h.indexOf('Injury report');
+  const publics = h.indexOf('Where the public is');
+  if (controls >= 0 && injuries >= 0) {
+    ok('the filters come before the injury report', controls < injuries);
+  }
+  if (controls >= 0 && publics >= 0) {
+    ok('and before the public split', controls < publics);
+  }
+  // And on This week, the controls are directly above the rows.
+  V.tab = 'week'; V.game = null; render();
+  const w = app();
+  ok('the board puts its sort control above its rows',
+     w.indexOf('data-v3sortsel') < w.indexOf('id="v3rows"'));
+  V.gameTab = 'notes';
 }
 
 done();
