@@ -677,6 +677,14 @@ function v3Detail(row) {
   if (has(row.lo) && has(row.hi))
     add('Likely range', row.lo.toFixed(1) + ' to ' + row.hi.toFixed(1));
   add('Books quoting', has(row.nBooks) ? String(row.nBooks) : null);
+  const gm = v3GameMoney(row);
+  if (gm) {
+    add('Big money in this game',
+        gm.side + ' ' + gm.market.toLowerCase() + ', '
+        + gm.ratio.toFixed(1) + '\u00d7 the average bet'
+        + (gm.mine ? ' \u2014 this player\u2019s side'
+           : gm.facing ? ' \u2014 the other side' : ''));
+  }
   add('Board rank', has(row.rank) ? '#' + row.rank : null);
   add('Position', row.pos);
   add('Availability', row.status);
@@ -720,7 +728,15 @@ function v3Ord(n) {
 }
 
 function v3Had(row) {
-  if (row.key === 'first_td') {
+  // THE BOARD'S MARKET KEY IS `first`, NOT `first_td`. `v3Graded` stamps rows
+  // with `V.market`, which is a V3MKT key — the archive name `first_td` only
+  // ever appears in `V3HIST` and in the fetched file's name. Checking for the
+  // archive name here matched nothing, so every first-TD row fell through to
+  // the count branch and printed "1 TD" beside a cross on each player who
+  // scored second — the exact sentence this function exists to avoid. Both
+  // spellings are accepted because only one of them is reachable and it is
+  // not the obvious one.
+  if (row.key === 'first' || row.key === 'first_td') {
     if (!has(row.tdCount)) return '';
     if (!row.tdCount) return 'no TD';
     return has(row.tdOrder)
@@ -1436,6 +1452,33 @@ function v3Sharp(gid) {
     + '25 September and the first week whose opening line, splits and close '
     + 'all land in order is the first one that can answer it.</p>'
     + '</div>';
+}
+
+// THE MONEY IN A PLAYER'S GAME, WHICH IS NOT A SPLIT ON THE PLAYER.
+//
+// **There is no ticket/money split on any player prop, from this feed or any
+// free one.** Action Network publishes the moneyline, the spread and the
+// total, and nothing else — checked against the live page, whose market keys
+// are exactly `moneyline`, `spread`, `total` and a team-score ladder. So a
+// "sharp money" figure beside a touchdown price would have to be invented,
+// and this does not invent one.
+//
+// What is true, and worth a line, is the money on the GAME the prop sits in.
+// Big money on Atlanta is a fact about Atlanta scoring points, and a Falcon's
+// touchdown price lives inside that. It is stated as what it is — the game,
+// not the player — and marked as unmeasured, because whether the bigger money
+// is the smarter money is exactly the thing the split archive is too young to
+// answer.
+function v3GameMoney(row) {
+  const sides = v3SharpSides(row && row.gameId);
+  if (!sides.length) return null;
+  const top = sides[0];
+  // Whose side the money is on matters more than that it is there. A player
+  // whose own team is carrying it is a different read from one facing it.
+  const mine = row.team && top.side === row.team;
+  const facing = row.team && !mine && top.market !== 'Total';
+  return { side: top.side, ratio: top.ratio, market: top.market,
+           mine: !!mine, facing: !!facing };
 }
 
 // THE CHANCE OF WINNING, BOOK AND MODEL, ON THE SAME SCALE.

@@ -21,7 +21,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
    'v3Sharp', 'v3SharpSides', 'V3RATIO_SMALL',
-   'v3NowImplied', 'v3Clv', 'v3ClvNote']);
+   'v3NowImplied', 'v3Clv', 'v3ClvNote', 'v3GameMoney']);
 const { V, render, v3Screen, v3Games, v3Game, v3Picks, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
         rowsFor, served, DATA } = x;
@@ -958,8 +958,11 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
        === '1st 2nd 3rd 4th 11th 12th 13th 21st 22nd',
      [1, 2, 3, 4, 11, 12, 13, 21, 22].map(v3Ord).join(' '));
 
-  const td = (c, o) => ({ kind: 'td', key: 'anytime_td', tdCount: c,
-                          tdOrder: o });
+  // THE REAL BOARD KEYS. `V3MKT` calls these markets `any` and `first`; the
+  // names `anytime_td` and `first_td` are the ARCHIVE's and never reach a
+  // row. A fixture using the archive names passed while the live board
+  // printed a touchdown count where the ordinal belongs.
+  const td = (c, o) => ({ kind: 'td', key: 'any', tdCount: c, tdOrder: o });
   ok('one touchdown is singular', v3Had(td(1, 1)) === '1 TD', v3Had(td(1, 1)));
   ok('three touchdowns are plural', v3Had(td(3, 1)) === '3 TDs', v3Had(td(3, 1)));
   ok('a blank is named, not left as a zero',
@@ -967,12 +970,12 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // ABSENT IS NOT ZERO. A row with no count recorded must say nothing at all
   // rather than claim the player was held out of the end zone.
   ok('an unrecorded count says nothing',
-     v3Had({ kind: 'td', key: 'anytime_td' }) === '',
-     v3Had({ kind: 'td', key: 'anytime_td' }));
+     v3Had({ kind: 'td', key: 'any' }) === '',
+     v3Had({ kind: 'td', key: 'any' }));
 
   // A first-TD board settles on WHICH touchdown was theirs. Printing a count
   // there would put "1 TD" beside a cross on everyone who scored second.
-  const ft = (c, o) => ({ kind: 'td', key: 'first_td', tdCount: c, tdOrder: o });
+  const ft = (c, o) => ({ kind: 'td', key: 'first', tdCount: c, tdOrder: o });
   ok('the first-TD board names which touchdown it was',
      v3Had(ft(1, 3)) === '3rd TD of the game', v3Had(ft(1, 3)));
   ok('the first-TD winner reads as the first',
@@ -982,14 +985,14 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
 
   // An over/under row settles on the stat, so it prints the stat.
   ok('an over/under row prints the stat it settled on',
-     v3Had({ kind: 'ou', key: 'receptions', actual: 4 }).indexOf('4') === 0,
-     v3Had({ kind: 'ou', key: 'receptions', actual: 4 }));
+     v3Had({ kind: 'ou', key: 'rec', actual: 4 }) === '4 catches',
+     v3Had({ kind: 'ou', key: 'rec', actual: 4 }));
   ok('an over/under row with no stat says nothing',
-     v3Had({ kind: 'ou', key: 'receptions' }) === '');
+     v3Had({ kind: 'ou', key: 'rec' }) === '');
 
   // THE FIELDS HAVE TO SURVIVE THE NORMALIZER, which is where the touchdown
   // count was dropped before it ever reached the row.
-  V.market = 'anytime_td';
+  V.market = 'any';
   const g = v3Graded('anytime_td',
                      [{ player_name: 'A Man', team: 'BAL', game_id: 'x_BAL_NO',
                         probability: 0.4, scored: 1, td_count: 2, td_order: 1 }]);
@@ -997,7 +1000,17 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      g[0].tdCount === 2 && g[0].tdOrder === 1, JSON.stringify(g[0]));
   ok('a settled row shows what they actually had',
      v3PastRow(g[0]).indexOf('2 TDs') >= 0, v3PastRow(g[0]));
-  V.market = 'anytime_td';
+
+  // AND THE FIRST-TD BOARD THROUGH THE SAME PATH, which is where the archive
+  // name slipped in: the row below scored, and scored third.
+  V.market = 'first';
+  const gf = v3Graded('first_td',
+                      [{ player_name: 'A Man', team: 'BAL', game_id: 'x_BAL_NO',
+                         probability: 0.1, scored: 0, td_count: 1,
+                         td_order: 3 }]);
+  ok('a first-TD row names the ordinal, not the count',
+     v3Had(gf[0]) === '3rd TD of the game', v3Had(gf[0]));
+  V.market = 'any';
 }
 
 
@@ -1094,6 +1107,55 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      v3ClvNote([moved, moved, moved], 'picks') === '');
   ok('four are enough',
      v3ClvNote([moved, moved, moved, moved], 'picks').indexOf('4 of 4') >= 0);
+}
+
+
+// ── The money in a player's game ────────────────────────────────────────
+//
+// There is NO ticket/money split on any player prop — the feed publishes the
+// moneyline, the spread and the total and nothing else. What a prop can
+// inherit is the money on the game it sits in, and the only honest version of
+// that says whose side it is on.
+{
+  const { v3GameMoney } = x;
+
+  const mine = v3GameMoney({ gameId: 'AAA @ BBB', team: 'AAA' });
+  ok('a player inherits the money on their own game',
+     mine && Math.abs(mine.ratio - 4.0) < 0.001, JSON.stringify(mine));
+  ok('and it says the money is on their side',
+     mine && mine.mine === true && mine.facing === false, JSON.stringify(mine));
+
+  const against = v3GameMoney({ gameId: 'AAA @ BBB', team: 'BBB' });
+  ok('a player facing the money is told so, not merely told there is money',
+     against && against.mine === false && against.facing === true,
+     JSON.stringify(against));
+
+  ok('a game with no split gives a player nothing',
+     v3GameMoney({ gameId: 'NOPE_NOPE', team: 'AAA' }) === null);
+  ok('and a row with no game at all does not throw',
+     v3GameMoney({}) === null);
+
+  // IT HAS TO REACH THE OPENED ROW, not just the function.
+  //
+  // The row is looked up rather than named. Hardcoding a player assumed it
+  // would be on the visible page, and the board is sorted and capped at
+  // `V.shown` — the fixture's Alpha Back sorts past the cap, so the check
+  // failed while the feature worked. Every piece of state this screen reads
+  // is reset too, because an earlier block leaving a week or a filter set
+  // empties the board, which reads as "the line is missing".
+  V.tab = 'props'; V.market = 'any'; V.week = null; V.game = null;
+  V.filter = 'all'; V.q = ''; V.shown = 500;
+  V.sort = 'model'; V.desc = true;
+  const withMoney = rowsFor('any', null)
+    .filter(r => r.priced && !r.blocked && v3GameMoney(r));
+  ok('some board row sits in a game with money on it', withMoney.length > 0);
+  V.open = withMoney[0].id; render();
+  ok('the opened player row names the money in their game',
+     app().indexOf('Big money in this game') >= 0,
+     'open=' + V.open);
+  ok('and names the side carrying it',
+     app().indexOf('the average bet') >= 0);
+  V.open = null; V.shown = 25;
 }
 
 done();

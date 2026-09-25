@@ -205,6 +205,15 @@ def payload_v3():
                 {"side": "Under", "odds": -110, "tickets": 50.0, "money": 45.0,
                  "gap": -5.0, "ratio": 0.82}]},
         },
+        # Keyed to match a BOARD row's game, so the player detail has a game
+        # to inherit money from. The board's players live in "AAA @ BBB".
+        "AAA @ BBB": {
+            "moneyline": {"captures": 3, "sides": [
+                {"side": "BBB", "odds": -250, "tickets": 80.0, "money": 50.0,
+                 "gap": -30.0, "ratio": 0.25},
+                {"side": "AAA", "odds": 205, "tickets": 20.0, "money": 50.0,
+                 "gap": 30.0, "ratio": 4.0}]},
+        },
         "CAR_CLE": {
             "moneyline": {"captures": 3, "sides": [
                 {"side": "CAR", "odds": -146, "tickets": 89.0, "money": 96.0,
@@ -278,6 +287,11 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a market that drifted away is not counted as toward",
                  "a pick we rated below the open is not counted at all",
                  "three picks are too few to report a share",
+                 "a first-TD row names the ordinal, not the count",
+                 "a player inherits the money on their own game",
+                 "a player facing the money is told so, not merely told there is money",
+                 "some board row sits in a game with money on it",
+                 "the opened player row names the money in their game",
                  "and changing the stake keeps it open too",
                  "the bar opens the slip rather than navigating",
                  "tapping it opens the slip sheet",
