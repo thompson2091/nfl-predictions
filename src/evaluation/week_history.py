@@ -86,7 +86,140 @@ def week_board(season: int, week: int, target_type: str = "anytime_td",
         f"week board join fanned out: {before} -> {out.height}")
     out = out.with_columns(
         pl.col("target").cast(pl.Int8).alias("scored")).drop("target")
+
+    # WHAT THEY ACTUALLY HAD, beside the tick or the cross. A green row that
+    # will not say whether it was one touchdown or three is the question the
+    # board most obviously invites and never answered.
+    got = _td_actuals(season, week, target_type)
+    if not got.is_empty():
+        out = out.join(got, on=["player_name", "team"], how="left")
+        # TWO SOURCES FOR ONE FACT, RECONCILED OUT LOUD. `scored` comes from
+        # the feature matrix and the count from the touchdown table. They are
+        # built from the same plays, so they agree — but if a rebuild ever
+        # moves one and not the other, a row saying "2 TDs" beside a cross is
+        # a visible lie, where a row saying nothing is merely quiet. On
+        # disagreement the count is dropped and the grade, which is what the
+        # record is scored on, stands.
+        hit = (pl.col("td_order") == 1) if target_type == "first_td" \
+            else (pl.col("td_count") > 0)
+        agrees = (pl.col("scored").is_null()) | (hit.fill_null(False)
+                                                 == (pl.col("scored") == 1))
+        out = out.with_columns([
+            pl.when(agrees).then(pl.col("td_count")).alias("td_count"),
+            pl.when(agrees).then(pl.col("td_order")).alias("td_order")])
     return _with_book(out, season, week, target_type)
+
+
+
+def _td_actuals(season: int, week: int, target_type: str) -> pl.DataFrame:
+    """How many touchdowns each candidate actually scored, and which was first.
+
+    **Counted from the play-by-play, under the same filter the target uses.**
+    `td_extractor.extract_tds` selects touchdown plays carrying a scorer and
+    then DEDUPLICATES to one row per player per game, because the anytime
+    board only ever asks whether someone scored. Counting off that table
+    silently caps every hat-trick at one: Saquon Barkley's three against
+    Philadelphia in 2024 week 1 read as "1 TD". So the count comes from
+    `pbp.parquet` under the identical predicate, and the dedup is the only
+    thing not reproduced.
+
+    Not from `weekly_stats` either. Rushing plus receiving touchdowns out of
+    the box score is a SECOND definition of one number, and the two disagree
+    on exactly the plays worth looking at — a lateral, a lineman falling on
+    one in the end zone, a return. A row reading "had 1" beside a red cross
+    is worse than a row that says nothing.
+
+    Names cannot be the key. The play-by-play abbreviates them (`D.Henry`),
+    the board spells them out (`Derrick Henry`), so the join goes through
+    `candidates.parquet`, which holds both along with `player_id`.
+
+    Returns `player_name`, `team`, `td_count` and `td_order` — the latter the
+    rank of that player's earliest touchdown among all of the game's, so 1
+    means they scored first. Empty when the week has no stored candidates.
+    """
+    from src.utils.paths import get_path
+
+    pbp_path = get_path("raw") / "pbp.parquet"
+    tds_path = get_path("processed", target_type) / f"tds_{target_type}.parquet"
+    cand_path = get_path("processed", target_type) / "candidates.parquet"
+    empty = pl.DataFrame(schema={"player_name": pl.Utf8, "team": pl.Utf8,
+                                 "td_count": pl.Int32, "td_order": pl.Int32})
+    if not (pbp_path.exists() and tds_path.exists() and cand_path.exists()):
+        return empty
+
+    cand = (pl.scan_parquet(cand_path)
+            .filter((pl.col("season") == season) & (pl.col("week") == week))
+            .select(["game_id", "player_id", "player_name", "team", "position"])
+            .collect())
+    if cand.is_empty():
+        return empty
+
+    # ONE MAN PER NAME. `week_board` joins its rows on player_name and team,
+    # so two players sharing a display name inside one team-week would grade
+    # one against the other's touchdowns. `ou_week` drops ambiguous names for
+    # the same reason: a wrong number is worse than a missing one, because
+    # only the missing one is visible.
+    dupes = (cand.group_by(["player_name", "team"]).agg(pl.len().alias("_n"))
+             .filter(pl.col("_n") > 1).select(["player_name", "team"]))
+
+    # The predicate is `extract_tds`'s, character for character, minus the
+    # dedup. If that filter ever changes, this is the line that has to follow.
+    tds = (pl.scan_parquet(pbp_path)
+           .filter((pl.col("season") == season) & (pl.col("week") == week)
+                   & (pl.col("touchdown") == 1)
+                   & pl.col("td_player_id").is_not_null()
+                   & (pl.col("td_player_id") != ""))
+           .select(["game_id", "play_id", "td_player_id", "td_team"])
+           .collect())
+    if tds.is_empty():
+        return empty
+
+    # WHO COUNTS AS A DEFENSIVE SCORE is decided by the target's own table
+    # rather than re-derived here, so the DEF/ST rows cannot drift away from
+    # what `build_candidates` marked. A play-by-play scorer absent from it is
+    # left unclassified and drops out of the DEF/ST tally instead of being
+    # guessed at either way.
+    flags = (pl.scan_parquet(tds_path)
+             .filter((pl.col("season") == season) & (pl.col("week") == week))
+             .select(["game_id", "td_player_id", "is_offensive_td"])
+             .collect()
+             .unique(subset=["game_id", "td_player_id"], keep="first"))
+    tds = tds.join(flags, on=["game_id", "td_player_id"], how="left")
+
+    # ORDER IS OVER EVERY TOUCHDOWN IN THE GAME, counted once per play. A
+    # player's second score must not renumber anyone, so this ranks plays and
+    # then takes each scorer's earliest.
+    tds = tds.with_columns(
+        pl.col("play_id").rank("ordinal").over("game_id").cast(pl.Int32)
+        .alias("_order"))
+
+    scored_off = (tds.group_by(["game_id", "td_player_id"])
+                  .agg([pl.len().cast(pl.Int32).alias("td_count"),
+                        pl.col("_order").min().alias("td_order")])
+                  .rename({"td_player_id": "player_id"}))
+    # A DEF/ST candidate is one row for a whole unit, so its touchdowns are
+    # the team's non-offensive ones — the same rule `build_candidates` uses.
+    dst = tds.filter(~pl.col("is_offensive_td").fill_null(True))
+    scored_dst = (dst.group_by(["game_id", "td_team"])
+                  .agg([pl.len().cast(pl.Int32).alias("_dc"),
+                        pl.col("_order").min().alias("_do")])
+                  .rename({"td_team": "team"}))
+
+    out = (cand.join(scored_off, on=["game_id", "player_id"], how="left")
+           .join(scored_dst, on=["game_id", "team"], how="left")
+           .with_columns([
+               pl.when(pl.col("position") == "DEFST").then(pl.col("_dc"))
+               .otherwise(pl.col("td_count")).alias("td_count"),
+               pl.when(pl.col("position") == "DEFST").then(pl.col("_do"))
+               .otherwise(pl.col("td_order")).alias("td_order")])
+           # A candidate absent from the touchdown plays did not score. That
+           # is a real zero and not a missing value: the week was played, and
+           # every touchdown in it is in that table.
+           .with_columns(pl.col("td_count").fill_null(0).cast(pl.Int32))
+           .join(dupes, on=["player_name", "team"], how="anti")
+           .select(["player_name", "team", "td_count", "td_order"])
+           .unique(subset=["player_name", "team"], keep="first"))
+    return out
 
 
 def _with_book(df: pl.DataFrame, season: int, week: int,

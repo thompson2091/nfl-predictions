@@ -18,7 +18,8 @@ const x = loadPage(process.argv[2], process.argv[3],
    'isFav', 'toggleFav', 'v3Slipbar', 'v3Sheet', 'V3SHEETS', 'v3Rungs',
    'v3Num', 'v3Rows', 'v3LadderSummary', 'v3Questions', 'v3AskSend',
    'V3BETTYPES',
-   'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty']);
+   'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
+   'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow']);
 const { V, render, v3Screen, v3Games, v3Game, v3Picks, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
         rowsFor, served, DATA } = x;
@@ -940,6 +941,61 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('an unknown split falls back to the full game',
      textOf({ _html: app() }).join('').trim().length > 40);
   V.half = 'full'; V.gameTab = 'notes'; V.game = null; V.tab = 'props';
+}
+
+
+// ── What a settled row says the player actually had ─────────────────────
+//
+// Three markets settle on three different quantities and the row has space
+// for one short phrase. Each of these is a phrasing that was wrong once.
+{
+  const { v3Had, v3Ord, v3Graded, v3PastRow } = x;
+
+  ok('ordinals read like English',
+     [1, 2, 3, 4, 11, 12, 13, 21, 22].map(v3Ord).join(' ')
+       === '1st 2nd 3rd 4th 11th 12th 13th 21st 22nd',
+     [1, 2, 3, 4, 11, 12, 13, 21, 22].map(v3Ord).join(' '));
+
+  const td = (c, o) => ({ kind: 'td', key: 'anytime_td', tdCount: c,
+                          tdOrder: o });
+  ok('one touchdown is singular', v3Had(td(1, 1)) === '1 TD', v3Had(td(1, 1)));
+  ok('three touchdowns are plural', v3Had(td(3, 1)) === '3 TDs', v3Had(td(3, 1)));
+  ok('a blank is named, not left as a zero',
+     v3Had(td(0, null)) === 'no TD', v3Had(td(0, null)));
+  // ABSENT IS NOT ZERO. A row with no count recorded must say nothing at all
+  // rather than claim the player was held out of the end zone.
+  ok('an unrecorded count says nothing',
+     v3Had({ kind: 'td', key: 'anytime_td' }) === '',
+     v3Had({ kind: 'td', key: 'anytime_td' }));
+
+  // A first-TD board settles on WHICH touchdown was theirs. Printing a count
+  // there would put "1 TD" beside a cross on everyone who scored second.
+  const ft = (c, o) => ({ kind: 'td', key: 'first_td', tdCount: c, tdOrder: o });
+  ok('the first-TD board names which touchdown it was',
+     v3Had(ft(1, 3)) === '3rd TD of the game', v3Had(ft(1, 3)));
+  ok('the first-TD winner reads as the first',
+     v3Had(ft(1, 1)) === '1st TD of the game', v3Had(ft(1, 1)));
+  ok('a first-TD blank still reads as no touchdown',
+     v3Had(ft(0, null)) === 'no TD', v3Had(ft(0, null)));
+
+  // An over/under row settles on the stat, so it prints the stat.
+  ok('an over/under row prints the stat it settled on',
+     v3Had({ kind: 'ou', key: 'receptions', actual: 4 }).indexOf('4') === 0,
+     v3Had({ kind: 'ou', key: 'receptions', actual: 4 }));
+  ok('an over/under row with no stat says nothing',
+     v3Had({ kind: 'ou', key: 'receptions' }) === '');
+
+  // THE FIELDS HAVE TO SURVIVE THE NORMALIZER, which is where the touchdown
+  // count was dropped before it ever reached the row.
+  V.market = 'anytime_td';
+  const g = v3Graded('anytime_td',
+                     [{ player_name: 'A Man', team: 'BAL', game_id: 'x_BAL_NO',
+                        probability: 0.4, scored: 1, td_count: 2, td_order: 1 }]);
+  ok('the normalizer carries the count through',
+     g[0].tdCount === 2 && g[0].tdOrder === 1, JSON.stringify(g[0]));
+  ok('a settled row shows what they actually had',
+     v3PastRow(g[0]).indexOf('2 TDs') >= 0, v3PastRow(g[0]));
+  V.market = 'anytime_td';
 }
 
 done();

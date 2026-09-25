@@ -318,6 +318,11 @@ function v3Graded(market, raw) {
     priced: td ? (r.has_market_price == null ? true : !!r.has_market_price)
                : has(r.line),
     actual: r.actual,
+    // WHAT THEY ACTUALLY HAD. The touchdown boards grade to a tick and never
+    // said whether it was one score or three; `tdCount` is that number and
+    // `tdOrder` which touchdown of the game was theirs, so a first-TD miss
+    // can say how close it came instead of only that it lost.
+    tdCount: r.td_count, tdOrder: r.td_order,
     won: td ? (has(r.scored) ? !!r.scored : null)
             : (r.won == null ? null : !!r.won),
   }));
@@ -694,6 +699,41 @@ function v3Detail(row) {
     + '</dl></div>';
 }
 
+// WHAT HAPPENED, IN THE ROW'S OWN UNITS.
+//
+// Three markets settle on three different quantities and the row has space
+// for one short phrase. An over/under line settles on the stat, so it prints
+// the stat. An anytime board settles on whether they scored, so it prints how
+// many. A first-TD board settles on WHICH touchdown was theirs, and printing
+// a count there would put "1 TD" beside a cross on every player who scored
+// second — true, and an answer to a question nobody asked.
+//
+// Empty when nothing was recorded, so a row that cannot say what happened
+// says nothing rather than "0".
+function v3Ord(n) {
+  const t = n % 100;
+  const s = (t >= 11 && t <= 13) ? 'th'
+    : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th';
+  return n + s;
+}
+
+function v3Had(row) {
+  if (row.key === 'first_td') {
+    if (!has(row.tdCount)) return '';
+    if (!row.tdCount) return 'no TD';
+    return has(row.tdOrder)
+      ? v3Ord(row.tdOrder) + ' TD of the game' : 'scored';
+  }
+  if (row.kind === 'td') {
+    if (!has(row.tdCount)) return '';
+    return !row.tdCount ? 'no TD'
+      : row.tdCount + (row.tdCount === 1 ? ' TD' : ' TDs');
+  }
+  if (!has(row.actual)) return '';
+  const u = unitOf(row.key) || '';
+  return row.actual + (u ? ' ' + u : '');
+}
+
 // A settled row. The color IS the information: green won, red lost, gray
 // never settled. Everything else is what was shown before kickoff, unchanged,
 // so the two can be compared.
@@ -704,8 +744,10 @@ function v3PastRow(row) {
     : won === false ? '<span class="mark mark--lost">✕</span>'
     : '<span class="mark mark--void">–</span>';
   const line = v3Line(row);
-  const got = has(row.actual)
-    ? '<span class="sub num">had ' + row.actual + '</span>' : '';
+  // The row tint and the mark already say won or lost; this says by how
+  // much. Left neutral on purpose — the same fact in three colors is noise.
+  const had = v3Had(row);
+  const got = had ? '<span class="tag num">' + esc(had) + '</span>' : '';
   return '<div class="row' + cls + '"><div class="row__m">'
     + '<div class="row__t"><div style="min-width:0">'
     + '<div class="name">' + esc(row.player) + '</div>'
