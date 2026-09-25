@@ -15,8 +15,8 @@
     ]
   },
   "anytime_td": {
-    "version": "2026.09.21-unpriced-conversion",
-    "promoted_at": "2026-09-21T18:43:52+00:00",
+    "version": "2026.09.25-movement-and-practice-anytime-v2",
+    "promoted_at": "2026-09-25T18:22:25+00:00",
     "history": [
       "2026.08.12-baseline",
       "2026.08.12-baseline-remeasured",
@@ -31,7 +31,8 @@
       "2026.08.19-lean-24-families",
       "2026.09.21-unpriced-conversion-level",
       "2026.09.21-unpriced-conversion-guard",
-      "2026.09.21-unpriced-conversion"
+      "2026.09.21-unpriced-conversion",
+      "2026.09.25-movement-and-practice-anytime-v2"
     ]
   }
 }

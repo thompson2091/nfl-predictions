@@ -271,6 +271,7 @@ models:
     - build_game_features
     - build_goalline_features
     - build_injury_features
+    - build_market_movement_features
     - build_matchup_interaction_features
     - build_momentum_features
     - build_opening_drive_features
@@ -281,6 +282,7 @@ models:
     - build_player_rolling_features
     - build_player_share_features
     - build_player_target_history
+    - build_practice_features
     - build_qb_features
     - build_receiver_features
     - build_score_first_features
