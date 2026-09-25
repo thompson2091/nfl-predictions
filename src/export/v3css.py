@@ -310,6 +310,15 @@ button{cursor:pointer}
   border:1px solid var(--btnline);text-align:left}
 .choose b{font-size:17px;font-weight:700}
 
+/* ---- injury report ---- */
+.injrow{display:flex;align-items:flex-start;gap:10px;padding:6px 0;
+  border-top:1px solid var(--line3)}
+.inj .eyebrow+.injrow{border-top:0}
+.injrow>.tag{flex-shrink:0;min-width:78px;justify-content:center}
+.injrow__n{display:flex;flex-direction:column;min-width:0}
+.injrow__n b{font-size:15px;font-weight:600}
+.injrow__n i{font-style:normal;font-size:12px;color:var(--mut)}
+
 /* ---- moving between games without going back ---- */
 .gamenav{display:flex;align-items:center;justify-content:space-between;gap:10px;
   margin-top:4px}

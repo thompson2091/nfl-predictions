@@ -740,6 +740,7 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     _attach_kickoff(cards, season, week)
     _attach_coaching(cards, season, week)
     _attach_scores(cards)
+    _attach_injuries(cards, season, week)
     # Sorted by kickoff where it is known, so the list reads as a weekend
     # rather than as an alphabet. Games with no time sort last rather than
     # first: a missing kickoff is usually a game the schedule has not
@@ -790,6 +791,136 @@ def _attach_scores(cards: dict) -> None:
             if ours and not ours.get("thin") and ours.get("home_win"):
                 c["model_win_home"] = round(ours["home_win"]["pct"] / 100, 4)
                 c["model_win_n"] = ours["n"]
+
+
+#: Positions whose availability moves a player market. The report lists the
+#: whole roster; a page about touchdown props does not need the long snapper.
+_SKILL = ("QB", "RB", "FB", "WR", "TE", "K")
+
+#: In the order a reader cares about. "Out" first because it is the only one
+#: that settles anything.
+_STATUS_ORDER = {"Out": 0, "Doubtful": 1, "Questionable": 2}
+
+#: And for a player with no designation yet, how his week has gone. Missing
+#: practice entirely on a Wednesday is what a Friday "Doubtful" is made of.
+_PRACTICE_ORDER = {"Did not practise": 0, "Limited": 1, "Full": 2}
+
+#: A veteran rest day is not an injury. nflverse files it in the same column
+#: with the reason "Not injury related - resting player", and treating it as
+#: a warning puts a red tag on Christian McCaffrey every Wednesday — which is
+#: how a flag stops being read at all.
+_REST = "not injury related"
+
+
+def _reason(v) -> str | None:
+    """"Not injury related - resting player" -> "rest day"."""
+    t = str(v or "").strip()
+    if not t:
+        return None
+    return "rest day" if _REST in t.lower() else t
+
+
+def _practice(v) -> str | None:
+    """"Did Not Participate In Practice" -> "Did not practise"."""
+    t = str(v or "").strip()
+    if not t:
+        return None
+    low = t.lower()
+    if low.startswith("did not"):
+        return "Did not practise"
+    if low.startswith("limited"):
+        return "Limited"
+    if low.startswith("full"):
+        return "Full"
+    return t
+
+
+def _attach_injuries(cards: dict, season: int | None,
+                     week: int | None) -> None:
+    """The official injury report for both sides, per game.
+
+    **From nflverse, which publishes it, rather than from a search.** It is
+    the actual league report — status, body part and practice participation —
+    and it costs nothing, so the searching budget can go to the things that
+    genuinely cannot be derived.
+
+    Only players with a designation. A roster row with a null status is a
+    player who is fine, and listing three hundred of those per game buries the
+    six that matter.
+    """
+    if not (season and week):
+        return
+    import polars as pl
+
+    from src.utils.paths import get_path
+
+    try:
+        d = pl.read_parquet(get_path("raw") / "injuries.parquet")
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  injuries unavailable ({e})", file=sys.stderr)
+        return
+    # A DESIGNATION *OR* A PRACTICE NOTE.
+    #
+    # Filtering on `report_status` alone showed eight players across the
+    # sixteen games, all of them in the Thursday fixture — which is correct
+    # and nearly useless midweek. The final report is filed the day before
+    # kickoff, so on a Thursday only Thursday's game has one. What the other
+    # thirty teams have already filed is PRACTICE PARTICIPATION, and a
+    # receiver who did not practise on Wednesday is the earliest real signal
+    # there is: it is what the designation gets derived from on Friday.
+    d = d.filter((pl.col("season") == season) & (pl.col("week") == week)
+                 & (pl.col("report_status").is_not_null()
+                    | pl.col("practice_status").is_not_null()))
+    if d.is_empty():
+        # Said out loud. The report posts on Wednesday; before that a week
+        # genuinely has none, and an empty section is indistinguishable from a
+        # feed that has stopped.
+        print(f"  no injury report yet for {season} week {week}",
+              file=sys.stderr)
+        return
+    by_team: dict = {}
+    for r in d.iter_rows(named=True):
+        by_team.setdefault(r["team"], []).append({
+            "player": r.get("full_name"),
+            "pos": r.get("position"),
+            "status": r.get("report_status"),
+            "injury": _reason(r.get("report_primary_injury")
+                              or r.get("practice_primary_injury")),
+            # "Did Not Participate In Practice" is the useful half of a long
+            # string, and a Questionable who did not practise is closer to Out
+            # than a Questionable who was full.
+            # nflverse writes both "Did Not Participate In Practice" and
+            # "Full Participation in Practice" — different verbs, different
+            # capitalisation. Matched on the tail rather than on one spelling.
+            "practice": _practice(r.get("practice_status")),
+            "rest": _REST in str(r.get("report_primary_injury")
+                                 or r.get("practice_primary_injury")
+                                 or "").lower(),
+        })
+    for c in cards.values():
+        blk = {}
+        for side in ("home", "away"):
+            team = c.get(side)
+            rows = by_team.get(team) or []
+            # Designations first, then whoever missed practice, then the
+            # limited. A full participant with no designation is listed last
+            # and is really only there so the section is not misread as a
+            # complete list of who is hurt.
+            rows = sorted(rows, key=lambda x: (
+                _STATUS_ORDER.get(x["status"], 3 + _PRACTICE_ORDER.get(
+                    x["practice"], 3)),
+                0 if (x["pos"] or "") in _SKILL else 1,
+                x["player"] or ""))
+            if rows:
+                blk[team] = rows
+        if blk:
+            c["injuries"] = blk
+            c["injury_key"] = sum(
+                1 for rows in blk.values() for x in rows
+                if (x["pos"] or "") in _SKILL
+                and not x["rest"]
+                and (x["status"] in ("Out", "Doubtful")
+                     or (not x["status"] and x["practice"] == "Did not practise")))
 
 
 def _attach_coaching(cards: dict, season: int | None,
@@ -1430,6 +1561,27 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
                 payload["games"]["public"] = pub
         except Exception as e:                                   # noqa: BLE001
             print(f"  public money unavailable ({e})", file=sys.stderr)
+    # And a flat lookup, so any board row can show a designation without the
+    # page walking sixteen games to find one player. Keyed by the same
+    # qualified name the boards use.
+    if payload.get("games"):
+        flat = {}
+        for c in (payload["games"].get("cards") or []):
+            for rows in (c.get("injuries") or {}).values():
+                for r in rows:
+                    # A practice-only row counts. Before Friday it is the
+                    # only thing there is, and "did not practise" is what a
+                    # designation is made of.
+                    if not r.get("player"):
+                        continue
+                    if r.get("status") or (r.get("practice") == "Did not practise"
+                                           and not r.get("rest")):
+                        flat[r["player"]] = {"s": r.get("status") or "No practice",
+                                             "i": r.get("injury"),
+                                             "p": r.get("practice"),
+                                             "r": bool(r.get("rest"))}
+        if flat:
+            payload["injuries"] = flat
     payload["bets"] = bets(s)
     payload["models"] = model_cards()
 

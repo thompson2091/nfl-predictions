@@ -459,8 +459,20 @@ function v3Row(row) {
   const inSlip = !!V.picks[row.id];
   const line = v3Line(row);
   const open = V.open === row.id;
-  const warn = row.status && row.status !== 'ACT'
-    ? '<span class="tag tag--warn">' + esc(row.status) + '</span>' : '';
+  // TWO SOURCES, AND THE REPORT WINS.
+  //
+  // `row.status` is the roster's code — ACT, RES, INA — which says whether a
+  // player is on the team. The injury REPORT says whether he will play, and
+  // it is the one that decides a bet: a Questionable receiver is active on
+  // the roster and a coin flip in a prop. Shown together where they differ.
+  const inj = (DATA.injuries || {})[row.player];
+  const warn = (inj
+    ? '<span class="' + (inj.s === 'Out' ? 'tag tag--bad'
+        : inj.s === 'Doubtful' ? 'tag tag--warn' : 'tag tag--warn') + '">'
+      + esc(inj.s) + (inj.i ? ' \u00b7 ' + esc(inj.i) : '') + '</span>'
+    : '')
+    + (row.status && row.status !== 'ACT'
+       ? '<span class="tag tag--warn">' + esc(row.status) + '</span>' : '');
   const ev = ev100(row);
   // The strip carries the numbers the old board carried, on the row, so the
   // common case needs no tap: our number, the book's, the gap, and what the
@@ -557,6 +569,11 @@ function v3Detail(row) {
   add('Board rank', has(row.rank) ? '#' + row.rank : null);
   add('Position', row.pos);
   add('Availability', row.status);
+  const rep = (DATA.injuries || {})[row.player];
+  if (rep) {
+    add('Injury report', rep.s + (rep.i ? ' \u00b7 ' + rep.i : ''));
+    add('Practice', rep.p);
+  }
   add('Our read', row.read);
   return '<div class="detail"><dl>'
     + f.map(x => '<div><dt>' + esc(x[0]) + '</dt><dd class="num">' + x[1]
@@ -735,6 +752,7 @@ function v3Game(gid) {
     + v3Seg('v3gtab', [['notes', 'Notes'], ['players', 'Players'],
                        ['bets', 'Bets'], ['score', 'Final score']], V.gameTab)
     + '</div>'
+    + v3Injuries(c)
     + v3PublicMoney(gid)
     + (V.gameTab === 'players' ? v3GamePlayers(gid)
      : V.gameTab === 'bets' ? v3GameBets(gid)
@@ -756,6 +774,37 @@ function v3Game(gid) {
 // interesting case is the DISAGREEMENT: tickets piling onto a side while the
 // number moves the other way is somebody with a strong opinion outweighing a
 // crowd, and that is the shape `rlm` was written to look for.
+// THE OFFICIAL INJURY REPORT, WHICH COSTS NOTHING.
+//
+// nflverse publishes it — status, body part and practice participation — so
+// there is no reason to spend a search on the one piece of real-time context
+// that is already free. Only players carrying a designation: a roster row
+// with no status is a player who is fine, and listing three hundred of those
+// per game buries the six that matter.
+//
+// Skill positions are marked, because those are the ones that move a player
+// market. An Out guard matters to the game; an Out receiver matters to a prop.
+function v3Injuries(c) {
+  const inj = c && c.injuries;
+  if (!inj) return '';
+  const teams = Object.keys(inj);
+  if (!teams.length) return '';
+  const tone = s => s === 'Out' ? 'tag tag--bad'
+    : s === 'Doubtful' ? 'tag tag--warn' : 'tag';
+  return '<div class="card"><div class="name">Injury report</div>'
+    + teams.map(t => '<div class="inj">'
+        + '<div class="eyebrow" style="margin-top:8px">' + esc(t) + '</div>'
+        + inj[t].map(r => '<div class="injrow">'
+            + '<span class="' + tone(r.status) + '">' + esc(r.status)
+            + '</span>'
+            + '<span class="injrow__n"><b>' + esc(r.player) + '</b>'
+            + '<i>' + esc([r.pos, r.injury, r.practice].filter(Boolean)
+                          .join(' \u00b7 ')) + '</i></span></div>').join('')
+        + '</div>').join('')
+    + '<p class="help">The league\u2019s own report, filed midweek. '
+    + 'Designations can change up to 90 minutes before kickoff.</p></div>';
+}
+
 function v3PublicMoney(gid) {
   const pub = ((DATA.games || {}).public || {})[gid];
   if (!pub) {
