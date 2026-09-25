@@ -2043,6 +2043,9 @@ function vModel() {
     if (!served(k)) return;
     h += (KIND[k] === 'ou' ? vOuModel(k) : vTdModel(k));
   }));
+  // The game model had no entry here at all. A page called Model that omits
+  // one is worse than one that says it cannot describe it.
+  h += vGameModel();
   return h + '<div style="height:24px"></div>';
 }
 
@@ -2061,6 +2064,64 @@ function vTdModel(key) {
     + keystat('Top pick scored', span(ss.map(s => s.top1)))
     + keystat('One of the top three', span(ss.map(s => s.top3)), null, true)
     + '</div>' + vFamilies(key, r) + '</div></div>';
+}
+
+//: Every model's card from the payload, by key.
+//: `HISTORY_KEY` maps the board's short market keys onto the long names the
+//: rest of the project uses — `rec` to `receptions` — and the model cards are
+//: keyed the long way for the same reason the history is. Looking one up by
+//: the short key returns nothing, which renders as a card with no features
+//: rather than as an error.
+const modelCard = k => ((DATA.models || [])
+  .filter(m => m.key === (HISTORY_KEY[k] || k))[0] || null);
+
+//: What a model is fitted on, as families rather than 369 column names. A
+//: list that long is not information; the family is what a reader can act on,
+//: and it is the shape the touchdown recipe already reports in.
+function vFamilies(card, key) {
+  const fam = (card || {}).families || [];
+  if (!fam.length) return '';
+  const open = S.fam['m:' + key];
+  let h = '<button class="btn btn--secondary btn--sm" style="margin-top:10px" '
+    + 'data-fam="m:' + esc(key) + '">'
+    + (open ? 'Hide' : 'Show') + ' ' + fam.length + ' feature families</button>';
+  if (open) {
+    h += '<div class="feats">' + fam.map(f =>
+      '<div class="feat"><span class="feat__n">' + esc(f.family) + '</span>'
+      + '<span class="feat__d num">' + f.n + '</span></div>').join('') + '</div>';
+  }
+  return h;
+}
+
+// The vegas-blind game model. Its numbers are WORSE than the market and that
+// is printed first, because someone reading a projected score off the Bets tab
+// deserves to know what is behind it before they use it.
+function vGameModel() {
+  const c = modelCard('game_model');
+  if (!c) return '';
+  const vm = c.vs_market || {};
+  const row = (label, pair) => !pair ? '' :
+    '<div class="mrow"><span>' + label + '</span>'
+    + '<span class="num">' + pair[0].toFixed(2) + '</span>'
+    + '<span class="num mrow__m">' + pair[1].toFixed(2) + '</span></div>';
+  return '<div class="sect"><div class="card" style="padding:16px">'
+    + '<div class="secthead" style="padding:0 0 8px"><span>' + esc(c.label)
+    + '</span><span>' + esc(c.predicts || '') + '</span></div>'
+    + '<div class="keystats" style="padding:0">'
+    + keystat('Features', String(c.n_features))
+    + keystat('Dropped', String(c.dropped || 0), 'bad', true)
+    + keystat('Sees the line', 'no', null, true)
+    + '</div>'
+    + '<div class="mtable"><div class="mrow mrow--h"><span>Mean error</span>'
+    + '<span>ours</span><span>market</span></div>'
+    + row('Margin', vm.margin) + row('Total', vm.total) + '</div>'
+    + '<div class="prose" style="padding:10px 0 0">' + esc(c.caveat || '') + '</div>'
+    + (c.dropped ? '<div class="prose" style="padding:6px 0 0">'
+        + c.dropped + ' features are withheld: ' + esc(c.dropped_why || '')
+        + '. They made an earlier version appear to beat the closing total.'
+        + '</div>' : '')
+    + vFamilies(c, 'game_model')
+    + '</div></div>';
 }
 
 function vOuModel(key) {
@@ -2090,7 +2151,24 @@ function vOuModel(key) {
               has(cal) ? (cal >= 0 ? 'good' : 'bad') : null, true)
     + '</div>'
     + '<div class="prose" style="padding:12px 0 0">' + esc(ouModelNote(m, cal))
-    + '</div></div></div>';
+    + '</div>'
+    // What it is fitted on. These four markets reported a calibration number
+    // and never said what was behind it, while the touchdown boards listed
+    // every family — the same page describing half its models.
+    + ouAlgoNote(key)
+    + vFamilies(modelCard(key), key)
+    + '</div></div>';
+}
+
+function ouAlgoNote(key) {
+  const c = modelCard(key);
+  if (!c) return '';
+  return '<div class="prose" style="padding:8px 0 0"><b>'
+    + esc(c.algorithm || '') + '</b>'
+    + (has(c.n_features) ? ', on ' + c.n_features.toLocaleString() + ' features'
+       : '')
+    + (c.fit_date ? ', fitted ' + esc(String(c.fit_date).slice(0, 10)) : '')
+    + '.</div>';
 }
 function ouModelNote(m, cal) {
   const w = has(m.blend) ? Math.round(m.blend * 100) : null;

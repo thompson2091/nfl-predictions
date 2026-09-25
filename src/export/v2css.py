@@ -388,6 +388,22 @@ EXTRA_CSS = """
 .blbar__f--won{background:var(--good)}
 .blbar__f--lost{background:var(--bad)}
 
+/* ---------- model comparison ---------- */
+/* Ours beside the market's, on the same row. The number that matters is the
+   gap, and two figures in separate cards cannot be subtracted by eye. */
+.mtable{margin-top:var(--space-3)}
+.mrow{
+  display:grid;grid-template-columns:minmax(0,1fr) 64px 64px;
+  gap:var(--space-2);padding:var(--space-2) 0;font-size:14px;
+}
+.mrow + .mrow{border-top:var(--hairline) solid var(--separator)}
+.mrow > span:not(:first-child){text-align:right}
+.mrow--h{
+  font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.mrow__m{color:var(--ink-muted)}
+
 /* ---------- picker ---------- */
 /* One control that opens a sheet, in place of a horizontal row of pills.
    Sixteen fixtures in a scroller put most of them off-screen with no way to

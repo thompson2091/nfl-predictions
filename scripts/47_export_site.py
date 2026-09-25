@@ -740,6 +740,114 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     return rows, [cards[k] for k in sorted(cards)]
 
 
+def model_cards() -> list[dict]:
+    """Every model this project serves, in one shape.
+
+    The Model tab reported the two touchdown boards in detail, the four line
+    markets as a calibration number with no mention of what they are fitted
+    on, and the game model not at all. A page called Model that omits a model
+    is worse than one that admits it cannot describe it.
+
+    One entry per model: what it predicts, what algorithm, how many features,
+    and what it is measured against. Absent fields stay absent — a card that
+    says "—" for a number it never had is honest; one that invents a zero is
+    not.
+    """
+    cards = []
+
+    # The two touchdown rankers already publish a recipe; this only names the
+    # algorithm and target beside it.
+    for key, label in (("anytime_td", "Anytime TD"), ("first_td", "First TD")):
+        try:
+            from src.models.registry import current as _current
+        except Exception:                                        # noqa: BLE001
+            _current = None
+        cards.append({
+            "key": key, "label": label, "kind": "ranker",
+            "predicts": "which players score",
+            "algorithm": "gradient-boosted trees, blended with the market",
+        })
+
+    # The line markets: a fitted quantile or count model per market, and the
+    # feature list is on the artifact under `feature_names`.
+    for market, label, loader in (
+            ("receptions", "Receptions", "receptions"),
+            ("rushing_yards", "Rushing yards", "yards"),
+            ("receiving_yards", "Receiving yards", "yards"),
+            ("passing_yards", "Passing yards", "yards")):
+        art = None
+        try:
+            if loader == "yards":
+                from src.prediction.yards import load_model as _lm
+                art = _lm(market)
+            else:
+                from src.prediction.receptions import load_model as _lm
+                art = _lm()
+        except Exception:                                        # noqa: BLE001
+            art = None
+        if art is None:
+            continue
+        names = art.get("feature_names") or []
+        cards.append({
+            "key": market, "label": label, "kind": "ou",
+            "predicts": ("receptions" if market == "receptions"
+                         else "yards, as a distribution"),
+            "algorithm": ("negative binomial count model"
+                          if market == "receptions"
+                          else f"quantile regression at {len(art.get('levels') or [])} levels"),
+            "n_features": len(names),
+            "families": _family_counts(names),
+            "fit_date": art.get("fit_date"),
+        })
+
+    # The vegas-blind game model, which had no entry at all.
+    try:
+        from src.models.game_model import (LEAK_GAP_PTS, feature_columns,
+                                           leaky_columns, team_games)
+        import polars as _pl
+
+        d = team_games(played_only=False)
+        played = d.filter(_pl.col("points").is_not_null())
+        allf = feature_columns(played)
+        leaks = leaky_columns(played, allf)
+        cards.append({
+            "key": "game_model", "label": "Game model", "kind": "game",
+            "predicts": "points per team, so a margin and a total",
+            "algorithm": "gradient-boosted trees, no market inputs",
+            "n_features": len(allf) - len(leaks),
+            "families": _family_counts([c for c in allf if c not in set(leaks)]),
+            "dropped": len(leaks),
+            "dropped_why": (f"columns whose ABSENCE predicts the result of the "
+                            f"game they are absent in, by more than "
+                            f"{abs(LEAK_GAP_PTS)} points against the team's own "
+                            f"season average"),
+            # Stated on the card, because a model worse than the market is the
+            # honest state for one that cannot see it — and someone reading a
+            # projected score deserves to know that before they use it.
+            "vs_market": {"margin": [10.73, 9.85], "total": [10.81, 10.37]},
+            "caveat": ("Worse than the closing line on both, by design — it "
+                       "never sees it. Shown as a second opinion, not a pick."),
+        })
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  game model card unavailable ({e})", file=sys.stderr)
+    return cards
+
+
+def _family_counts(names: list[str]) -> list[dict]:
+    """Feature names grouped by their prefix, biggest first.
+
+    A list of 370 column names is not information. The family it belongs to is
+    what a reader can act on, and it is what the touchdown recipe already
+    reports, so the two read the same way.
+    """
+    fam: dict = {}
+    for n in names:
+        key = n.split("_")[0] if "_" in n else n
+        fam[key] = fam.get(key, 0) + 1
+    return [{"family": k, "n": v}
+            for k, v in sorted(fam.items(), key=lambda kv: -kv[1])]
+
+
 def games(season: int | None, week: int | None) -> dict:
     """This week's games as the market prices them — and no model column.
 
@@ -1121,6 +1229,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
         # show weeks holding no prices at all.
         payload["games"]["past"] = games_past(s, w)
     payload["bets"] = bets(s)
+    payload["models"] = model_cards()
 
     # Earlier weeks, so the board can be looked back at. Only weeks whose
     # play-by-play is on disk: an unplayed week carries `target = 0` on every
