@@ -904,7 +904,8 @@ function v3GameNotes(gid, cats, shown) {
   const pills = cats.map(k => '<button class="cat" data-v3cat="' + esc(k)
     + '" aria-pressed="' + (V.cat === k) + '">'
     + esc(k === 'all' ? 'All' : k) + '</button>').join('');
-  return '<h2 class="h1" style="font-size:22px;line-height:28px;margin-top:20px">'
+  return v3Unfold()
+    + '<h2 class="h1" style="font-size:22px;line-height:28px;margin-top:20px">'
     + 'What our AI noticed</h2>'
     + '<p class="help">Written from this week’s prices and our model’s '
     + 'numbers. Every figure below is computed; only the wording is written.</p>'
@@ -915,6 +916,41 @@ function v3GameNotes(gid, cats, shown) {
     + 'They do not tell you what to bet.</p>';
 }
 
+// HOW THE GAME MAY UNFOLD, as a partition that adds to 100%.
+//
+// Counted, not reasoned: every row is real games hung at this spread and
+// total, grouped by how they finished. Overlapping scenarios — "one-score
+// 50%, shootout 31%, upset 28%" — read as a ranking and cannot be one,
+// because they add to more than everything that can happen and nothing on
+// screen says which of them overlap. This column adds up.
+function v3Unfold() {
+  const c = ((DATA.games || {}).cards || []).filter(
+    x => x.game_id === V.game)[0];
+  const u = c && c.unfold;
+  if (!u || u.thin || !u.cells || !u.cells.length) return '';
+  const h = u.headline || {};
+  const chip = (v, l) => '<div class="fig"><b class="num">' + v + '</b>'
+    + '<span>' + esc(l) + '</span></div>';
+  return '<h2 class="h1" style="font-size:22px;line-height:28px;'
+    + 'margin-top:20px">How it may unfold</h2>'
+    + '<p class="help">Counted from ' + u.n + ' past games hung at this '
+    + 'spread and total. Not a forecast of this one \u2014 what happened in '
+    + 'the ones priced like it.</p>'
+    + '<div class="card"><div class="figs">'
+    + chip(h.one_score.pct.toFixed(0) + '%', 'within one score')
+    + chip(h.upset.pct.toFixed(0) + '%', u.dog + ' wins')
+    + chip(h.shootout.pct.toFixed(0) + '%', 'high scoring')
+    + '</div><div style="margin-top:12px">'
+    + u.cells.filter(x => x.pct >= 1).map(x =>
+        '<div class="mrow"><span class="mrow__l">' + esc(x.label) + '</span>'
+        + '<div class="mbar"><i style="width:' + Math.min(100, Math.max(2, x.pct * 4))
+        + '%"></i></div>'
+        + '<span class="mrow__v num">' + x.pct.toFixed(0) + '%</span></div>')
+      .join('')
+    + '</div><p class="help" style="margin-top:8px">These are every way the '
+    + 'game can go, so the column adds to 100.</p></div>';
+}
+
 function v3Note(n) {
   const figs = (n.stats || []).map(s =>
     '<div class="fig"><b class="num">' + esc(s.v) + '</b><span>' + esc(s.l)
@@ -922,7 +958,8 @@ function v3Note(n) {
   // `context` before the rest: a coaching note that renders unlabelled reads
   // as a reason to bet, and `situational_features` measured thirteen of these
   // on 2,853 games without one of them clearing the vig.
-  const flag = n.context ? '<span class="tag">Context, not an edge</span>'
+  const flag = n.counted ? '<span class="tag tag--good">Counted</span>'
+    : n.context ? '<span class="tag">Context, not an edge</span>'
     : n.measured ? '<span class="tag tag--good">Measured</span>'
     : n.model ? '<span class="tag tag--ours">Our model</span>'
     : n.avoid ? '<span class="tag tag--bad">Avoid</span>' : '';
@@ -984,13 +1021,34 @@ function v3Questions(gid) {
      + v3Pct(longs[0].book) + '. He misses most of the time — that is what '
      + 'the price means — but a $10 bet wins $'
      + v3Win(10, longs[0].odds).toFixed(2) + '.' });
-  if (has(c.total) && has(c.model_total)) out.push({ q: 'Will it be high scoring?',
-    a: 'The books set the total at ' + c.total + ' points. Our model expects '
-     + 'about ' + c.model_total + ', a '
-     + (Math.abs(c.model_total - c.total) < 3 ? 'small' : 'clear') + ' lean '
-     + 'toward ' + (c.model_total > c.total ? 'more' : 'fewer') + ' points. '
-     + 'Our model does not see the betting line, so it is an independent '
-     + 'read rather than a restatement of the book’s.' });
+  // Answered from the RECORD where there is one, not from the model alone.
+  // "our model expects 51.1 and cannot see the line" invites the obvious
+  // question and answers nothing a reader can use; "51% of games priced here
+  // went over" is the same question answered with games.
+  const sc = c.scores;
+  if (has(c.total)) {
+    let a = 'The books set the total at ' + c.total + ' points. ';
+    if (sc && !sc.thin) {
+      a += 'In ' + sc.n + ' past games priced near this number, '
+         + sc.over.pct.toFixed(0) + '% went over and the average game '
+         + 'finished on ' + sc.mean_total + '. ';
+    }
+    if (has(c.model_total)) {
+      a += 'Our own model, built without sight of the line so that it can '
+         + 'disagree with it, expects ' + c.model_total + '.';
+    }
+    out.push({ q: 'Will it be high scoring?', a: a });
+  }
+  const u = c.unfold;
+  if (u && !u.thin && u.cells && u.cells.length) {
+    out.push({ q: 'How is this likely to go?',
+      a: 'Across ' + u.n + ' games priced like this one, the commonest shape '
+       + 'was ' + u.cells[0].label.toLowerCase() + ' at '
+       + u.cells[0].pct.toFixed(0) + '%. '
+       + u.headline.one_score.pct.toFixed(0) + '% finished within one score, '
+       + 'and ' + u.dog + ' won outright '
+       + u.headline.upset.pct.toFixed(0) + '% of the time.' });
+  }
   return out;
 }
 

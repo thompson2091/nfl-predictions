@@ -88,3 +88,41 @@ def test_it_finds_a_real_sample_on_a_real_line():
                        "total": 44.5})
     assert got["n"] >= sd.MIN_COMPARABLES, (
         f"only {got['n']} comparable games at a bog-standard line")
+
+
+def test_the_scenarios_partition_rather_than_overlap():
+    """A list of overlapping scenarios reads as a ranking and cannot be one.
+
+    "One-score 50%, shootout 31%, upset 28%" adds to more than everything that
+    can happen, and nothing on screen says which of them overlap. The cells
+    are margin band crossed with over/under, so they are exclusive and
+    exhaustive and the column can be read straight down.
+    """
+    sc = sd.scenarios_for_card({"home": "GB", "away": "ATL", "spread": -6.5,
+                                "total": 44.5}, _hist())
+    total = sum(c["n"] for c in sc["cells"])
+    assert total == sc["n"], (
+        f"cells cover {total} of {sc['n']} games; the partition leaks")
+    assert abs(sum(c["pct"] for c in sc["cells"]) - 100) < 0.5
+
+
+def test_the_favourite_is_named_rather_than_called_home():
+    """"Home by 8-14" is a sentence a reader has to translate."""
+    sc = sd.scenarios_for_card({"home": "GB", "away": "ATL", "spread": -6.5,
+                                "total": 44.5}, _hist())
+    assert sc["fav"] == "GB" and sc["dog"] == "ATL"
+    assert any("GB" in c["label"] for c in sc["cells"])
+    assert not any("Home" in c["label"] for c in sc["cells"])
+    # And it follows the spread rather than the venue.
+    away_fav = sd.scenarios_for_card({"home": "GB", "away": "ATL",
+                                      "spread": 6.5, "total": 44.5}, _hist())
+    assert away_fav["fav"] == "ATL"
+
+
+def test_the_headline_numbers_are_labelled_as_overlapping():
+    """They do overlap, which is why they are separate from the partition."""
+    sc = sd.scenarios_for_card({"home": "GB", "away": "ATL", "spread": -6.5,
+                                "total": 44.5}, _hist())
+    assert set(sc["headline"]) == {"one_score", "blowout", "upset",
+                                   "shootout", "grind"}
+    assert all("lo" in v and "hi" in v for v in sc["headline"].values())

@@ -227,3 +227,82 @@ def ladders_for_card(card: dict, hist: pl.DataFrame | None = None) -> dict | Non
         return None
     return ladders(-float(sp), float(tot), card.get("home") or "HOME",
                    card.get("away") or "AWAY", hist=hist)
+
+
+def scenarios(spread: float, total: float, home: str, away: str,
+              hist: pl.DataFrame | None = None) -> dict:
+    """How the game is likely to unfold, as a partition that sums to 100%.
+
+    Margin band crossed with over/under, counted over the comparable games.
+    **Mutually exclusive and exhaustive on purpose.** A list of overlapping
+    scenarios — "one-score game 46%, shootout 31%, upset 28%" — reads as a
+    ranking and cannot be one, because those add to more than everything that
+    can happen and nobody can tell which of them overlap. A partition can be
+    read straight down: these are all the ways it goes, and the column adds up.
+
+    The favourite is named rather than "home", because "home by 8-14" is a
+    sentence a reader has to translate and "KC by 8-14" is not.
+
+    Nothing here is a projection of THIS game. It is the record of games the
+    market priced the same way, which is a different and more defensible
+    claim, and `n` travels with it so the reader can see how much record.
+    """
+    c = comparables(spread, total, hist=hist)
+    n = c.height
+    fav, dog = (home, away) if spread > 0 else (away, home)
+    out = {"n": n, "home": home, "away": away, "fav": fav, "dog": dog,
+           "total": total, "thin": n < MIN_COMPARABLES}
+    if n == 0:
+        return out
+
+    # Margin from the FAVOURITE's point of view, so the bands read the same
+    # way whichever side is favoured.
+    m = pl.col("margin") if spread > 0 else -pl.col("margin")
+    bands = [
+        ("pulls away", f"{fav} pulls away", m >= 15),
+        ("comfortable", f"{fav} wins comfortably", (m >= 8) & (m < 15)),
+        ("narrow", f"{fav} edges it", (m >= 1) & (m < 8)),
+        ("upset", f"{dog} wins outright", m <= -1),
+        ("tie", "It ends level", m == 0),
+    ]
+    over = pl.col("total") > total
+    cells = []
+    for key, label, expr in bands:
+        for side, oexpr in (("over", over), ("under", ~over)):
+            k = c.filter(expr & oexpr).height
+            if not k:
+                continue
+            lo, hi = _wilson(k, n)
+            cells.append({
+                "key": f"{key}_{side}", "band": key, "side": side,
+                "label": label + (", high scoring" if side == "over"
+                                  else ", low scoring"),
+                "n": k, "pct": round(k / n * 100, 1),
+                "lo": round(lo * 100, 1), "hi": round(hi * 100, 1)})
+    cells.sort(key=lambda x: -x["n"])
+    out["cells"] = cells
+
+    # The headline numbers a reader wants without reading a table. These DO
+    # overlap each other and are labelled separately for that reason.
+    def share(expr):
+        k = c.filter(expr).height
+        lo, hi = _wilson(k, n)
+        return {"n": k, "pct": round(k / n * 100, 1),
+                "lo": round(lo * 100, 1), "hi": round(hi * 100, 1)}
+
+    out["headline"] = {
+        "one_score": share(m.abs() <= 8),
+        "blowout": share(m.abs() >= 17),
+        "upset": share(m <= -1),
+        "shootout": share(pl.col("total") >= total + 7),
+        "grind": share(pl.col("total") <= total - 7),
+    }
+    return out
+
+
+def scenarios_for_card(card: dict, hist: pl.DataFrame | None = None):
+    sp, tot = card.get("spread"), card.get("total")
+    if sp is None or tot is None:
+        return None
+    return scenarios(-float(sp), float(tot), card.get("home") or "HOME",
+                     card.get("away") or "AWAY", hist=hist)

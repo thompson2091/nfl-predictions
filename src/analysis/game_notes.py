@@ -136,6 +136,7 @@ def select(payload: dict, card: dict) -> list[dict]:
     notes += _line_notes(payload, card, gid)
     notes += _player_notes(payload, card, gid)
     notes += _coach_notes(card)
+    notes += _unfold_note(card)
     for i, n in enumerate(notes):
         n["id"] = f"{gid}:{n['kind']}"
         n["order"] = i
@@ -156,6 +157,7 @@ def _headline(n: dict) -> str:
         "shop": "One book is paying more than the rest",
         "td_value": "The best-priced touchdown bet in this game",
         "td_fade": "A touchdown price we think is too high",
+        "unfold": "How games priced like this one have finished",
     }.get(n["kind"], {
         "fade_under": "A player we rate below his touchdown price",
         "yards_edge": "We project this player above his line",
@@ -409,6 +411,48 @@ def _player_notes(payload: dict, card: dict, gid: str) -> list[dict]:
     return out
 
 
+def _unfold_note(card: dict) -> list[dict]:
+    """How the game is likely to go, from games the market priced the same way.
+
+    **The numbers are counted, not reasoned.** Every figure comes from
+    `score_dist.scenarios`, which partitions comparable games by margin band
+    and over/under, so the column sums to 100 and a reader can go down it.
+    The model writes the sentence around them and, as everywhere here, may not
+    introduce a figure that is not in the brief.
+
+    Deliberately NOT a prediction of this game. It is the record of games hung
+    at this spread and total, which is a weaker claim and a defensible one,
+    and the wording has to keep that distinction.
+    """
+    u = card.get("unfold")
+    if not u or u.get("thin") or not u.get("cells"):
+        return []
+    h = u.get("headline") or {}
+    top = u["cells"][:3]
+    ways = "; ".join(f"{c['label']} {c['pct']}%" for c in top)
+    return [{
+        "kind": "unfold", "cat": "How it may go", "counted": True,
+        "stats": [{"v": f"{h['one_score']['pct']}%", "l": "within one score"},
+                  {"v": f"{h['upset']['pct']}%", "l": f"{u['dog']} wins"},
+                  {"v": f"{h['shootout']['pct']}%", "l": "high scoring"}],
+        "brief": (
+            f"Across {u['n']} past games hung at this spread and total, the "
+            f"three commonest shapes were: {ways}. "
+            f"{h['one_score']['pct']}% finished within one score, "
+            f"{h['blowout']['pct']}% were decided by 17 or more, and "
+            f"{u['dog']} won outright {h['upset']['pct']}% of the time. "
+            f"Scoring ran at least 7 above the posted total in "
+            f"{h['shootout']['pct']}% and at least 7 below in "
+            f"{h['grind']['pct']}%. These are counted outcomes of comparable "
+            f"games, not a forecast of this one."),
+        "fallback": (
+            f"In {u['n']} games priced like this one, {h['one_score']['pct']}% "
+            f"finished within one score and {u['dog']} won outright "
+            f"{h['upset']['pct']}% of the time."),
+        "pick": f"{card.get('away')} at {card.get('home')}",
+    }]
+
+
 def _rate(card: dict, side: str, stat: str) -> tuple:
     """A rate and its sample size, or (None, None) when it has no business
     being printed. The two always travel together."""
@@ -607,6 +651,9 @@ RULES, all of them hard:
 - Say which way the disagreement runs in plain words: "we make him likelier
   than the price does", not "the price is off".
 - A note marked measured has real historical backing; it may say so plainly.
+- A note marked counted comes from counting real past games, not from
+  reasoning. Say so plainly: these are what happened in comparable games, not
+  a forecast of this one. Do not write it as a prediction.
 - A note marked context is background. Keep the measured figure its facts
   carry, stated as a fact about the angle rather than as an apology.
 - No exclamation marks, no hype, no "smash", "lock" or "value play".
@@ -645,7 +692,7 @@ def phrase(notes: list[dict], card: dict, use_cache: bool = True) -> list[dict]:
     listing = "\n".join(
         f'- id "{n["id"]}": {n["brief"]}'
         + "".join(f" [{f}]" for f in ("model", "avoid", "measured",
-                                      "context") if n.get(f))
+                                      "context", "counted") if n.get(f))
         + (f" [{n['lean']}]" if n.get("lean") else "")
         for n in notes)
     try:

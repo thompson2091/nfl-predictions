@@ -757,7 +757,8 @@ def _attach_scores(cards: dict) -> None:
     """
     try:
         from src.models.score_dist import (for_card, history,
-                                            ladders_for_card)
+                                            ladders_for_card,
+                                            scenarios_for_card)
         hist = history()
     except Exception as e:                                       # noqa: BLE001
         print(f"  score distribution unavailable ({e})", file=sys.stderr)
@@ -771,6 +772,9 @@ def _attach_scores(cards: dict) -> None:
         lad = ladders_for_card(c, hist)
         if lad:
             c["ladders"] = lad
+        unf = scenarios_for_card(c, hist)
+        if unf:
+            c["unfold"] = unf
         # OUR MODEL'S WIN PROBABILITY, VIA THE SAME DISTRIBUTION.
         #
         # `game_model` predicts a margin and a total, not a chance of winning,

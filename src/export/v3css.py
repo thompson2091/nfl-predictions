@@ -351,8 +351,8 @@ button{cursor:pointer}
 .quote i{font-style:normal;color:var(--mut2);font-size:12px}
 
 /* ---- final-score distribution ---- */
-.mrow{display:grid;grid-template-columns:96px 1fr 52px;align-items:center;
-  gap:10px;padding:5px 0}
+.mrow{display:grid;grid-template-columns:minmax(96px,1.6fr) 1fr 46px;
+  align-items:center;gap:10px;padding:5px 0}
 .mrow__l{font-size:13px;color:var(--mut)}
 .mrow__v{font-size:13px;font-weight:700;text-align:right}
 .mbar{height:10px;border-radius:999px;background:var(--sunk);overflow:hidden}

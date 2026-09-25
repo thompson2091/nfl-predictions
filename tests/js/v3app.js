@@ -441,4 +441,30 @@ if (cards.length >= 2) {
   V.game = null; V.tab = 'week'; V.gameTab = 'notes';
 }
 
+// ── How the game may unfold ─────────────────────────────────────────────
+//
+// Counted, not reasoned. A partition rather than a list of overlapping
+// scenarios: "one-score 50%, shootout 31%, upset 28%" reads as a ranking and
+// cannot be one, because it adds to more than everything that can happen.
+if (cards.length) {
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'notes';
+  V.cat = 'all'; render();
+  const h = app();
+  ok('the notes tab opens with how the game may unfold',
+     h.indexOf('How it may unfold') >= 0);
+  ok('and it comes before the written notes',
+     h.indexOf('How it may unfold') < h.indexOf('What our AI noticed'));
+  // That the cells PARTITION is a property of the model and is tested in
+  // test_score_dist, on a frame whose answer is known. What matters here is
+  // that every cell reaches the screen with its percentage.
+  const u = (cards[0] || {}).unfold;
+  if (u && u.cells) {
+    ok('every scenario reaches the screen',
+       u.cells.every(cl => h.indexOf(cl.label) >= 0));
+    ok('each with its percentage',
+       u.cells.every(cl => h.indexOf(cl.pct.toFixed(0) + '%') >= 0));
+  }
+  V.game = null; V.tab = 'week'; V.gameTab = 'notes';
+}
+
 done();

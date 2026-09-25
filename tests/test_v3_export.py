@@ -61,6 +61,27 @@ def payload_v3():
                                     "pct": 1.0}],
                         "margins": [{"band": "GB by 15+", "n": 106,
                                      "pct": 26.3, "lo": 22.2, "hi": 30.8}]},
+             "unfold": {"n": 403, "thin": False, "home": "GB", "away": "ATL",
+                        "fav": "GB", "dog": "ATL", "total": 44.5,
+                        "cells": [
+                            {"key": "narrow_over", "band": "narrow",
+                             "side": "over", "label": "GB edges it, high scoring",
+                             "n": 66, "pct": 16.4, "lo": 13.1, "hi": 20.3},
+                            {"key": "upset_under", "band": "upset",
+                             "side": "under",
+                             "label": "ATL wins outright, low scoring",
+                             "n": 61, "pct": 15.1, "lo": 12.0, "hi": 18.9}],
+                        "headline": {
+                            "one_score": {"n": 202, "pct": 50.1, "lo": 45.3,
+                                          "hi": 55.0},
+                            "blowout": {"n": 107, "pct": 26.6, "lo": 22.5,
+                                        "hi": 31.1},
+                            "upset": {"n": 115, "pct": 28.5, "lo": 24.3,
+                                      "hi": 33.1},
+                            "shootout": {"n": 126, "pct": 31.3, "lo": 26.9,
+                                         "hi": 36.0},
+                            "grind": {"n": 108, "pct": 26.8, "lo": 22.7,
+                                      "hi": 31.3}}},
              "ladders": {"n": 403, "thin": False, "home": "GB", "away": "ATL",
                          "teams": [{"team": "GB", "rows": [
                              {"line": 20.5, "n": 286, "pct": 71.0,
@@ -139,7 +160,8 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "game tab bets renders",
                  "a coaching note is labelled as context",
                  "the final-score tab renders",
-                 "the bets tab is a ladder, not a list of books"):
+                 "the bets tab is a ladder, not a list of books",
+                 "the notes tab opens with how the game may unfold"):
         assert path in r.stdout, f"{path!r} never ran:\n{r.stdout}"
 
 
