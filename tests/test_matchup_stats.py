@@ -49,12 +49,14 @@ def test_the_edge_flips_sign_where_lower_is_better():
     """Sack rate is a rate you want LOW. An offence beating the defence's sack
     rate is being sacked more often than that defence usually manages, which is
     bad — and a single sign for every metric would paint it green."""
-    stats = {"GB": {"games": 3, "off": {"sack_rate": 0.10,
-                                        "early_down_success": 0.50},
-                    "def": {"sack_rate": 0.05, "early_down_success": 0.40}},
-             "ATL": {"games": 3, "off": {"sack_rate": 0.04,
-                                         "early_down_success": 0.42},
-                     "def": {"sack_rate": 0.06, "early_down_success": 0.45}}}
+    # Nested by SPLIT: the module builds full game, first half and second
+    # half from one read, and `matchup` takes which one to report.
+    stats = {"GB": {"games": 3, "full": {
+                        "off": {"sack_rate": 0.10, "early_down_success": 0.50},
+                        "def": {"sack_rate": 0.05, "early_down_success": 0.40}}},
+             "ATL": {"games": 3, "full": {
+                        "off": {"sack_rate": 0.04, "early_down_success": 0.42},
+                        "def": {"sack_rate": 0.06, "early_down_success": 0.45}}}}
     rows = ms.matchup({"home": "GB", "away": "ATL"}, stats)
     sack = [r for r in rows if r["key"] == "sack_rate"][0]
     gb = [p for p in sack["sides"] if p["offense"] == "GB"][0]
@@ -67,8 +69,9 @@ def test_the_edge_flips_sign_where_lower_is_better():
 
 def test_both_halves_of_the_matchup_are_returned():
     """A matchup has two, and showing one is showing half a game."""
-    stats = {t: {"games": 3, "off": {"epa_play": 0.1},
-                 "def": {"epa_play": 0.0}} for t in ("GB", "ATL")}
+    stats = {t: {"games": 3, "full": {"off": {"epa_play": 0.1},
+                                      "def": {"epa_play": 0.0}}}
+             for t in ("GB", "ATL")}
     rows = ms.matchup({"home": "GB", "away": "ATL"}, stats)
     assert len(rows[0]["sides"]) == 2
     assert {p["offense"] for p in rows[0]["sides"]} == {"GB", "ATL"}
@@ -80,8 +83,9 @@ def test_a_proxy_is_declared_a_proxy():
     identical to one generating none."""
     by_key = {m[0]: m for m in ms.METRICS}
     assert "PROXY" in by_key["sack_rate"][3]
-    stats = {t: {"games": 3, "off": {"sack_rate": 0.06},
-                 "def": {"sack_rate": 0.05}} for t in ("GB", "ATL")}
+    stats = {t: {"games": 3, "full": {"off": {"sack_rate": 0.06},
+                                      "def": {"sack_rate": 0.05}}}
+             for t in ("GB", "ATL")}
     rows = ms.matchup({"home": "GB", "away": "ATL"}, stats)
     assert rows[0]["proxy"] is True
 
@@ -99,3 +103,27 @@ def test_what_could_not_be_built_is_named_with_its_reason():
 
 def test_a_team_with_no_history_is_skipped_rather_than_half_rendered():
     assert ms.matchup({"home": "GB", "away": "ATL"}, {"GB": {"games": 1}}) is None
+
+
+def test_each_split_is_reported_separately():
+    """A first-half number is a different fact from a season-long one: a team
+    that scripts its opening drives shows up there and is invisible in the
+    total. Same eight rows, three views, not twenty-four rows."""
+    stats = {t: {"games": 3,
+                 "full": {"off": {"epa_play": 0.10}, "def": {"epa_play": 0.0}},
+                 "h1": {"off": {"epa_play": 0.30}, "def": {"epa_play": 0.0}},
+                 "h2": {"off": {"epa_play": -0.10}, "def": {"epa_play": 0.0}}}
+             for t in ("GB", "ATL")}
+    card = {"home": "GB", "away": "ATL"}
+    full = ms.matchup(card, stats, "full")[0]["sides"][0]["off_val"]
+    h1 = ms.matchup(card, stats, "h1")[0]["sides"][0]["off_val"]
+    h2 = ms.matchup(card, stats, "h2")[0]["sides"][0]["off_val"]
+    assert (full, h1, h2) == (0.10, 0.30, -0.10)
+    assert [h[0] for h in ms.HALVES] == ["full", "h1", "h2"]
+
+
+def test_overtime_is_in_neither_half():
+    """It is a different game with different rules and under 1% of plays;
+    folding it into the second half would make that split mean something
+    slightly different for the handful of teams who played one."""
+    assert [h[2] for h in ms.HALVES] == [None, "Half1", "Half2"]

@@ -15,7 +15,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'V3CLICKS', 'V3HIST', 'v3Questions', 'v3Value', 'v3Outcomes', 'v3Legs',
    'rowsFor', 'served', 'DATA', 'V3SORTS', 'v3Sorted', 'V3CACHE', 'v3Same',
    'isFav', 'toggleFav', 'v3Slipbar', 'v3Sheet', 'V3SHEETS', 'v3Rungs',
-   'v3Num', 'v3Rows', 'v3LadderSummary']);
+   'v3Num', 'v3Rows', 'v3LadderSummary', 'v3Questions', 'v3AskSend']);
 const { V, render, v3Screen, v3Games, v3Game, v3Slip, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
         rowsFor, served, DATA } = x;
@@ -187,8 +187,11 @@ if (cards.length) {
 }
 // Attributes the `input`/`change` listeners own rather than the click
 // listener: the week and game selects, the search box and the ladder fields.
+// Attributes owned by a listener other than the click one: the selects
+// (`change`), the text fields (`input`), and the ask form (`submit`).
 const handled = new Set(V3CLICKS.concat(
-  ['v3week', 'v3gamesel', 'v3sortsel', 'v3gameto', 'v3q', 'v3l']));
+  ['v3week', 'v3gamesel', 'v3sortsel', 'v3gameto', 'v3q', 'v3q2', 'v3l',
+   'v3askform']));
 const dead = [...seen].filter(k => !handled.has(k));
 ok('every control the screens emit is wired', dead.length === 0,
    'emitted and never handled: ' + dead.join(', '));
@@ -695,6 +698,52 @@ if (cards.length) {
     V.tab = 'games';
   }
   V.week = null;
+}
+
+// ── The ask box sends a game id and a question, and nothing else ────────
+if (cards.length) {
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'notes';
+  V.answer = ''; V.asking = false; render();
+  const h = app();
+  ok('the ask box takes a typed question', h.indexOf('data-v3q2') >= 0);
+  // The quick questions are computed from priced rows IN THIS GAME, so a
+  // fixture whose players belong elsewhere legitimately has none. What must
+  // always hold is that the box is there either way.
+  if (x.v3Questions(cards[0].game_id).length) {
+    ok('and the quick questions are still there', h.indexOf('data-v3ask=') >= 0);
+  } else {
+    ok('the box stands alone when no quick question applies',
+       h.indexOf('data-v3q2') >= 0);
+  }
+  // Thinking, answered and failed are three distinct states, and none of
+  // them may be silence.
+  V.asking = true; render();
+  ok('a pending question says so', app().indexOf('Thinking') >= 0);
+  V.asking = false; V.answerErr = 'nope'; render();
+  ok('and a failure says so', app().indexOf('nope') >= 0);
+  V.answerErr = ''; V.answer = 'An answer.'; V.answerLive = true; render();
+  ok('and an answer is marked as the model\u2019s',
+     app().indexOf('Answered by our model') >= 0);
+  V.answer = ''; V.answerLive = false; V.game = null; V.tab = 'props';
+}
+
+// ── Half splits on the matchup tab ──────────────────────────────────────
+if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'edge';
+  V.half = 'full'; render();
+  ok('the matchup offers the halves', app().indexOf('data-v3half=') >= 0);
+  const hs = Object.keys(cards[0].matchup.splits);
+  hs.forEach(k => {
+    V.half = k;
+    let e = null;
+    try { render(); } catch (ex) { e = ex; }
+    ok('matchup split ' + k + ' renders', !e, e && e.message);
+  });
+  // A split the payload does not carry must fall back rather than blank.
+  V.half = 'nonsense'; render();
+  ok('an unknown split falls back to the full game',
+     textOf({ _html: app() }).join('').trim().length > 40);
+  V.half = 'full'; V.gameTab = 'notes'; V.game = null; V.tab = 'props';
 }
 
 done();

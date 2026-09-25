@@ -1022,7 +1022,8 @@ def _attach_matchup(cards: dict, season: int | None,
     if not (season and week):
         return
     try:
-        from src.models.matchup_stats import MIN_GAMES, MISSING, build, matchup
+        from src.models.matchup_stats import (HALVES, MIN_GAMES, MISSING,
+                                              build, matchup)
         stats = build(season, week)
     except Exception as e:                                       # noqa: BLE001
         print(f"  matchup stats unavailable ({e})", file=sys.stderr)
@@ -1030,7 +1031,12 @@ def _attach_matchup(cards: dict, season: int | None,
     if not stats:
         return
     for c in cards.values():
-        rows = matchup(c, stats)
+        splits = {}
+        for split, _label, _half in HALVES:
+            got = matchup(c, stats, split)
+            if got:
+                splits[split] = got
+        rows = splits.get("full")
         if not rows:
             continue
         # The sample travels with the numbers: two games in is two games in,
@@ -1038,6 +1044,8 @@ def _attach_matchup(cards: dict, season: int | None,
         # rate off eleven snaps as a fact about a team.
         c["matchup"] = {
             "rows": rows,
+            "splits": splits,
+            "halves": [[k, lab] for k, lab, _ in HALVES if k in splits],
             "games": {t: stats[t]["games"] for t in (c.get("home"), c.get("away"))
                       if t in stats},
             "thin": any(stats[t]["games"] < MIN_GAMES

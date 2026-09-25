@@ -55,11 +55,30 @@ METRICS = [
     ("qb_hit_rate", "QB hit rate", False,
      "Dropbacks where the quarterback was hit. Also a proxy, and a wider one "
      "than sacks."),
+    ("plays_per_game", "Plays per game", True,
+     "Offensive snaps. Pace rather than quality — more plays is more chances "
+     "for everyone's props, on both sides."),
+    ("two_min_success", "Two-minute success", True,
+     "Success rate inside the last two minutes of a half. A SMALL sample: "
+     "two games in, a team may have twenty such plays."),
+    ("two_min_epa", "Two-minute EPA", True,
+     "Expected points added per play in the last two minutes of a half."),
+    ("late_half_score_rate", "Late-half scoring drives", True,
+     "Drives starting inside the last four minutes of a half that end in "
+     "points. Read on the defensive side as drives ALLOWED to score."),
+    ("sudden_change_success", "After a turnover", True,
+     "Success rate on the possession immediately following a takeaway. "
+     "Thinner still, and stated as a count rather than leant on."),
 ]
 
 #: Asked for and NOT built, with the reason. Shown on the page so a gap reads
 #: as a gap rather than as an oversight.
 MISSING = [
+    ("Success rate after a takeaway",
+     "Needs the possession IMMEDIATELY following a turnover, which is a "
+     "sequence across drives rather than a filter on plays. Buildable from "
+     "`fixed_drive` and `drive_end_transition`; not built yet, and an "
+     "approximation from adjacent plays would answer a different question."),
     ("Four-man rush vs blitz pressure",
      "`number_of_pass_rushers` is populated for 2016-2025 and empty for 2026. "
      "Building it would mean showing last season's numbers as this week's."),
@@ -75,15 +94,33 @@ MISSING = [
 #: is still computed — it travels beside it so the page can show how thin it is.
 MIN_GAMES = 2
 
+#: The splits offered. Overtime is excluded from both halves rather than
+#: folded into the second: it is a different game with different rules and
+#: fewer than 1% of plays, and adding it would make "second half" mean
+#: something slightly different for the handful of teams who played one.
+HALVES = [("full", "Full game", None),
+          ("h1", "1st half", "Half1"),
+          ("h2", "2nd half", "Half2")]
+
 
 def _plays(seasons: list[int] | None = None) -> pl.DataFrame:
     cols = ["season", "week", "posteam", "defteam", "down", "ydstogo",
             "yards_gained", "yardline_100", "epa", "success", "sack",
             "qb_hit", "pass", "rush", "touchdown", "play_type", "fixed_drive",
-            "game_id", "season_type"]
+            "game_id", "season_type", "game_half", "half_seconds_remaining",
+            "fixed_drive", "fixed_drive_result", "interception",
+            "fumble_lost"]
     d = pl.scan_parquet(get_path("raw") / "pbp.parquet")
     have = d.collect_schema().names()
-    d = d.select([c for c in cols if c in have])
+    # De-duplicated, in order. `fixed_drive` was in the list twice after the
+    # drive metrics were added, and polars refuses a projection with two
+    # columns of one name rather than quietly keeping one.
+    seen, want = set(), []
+    for c in cols:
+        if c in have and c not in seen:
+            seen.add(c)
+            want.append(c)
+    d = d.select(want)
     if seasons:
         d = d.filter(pl.col("season").is_in(seasons))
     d = d.filter(pl.col("posteam").is_not_null()
@@ -103,6 +140,13 @@ def _per_game(d: pl.DataFrame, by: str) -> pl.DataFrame:
     is_pass = (pl.col("pass") == 1) if "pass" in d.columns else pl.lit(False)
     early = pl.col("down").is_in([1, 2])
     drop = is_pass | (pl.col("sack") == 1)
+    # The last two minutes of EITHER half, which is what "two-minute" means to
+    # a coach — not the last two minutes of the game.
+    two_min = pl.col("half_seconds_remaining") <= 120
+    late_half = pl.col("half_seconds_remaining") <= 240
+    scored = pl.col("fixed_drive_result").is_in(
+        ["Touchdown", "Field goal"]) if "fixed_drive_result" in d.columns \
+        else pl.lit(False)
     return d.group_by(["season", "week", by]).agg([
         pl.len().alias("plays"),
         early.sum().alias("early_n"),
@@ -122,6 +166,18 @@ def _per_game(d: pl.DataFrame, by: str) -> pl.DataFrame:
         drop.sum().alias("drop_n"),
         (pl.col("sack") == 1).sum().alias("sack_k"),
         (pl.col("qb_hit") == 1).sum().alias("hit_k"),
+        two_min.sum().alias("tm_n"),
+        (two_min & (pl.col("success") == 1)).sum().alias("tm_k"),
+        pl.when(two_min).then(pl.col("epa")).otherwise(None).sum()
+            .alias("tm_epa"),
+        (two_min & pl.col("epa").is_not_null()).sum().alias("tm_epa_n"),
+        # DRIVES, not plays: a drive is counted once however long it ran, so
+        # these are counted on the drive id rather than summed over snaps.
+        pl.when(late_half).then(pl.col("fixed_drive")).otherwise(None)
+            .n_unique().alias("lh_n"),
+        pl.when(late_half & scored).then(pl.col("fixed_drive")).otherwise(None)
+            .n_unique().alias("lh_k"),
+        pl.lit(1).alias("game_n"),
     ]).rename({by: "team"})
 
 
@@ -158,29 +214,52 @@ def _rates(g: pl.DataFrame) -> pl.DataFrame:
         z("c_epa_sum", "c_epa_n").alias("epa_play"),
         z("c_sack_k", "c_drop_n").alias("sack_rate"),
         z("c_hit_k", "c_drop_n").alias("qb_hit_rate"),
+        z("c_plays", "games").alias("plays_per_game"),
+        z("c_tm_k", "c_tm_n").alias("two_min_success"),
+        z("c_tm_epa", "c_tm_epa_n").alias("two_min_epa"),
+        z("c_lh_k", "c_lh_n").alias("late_half_score_rate"),
+        # Sudden change needs the possession AFTER a takeaway, which is a
+        # sequence rather than a filter and is not built here. Named in
+        # MISSING rather than approximated by something adjacent.
+        pl.lit(None, dtype=pl.Float64).alias("sudden_change_success"),
     ])
 
 
 def build(season: int, week: int) -> dict:
-    """Offence and defence rates for every team, entering this week."""
+    """Offence and defence rates for every team, entering this week.
+
+    Three splits per team — full game, first half, second half — from ONE read
+    of the play-by-play. A first-half number is a different fact from a
+    season-long one: a team that scripts its opening drives shows up there and
+    is invisible in the total.
+    """
     d = _plays([season])
     if d.is_empty():
         return {}
-    off = _rates(_totals_through(_per_game(d, "posteam"), week))
-    dfn = _rates(_totals_through(_per_game(d, "defteam"), week))
-    if off.is_empty() or dfn.is_empty():
-        return {}
     keys = [m[0] for m in METRICS]
     out: dict = {}
-    for side, frame in (("off", off), ("def", dfn)):
-        for r in frame.iter_rows(named=True):
-            t = out.setdefault(r["team"], {"games": int(r["games"] or 0)})
-            t[side] = {k: (round(float(r[k]), 4) if r[k] is not None else None)
-                       for k in keys}
+    for split, _label, half in HALVES:
+        part = d if half is None else d.filter(pl.col("game_half") == half)
+        if part.is_empty():
+            continue
+        off = _rates(_totals_through(_per_game(part, "posteam"), week))
+        dfn = _rates(_totals_through(_per_game(part, "defteam"), week))
+        if off.is_empty() or dfn.is_empty():
+            continue
+        for side, frame in (("off", off), ("def", dfn)):
+            for r in frame.iter_rows(named=True):
+                t = out.setdefault(r["team"], {})
+                # `games` is the same whichever split; taken from the full
+                # game so a team that never trailed still reads as two games.
+                if split == "full":
+                    t["games"] = int(r["games"] or 0)
+                t.setdefault(split, {})[side] = {
+                    k: (round(float(r[k]), 4) if r[k] is not None else None)
+                    for k in keys}
     return out
 
 
-def matchup(card: dict, stats: dict) -> list[dict] | None:
+def matchup(card: dict, stats: dict, split: str = "full") -> list[dict] | None:
     """One row per metric: each side's offence against the other's defence.
 
     Two rows per metric — away offence vs home defence, and the reverse —
@@ -193,8 +272,8 @@ def matchup(card: dict, stats: dict) -> list[dict] | None:
     for key, label, higher, note in METRICS:
         pair = []
         for o, dteam in ((away, home), (home, away)):
-            a = (stats[o].get("off") or {}).get(key)
-            b = (stats[dteam].get("def") or {}).get(key)
+            a = ((stats[o].get(split) or {}).get("off") or {}).get(key)
+            b = ((stats[dteam].get(split) or {}).get("def") or {}).get(key)
             if a is None or b is None:
                 continue
             pair.append({"offense": o, "defense": dteam,

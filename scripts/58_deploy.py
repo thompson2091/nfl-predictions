@@ -233,6 +233,7 @@ reports.
         return 1
     data = out / "data"
     week_files = sorted(data.glob("h-*.json")) if data.exists() else []
+    ask_files = sorted((data / "ask").glob("*.json")) if data.exists() else []
     if not week_files:
         # A warning, not a failure: a season before any week is played has
         # none, and that is legitimate.
@@ -247,7 +248,7 @@ reports.
     try:
         ver = next_version(s, root, archive, stamp)
         print(f"\ndeploying as {ver}\n", file=sys.stderr)
-        s.run(f"mkdir -p {root}/{archive} {root}/data")
+        s.run(f"mkdir -p {root}/{archive} {root}/data {root}/data/ask")
 
         # The archive copy first, so a failure part-way leaves the live page
         # untouched rather than half-replaced.
@@ -269,6 +270,28 @@ reports.
                     print(f"upload of {f.name} failed", file=sys.stderr)
                     return 1
             _prune(s, root, {f.name for f in week_files}, a.dry_run)
+        if ask_files:
+            print(f"  {len(ask_files)} ask briefs", file=sys.stderr)
+            for f in ask_files:
+                if not s.copy(str(f), f"{root}/data/ask/{f.name}"):
+                    print(f"upload of {f.name} failed", file=sys.stderr)
+                    return 1
+        # The proxy itself. Uploaded every time so a change to it ships with
+        # the page that calls it; it reads its key from outside the web root
+        # and holds no secret of its own.
+        php = Path("deploy/ask.php")
+        if php.exists():
+            if not s.copy(str(php), f"{root}/ask.php"):
+                print("upload of ask.php failed", file=sys.stderr)
+                return 1
+        # And the cache rules. Without them Apache serves the page with an
+        # ETag and no Cache-Control, browsers cache it heuristically, and a
+        # deploy lands while the reader keeps seeing the previous build.
+        ht = Path("deploy/htaccess")
+        if ht.exists():
+            if not s.copy(str(ht), f"{root}/.htaccess"):
+                print("upload of .htaccess failed", file=sys.stderr)
+                return 1
 
         # Promote last. Everything the new page needs is already in place.
         s.run(f"cp {root}/{archive}/{ver}.html {root}/index.html")

@@ -52,6 +52,20 @@ def payload_v3():
              "model_win_home": 0.55, "model_win_n": 380,
              "blend": {"spread": -5.7, "total": 45.4},
              "matchup": {"thin": False, "games": {"GB": 2, "ATL": 2},
+                         "halves": [["full", "Full game"], ["h1", "1st half"],
+                                    ["h2", "2nd half"]],
+                         "splits": {"full": [{"key": "epa_play",
+                             "label": "EPA per play", "note": "n",
+                             "higher_is_better": True, "proxy": False,
+                             "sides": [{"offense": "ATL", "defense": "GB",
+                                        "off_val": 0.1, "def_val": 0.0,
+                                        "diff": 0.1, "edge": 0.1}]}],
+                           "h1": [{"key": "epa_play", "label": "EPA per play",
+                             "note": "n", "higher_is_better": True,
+                             "proxy": False,
+                             "sides": [{"offense": "ATL", "defense": "GB",
+                                        "off_val": 0.3, "def_val": 0.0,
+                                        "diff": 0.3, "edge": 0.3}]}]},
                          "missing": [{"what": "Four-man rush vs blitz",
                                       "why": "field empty for 2026"}],
                          "rows": [{"key": "early_down_success",
@@ -202,7 +216,9 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "and the filters are inside the tab, under it",
                  "search narrows the board",
                  "the matchup tab renders",
-                 "a past week of games renders"):
+                 "a past week of games renders",
+                 "the ask box takes a typed question",
+                 "the matchup offers the halves"):
         assert path in r.stdout, f"{path!r} never ran:\n{r.stdout}"
 
 
@@ -317,21 +333,70 @@ def test_the_slip_states_its_independence_assumption():
     assert "independent" in src[i:i + 4000].lower(), "unstated on the page"
 
 
-def test_the_ask_box_does_not_pretend_to_be_a_chat():
-    """A free-text box needs a server the site does not have.
+def test_the_ask_box_never_sends_its_own_context():
+    """An endpoint that forwards whatever it is given is a free
+    general-purpose model billed to whoever owns the key.
 
-    The site is static files uploaded by hand. A box that accepts any question
-    and answers three of them is worse than three buttons that say what they
-    are, because only one of the two tells the reader where the edge of the
-    feature is.
+    The browser sends a GAME ID and a QUESTION. The brief that answers it
+    lives on the server and is chosen by that id, so the endpoint can only
+    ever answer questions about this week's games however the box is abused.
     """
+    import re
+
     from src.export import v3js
 
     src = v3js.js()
-    i = src.index("function v3Ask")
-    block = src[i - 400:i + 900]
-    assert "data-v3ask" in block
-    assert "<input" not in block, "a text input promises an answer to anything"
+    i = src.index("function v3AskSend")
+    body = src[i:i + 1600]
+    m = re.search(r"JSON\.stringify\(\{([^}]*)\}\)", body)
+    assert m, "the request body is not a literal; check what it sends"
+    sent = {k.strip() for k in re.findall(r"(\w+)\s*:", m.group(1))}
+    assert sent == {"game", "q"}, f"it also sends {sorted(sent - {'game', 'q'})}"
+
+
+def test_the_proxy_holds_the_key_and_the_page_never_does():
+    from pathlib import Path
+
+    php = (Path(__file__).resolve().parents[1] / "deploy/ask.php").read_text()
+    js = (Path(__file__).resolve().parents[1] / "src/export/v3js.py").read_text()
+    # The key is read from outside the web root and never echoed.
+    assert "/etc/picksix/anthropic.key" in php
+    assert "echo $key" not in php and "echo json_encode($key" not in php
+    # And nothing resembling a key is in the page.
+    for bad in ("sk-ant", "x-api-key", "anthropic.com"):
+        assert bad not in js, f"{bad} must not appear in the page"
+
+
+def test_the_proxy_validates_the_game_id_by_shape_before_building_a_path():
+    """Validated by shape, so a traversal cannot even be attempted."""
+    from pathlib import Path
+
+    php = (Path(__file__).resolve().parents[1] / "deploy/ask.php").read_text()
+    assert "preg_match('/^[A-Z]{2,4}_[A-Z]{2,4}$/'" in php
+    assert php.index("preg_match('/^[A-Z]") < php.index("$ctx_file ="), (
+        "the id must be checked before it is used to build a path")
+
+
+def test_the_proxy_is_rate_limited_per_address_and_in_total():
+    """A per-IP limit alone is a limit per proxy. The daily cap is the one
+    that protects the bill."""
+    from pathlib import Path
+
+    php = (Path(__file__).resolve().parents[1] / "deploy/ask.php").read_text()
+    assert "$PER_IP_HR" in php and "$PER_DAY" in php
+    assert "bump($STATE_DIR, 'all.json'" in php
+    assert "bump($STATE_DIR, 'ip-'" in php
+    # And the limiter runs before the key is even read.
+    assert php.index("bump($STATE_DIR, 'all.json'") < php.index("$KEY_FILE)")
+
+
+def test_the_upstream_error_body_is_not_returned_to_the_browser():
+    """It can echo request details, and this endpoint is public."""
+    from pathlib import Path
+
+    php = (Path(__file__).resolve().parents[1] / "deploy/ask.php").read_text()
+    assert "fail(502, 'the model returned ' . $code)" in php
+    assert "fail(502, $resp" not in php
 
 
 def test_the_build_recipe_names_every_file_that_has_to_travel():

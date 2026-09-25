@@ -110,7 +110,7 @@ const V = Object.assign({
   gfilter: 'all',
   week: null, game: null, gameTab: 'notes', cat: 'all',
   picks: {}, betType: 'parlay', stake: 10, shown: V3SHOW,
-  lodds: 100, rungs: 6, q: '',
+  lodds: 100, rungs: 6, q: '', half: 'full',
   ask: '', answer: '', saved: false,
 }, v3Load());
 
@@ -991,6 +991,18 @@ function v3Matchup(c) {
       + '</p></div>';
   }
   const g = m.games || {};
+  // FULL GAME, FIRST HALF, SECOND HALF. The same eight rows rather than
+  // twenty-four: a half is a different view of one matchup, not a different
+  // matchup. A team that scripts its opening drives shows up in the first
+  // half and is invisible in the season total.
+  const halves = m.halves || [['full', 'Full game']];
+  const split = (m.splits && m.splits[V.half]) ? V.half : 'full';
+  const rows = (m.splits && m.splits[split]) || m.rows || [];
+  const seg = halves.length < 2 ? '' :
+    '<div class="seg seg--' + halves.length + '" style="margin-top:12px">'
+    + halves.map(h => '<button data-v3half="' + esc(h[0]) + '" aria-pressed="'
+        + (h[0] === split) + '">' + esc(h[1]) + '</button>').join('')
+    + '</div>';
   const pct = v => (v * 100).toFixed(1) + '%';
   const fmt = (k, v) => k === 'epa_play' ? (v >= 0 ? '+' : '') + v.toFixed(3)
     : pct(v);
@@ -1020,7 +1032,8 @@ function v3Matchup(c) {
     + (m.thin ? '<p class="help">Two games or fewer. Treat every number here '
         + 'as a first impression rather than a rate.</p>' : '')
     + '</div>'
-    + m.rows.map(r =>
+    + seg
+    + rows.map(r =>
         '<h2 class="h1" style="font-size:17px;line-height:22px;margin-top:20px">'
         + esc(r.label)
         + (r.proxy ? ' <span class="tag tag--warn">proxy</span>' : '') + '</h2>'
@@ -1377,18 +1390,74 @@ function v3Note(n) {
     + '</div></article>';
 }
 
-// The questions are fixed and their answers are computed. A free-text box
-// would need a server the site does not have, and a box that quietly answers
-// only three things is worse than three buttons that say what they are.
+// ASK ANYTHING, through a proxy that holds the key and the context.
+//
+// The canned questions stay, because they are answered instantly and for
+// free from data already in the page, and most of what anyone wants to know
+// is one of them. The box is for the rest.
+//
+// The endpoint takes a GAME ID and a QUESTION, nothing else: the brief it
+// answers from lives on the server and is chosen by that id. A client that
+// could send its own context could send anything, and the endpoint would
+// become a general-purpose model billed to whoever owns the key.
 function v3Ask(gid) {
   const qs = v3Questions(gid);
-  if (!qs.length) return '';
+  const a = V.answer;
   return '<div class="card"><div class="name">Ask about this game</div>'
-    + '<div class="qs">' + qs.map((q, i) =>
+    + '<p class="help">Quick answers below are computed from this page. The '
+    + 'box asks our model, which can also look up news.</p>'
+    + (qs.length ? '<div class="qs">' + qs.map((q, i) =>
         '<button class="q" data-v3ask="' + i + '">' + esc(q.q) + '</button>')
-      .join('') + '</div>'
-    + (V.answer ? '<div class="ans">' + esc(V.answer) + '</div>' : '')
+      .join('') + '</div>' : '')
+    + '<form class="ask" data-v3askform="' + esc(gid) + '">'
+    + '<input type="text" data-v3q2 maxlength="400" '
+    + 'placeholder="Ask anything about this game" value="' + esc(V.q2 || '')
+    + '" aria-label="Ask a question about this game"'
+    + (V.asking ? ' disabled' : '') + '>'
+    + '<button type="submit" aria-label="Ask"' + (V.asking ? ' disabled' : '')
+    + '>' + (V.asking ? '\u2026' : '\u2192') + '</button></form>'
+    + (V.asking ? '<div class="ans"><span class="thinking">Thinking'
+        + '\u2026</span></div>' : '')
+    + (a ? '<div class="ans">' + esc(a).replace(/\n\n/g, '</div><div class="ans">')
+        + '</div>' : '')
+    + (V.answerErr ? '<div class="ans ans--bad">' + esc(V.answerErr)
+        + '</div>' : '')
+    + (V.answerLive ? '<p class="help">Answered by our model from this '
+        + 'week\u2019s data' + (V.searched ? ', with a web search' : '')
+        + '. It can be wrong; the numbers on the page are the source.</p>' : '')
     + '</div>';
+}
+
+//: Where the proxy lives, relative to the page.
+const V3ASK_URL = 'ask.php';
+
+function v3AskSend(gid, q) {
+  V.asking = true; V.answer = ''; V.answerErr = ''; V.answerLive = false;
+  render();
+  let done = false;
+  const finish = (ans, err, searched) => {
+    if (done) return;
+    done = true;
+    V.asking = false; V.answer = ans || ''; V.answerErr = err || '';
+    V.answerLive = !!ans; V.searched = !!searched;
+    render();
+  };
+  // A visible ceiling on the wait. Without it a proxy that never answers
+  // leaves "Thinking..." on the screen forever, which reads as a hang.
+  setTimeout(() => finish('', 'That took too long. Try again, or ask one of '
+    + 'the quick questions above.'), 60000);
+  fetch(V3ASK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ game: gid, q: q }),
+  }).then(r => r.json().then(j => ({ ok: r.ok, j: j })))
+    .then(x => {
+      if (x.ok && x.j && x.j.answer) finish(x.j.answer, '', x.j.searched);
+      else finish('', (x.j && x.j.error) || 'Could not answer that one.');
+    })
+    .catch(e => finish('', location.protocol === 'file:'
+      ? 'Asking needs the site served over http, not opened as a file.'
+      : 'Could not reach the answering service.'));
 }
 
 function v3Questions(gid) {
@@ -2021,6 +2090,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3pick',
                   'v3game', 'v3back', 'v3gtab', 'v3cat', 'v3type',
                   'v3stake', 'v3ask', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
+                  'v3half',
                   'v3sortpick'];
 
 document.addEventListener('click', ev => {
@@ -2046,6 +2116,16 @@ document.addEventListener('click', ev => {
 //
 // Re-rendering replaces the input being typed into, which loses focus and
 // the caret and drops every second keystroke. Only `#v3rows` is rewritten.
+document.addEventListener('submit', ev => {
+  const f = ev.target;
+  if (!f || !f.getAttribute) return;
+  const gid = f.getAttribute('data-v3askform');
+  if (gid === null) return;
+  ev.preventDefault();
+  const q = (V.q2 || '').trim();
+  if (q && !V.asking) v3AskSend(gid, q);
+});
+
 document.addEventListener('input', ev => {
   const t = ev.target;
   if (t && t.getAttribute && t.getAttribute('data-v3l') !== null) {
@@ -2064,6 +2144,12 @@ document.addEventListener('input', ev => {
     const sum = document.getElementById('v3lsum');
     if (sum) sum.textContent = v3LadderSummary();
     v3Save();
+    return;
+  }
+  if (t && t.getAttribute && t.getAttribute('data-v3q2') !== null) {
+    // Held in state but NOT re-rendered: replacing the field being typed
+    // into loses focus and the caret.
+    V.q2 = t.value;
     return;
   }
   if (!t || !t.getAttribute || t.getAttribute('data-v3q') === null) return;
@@ -2123,6 +2209,7 @@ function v3Do(kind, v) {
     case 'v3open': V.open = V.open === v ? null : v; break;
     case 'v3dir': V.desc = !V.desc; break;
     case 'v3clearq': V.q = ''; V.shown = V3SHOW; break;
+    case 'v3half': V.half = v; break;
     case 'v3fav': toggleFav(v); break;
     case 'v3clear': V.picks = {}; V.saved = false; break;
     case 'v3drop': delete V.picks[v]; V.saved = false; break;
@@ -2132,7 +2219,8 @@ function v3Do(kind, v) {
     case 'v3pick':
       if (V.picks[v]) delete V.picks[v]; else V.picks[v] = true; break;
     case 'v3game': V.tab = 'games'; V.game = v; V.gameTab = 'notes';
-      V.cat = 'all'; V.answer = ''; break;
+      V.cat = 'all'; V.answer = ''; V.answerErr = ''; V.q2 = '';
+      V.answerLive = false; break;
     case 'v3back': V.game = null; V.answer = ''; break;
     case 'v3gtab': V.gameTab = v; break;
     case 'v3cat': V.cat = v; break;
@@ -2140,7 +2228,9 @@ function v3Do(kind, v) {
     case 'v3stake': V.stake = Number(v); V.sheet = null; V.saved = false; break;
     case 'v3ask': {
       const qs = v3Questions(V.game);
-      V.answer = (qs[Number(v)] || {}).a || ''; break;
+      V.answer = (qs[Number(v)] || {}).a || '';
+      V.answerLive = false; V.answerErr = ''; V.searched = false;
+      break;
     }
   }
   render();

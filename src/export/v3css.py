@@ -282,8 +282,11 @@ button{cursor:pointer}
 .q{min-height:36px;padding:6px 12px;border-radius:999px;
   border:1px solid var(--btnline);background:var(--card);text-align:left;
   font-size:15px}
-.ans{margin-top:12px;padding:12px;border-radius:12px;background:var(--oursbg);
+.ans{margin-top:10px;padding:12px;border-radius:12px;background:var(--oursbg);
   font-size:15px;line-height:20px}
+.ans--bad{background:var(--badbg);color:var(--bad)}
+@keyframes v3pulse{0%,100%{opacity:.45}50%{opacity:1}}
+.thinking{animation:v3pulse 1.1s ease-in-out infinite}
 
 /* ---- my picks ---- */
 .opt{display:flex;gap:12px;align-items:flex-start;width:100%;padding:14px 16px;

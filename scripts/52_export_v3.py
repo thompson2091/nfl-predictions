@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -51,8 +52,21 @@ def main() -> int:
     print(f"  {sum(len(v) for v in notes.values())} notes across "
           f"{len(notes)} games", file=sys.stderr)
 
+    # One brief per game for the Ask box. Written as separate files, never
+    # inlined: the browser sends a game id and the SERVER loads the brief, so
+    # nothing a reader types can become context. See `askctx`.
+    from src.export.askctx import build as ask_briefs
+    briefs = ask_briefs(payload)
+
     from src.export.v3 import render
     files = render(payload)
+    for gid, brief in briefs.items():
+        files[f"data/ask/{gid}.json"] = json.dumps(brief, separators=(",", ":"),
+                                                   allow_nan=False)
+    if briefs:
+        print(f"  {len(briefs)} ask briefs "
+              f"({sum(len(files['data/ask/' + g + '.json']) for g in briefs) / 1024:,.0f} KB)",
+              file=sys.stderr)
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -61,7 +75,8 @@ def main() -> int:
     data_dir = out / "data"
     if data_dir.exists():
         keep = {out / n for n in files}
-        for old in data_dir.glob("h-*.json"):
+        for old in list(data_dir.glob("h-*.json")) \
+                + list((data_dir / "ask").glob("*.json")):
             if old not in keep:
                 old.unlink()
 
