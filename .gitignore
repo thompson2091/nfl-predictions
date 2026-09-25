@@ -38,3 +38,4 @@ logs/
 
 # Built by `make launch`; disposable, rebuilt every time.
 public/
+data/raw/game_notes_cache/

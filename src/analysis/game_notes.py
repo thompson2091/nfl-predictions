@@ -255,8 +255,11 @@ def _player_notes(payload: dict, card: dict, gid: str) -> list[dict]:
                 "brief": (f"{best['player']} is priced at "
                           f"{_odds(best.get('odds_num'))} to score. We make him "
                           f"{_pct(best.get('ours'))} where the book makes him "
-                          f"{_pct(best.get('book'))}, worth about "
-                          f"{_num(best['ev'])} dollars per 100 staked."),
+                          f"{_pct(best.get('book'))} — "
+                          f"{_num((best.get('ours') or 0) * 100 - (best.get('book') or 0) * 100)}"
+                          f" points higher — worth about "
+                          f"{_num(best['ev'])} dollars per 100 staked. A $10 "
+                          f"bet returns ${_num(10 * (abs(best['odds_num']) / 100 if best['odds_num'] > 0 else 100 / abs(best['odds_num'])), 2)}."),
                 "fallback": (f"{best['player']} is the best-priced touchdown "
                              f"bet in this game by our numbers."),
                 "pick": f"{best['player']} to score · "
@@ -277,7 +280,9 @@ def _player_notes(payload: dict, card: dict, gid: str) -> list[dict]:
                 "brief": (f"{worst['player']} is the most overpriced touchdown "
                           f"bet here. The book makes him "
                           f"{_pct(worst.get('book'))}; we make him "
-                          f"{_pct(worst.get('ours'))}. This is a player to "
+                          f"{_pct(worst.get('ours'))}, which is "
+                          f"{_num((worst.get('book') or 0) * 100 - (worst.get('ours') or 0) * 100)}"
+                          f" points lower. This is a player to "
                           f"avoid, not a bet to place — no book posts the other "
                           f"side of a touchdown prop."),
                 "fallback": (f"{worst['player']} is priced well above our "
@@ -340,9 +345,19 @@ def _player_notes(payload: dict, card: dict, gid: str) -> list[dict]:
             "stats": [{"v": str(_num(r.get("proj"))), "l": "yards we project"},
                       {"v": _pct(r.get("ours")),
                        "l": f"chance of over {_num(r.get('point'))}"}],
+            # THE GAP IS COMPUTED HERE, not left to be derived.
+            #
+            # `_numbers_are_sourced` cannot tell arithmetic from invention: a
+            # brief holding 36.5 and 19.5 and a sentence saying "17 yards
+            # above the line" is a correct derivation that the guard rejects.
+            # 21% of the first build's notes failed this way. Widening the
+            # brief is the fix rather than loosening the guard, because the
+            # difference is a number the reader wants and code should own.
             "brief": (f"We project {r['player_name']} for "
                       f"{_num(r.get('proj'))} {unit} against a posted line of "
-                      f"{_num(r.get('point'))}."),
+                      f"{_num(r.get('point'))}, which is "
+                      f"{_num(abs((r.get('proj') or 0) - (r.get('point') or 0)))}"
+                      f" {unit} above it."),
             "fallback": (f"We project {r['player_name']} above his "
                          f"{_num(r.get('point'))} {unit} line."),
             "pick": f"{r['player_name']} over {_num(r.get('point'))} {unit} · "
@@ -369,8 +384,14 @@ def _numbers_are_sourced(text: str, brief: str) -> bool:
     number the model rounds (6.5 to "about 7") fails, which is the intended
     strictness: a note that rounds is replaced by one that does not.
     """
-    have = set(_NUM.findall(brief))
-    return all(n in have for n in _NUM.findall(text))
+    # COMPARED AS NUMBERS, NOT AS STRINGS.
+    #
+    # String equality rejected "a 3-point spread" against a brief that said
+    # "3.0" — the same figure, spelled the way a person writes it. Genuine
+    # invention still fails, because 9.5 does not equal 6.5 and a rounded 7
+    # does not equal 6.5 either; only the notation is forgiven.
+    have = {float(n) for n in _NUM.findall(brief)}
+    return all(float(n) in have for n in _NUM.findall(text))
 
 
 def _client():

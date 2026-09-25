@@ -109,6 +109,10 @@ def test_generated_prose_may_not_introduce_a_number():
     # that does not, because the chip beside it will not be rounded.
     assert not gn._numbers_are_sourced(
         "GB by 7", "The book has GB by 6.5.")
+    # But notation is not invention. Rejecting "a 3-point spread" because the
+    # brief said "3.0" threw away a correct sentence over a trailing zero.
+    assert gn._numbers_are_sourced("a 3-point spread", "The book has BAL by 3.0.")
+    assert gn._numbers_are_sourced("35%", "We make him 35.0%.")
 
 
 def test_an_unsourced_answer_falls_back_rather_than_printing():
