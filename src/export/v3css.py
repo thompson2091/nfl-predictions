@@ -58,7 +58,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
    row and the game switcher under it nearly touched at the top of a phone.
    One box owns the spacing: this one. */
 .appbar{flex:none;display:flex;align-items:center;justify-content:space-between;
-  gap:12px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;
+  gap:12px;padding:calc(6px + env(safe-area-inset-top,0px)) 16px 6px;
   background:var(--bg)}
 a{color:var(--ours);text-decoration:none}
 button,input,select{font-family:inherit;font-size:inherit;color:inherit}
@@ -78,8 +78,12 @@ button{cursor:pointer}
 /* ---- header and the week picker, which is global on purpose ---- */
 /* No height and no margin here: `.appbar` owns both, and two owners is what
    made the header overflow its own bar. */
+/* The row is as tall as the tallest thing in it — the week chip, at 36px —
+   and no taller. `viewport-fit=cover` means the notch inset is added ON TOP
+   of this padding, so every pixel written here is a pixel of empty band
+   above the brand on a phone. */
 .hd{display:flex;align-items:center;justify-content:space-between;gap:12px;
-  width:100%;min-height:40px}
+  width:100%;min-height:36px}
 .hd__b{font-family:var(--serif);font-size:19px;font-weight:600}
 .wk{display:flex;align-items:center;gap:6px;height:36px;padding:0 10px;
   border-radius:10px;border:1px solid var(--btnline);background:var(--card);
