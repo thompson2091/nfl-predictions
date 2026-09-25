@@ -115,7 +115,7 @@ const V = Object.assign({
   // The saved picks, and which of them the Picks tab is showing. `saved` was
   // a boolean nothing read; the slip and the saved copy are different things
   // and only one of them was ever stored.
-  saved: [], savedFilter: 'all',
+  saved: [], savedFilter: 'all', pick: null,
 }, v3Load());
 
 function v3Load() {
@@ -2027,6 +2027,60 @@ function v3Picks() {
     + '</div>';
 }
 
+// A SAVED PICK OPENS THE SAME WAY THE SLIP DOES.
+//
+// The card is a summary; the question a reader actually has is the one the
+// slip answers — what does this pay, at how many legs, and how likely is
+// each. Drawn from the curve STORED WITH THE PICK, never recomputed from
+// today's board: the prices have moved since, and a record that re-derived
+// itself would quietly restate what was taken.
+function v3PickBody() {
+  const p = (v3Saved().filter(x => x.id === V.pick)[0]);
+  if (!p) return '<p class="lede" style="font-size:15px">That pick is no '
+    + 'longer saved.</p>';
+  const st = settle(p);
+  const pend = st.status === 'Pending';
+  const n = (p.legs || []).length;
+  const legs = (st.legs || []).map(l => {
+    const dot = l.state === 'hit' ? 'good' : l.state === 'miss' ? 'bad' : 'pend';
+    return '<div class="legline"><span><i class="dot dot--' + dot + '"></i>'
+      + esc(l.label || l.player) + '</span>'
+      + '<span class="sub num">' + (has(l.odds) ? v3Dash(american(l.odds))
+                                                : '\u2014') + '</span></div>';
+  }).join('');
+  return '<div class="sub">' + esc(p.marketLabel) + ' \u00b7 week '
+    + esc(String(p.week)) + ' \u00b7 $' + Number(p.stake).toFixed(0)
+    + (p.slips > 1 ? ' each on ' + p.slips + ' slips' : '')
+    + ' \u00b7 saved ' + esc(String(p.savedAt || '').slice(0, 10)) + '</div>'
+    + '<div style="margin-top:12px">' + legs + '</div>'
+    + '<div class="card" style="margin-top:16px">'
+    + '<div class="sub">' + (p.betType === 'parlay'
+        ? 'If every pick lands, you get back' : 'Best case, you get back')
+    + '</div>'
+    + '<div class="big num">$'
+    + Number((p.outlay || 0) + Math.max.apply(null,
+        (p.rows || [{ net: 0 }]).map(r => r.net || 0))).toFixed(2) + '</div>'
+    + '<div class="sub num">You put in $' + Number(p.outlay || 0).toFixed(2)
+    + '</div>'
+    + '<div style="margin-top:16px">'
+    + [v3OutHead()].concat(v3OutRows(p.rows || [], n,
+                                     pend ? null : st.hits)).join('')
+    + '</div>'
+    // THE CURVE IS FROZEN AND SAYS SO. Its prices are the ones at save time.
+    + '<p class="help">These are the prices this was saved at, not today\u2019s.</p>'
+    + '</div>'
+    + (pend ? ''
+       : '<div class="box' + (st.net >= 0 ? ' box--good' : ' box--bad')
+         + '" style="margin-top:12px"><span class="name" style="font-size:15px">'
+         + esc(st.status) + ' \u00b7 ' + st.hits + ' of ' + n + ' landed'
+         + '</span><span class="sub num">'
+         + (st.net >= 0 ? '+' : '\u2212') + '$' + Math.abs(st.net).toFixed(2)
+         + '</span></div>')
+    + '<button class="cta" data-v3unkeep="' + esc(p.id) + '" '
+    + 'style="background:var(--card);color:var(--bad);border-color:var(--bad)">'
+    + 'Remove from Picks</button>';
+}
+
 function v3PickCard(p) {
   const pend = p.status === 'Pending';
   const tone = pend ? '' : p.status === 'Won' ? 'good' : 'bad';
@@ -2041,7 +2095,8 @@ function v3PickCard(p) {
   // a full cover pays every sub-slip whose legs landed, and those have
   // different prices, so there is no single number to multiply.
   const row = (p.rows || []).filter(r => r.hit === p.hits)[0];
-  return '<div class="card">'
+  return '<div class="card" data-v3pickopen="' + esc(p.id) + '" '
+    + 'role="button" tabindex="0" style="cursor:pointer">'
     + '<div class="pub__h"><span class="name">' + esc(p.name) + '</span>'
     + '<span class="tag' + (tone ? ' tag--' + tone : '') + '">'
     + esc(p.status) + '</span></div>'
@@ -2063,9 +2118,7 @@ function v3PickCard(p) {
          + '<b class="num ' + ((p.net || 0) >= 0 ? 'good' : 'bad') + '">'
          + ((p.net || 0) >= 0 ? '+' : '\u2212') + '$'
          + Math.abs(p.net || 0).toFixed(2) + '</b></div></div>')
-    + '<button class="cta" data-v3unkeep="' + esc(p.id) + '" '
-    + 'style="background:var(--card);color:var(--bad);border-color:var(--bad)">'
-    + 'Remove from Picks</button>'
+    + '<p class="help" style="margin-top:10px">Tap for the full breakdown.</p>'
     + '</div>';
 }
 
@@ -2396,6 +2449,44 @@ function v3DropSaved(id) {
   v3Save();
 }
 
+// ONE OUTCOME TABLE, TWO SOURCES.
+//
+// The slip computes its curve from today's prices; a saved pick reads the
+// curve it was stored with. The same table draws both, or the page would
+// show two different-looking answers to one question depending on whether
+// the reader had pressed save.
+function v3OutHead() {
+  return '<div class="out" style="border:0;min-height:0;padding-bottom:8px">'
+    + '<span class="eyebrow">If…</span>'
+    + '<span class="eyebrow">Chance</span>'
+    + '<span class="eyebrow">You’d be</span></div>';
+}
+
+//: `list` is anything carrying `hit`, a chance and a net — `v3SlipMath`'s
+//: `byK` or a saved pick's stored `rows`. `now` marks the row that actually
+//: happened, which only a settled pick has.
+function v3OutRows(list, n, now) {
+  const label = k => k === 0 ? 'None land'
+    : k === n ? 'All ' + n + ' land' : k + ' of ' + n + ' land';
+  const out = [];
+  for (let k = n; k >= 0; k--) {
+    const r = (list || []).filter(x => x.hit === k)[0];
+    if (!r) continue;
+    const net = r.net, pr = has(r.p) ? r.p : r.chance;
+    const col = net > 0.005 ? 'var(--good)' : net < -0.005 ? 'var(--bad)'
+      : 'var(--mut)';
+    const on = now != null && now === k;
+    out.push('<div class="out' + (on ? ' out--on' : '') + '">'
+      + '<span>' + label(k) + (on ? ' · this one' : '') + '</span>'
+      + '<span class="num">' + v3Pct(pr) + '</span>'
+      + '<span class="num" style="font-weight:600;color:' + col + '">'
+      + (Math.abs(net) < 0.005 ? '$0.00'
+         : (net >= 0 ? '+' : '−') + '$' + Math.abs(net).toFixed(2))
+      + '</span></div>');
+  }
+  return out;
+}
+
 // THE MATH, SEPARATE FROM THE DRAWING.
 //
 // It used to be one function that computed the payout curve and returned
@@ -2458,20 +2549,7 @@ function v3Outcomes(legs, stake) {
   const m = v3SlipMath(legs, stake);
   const byK = m.byK, cost = m.cost, best = m.best, ev = m.ev;
 
-  const label = k => k === 0 ? 'None land'
-    : k === n ? 'All ' + n + ' land' : k + ' of ' + n + ' land';
-  const rows = [];
-  for (let k = n; k >= 0; k--) {
-    const net = byK[k].net;
-    const col = net > 0.005 ? 'var(--good)' : net < -0.005 ? 'var(--bad)'
-      : 'var(--mut)';
-    rows.push('<div class="out"><span>' + label(k) + '</span>'
-      + '<span class="num">' + v3Pct(byK[k].p) + '</span>'
-      + '<span class="num" style="font-weight:600;color:' + col + '">'
-      + (Math.abs(net) < 0.005 ? '$0.00'
-         : (net >= 0 ? '+' : '−') + '$' + Math.abs(net).toFixed(2))
-      + '</span></div>');
-  }
+  const rows = [v3OutHead()].concat(v3OutRows(byK, n));
   return '<div class="card">'
     + '<div class="sub">' + (V.betType === 'parlay'
         ? 'If every pick lands, you get back' : 'Best case, you get back')
@@ -2479,12 +2557,7 @@ function v3Outcomes(legs, stake) {
     + '<div class="big num">$' + best.toFixed(2) + '</div>'
     + '<div class="sub num">You put in $' + cost.toFixed(2)
     + (V.betType === 'parlay' ? '' : ' in total') + '</div>'
-    + '<div style="margin-top:16px"><div class="out" '
-    + 'style="border:0;min-height:0;padding-bottom:8px">'
-    + '<span class="eyebrow">If…</span>'
-    + '<span class="eyebrow">Chance</span>'
-    + '<span class="eyebrow">You’d be</span></div>'
-    + rows.join('') + '</div>'
+    + '<div style="margin-top:16px">' + rows.join('') + '</div>'
     + '<div class="box" style="margin-top:16px">'
     + '<span class="name" style="font-size:15px">'
     + (ev >= 0 ? 'Worth it over time' : 'Costs a little over time') + '</span>'
@@ -2610,6 +2683,7 @@ const V3SHEETS = {
   // whichever tab raised the question and closes back onto it.
   ask: () => v3SheetHTML('Ask about this game', v3Ask(V.game, true)),
   slip: () => v3SheetHTML('Your slip', v3SlipBody()),
+  pick: () => v3SheetHTML('Saved pick', v3PickBody()),
 };
 
 function v3SheetHTML(title, body) {
@@ -2778,7 +2852,7 @@ function render(fromHistory) {
 // control that is added and never wired here does nothing at all rather than
 // throwing — which is why `test_every_v3_control_is_handled` exists.
 const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3pick', 'v3more',
-                  'v3keep', 'v3unkeep', 'v3savedfilter',
+                  'v3keep', 'v3unkeep', 'v3savedfilter', 'v3pickopen',
                   'v3game', 'v3back', 'v3gtab', 'v3cat', 'v3type',
                   'v3stake', 'v3ask', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
@@ -2915,7 +2989,8 @@ function v3Do(kind, v) {
     // SAVING IS A COPY, NOT A MOVE. The slip stays exactly as it is, so the
     // same legs can be saved at one stake and then rebuilt at another.
     case 'v3keep': v3SaveSlip(); break;
-    case 'v3unkeep': v3DropSaved(v); break;
+    case 'v3unkeep': v3DropSaved(v); if (V.pick === v) V.sheet = null; break;
+    case 'v3pickopen': V.pick = v; V.sheet = 'pick'; break;
     case 'v3savedfilter': V.savedFilter = v; break;
     case 'v3pick':
       if (V.picks[v]) delete V.picks[v]; else V.picks[v] = true; break;
@@ -2931,8 +3006,16 @@ function v3Do(kind, v) {
       if (V.gameTab === 'players' && V.game) v3MarketForGame(V.game);
       break;
     case 'v3cat': V.cat = v; break;
-    case 'v3type': V.betType = v; V.sheet = null; break;
-    case 'v3stake': V.stake = Number(v); V.sheet = null; break;
+    // BACK TO THE SLIP, NOT TO NOTHING.
+    //
+    // These two choosers are opened only from inside the slip sheet, and
+    // closing to null closed the slip with them — so changing the bet type
+    // or the stake dismissed the thing you were changing it on, and the new
+    // payout table was never seen. Closing to null was right when the slip
+    // was a tab and the sheet sat over it; it stopped being right when the
+    // slip itself became the sheet.
+    case 'v3type': V.betType = v; V.sheet = 'slip'; break;
+    case 'v3stake': V.stake = Number(v); V.sheet = 'slip'; break;
     case 'v3ask': {
       const qs = v3Questions(V.game);
       V.answer = (qs[Number(v)] || {}).a || '';

@@ -280,6 +280,9 @@ button{cursor:pointer}
 .dot--bad{background:var(--bad)}
 .dot--pend{background:var(--mut2)}
 .panel{padding:10px;border-radius:12px;background:var(--inset)}
+/* The row of a settled curve that actually happened. */
+.out--on{background:var(--goodbg);border-radius:8px}
+.out--on span:first-child{color:var(--good);font-weight:600}
 .panel .eyebrow{display:block;margin-bottom:2px}
 .num.good{color:var(--good)}
 .num.bad{color:var(--bad)}

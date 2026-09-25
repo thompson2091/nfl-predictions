@@ -348,15 +348,18 @@ if (slipRows.length >= 2) {
 
 // ── The bottom sheet ────────────────────────────────────────────────────
 V.picks = {}; slipRows.slice(0, 2).forEach(r => { V.picks[r.id] = true; });
-V.tab = 'slip'; V.sheet = null; render();
+V.tab = 'props'; V.sheet = 'slip'; render();
 ok('the slip offers its choices as sheets', app().indexOf('data-v3sheet=') >= 0);
 v3Do('v3sheet', 'bet');
 ok('opening a sheet renders it',
    (document.getElementById('sheet') || {}).className.indexOf('open') >= 0);
 ok('and it can be closed', app().indexOf('data-v3close') >= 0);
+// CHOOSING RETURNS TO THE SLIP, it does not close everything. These two
+// choosers are opened only from inside the slip sheet, so closing to null
+// dismissed the thing being changed and the new payout table was never seen.
 v3Do('v3type', 'singles');
-ok('choosing closes the sheet', V.sheet == null && V.betType === 'singles');
-V.picks = {}; V.betType = 'parlay'; V.tab = 'props';
+ok('choosing returns to the slip', V.sheet === 'slip' && V.betType === 'singles');
+V.picks = {}; V.betType = 'parlay'; V.tab = 'props'; V.sheet = null;
 
 // ── Navigation resets the scroll; editing the screen does not ───────────
 //
@@ -857,6 +860,24 @@ if (cards.length) {
        h.indexOf('Pending') >= 0);
     ok('the tab is called Picks', h.indexOf('>Picks<') >= 0
        || app().indexOf('Picks') >= 0);
+
+    // A SAVED PICK OPENS THE SAME BREAKDOWN THE SLIP SHOWS, from the curve
+    // it was stored with rather than from today's board.
+    x.v3Do('v3pickopen', p.id);
+    const ps = () => (document.getElementById('sheet') || {}).innerHTML || '';
+    ok('tapping a saved pick opens its breakdown', ps().indexOf('class="out"') >= 0);
+    ok('and draws the stored curve, not the live one',
+       ps().indexOf('saved at, not today') >= 0);
+    ok('and stays on the Picks tab', V.tab === 'picks');
+    x.v3Do('v3close', '1');
+
+    // Changing how or how much must not dismiss the slip that shows it.
+    V.sheet = 'slip'; x.v3Do('v3type', 'singles');
+    ok('changing the bet type keeps the slip open', V.sheet === 'slip');
+    x.v3Do('v3stake', '25');
+    ok('and changing the stake keeps it open too', V.sheet === 'slip');
+    ok('and the numbers followed', V.stake === 25 && V.betType === 'singles');
+    V.sheet = null; V.betType = 'parlay'; V.stake = 10;
 
     x.v3Do('v3unkeep', p.id);
     ok('a kept slip can be removed', x.v3Saved().length === 0);
