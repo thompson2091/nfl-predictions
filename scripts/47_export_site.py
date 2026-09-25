@@ -742,6 +742,7 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     _attach_scores(cards)
     _attach_injuries(cards, season, week)
     script_fits = _attach_script_risk(cards)
+    _attach_blend(cards)
     # Sorted by kickoff where it is known, so the list reads as a weekend
     # rather than as an alphabet. Games with no time sort last rather than
     # first: a missing kickoff is usually a game the schedule has not
@@ -969,6 +970,32 @@ def _attach_script_risk(cards: dict) -> dict:
     # `game_id`.
     return {k: {"swing": v["swing"], "n": v["n"], "mult": v["mult"]}
             for k, v in fits.items() if v["script_dependent"]}
+
+
+def _attach_blend(cards: dict) -> None:
+    """The adjusted game number: how far the model has earned moving the book.
+
+    The weight is fitted, not chosen — `game_blend` sweeps it over 1,904
+    walk-forward games and checks that the choice survives being made out of
+    sample. The gain is small and travels with the number so the page can say
+    so rather than implying an edge that is three hundredths of a point.
+    """
+    try:
+        from src.models.game_blend import blend_card, fit
+        w = fit()
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  game blend unavailable ({e})", file=sys.stderr)
+        return
+    if not w:
+        return
+    for c in cards.values():
+        got = blend_card(c, w)
+        if got:
+            c["blend"] = got
+    cards_weights = {k: w[k] for k in ("margin", "total") if k in w}
+    for c in cards.values():
+        c["blend_w"] = cards_weights
+        break
 
 
 def _attach_coaching(cards: dict, season: int | None,

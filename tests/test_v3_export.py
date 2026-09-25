@@ -50,6 +50,7 @@ def payload_v3():
              "model_home": 24.3, "model_away": 23.4,
              "kick_day": "Thursday", "kick_et": "8:15 PM ET", "prime": True,
              "model_win_home": 0.55, "model_win_n": 380,
+             "blend": {"spread": -5.7, "total": 45.4},
              "scores": {"n": 403, "thin": False, "min_n": 60, "home": "GB",
                         "away": "ATL", "total": 44.5, "mean_total": 46.4,
                         "mean_margin": 6.3,
@@ -179,8 +180,9 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "the final-score tab renders",
                  "the bets tab is a ladder, not a list of books",
                  "the notes tab opens with how the game may unfold",
-                 "the filters come before the injury report",
-                 "and before the public split"):
+                 "the public split sits above the tab bar",
+                 "and the filters are inside the tab, under it",
+                 "search narrows the board"):
         assert path in r.stdout, f"{path!r} never ran:\n{r.stdout}"
 
 

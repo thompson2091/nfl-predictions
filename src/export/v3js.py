@@ -36,8 +36,10 @@ JS = r"""
 // that would remove them.
 
 const V3TABS = [
-  ['week', 'This week', 'M4 11l8-7 8 7v9h-5v-6H9v6H4z'],
-  ['games', 'Games', 'M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4'],
+  // Games first, and the app opens on it: the slate is the way in, and the
+  // player board is what you reach FROM a game more often than the reverse.
+  ['games', 'Games', 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4'],
+  ['props', 'Props', 'M12 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM5 21c0-3.9 3.1-6 7-6s7 2.1 7 6'],
   ['slip', 'My picks', 'M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2zM9 9h6M9 13h4'],
   ['ladder', 'Ladder', 'M7 3v18M17 3v18M7 7h10M7 12h10M7 17h10'],
 ];
@@ -104,9 +106,11 @@ const V3KEY = 'picksix.v3';
 const V3SHOW = 25;
 
 const V = Object.assign({
-  tab: 'week', market: 'any', sort: 'model', desc: true, filter: 'all',
+  tab: 'games', market: 'any', sort: 'model', desc: true, filter: 'all',
+  gfilter: 'all',
   week: null, game: null, gameTab: 'notes', cat: 'all',
   picks: {}, betType: 'parlay', stake: 10, shown: V3SHOW,
+  lodds: 100, rungs: 6, q: '',
   ask: '', answer: '', saved: false,
 }, v3Load());
 
@@ -121,7 +125,8 @@ function v3Save() {
     localStorage.setItem(V3KEY, JSON.stringify({
       market: V.market, sort: V.sort, filter: V.filter, picks: V.picks,
       betType: V.betType, stake: V.stake, game: V.game,
-      desc: V.desc }));
+      desc: V.desc, gfilter: V.gfilter,
+      lodds: V.lodds, rungs: V.rungs }));
   } catch (e) { /* private window, blocked storage — the app still works */ }
 }
 
@@ -288,10 +293,10 @@ function v3Graded(market, raw) {
 
 function v3Screen() {
   switch (V.tab) {
-    case 'games': return V.game ? v3Game(V.game) : v3Games();
+    case 'props': return v3Week();
     case 'slip': return v3Slip();
     case 'ladder': return v3Ladder();
-    default: return v3Week();
+    default: return V.game ? v3Game(V.game) : v3Games();
   }
 }
 
@@ -337,6 +342,7 @@ function v3Week() {
     + '</p>'
     + v3MarketControls()
     + v3GamePicker()
+    + v3Search()
     + v3SortBar()
     + '<div class="list" id="v3rows">' + v3Rows() + '</div>'
     + v3Explainer()
@@ -364,6 +370,24 @@ function v3GamePicker() {
 // Sort by any column, either way. The two presets the casual reader wants are
 // just two of the columns, so there is one control rather than a tidy pair
 // that cannot express "order by expected value ascending".
+// SEARCH, above every player list.
+//
+// Five hundred priced players and a scroll. Typing three letters is the
+// difference between "is my guy on here" taking a second and taking a minute.
+//
+// The input is NOT re-rendered while you type — `v3Rows` is patched in place
+// and the box keeps focus and caret. Re-rendering the field being typed into
+// is the bug that made v2's search unusable and drops a character on every
+// keystroke.
+function v3Search() {
+  return '<div class="search">'
+    + '<input type="search" data-v3q placeholder="Search players" '
+    + 'value="' + esc(V.q || '') + '" aria-label="Search players">'
+    + (V.q ? '<button class="searchx" data-v3clearq="1" '
+             + 'aria-label="Clear search">\u2715</button>' : '')
+    + '</div>';
+}
+
 function v3SortBar() {
   const opts = V3SORTS.map(c => '<option value="' + c[0] + '"'
     + (V.sort === c[0] ? ' selected' : '') + '>' + esc(c[1]) + '</option>')
@@ -422,6 +446,7 @@ function v3Rows() {
     }
     let rows = v3Graded(mk, V3CACHE[k].rows).filter(r => r.priced);
     if (V.game) rows = rows.filter(r => v3Same(r.gameId, V.game));
+    rows = v3Match(rows);
     if (!rows.length) return '<div class="empty">No priced picks recorded '
       + 'for week ' + V.week + ' on this market. The week loaded; the board '
       + 'carried no priced rows for it.</div>';
@@ -436,10 +461,13 @@ function v3Rows() {
   let rows = rowsFor(V.market, view).filter(r => r.priced && !r.blocked);
   if (V.filter === 'fav') rows = rows.filter(r => isFav(r.id));
   if (V.game) rows = rows.filter(r => v3Same(r.gameId, V.game));
+  rows = v3Match(rows);
   if (!rows.length) {
     return '<div class="empty">' + (V.filter === 'fade'
       ? 'Nothing on this market is priced far enough above our number to '
         + 'flag this week.'
+      : V.q
+      ? 'No player matching \u201c' + esc(V.q) + '\u201d on this market.'
       : V.filter === 'fav'
       ? 'Nothing starred on this market. Tap the star beside a player to '
         + 'keep them here.'
@@ -654,28 +682,6 @@ function v3Explainer() {
     + 'what to bet.</p></div>';
 }
 
-// The one game the week most disagrees about, as a way in.
-function v3Watch() {
-  if (V.week != null) return '';
-  const cards = ((DATA.games || {}).cards || []).filter(
-    c => has(c.spread) && has(c.model_spread));
-  if (!cards.length) return '';
-  const best = cards.slice().sort((a, b) =>
-    Math.abs(b.model_spread - b.spread) - Math.abs(a.model_spread - a.spread))[0];
-  const notes = ((DATA.notes || {})[best.game_id] || []).length;
-  return '<a class="card" style="display:block" data-v3game="'
-    + esc(best.game_id) + '">'
-    + '<div style="display:flex;justify-content:space-between;align-items:center">'
-    + '<span class="eyebrow">Game to watch</span>'
-    + (notes ? '<span class="tag tag--ours">' + notes + ' game notes</span>' : '')
-    + '</div>'
-    + '<div class="name" style="font-size:22px;line-height:28px;margin-top:8px">'
-    + esc(best.away) + ' at ' + esc(best.home) + '</div>'
-    + '<div class="sub">' + esc(v3Kick(best)) + '</div>'
-    + '<div style="color:var(--ours);font-weight:600;margin-top:8px">'
-    + 'See what our AI noticed</div></a>';
-}
-
 function v3Kick(c) {
   const when = [c.kick_day, c.kick_et].filter(Boolean).join(' ');
   return when + (c.prime ? ' · prime time' : '');
@@ -702,34 +708,63 @@ function v3Games() {
     return [Math.abs(c.model_spread) < Math.abs(c.spread)
       ? 'Our model: a closer game' : 'Our model: by more', 'tag tag--ours'];
   };
-  const flips = cards.filter(c => lean(c)[1] === 'tag tag--warn').length;
-  const agree = cards.filter(c => lean(c)[1] === 'tag').length;
-  const show = V.filter === 'diff'
-    ? cards.filter(c => lean(c)[1] !== 'tag') : cards;
+  // A SEPARATE FILTER FROM THE BOARD'S, because they are different sets.
+  // Sharing `V.filter` meant picking "Fades" on This week and arriving here
+  // with no segment pressed and every game shown, or picking "Model
+  // disagrees" and going back to a board silently unfiltered.
+  const FGROUPS = {
+    all: () => true,
+    flip: c => lean(c)[1] === 'tag tag--warn',
+    agree: c => lean(c)[1] === 'tag',
+    diff: c => lean(c)[1] !== 'tag',
+  };
+  const flips = cards.filter(FGROUPS.flip).length;
+  const agree = cards.filter(FGROUPS.agree).length;
+  const show = cards.filter(FGROUPS[V.gfilter] || FGROUPS.all);
 
   const rows = show.map(c => {
     const l = lean(c);
     const fav = has(c.spread)
       ? (c.spread < 0 ? c.home : c.away) + ' by ' + Math.abs(c.spread) : '';
     const tot = has(c.total) ? c.total + ' total pts' : '';
-    const win = has(c.win_home)
-      ? (c.win_home >= 0.5 ? c.home + ' ' + v3Pct(c.win_home)
-                           : c.away + ' ' + v3Pct(c.win_away)) + ' to win' : '';
+    // THE SAME THREE NUMBERS THE PLAYER ROWS CARRY, EACH UNDER ITS LABEL.
+    //
+    // This printed a lean — "our model picks the other side" — beside a bare
+    // "CIN 63% to win", where the 63% was the BOOK's number with nothing
+    // saying so. Read together the two contradict each other. Book, model and
+    // the gap are now labelled, and the lean becomes a summary of numbers
+    // that are on the screen rather than a claim about numbers that are not.
+    const mw = has(c.model_win_home) ? c.model_win_home : null;
+    const side = has(c.win_home) && c.win_home >= 0.5 ? c.home : c.away;
+    const bookPct = !has(c.win_home) ? null
+      : (side === c.home ? c.win_home : c.win_away);
+    const modelPct = mw == null ? null : (side === c.home ? mw : 1 - mw);
+    const gap = (bookPct == null || modelPct == null) ? null
+      : (modelPct - bookPct) * 100;
+    const strip = bookPct == null ? ''
+      : '<span class="strip num" style="grid-template-columns:repeat(3,auto);'
+        + 'justify-content:start;gap:18px">'
+        + v3Cell(side + ' \u00b7 book', v3Pct(bookPct, 1))
+        + (modelPct == null ? '' : v3Cell('model', v3Pct(modelPct, 1)))
+        + (gap == null ? '' : v3Cell('gap', (gap > 0 ? '+' : '')
+            + gap.toFixed(1) + 'pp',
+            Math.abs(gap) < 3 ? '' : (gap > 0 ? 'good' : 'bad')))
+        + '</span>';
     return '<a class="g" data-v3game="' + esc(c.game_id) + '"><div class="g__m">'
       + '<span class="kick">' + esc(v3Kick(c)) + '</span>'
       + '<span class="name">' + esc(c.away) + ' at ' + esc(c.home) + '</span>'
-      + '<span class="sub num">' + esc([fav, tot].filter(Boolean).join(' · '))
+      + '<span class="sub num">' + esc([fav, tot].filter(Boolean).join(' \u00b7 '))
       + '</span>'
-      + '<span class="tags">' + (l[0] ? '<span class="' + l[1] + '">' + l[0]
-        + '</span>' : '') + '<span class="sub num">' + esc(win) + '</span></span>'
-      + '</div><span class="chev">›</span></a>';
+      + strip
+      + (l[0] ? '<span class="tags"><span class="' + l[1] + '">' + l[0]
+          + '</span></span>' : '')
+      + '</div><span class="chev">\u203a</span></a>';
   }).join('');
 
   return '<div class="wrap">'
     + '<h1 class="h1">Games</h1>'
     + '<p class="lede">Who the sportsbooks expect to win, and where our model '
     + 'sees it differently. Tap a game for the notes.</p>'
-    + v3Watch()
     + '<div class="card"><div class="stats">'
     + '<div class="stat"><span class="eyebrow">Games</span><b class="num">'
     + cards.length + '</b></div>'
@@ -737,12 +772,20 @@ function v3Games() {
     + flips + '</b></div>'
     + '<div class="stat"><span class="eyebrow">Model agrees</span><b class="num">'
     + agree + '</b></div></div></div>'
-    + '<div class="seg seg--2">'
-    + v3Seg('v3filter', [['all', 'All games'], ['diff', 'Model disagrees']],
-            V.filter === 'diff' ? 'diff' : 'all')
+    + '<div class="seg seg--4">'
+    + v3Seg('v3gfilter', [['all', 'All'], ['flip', 'Upset picks'],
+                          ['agree', 'Agrees'], ['diff', 'Disagrees']],
+            V.gfilter)
     + '</div>'
-    + '<div class="list">' + (rows || '<div class="empty">Every game this week '
-      + 'has our model and the book within a point of each other.</div>')
+    + '<div class="list">' + (rows || '<div class="empty">'
+      + (V.gfilter === 'flip'
+         ? 'Our model picks the same winner as the book in every game this week.'
+         : V.gfilter === 'agree'
+         ? 'Our model differs from the book on every game this week.'
+         : V.gfilter === 'diff'
+         ? 'Our model and the book are within a point of each other on every '
+           + 'game this week.'
+         : 'No games on the board yet.') + '</div>')
     + '</div>'
     + '<div class="card"><div class="name">Reading a game line</div>'
     + '<p class="lede" style="font-size:15px;line-height:20px">'
@@ -782,9 +825,15 @@ function v3Game(gid) {
     + '<div class="sub" style="margin-top:8px">' + esc(v3Kick(c)) + '</div>'
     + v3WinBar(c)
     + v3Compare(c)    + '</div>'
-    + '<div class="seg seg--4">'
+    // PUBLIC MONEY IS GAME CONTEXT, so it sits with the matchup above the
+    // tabs rather than under whichever tab you happen to be on. The injury
+    // report is a SECTION, not context, so it became a tab of its own —
+    // under the matchup card it pushed every control two screens down.
+    + v3PublicMoney(gid)
+    + '<div class="seg seg--5">'
     + v3Seg('v3gtab', [['notes', 'Notes'], ['players', 'Players'],
-                       ['bets', 'Bets'], ['score', 'Final score']], V.gameTab)
+                       ['bets', 'Bets'], ['score', 'Score'],
+                       ['inj', 'Injuries']], V.gameTab)
     + '</div>'
     // THE TAB'S OWN CONTENT COMES FIRST, CONTEXT UNDER IT.
     //
@@ -797,9 +846,8 @@ function v3Game(gid) {
     + (V.gameTab === 'players' ? v3GamePlayers(gid)
      : V.gameTab === 'bets' ? v3GameBets(gid)
      : V.gameTab === 'score' ? v3GameScores(c)
+     : V.gameTab === 'inj' ? v3Injuries(c, true)
      : v3GameNotes(gid, cats, shown))
-    + v3Injuries(c)
-    + v3PublicMoney(gid)
     + '</div>';
 }
 
@@ -826,9 +874,12 @@ function v3Game(gid) {
 //
 // Skill positions are marked, because those are the ones that move a player
 // market. An Out guard matters to the game; an Out receiver matters to a prop.
-function v3Injuries(c) {
+function v3Injuries(c, full) {
   const inj = c && c.injuries;
-  if (!inj) return '';
+  if (!inj) return full
+    ? '<div class="card"><p class="lede" style="font-size:15px">No injury '
+      + 'report filed for this game yet. The league files it midweek.</p></div>'
+    : '';
   const teams = Object.keys(inj);
   if (!teams.length) return '';
   const tone = s => s === 'Out' ? 'tag tag--bad'
@@ -944,6 +995,18 @@ function v3WinBar(c) {
   if (has(c.win_home)) bars.push(['Sportsbooks', c.win_home, null]);
   if (has(c.model_win_home))
     bars.push(['Our model', c.model_win_home, c.model_win_n]);
+  // ADJUSTED: the fitted blend of the two above it. The weight comes from
+  // `game_blend`, swept over 1,904 walk-forward games rather than chosen, and
+  // it is small — which is the useful part. It says how far the model has
+  // earned the right to move the book, and "about a seventh of the way" is a
+  // more honest answer than either number alone.
+  if (has(c.win_home) && has(c.model_win_home) && c.blend
+      && has(c.blend.spread) && has(c.spread) && has(c.model_spread)) {
+    const denom = (c.model_spread - c.spread);
+    const w = denom ? (c.blend.spread - c.spread) / denom : 0;
+    bars.push(['Adjusted', c.win_home + w * (c.model_win_home - c.win_home),
+               null]);
+  }
   if (!bars.length) return '';
   return '<div style="margin-top:16px;display:flex;flex-direction:column;'
     + 'gap:10px">'
@@ -987,6 +1050,8 @@ function v3Compare(c) {
   };
   const a = line('Sportsbooks', c.spread, c.total, '');
   const b = line('Our model', c.model_spread, c.model_total, ' cmp--ours');
+  const adj = c.blend
+    ? line('Adjusted', c.blend.spread, c.blend.total, ' cmp--adj') : '';
   if (!a && !b) return '';
   // THE OTHER SIDE OF THE PROJECTION, BESIDE IT.
   //
@@ -1004,7 +1069,8 @@ function v3Compare(c) {
       + u.headline.upset.pct.toFixed(0) + '%</b> of the time and '
       + u.headline.one_score.pct.toFixed(0) + '% finished within one score.</p>'
     : '';
-  return '<div class="two" style="margin-top:16px">' + a + b + '</div>' + note;
+  return '<div class="' + (adj ? 'three' : 'two')
+    + '" style="margin-top:16px">' + a + b + adj + '</div>' + note;
 }
 
 function v3GameNotes(gid, cats, shown) {
@@ -1174,7 +1240,7 @@ function v3Questions(gid) {
 function v3GamePlayers(gid) {
   const prev = V.game;
   V.game = gid;
-  const body = v3MarketControls() + v3SortBar()
+  const body = v3MarketControls() + v3Search() + v3SortBar()
     + '<div class="list" id="v3rows">' + v3Rows() + '</div>';
   V.game = prev;
   return '<p class="help" style="margin-top:16px">Every priced player in this '
@@ -1486,50 +1552,91 @@ function v3Outcomes(legs, stake) {
 
 // ── screen: ladder ──────────────────────────────────────────────────────
 
-function v3Ladder() {
-  const kinds = [['safe', 'Safer picks', 'Favourites. Win more often, pay less.', -150],
-                 ['even', 'Coin flips', 'About a 50-50 shot each time.', 100],
-                 ['bold', 'Long shots', 'Win less often, pay a lot more.', 200]];
-  const kind = V.ladderKind || 'even';
-  const o = (kinds.filter(k => k[0] === kind)[0] || kinds[1])[3];
-  const d = amToDec(o), pStep = 1 / d, start = V.stake;
-  const rungs = [1, 2, 3, 4, 5, 6].map((n, i) => {
-    const p = Math.pow(pStep, n), bank = start * Math.pow(d, n);
-    return '<div class="rung' + (i % 2 ? ' rung--alt' : '') + '">'
-      + '<span class="num" style="font-weight:600;color:var(--mut)">' + n
+// THE LADDER, DRIVEN BY WHAT YOU TYPE.
+//
+// It used to offer four stakes and three canned "kinds" of pick, which meant
+// the one question it exists to answer — what does MY bet at MY price turn
+// into — could only be asked in twelve ways. Stake, odds and the number of
+// rungs are fields now, and the table follows them.
+//
+// The table is patched in place on every keystroke rather than re-rendered,
+// for the same reason the search box is: replacing the input being typed
+// into loses focus and the caret.
+function v3LadderInputs() {
+  const f = (key, label, val, hint, mode) =>
+    '<label class="lfield"><span class="eyebrow">' + esc(label) + '</span>'
+    + '<input data-v3l="' + key + '" inputmode="' + mode + '" value="'
+    + esc(String(val)) + '" aria-label="' + esc(label) + '">'
+    + (hint ? '<i>' + esc(hint) + '</i>' : '') + '</label>';
+  return '<div class="lfields">'
+    + f('stake', 'Start with', '$' + V.stake, '', 'decimal')
+    + f('odds', 'Odds each step', v3Dash(american(V.lodds)),
+        v3OddsHint(), 'text')
+    + f('rungs', 'Steps', V.rungs, '', 'numeric')
+    + '</div>';
+}
+
+function v3OddsHint() {
+  const d = amToDec(V.lodds);
+  return 'about ' + Math.round(100 / d) + '% each';
+}
+
+//: Parsed leniently — "+150", "150", "-150", "$25", "25" all mean something
+//: obvious, and a field that rejects "$25" because of the dollar sign is a
+//: field that makes the reader do the app's job.
+function v3Num(v) {
+  const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+  return isFinite(n) ? n : null;
+}
+
+function v3Rungs() {
+  const d = amToDec(V.lodds), p = 1 / d, start = V.stake;
+  const n = Math.max(1, Math.min(20, V.rungs));
+  let out = '';
+  for (let k = 1; k <= n; k++) {
+    const pk = Math.pow(p, k), bank = start * Math.pow(d, k);
+    out += '<div class="rung' + ((k - 1) % 2 ? ' rung--alt' : '') + '">'
+      + '<span class="num" style="font-weight:600;color:var(--mut)">' + k
       + '</span>'
       + '<span class="num" style="font-size:17px;font-weight:600">$'
       + (bank >= 1000 ? Math.round(bank).toLocaleString() : bank.toFixed(2))
       + '</span>'
-      + '<span><span class="num" style="font-weight:600">' + v3Pct(p)
+      + '<span><span class="num" style="font-weight:600">' + v3Pct(pk)
       + '</span><br><span class="sub num">about 1 in '
-      + Math.max(1, Math.round(1 / p)) + '</span></span></div>';
-  }).join('');
+      + Math.max(1, Math.round(1 / pk)) + '</span></span></div>';
+  }
+  return out;
+}
+
+function v3LadderSummary() {
+  const d = amToDec(V.lodds);
+  const n = Math.max(1, Math.min(20, V.rungs));
+  const end = V.stake * Math.pow(d, n);
+  const p = Math.pow(1 / d, n);
+  return n + ' wins in a row turns $' + V.stake.toFixed(2) + ' into $'
+    + (end >= 1000 ? Math.round(end).toLocaleString() : end.toFixed(2))
+    + ' \u2014 about ' + v3Pct(p) + ', or 1 in '
+    + Math.max(1, Math.round(1 / p)) + '.';
+}
+
+function v3Ladder() {
   return '<div class="wrap"><h1 class="h1">The ladder</h1>'
     + '<p class="lede">Start small. Each time a bet wins, the whole amount '
     + 'rides on the next one. Climb as high as you like and stop whenever you '
     + 'want. One loss and you are back to the start.</p>'
-    + '<h2 class="eyebrow" style="margin:24px 2px 0">Start with</h2>'
-    + '<div class="stakes">' + [5, 10, 20, 50].map(v =>
-        '<button class="stake" data-v3stake="' + v + '" aria-pressed="'
-        + (V.stake === v) + '">$' + v + '</button>').join('') + '</div>'
-    + '<h2 class="eyebrow" style="margin:24px 2px 0">Kind of pick on each step'
-    + '</h2>'
-    + kinds.map(k => '<button class="opt" data-v3kind="' + k[0]
-        + '" aria-pressed="' + (kind === k[0]) + '">'
-        + '<span class="radio"><i></i></span><span>'
-        + '<span class="name">' + esc(k[1]) + '</span><br>'
-        + '<span class="sub">' + esc(k[2]) + ' Odds '
-        + v3Dash(american(k[3])) + '.</span></span></button>').join('')
+    + v3LadderInputs()
     + '<div class="list"><div class="rung" style="border:0">'
     + '<span class="eyebrow">Step</span>'
-    + '<span class="eyebrow">You’d have</span>'
-    + '<span class="eyebrow">Chance</span></div>' + rungs + '</div>'
-    + '<div class="card"><p class="lede" style="font-size:15px">Each row '
-    + 'assumes every step above it won. The chance is how often you would get '
-    + 'that far if every pick is priced fairly — which is the generous '
-    + 'assumption, because the book’s cut means they are not.</p></div>'
-    + '</div>';
+    + '<span class="eyebrow">You\u2019d have</span>'
+    + '<span class="eyebrow">Chance</span></div>'
+    + '<div id="v3rungs">' + v3Rungs() + '</div></div>'
+    + '<div class="card"><div class="name" id="v3lsum">'
+    + esc(v3LadderSummary()) + '</div>'
+    + '<p class="lede" style="font-size:15px;margin-top:6px">Each row assumes '
+    + 'every step above it won. The chance is how often you would get that '
+    + 'far if every pick is priced fairly \u2014 which is the generous '
+    + 'assumption, because the book\u2019s cut means they are not.</p>'
+    + '</div></div>';
 }
 
 // ── shell ───────────────────────────────────────────────────────────────
@@ -1625,6 +1732,14 @@ function v3Slipbar() {
     + '</div></div>';
 }
 
+// Matched on the whole row's name, case- and accent-insensitively, so
+// "kupp", "Kupp" and "KUPP" all find him and "a.j." finds A.J. Brown.
+function v3Match(rows) {
+  const q = (V.q || '').trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(r => String(r.player || '').toLowerCase().indexOf(q) >= 0);
+}
+
 const v3Surname = n => {
   const b = String(n || '').trim().split(' ');
   return b.length > 1 ? b[b.length - 1] : (b[0] || '');
@@ -1689,10 +1804,10 @@ function render(fromHistory) {
 // One delegated listener. Every control is a `data-v3*` attribute, so a
 // control that is added and never wired here does nothing at all rather than
 // throwing — which is why `test_every_v3_control_is_handled` exists.
-const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3pick', 'v3more',
+const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3pick', 'v3more',
                   'v3game', 'v3back', 'v3gtab', 'v3cat', 'v3type',
-                  'v3stake', 'v3kind', 'v3ask', 'v3open', 'v3dir',
-                  'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop',
+                  'v3stake', 'v3ask', 'v3open', 'v3dir',
+                  'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
                   'v3sortpick'];
 
 document.addEventListener('click', ev => {
@@ -1712,6 +1827,38 @@ document.addEventListener('click', ev => {
   if (ev.target && ev.target.id === 'scrim' && V.sheet) {
     V.sheet = null; render();
   }
+});
+
+// TYPING PATCHES THE ROWS, IT DOES NOT RE-RENDER THE SHELL.
+//
+// Re-rendering replaces the input being typed into, which loses focus and
+// the caret and drops every second keystroke. Only `#v3rows` is rewritten.
+document.addEventListener('input', ev => {
+  const t = ev.target;
+  if (t && t.getAttribute && t.getAttribute('data-v3l') !== null) {
+    const which = t.getAttribute('data-v3l');
+    const n = v3Num(t.value);
+    if (n != null) {
+      if (which === 'stake') V.stake = Math.max(0.01, n);
+      else if (which === 'rungs') V.rungs = Math.max(1, Math.min(20, Math.round(n)));
+      // An american price of 0 or between -100 and 100 is not a price. Left
+      // alone rather than coerced, so a half-typed "-1" on the way to "-150"
+      // does not snap the table to something the reader did not ask for.
+      else if (which === 'odds' && (n >= 100 || n <= -100)) V.lodds = n;
+    }
+    const rows = document.getElementById('v3rungs');
+    if (rows) rows.innerHTML = v3Rungs();
+    const sum = document.getElementById('v3lsum');
+    if (sum) sum.textContent = v3LadderSummary();
+    v3Save();
+    return;
+  }
+  if (!t || !t.getAttribute || t.getAttribute('data-v3q') === null) return;
+  V.q = t.value;
+  V.shown = V3SHOW;
+  const host = document.getElementById('v3rows');
+  if (host) host.innerHTML = v3Rows();
+  v3Save();
 });
 
 document.addEventListener('change', ev => {
@@ -1745,11 +1892,13 @@ function v3Do(kind, v) {
     case 'v3mkt': V.market = v; V.shown = V3SHOW; break;
     case 'v3sort': V.sort = v; break;
     case 'v3filter': V.filter = v; V.shown = V3SHOW; break;
+    case 'v3gfilter': V.gfilter = v; break;
     case 'v3more': V.shown = 1e9; break;
     // Tapping the open row closes it: one open at a time, so the board does
     // not turn into a wall of detail panels you have to close individually.
     case 'v3open': V.open = V.open === v ? null : v; break;
     case 'v3dir': V.desc = !V.desc; break;
+    case 'v3clearq': V.q = ''; V.shown = V3SHOW; break;
     case 'v3fav': toggleFav(v); break;
     case 'v3clear': V.picks = {}; V.saved = false; break;
     case 'v3drop': delete V.picks[v]; V.saved = false; break;
@@ -1765,7 +1914,6 @@ function v3Do(kind, v) {
     case 'v3cat': V.cat = v; break;
     case 'v3type': V.betType = v; V.sheet = null; V.saved = false; break;
     case 'v3stake': V.stake = Number(v); V.sheet = null; V.saved = false; break;
-    case 'v3kind': V.ladderKind = v; break;
     case 'v3ask': {
       const qs = v3Questions(V.game);
       V.answer = (qs[Number(v)] || {}).a || ''; break;
@@ -1840,6 +1988,12 @@ const V3SWIPE_OPEN = 96;
   document.addEventListener('touchend', end, { passive: true });
   document.addEventListener('touchcancel', end, { passive: true });
 })();
+
+// `week` was this tab's key before it was renamed Props. Normalised ONCE, at
+// boot, rather than inside `v3Screen` — a renderer that rewrites the state it
+// is rendering makes every render a state change, and the back stack started
+// pushing an entry every time the sort direction was flipped.
+if (V.tab === 'week') V.tab = 'props';
 
 // A market that this export does not carry must not be the one the app opens
 // on, and a remembered market can outlive the build that had it.

@@ -114,6 +114,16 @@ button{cursor:pointer}
   border:1px solid var(--btnline);background:var(--inset);font-size:13px;
   font-weight:600;color:var(--mut)}
 
+/* ---- search ---- */
+.search{position:relative;margin-top:12px}
+.search input{width:100%;height:44px;padding:0 40px 0 14px;border-radius:12px;
+  border:1px solid var(--btnline);background:var(--card);font-size:15px;
+  -webkit-appearance:none;appearance:none}
+.search input::-webkit-search-cancel-button{display:none}
+.searchx{position:absolute;right:6px;top:6px;width:32px;height:32px;
+  border-radius:8px;border:0;background:var(--inset);color:var(--mut);
+  font-size:15px}
+
 /* ---- the number strip: the old board's columns, on the row ---- */
 .rowbtn{flex:1;min-width:0;display:block;text-align:left;border:0;
   background:transparent;padding:0;font:inherit;color:inherit}
@@ -228,6 +238,12 @@ button{cursor:pointer}
 .bar .a{background:var(--sunk);color:var(--ink)}
 .bar .h{background:var(--ours);color:#fff;justify-content:flex-end}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+@media (max-width:420px){.three{grid-template-columns:1fr;gap:8px}}
+.cmp--adj{background:var(--goodbg)}
+.cmp--adj .eyebrow{color:var(--good)}
+.seg--5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.seg--5 button{font-size:12px;padding:0 2px}
 .box{padding:12px;border-radius:12px;background:var(--inset);
   display:flex;flex-direction:column;gap:2px}
 .box--ours{background:var(--oursbg)}
@@ -376,6 +392,16 @@ button{cursor:pointer}
   padding:7px 0;border-top:1px solid var(--line3)}
 .srow:first-child{border-top:0}
 .srow b{font-size:15px;font-weight:700}
+
+/* ---- ladder inputs ---- */
+.lfields{display:grid;grid-template-columns:1fr 1fr 80px;gap:8px;margin-top:16px}
+.lfield{display:flex;flex-direction:column;gap:2px;padding:8px 10px;
+  border-radius:12px;background:var(--card);border:1px solid var(--btnline)}
+.lfield input{border:0;background:transparent;font-size:19px;font-weight:700;
+  padding:0;width:100%;font-variant-numeric:tabular-nums}
+.lfield i{font-style:normal;font-size:11px;color:var(--mut2)}
+@media (max-width:400px){.lfields{grid-template-columns:1fr 1fr;
+  grid-template-areas:'a b' 'c c'}}
 
 /* ---- ladder ---- */
 .rung{display:grid;grid-template-columns:56px minmax(0,1fr) minmax(0,1fr);

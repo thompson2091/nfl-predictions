@@ -14,7 +14,8 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3Ladder', 'v3Header', 'v3Nav', 'v3Rows', 'v3Do', 'V3TABS', 'V3MKT',
    'V3CLICKS', 'V3HIST', 'v3Questions', 'v3Value', 'v3Outcomes', 'v3Legs',
    'rowsFor', 'served', 'DATA', 'V3SORTS', 'v3Sorted', 'V3CACHE', 'v3Same',
-   'isFav', 'toggleFav', 'v3Slipbar', 'v3Sheet', 'V3SHEETS']);
+   'isFav', 'toggleFav', 'v3Slipbar', 'v3Sheet', 'V3SHEETS', 'v3Rungs',
+   'v3Num', 'v3Rows', 'v3LadderSummary']);
 const { V, render, v3Screen, v3Games, v3Game, v3Slip, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
         rowsFor, served, DATA } = x;
@@ -47,7 +48,7 @@ V3TABS.forEach(t => {
 });
 
 // ── Every market, on the board ──────────────────────────────────────────
-V.tab = 'week';
+V.tab = 'props';
 V3MKT.forEach(m => {
   if (!served(m[0])) return;
   V.market = m[0];
@@ -87,7 +88,7 @@ if (weeks.length) {
   let e2 = null;
   try { render(); } catch (ex) { e2 = ex; }
   ok('the week survives moving to another tab', !e2 && V.week === weeks[0]);
-  V.week = null; V.tab = 'week';
+  V.week = null; V.tab = 'props';
 } else {
   ok('no played weeks in the fixture; picker path not exercised', true);
 }
@@ -121,7 +122,7 @@ if (cards.length) {
   let e = null;
   try { render(); } catch (ex) { e = ex; }
   ok('an unknown game is handled', !e && app().indexOf('not on this') >= 0);
-  V.game = null; V.tab = 'week';
+  V.game = null; V.tab = 'props';
 } else {
   ok('no cards in the fixture; game path not exercised', true);
 }
@@ -159,9 +160,9 @@ ok('a row with no price gets no verdict',
 //
 // A `data-v3*` attribute the views emit and `V3CLICKS` omits is a dead
 // button: the delegated listener never matches it, and nothing throws or logs.
-V.tab = 'week'; V.game = null; V.picks = {};
+V.tab = 'props'; V.game = null; V.picks = {};
 const seen = new Set();
-[['week', null], ['games', null], ['slip', null], ['ladder', null]]
+[['props', null], ['games', null], ['slip', null], ['ladder', null]]
   .forEach(([t]) => {
     V.tab = t;
     try { render(); } catch (e) { /* reported above */ }
@@ -177,7 +178,10 @@ if (cards.length) {
       m => seen.add(m.slice(5, -1)));
   });
 }
-const handled = new Set(V3CLICKS.concat(['v3week']));
+// Attributes the `input`/`change` listeners own rather than the click
+// listener: the week and game selects, the search box and the ladder fields.
+const handled = new Set(V3CLICKS.concat(
+  ['v3week', 'v3gamesel', 'v3sortsel', 'v3gameto', 'v3q', 'v3l']));
 const dead = [...seen].filter(k => !handled.has(k));
 ok('every control the screens emit is wired', dead.length === 0,
    'emitted and never handled: ' + dead.join(', '));
@@ -189,7 +193,7 @@ ok('every control the screens emit is wired', dead.length === 0,
 // this app existed: every screen was one history entry, so Back left the app
 // entirely from anywhere inside it.
 if (cards.length) {
-  V.tab = 'week'; V.game = null; V.open = null;
+  V.tab = 'props'; V.game = null; V.open = null;
   render();
   const depth = history.length;
   v3Do('v3game', cards[0].game_id);
@@ -207,7 +211,7 @@ if (cards.length) {
 }
 
 // ── Sorting, on every column and in both directions ─────────────────────
-V.tab = 'week'; V.game = null; V.week = null;
+V.tab = 'props'; V.game = null; V.week = null;
 x.V3SORTS.forEach(col => {
   V.sort = col[0];
   [true, false].forEach(desc => {
@@ -238,7 +242,7 @@ V.sort = 'ours'; V.desc = true;
 // ── A row opens to show everything ──────────────────────────────────────
 const someRow = x.rowsFor('any', null).filter(r => r.priced)[0];
 if (someRow) {
-  V.tab = 'week'; V.open = null; render();
+  V.tab = 'props'; V.open = null; render();
   const closed = app();
   v3Do('v3open', someRow.id);
   const opened = app();
@@ -251,7 +255,7 @@ if (someRow) {
 
 // ── The game filter survives a market change ────────────────────────────
 if (cards.length) {
-  V.tab = 'week'; V.game = cards[0].game_id; V.market = 'any';
+  V.tab = 'props'; V.game = cards[0].game_id; V.market = 'any';
   render();
   v3Do('v3mkt', 'first');
   ok('changing market keeps the selected game', V.game === cards[0].game_id);
@@ -268,7 +272,7 @@ if (cards.length) {
 // and the page explained it away.
 const wk = ((DATA.history || {})[x.V3HIST.any] || {}).has || [];
 if (wk.length) {
-  V.market = 'any'; V.week = wk[0]; V.tab = 'week';
+  V.market = 'any'; V.week = wk[0]; V.tab = 'props';
   x.V3CACHE[x.V3HIST.any + ':' + wk[0]] = { error: 'blocked by the browser' };
   render();
   ok('a failed fetch says so', app().indexOf('did not load') >= 0);
@@ -283,7 +287,7 @@ if (wk.length) {
 // On v1's store, keyed by the same row id v2 uses, so a player starred in one
 // is starred in the other. Two lists under two keys would be the same feature
 // twice, disagreeing.
-V.tab = 'week'; V.market = 'any'; V.filter = 'all'; V.week = null;
+V.tab = 'props'; V.market = 'any'; V.filter = 'all'; V.week = null;
 const favRow = x.rowsFor('any', null).filter(r => r.priced)[0];
 if (favRow) {
   render();
@@ -305,7 +309,7 @@ if (favRow) {
 const slipRows = x.rowsFor('any', null).filter(r => r.priced && r.dec);
 if (slipRows.length >= 2) {
   V.picks = {}; slipRows.slice(0, 2).forEach(r => { V.picks[r.id] = true; });
-  V.tab = 'week'; render();
+  V.tab = 'props'; render();
   ok('the slip bar appears when picks exist',
      app().indexOf('slipbar__count') >= 0);
   ok('and carries a clear control', app().indexOf('data-v3clear') >= 0);
@@ -318,7 +322,7 @@ if (slipRows.length >= 2) {
   ok('removing a leg removes exactly one', v3Legs().length === 1);
   v3Do('v3clear', '1');
   ok('clear empties the slip', v3Legs().length === 0);
-  V.tab = 'week';
+  V.tab = 'props';
 }
 
 // ── The bottom sheet ────────────────────────────────────────────────────
@@ -331,7 +335,7 @@ ok('opening a sheet renders it',
 ok('and it can be closed', app().indexOf('data-v3close') >= 0);
 v3Do('v3type', 'singles');
 ok('choosing closes the sheet', V.sheet == null && V.betType === 'singles');
-V.picks = {}; V.betType = 'parlay'; V.tab = 'week';
+V.picks = {}; V.betType = 'parlay'; V.tab = 'props';
 
 // ── Navigation resets the scroll; editing the screen does not ───────────
 //
@@ -345,7 +349,7 @@ if (cards.length) {
   V.top = false;
   v3Do('v3dir', '1');
   ok('flipping the sort does not jump you to the top', V.top === false);
-  V.game = null; V.tab = 'week';
+  V.game = null; V.tab = 'props';
 }
 
 // ── Three estimates, all three sortable ─────────────────────────────────
@@ -354,7 +358,7 @@ if (cards.length) {
 // version showed two of them under one label — while `betProb` answered MODEL
 // on a touchdown market and ADJUSTED on a yardage one, so the same control
 // sorted by different quantities depending on the tab.
-V.tab = 'week'; render();
+V.tab = 'props'; render();
 ['Model', 'Book', 'Adjusted'].forEach(k =>
   ok('the board shows ' + k, app().indexOf('>' + k + '</i>') >= 0));
 ['model', 'book', 'adj'].forEach(k =>
@@ -369,7 +373,7 @@ if (cards.length) {
   ok('and the filters', h.indexOf('data-v3filter=') >= 0);
   ok('and the sort control', h.indexOf('data-v3sortsel') >= 0);
   ok('and it leaves the global game filter alone', V.game === cards[0].game_id);
-  V.game = null; V.tab = 'week'; V.gameTab = 'notes';
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 
 // ── The game's own tabs ─────────────────────────────────────────────────
@@ -400,7 +404,7 @@ if (cards.length) {
   ok('the projected scores keep a decimal',
      /\d+\.\d\u2013\d+\.\d/.test(h),
      'whole numbers collapse a close game into a tie');
-  V.game = null; V.tab = 'week'; V.gameTab = 'notes';
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 
 // ── No hedging language reaches the reader ──────────────────────────────
@@ -408,7 +412,7 @@ if (cards.length) {
 // Asked for directly, twice. The measured caveats live in the code, where the
 // person deciding whether to trust a number can read them.
 const everything = [];
-['week', 'games', 'slip', 'ladder'].forEach(t => {
+['props', 'games', 'slip', 'ladder'].forEach(t => {
   V.tab = t; V.game = null; render(); everything.push(app());
 });
 if (cards.length) {
@@ -416,7 +420,7 @@ if (cards.length) {
   ['notes', 'players', 'bets', 'score'].forEach(gt => {
     V.game = cards[0].game_id; V.gameTab = gt; render(); everything.push(app());
   });
-  V.game = null; V.tab = 'week';
+  V.game = null; V.tab = 'props';
 }
 const blob = everything.join(' ').toLowerCase();
 ['unproven', 'still being tested', 'not yet validated', 'untested']
@@ -441,7 +445,7 @@ if (cards.length >= 2) {
     value: cards[0].game_id } });
   ok('switching keeps the tab you were on', V.gameTab === 'score');
   ok('and lands on the game you picked', V.game === cards[0].game_id);
-  V.game = null; V.tab = 'week'; V.gameTab = 'notes';
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 
 // ── How the game may unfold ─────────────────────────────────────────────
@@ -467,7 +471,7 @@ if (cards.length) {
     ok('each with its percentage',
        u.cells.every(cl => h.indexOf(cl.pct.toFixed(0) + '%') >= 0));
   }
-  V.game = null; V.tab = 'week'; V.gameTab = 'notes';
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 
 // ── Controls sit next to the rows they control ──────────────────────────
@@ -482,20 +486,167 @@ if (cards.length) {
   render();
   const h = app();
   const controls = h.indexOf('data-v3mkt=');
-  const injuries = h.indexOf('Injury report');
+  const tabs = h.indexOf('data-v3gtab=');
   const publics = h.indexOf('Where the public is');
-  if (controls >= 0 && injuries >= 0) {
-    ok('the filters come before the injury report', controls < injuries);
+  // PUBLIC MONEY IS GAME CONTEXT and belongs with the matchup, ABOVE the tab
+  // bar — it is the same all week whichever tab you are on. The filters are
+  // the first thing inside the tab, so nothing sits between a control and
+  // the rows it controls.
+  if (publics >= 0 && tabs >= 0) {
+    ok('the public split sits above the tab bar', publics < tabs);
   }
-  if (controls >= 0 && publics >= 0) {
-    ok('and before the public split', controls < publics);
+  if (controls >= 0 && tabs >= 0) {
+    ok('and the filters are inside the tab, under it', tabs < controls);
   }
+  // The injury report is a TAB now: under the matchup card it pushed every
+  // control two screens down.
+  ok('the injury report is not inline on the players tab',
+     h.indexOf('Injury report') < 0);
   // And on This week, the controls are directly above the rows.
-  V.tab = 'week'; V.game = null; render();
+  V.tab = 'props'; V.game = null; render();
   const w = app();
   ok('the board puts its sort control above its rows',
      w.indexOf('data-v3sortsel') < w.indexOf('id="v3rows"'));
   V.gameTab = 'notes';
 }
+
+// ── The games list labels its numbers ───────────────────────────────────
+//
+// It printed a lean — "our model picks the other side" — beside a bare
+// "CIN 63% to win", where the 63% was the BOOK's number with nothing saying
+// so. Read together the two contradict each other.
+V.tab = 'games'; V.game = null; V.filter = 'all'; render();
+if (cards.length) {
+  const h = app();
+  ok('the games list labels the book number', h.indexOf('book</i>') >= 0);
+  const withModel = cards.filter(c => c.model_win_home != null);
+  if (withModel.length) {
+    ok('and shows the model beside it', h.indexOf('>model</i>') >= 0);
+    ok('and the gap between them', h.indexOf('>gap</i>') >= 0);
+  }
+  ok('and no longer prints a bare percentage with no owner',
+     h.indexOf('to win</span>') < 0);
+}
+V.filter = 'all'; V.tab = 'props';
+
+// ── The games filters, and their own state ──────────────────────────────
+//
+// They shared `V.filter` with the board. Picking "Fades" on This week landed
+// here with no segment pressed and every game shown; picking "Model
+// disagrees" here left the board silently unfiltered.
+if (cards.length) {
+  V.tab = 'props'; V.filter = 'fade'; render();
+  V.tab = 'games'; render();
+  ok('the games page keeps its own filter', V.gfilter === 'all');
+  ok('and the board keeps its own', V.filter === 'fade');
+  V.filter = 'all';
+
+  ['all', 'flip', 'agree', 'diff'].forEach(f => {
+    V.gfilter = f;
+    let e = null;
+    try { render(); } catch (ex) { e = ex; }
+    ok('games filter ' + f + ' renders', !e, e && e.message);
+    ok('games filter ' + f + ' never renders blank',
+       textOf({ _html: app() }).join('').trim().length > 40);
+  });
+  V.gfilter = 'all';
+}
+
+// ── No hero on the games page ───────────────────────────────────────────
+//
+// "Game to watch" picked the largest gap between our model and the book,
+// which is not a reason to watch a game — and with four real filters below
+// it, it was answering a question nobody asked.
+V.tab = 'games'; V.game = null; render();
+ok('the games page has no hero card', app().indexOf('Game to watch') < 0);
+V.tab = 'props'; render();
+ok('and neither does the board', app().indexOf('Game to watch') < 0);
+
+// ── Search ──────────────────────────────────────────────────────────────
+//
+// Five hundred priced players and a scroll. The input must NOT be
+// re-rendered while you type: replacing the field being typed into loses
+// focus and the caret and drops keystrokes, which is what made v2's search
+// unusable.
+V.tab = 'props'; V.game = null; V.q = ''; V.filter = 'all'; render();
+const anyRow = x.rowsFor(V.market, null).filter(r => r.priced)[0];
+if (anyRow) {
+  ok('the board offers a search box', app().indexOf('data-v3q') >= 0);
+  V.q = anyRow.player.split(' ').pop();
+  const host = document.getElementById('v3rows');
+  if (host) host.innerHTML = x.v3Rows();
+  ok('search narrows the board', (host.innerHTML || '').indexOf(anyRow.player) >= 0);
+  V.q = 'zzzznotaplayer';
+  if (host) host.innerHTML = x.v3Rows();
+  ok('and says so when nothing matches',
+     (host.innerHTML || '').indexOf('No player matching') >= 0);
+  V.q = '';
+}
+// Typing is wired to `input` and patches only the rows — never the shell.
+{
+  const src = x.v3Rows.toString();
+  ok('the search filter is applied inside the row builder',
+     src.indexOf('v3Match') >= 0);
+}
+
+// ── Injuries are their own tab ──────────────────────────────────────────
+if (cards.length) {
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'inj';
+  let e = null;
+  try { render(); } catch (ex) { e = ex; }
+  ok('the injuries tab renders', !e, e && e.message);
+  ok('and shows the report', app().indexOf('Injury report') >= 0
+     || app().indexOf('No injury report') >= 0);
+  V.gameTab = 'notes'; V.game = null; V.tab = 'props';
+}
+
+// ── Three game numbers where all three exist ────────────────────────────
+if (cards.length) {
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'notes'; render();
+  const h2 = app();
+  if (cards[0].blend) {
+    ok('the game shows Adjusted beside Book and Model',
+       h2.indexOf('Adjusted') >= 0 && h2.indexOf('Sportsbooks') >= 0
+       && h2.indexOf('Our model') >= 0);
+  }
+  V.game = null; V.tab = 'props';
+}
+
+// ── The ladder is driven by what you type ───────────────────────────────
+//
+// It offered four stakes and three canned "kinds", so the question it exists
+// to answer — what does MY bet at MY price turn into — could be asked twelve
+// ways. The table is patched in place on each keystroke, never re-rendered,
+// or the field being typed into is replaced and loses focus.
+V.tab = 'ladder'; V.stake = 10; V.lodds = 100; V.rungs = 6; render();
+const L = () => app();
+ok('the ladder offers input fields', L().indexOf('data-v3l="stake"') >= 0
+   && L().indexOf('data-v3l="odds"') >= 0
+   && L().indexOf('data-v3l="rungs"') >= 0);
+const rungsOf = h => (h.match(/class="rung/g) || []).length;
+const six = rungsOf(L());
+V.rungs = 10;
+ok('changing the step count changes the table',
+   (x.v3Rungs().match(/class="rung/g) || []).length === 10);
+V.rungs = 6;
+// $10 at +100 doubles each step: six wins is $640.
+ok('the maths follows the inputs', x.v3Rungs().indexOf('$640.00') >= 0,
+   'ten dollars at even money, six times');
+V.lodds = -150;
+ok('and follows the price', x.v3Rungs().indexOf('$640.00') < 0);
+V.lodds = 100;
+// A half-typed price must not snap the table to something absurd.
+ok('a price under 100 is ignored rather than coerced',
+   x.v3Num('-1') === -1);
+ok('and the fields parse what a person types',
+   x.v3Num('$25') === 25 && x.v3Num('+150') === 150
+   && x.v3Num('-150') === -150);
+V.tab = 'games';
+
+// ── Games is the way in ─────────────────────────────────────────────────
+ok('the first tab is Games', V3TABS[0][0] === 'games');
+ok('and the second is Props', V3TABS[1][0] === 'props');
+ok('there are no duplicate tab keys',
+   new Set(V3TABS.map(t => t[0])).size === V3TABS.length);
 
 done();
