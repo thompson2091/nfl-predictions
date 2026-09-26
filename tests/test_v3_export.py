@@ -291,6 +291,8 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a player inherits the money on their own game",
                  "a player facing the money is told so, not merely told there is money",
                  "some board row sits in a game with money on it",
+                 "a scoreline is marked as nearest our number",
+                 "and is styled apart from the row that actually happened",
                  "the opened player row names the money in their game",
                  "and changing the stake keeps it open too",
                  "the bar opens the slip rather than navigating",

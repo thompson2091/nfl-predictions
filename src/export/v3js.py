@@ -1952,12 +1952,41 @@ function v3GameScores(c) {
             : m.band.indexOf(d.home) === 0 ? 'var(--ours)' : 'var(--mut3)')
       + '<span class="mrow__v num">' + m.pct.toFixed(1) + '%</span></div>';
   }).join('');
-  const scores = (d.scores || []).map(x => {
+  // WHICH OF THESE IS NEAREST OUR NUMBER.
+  //
+  // The list is ordered by how often each scoreline has happened, which is a
+  // fact about games like this one and not about this one. The projection is
+  // the opposite: specific to this game and hopeless as an exact score. Marking
+  // the nearest row joins them without pretending either is the other.
+  //
+  // `spread` here is AWAY-positive, as `v3Compare` reads it.
+  // Adjusted first, then the model, then the book — the same order of
+  // preference the rest of the page uses.
+  const pj = (has(c.blend && c.blend.spread) && has(c.blend && c.blend.total))
+      ? [c.blend.total / 2 - c.blend.spread / 2, c.blend.total / 2 + c.blend.spread / 2]
+    : (has(c.model_spread) && has(c.model_total))
+      ? [c.model_total / 2 - c.model_spread / 2, c.model_total / 2 + c.model_spread / 2]
+    : (has(c.spread) && has(c.total))
+      ? [c.total / 2 - c.spread / 2, c.total / 2 + c.spread / 2] : null;
+  let near = -1;
+  if (pj) {
+    let best = Infinity;
+    (d.scores || []).forEach((x, i) => {
+      // Straight-line distance in (home, away) points. Ties go to the more
+      // common scoreline, which is the earlier row.
+      const dd = Math.pow(x.home - pj[0], 2) + Math.pow(x.away - pj[1], 2);
+      if (dd < best - 1e-9) { best = dd; near = i; }
+    });
+  }
+  const scores = (d.scores || []).map((x, i) => {
     const landed = played && x.home === fh && x.away === fa;
-    return '<div class="srow' + (landed ? ' srow--on' : '') + '">'
+    const nearest = !played && i === near;
+    return '<div class="srow' + (landed ? ' srow--on' : '')
+      + (nearest ? ' srow--near' : '') + '">'
       + '<b class="num">' + esc(d.home) + ' ' + x.home
       + '\u2013' + x.away + ' ' + esc(d.away)
-      + (landed ? ' \u00b7 this one' : '') + '</b>'
+      + (landed ? ' \u00b7 this one'
+         : nearest ? ' \u00b7 nearest our number' : '') + '</b>'
       // `scores_n`, NOT `d.n`. The exact-score table is counted on a much
       // wider comparable set than the margin bands beside it — see
       // `score_dist.SCORE_SPREAD_TOL` — so printing this count against the

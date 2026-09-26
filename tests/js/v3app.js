@@ -1158,4 +1158,28 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   V.open = null; V.shown = 25;
 }
 
+
+// ── The scoreline nearest our projection ────────────────────────────────
+//
+// The list is ordered by how often each score has happened, which is a fact
+// about games like this one. The projection is specific to this game. The
+// marker joins them; it must not claim either is the other.
+{
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'out';
+  V.week = null; render();
+  const seen = app();
+  if (seen.indexOf('srow') >= 0) {
+    ok('a scoreline is marked as nearest our number',
+       seen.indexOf('nearest our number') >= 0);
+    // IT MUST NOT READ AS A RESULT. `srow--on` marks what actually happened
+    // on a played week; this marks where our number points, and the two are
+    // different kinds of claim.
+    ok('and is styled apart from the row that actually happened',
+       seen.indexOf('srow--near') >= 0);
+    ok('an unplayed game marks no row as having happened',
+       seen.indexOf('\u00b7 this one') < 0 || seen.indexOf('final') >= 0);
+  }
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
 done();

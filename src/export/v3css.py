@@ -304,6 +304,11 @@ button{cursor:pointer}
 .mrow--on .mrow__l{color:var(--good);font-weight:600}
 .srow--on{background:var(--goodbg);border-radius:8px}
 .srow--on b{color:var(--good)}
+/* Nearest our projection. Deliberately quieter than `--on`: that one marks
+   what actually happened, this one marks where our number points, and the
+   two must not read as the same kind of claim. */
+.srow--near{background:var(--inset);border-radius:8px}
+.srow--near b{color:var(--ours)}
 .box b{font-size:17px;font-weight:600}
 .cats{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .cat{min-height:36px;padding:0 14px;border-radius:999px;font-size:15px;
