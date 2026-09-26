@@ -20,7 +20,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'V3BETTYPES',
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
-   'v3Sharp', 'v3SharpSides', 'V3RATIO_SMALL',
+   'v3Sharp', 'v3SharpSides', 'V3RATIO_SMALL', 'v3GTab',
    'v3NowImplied', 'v3Clv', 'v3ClvNote', 'v3GameMoney']);
 const { V, render, v3Screen, v3Games, v3Game, v3Picks, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
@@ -446,7 +446,7 @@ if (cards.length) {
      'gameTab=' + V.gameTab);
 
   // Our model belongs on the same scale as the book's, not two boxes away.
-  V.gameTab = 'notes'; render();
+  V.gameTab = 'odds'; render();
   const h = app();
   ok('the win bar carries both the book and our model',
      h.indexOf('Sportsbooks') >= 0 && h.indexOf('Our model') >= 0);
@@ -539,18 +539,16 @@ if (cards.length) {
   const controls = h.indexOf('data-v3mkt=');
   const tabs = h.indexOf('data-v3gtab=');
   const publics = h.indexOf('Where the public is');
-  // PUBLIC MONEY IS GAME CONTEXT and belongs with the matchup, ABOVE the tab
-  // bar — it is the same all week whichever tab you are on. The filters are
-  // the first thing inside the tab, so nothing sits between a control and
-  // the rows it controls.
-  if (publics >= 0 && tabs >= 0) {
-    ok('the public split sits above the tab bar', publics < tabs);
-  }
+  // PUBLIC MONEY IS PART OF THE PRICE, so it lives on Odds with the bars it
+  // belongs to rather than above every tab. As a permanent preamble it put a
+  // screen and a half between opening a game and reaching any section of it.
+  // The filters are the first thing inside the tab, so nothing sits between
+  // a control and the rows it controls.
+  ok('the public split is not inline on the players tab', publics < 0);
   if (controls >= 0 && tabs >= 0) {
     ok('and the filters are inside the tab, under it', tabs < controls);
   }
-  // The injury report is a TAB now: under the matchup card it pushed every
-  // control two screens down.
+  // Same for the injury report, which is part of the matchup.
   ok('the injury report is not inline on the players tab',
      h.indexOf('Injury report') < 0);
   // And on This week, the controls are directly above the rows.
@@ -640,20 +638,37 @@ if (anyRow) {
      src.indexOf('v3Match') >= 0);
 }
 
-// ── Injuries are their own tab ──────────────────────────────────────────
+// ── Injuries are part of the matchup ────────────────────────────────────
+//
+// They were a tab of their own, which split one question over two: an
+// efficiency table is a claim about personnel, and reading it without knowing
+// who is out is reading last month's teams.
 if (cards.length) {
-  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'inj';
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'edge';
   let e = null;
   try { render(); } catch (ex) { e = ex; }
   ok('the injuries tab renders', !e, e && e.message);
   ok('and shows the report', app().indexOf('Injury report') >= 0
      || app().indexOf('No injury report') >= 0);
+  // Who is available comes before how the units rate: the injuries changed
+  // this week, the EPA is a season's worth and moves slowly.
+  const mh = app();
+  const injAt = Math.max(mh.indexOf('Injury report'),
+                         mh.indexOf('No injury report'));
+  const epaAt = mh.indexOf('data-v3half');
+  ok('with injuries above the efficiency table',
+     epaAt < 0 || injAt < epaAt, 'inj ' + injAt + ', epa ' + epaAt);
+  // A saved `inj` must land on the section that absorbed it rather than
+  // falling through to whatever is first.
+  V.gameTab = x.v3GTab('inj');
+  ok('an old injuries link still finds it', V.gameTab === 'edge',
+     String(V.gameTab));
   V.gameTab = 'notes'; V.game = null; V.tab = 'props';
 }
 
 // ── Three game numbers where all three exist ────────────────────────────
 if (cards.length) {
-  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'notes'; render();
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'odds'; render();
   const h2 = app();
   if (cards[0].blend) {
     ok('the game shows Adjusted beside Book and Model',
@@ -1070,10 +1085,12 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      v3Sharp('NOPE_NOPE') === '', v3Sharp('NOPE_NOPE'));
 
   // And it reaches the actual game screen rather than only the function.
-  V.tab = 'games'; V.game = 'ATL_GB'; render();
+  // On Odds, with the public split it is the other half of: the bars there
+  // are the ticket share and this is the dollar share.
+  V.tab = 'games'; V.game = 'ATL_GB'; V.gameTab = 'odds'; render();
   ok('the sharp block is on the game screen',
      app().indexOf('Where the bigger bets are') >= 0);
-  V.game = null; V.tab = 'props';
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 
 
@@ -1403,6 +1420,29 @@ if (cards.length) {
     ok('a full sample shows no banner',
        app().indexOf('class="thin"') < 0);
   }
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
+// ── The sections are five, in the order you decide things in ───────────
+if (cards.length) {
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'odds';
+  V.week = null; render();
+  const gh = app();
+  const at = k => gh.indexOf('data-v3gtab="' + k + '"');
+  ['odds', 'out', 'players', 'notes', 'edge'].forEach(k =>
+    ok('the ' + k + ' section is on the bar', at(k) >= 0));
+  ok('and injuries is not one of them, having joined the matchup',
+     at('inj') < 0);
+  // The three you can BET sit together, ahead of the two that explain them.
+  ok('the betting sections come first and are not split by commentary',
+     at('odds') < at('out') && at('out') < at('players')
+     && at('players') < at('notes') && at('notes') < at('edge'));
+  // Opening a game from the list lands on the price, which is what the page
+  // showed before the market block became a section rather than a preamble.
+  V.game = null; V.tab = 'games'; V.gameTab = 'notes'; render();
+  v3Do('v3game', cards[0].game_id);
+  ok('opening a game from the list lands on the price',
+     V.gameTab === 'odds', String(V.gameTab));
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 

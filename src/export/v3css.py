@@ -133,8 +133,12 @@ button{cursor:pointer}
    full-width rows ran to about 140px on a phone, and a pinned bar that deep
    costs more screen than the scrolling it saves. */
 .gtabs__row{display:flex;align-items:center;gap:8px}
-/* In `.gamenav` the selector shares a row with the back link and is capped so
-   it does not crowd it. Pinned it is the row, so it takes the space. */
+/* Unbordered on purpose: everything else in this row is a bordered control
+   that changes what you are looking at, and this one leaves. */
+.gback{width:28px;height:36px;flex-shrink:0;border:0;background:transparent;
+  color:var(--ours);font-size:24px;line-height:1;padding:0;margin-right:-4px}
+/* Pinned, the selector IS the row, so it takes the space rather than the
+   190px cap it needed when it shared a line with other things. */
 .gtabs .gsel{flex:1;min-width:0;justify-content:stretch}
 .gtabs .gsel select{flex:1;min-width:0;max-width:none;text-align:center;
   text-align-last:center}
@@ -485,8 +489,6 @@ button{cursor:pointer}
 .injrow__n i{font-style:normal;font-size:12px;color:var(--mut)}
 
 /* ---- moving between games without going back ---- */
-.gamenav{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  margin-top:10px;margin-bottom:2px}
 .gsel{display:flex;align-items:center;gap:4px;min-width:0;flex:1;
   justify-content:flex-end}
 .gsel select{min-width:0;max-width:190px;height:36px;border-radius:10px;

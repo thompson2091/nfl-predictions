@@ -108,7 +108,7 @@ const V3SHOW = 25;
 const V = Object.assign({
   tab: 'games', market: 'any', sort: 'model', desc: true, filter: 'all',
   gfilter: 'all',
-  week: null, game: null, gameTab: 'notes', cat: 'all',
+  week: null, game: null, gameTab: 'odds', cat: 'all',
   picks: {}, betType: 'twos', stake: 10, shown: V3SHOW,
   lodds: 100, rungs: 6, q: '', half: 'full',
   ask: '', answer: '',
@@ -968,12 +968,12 @@ function v3Games() {
     + '<div class="card"><div class="stats">'
     + '<div class="stat"><span class="eyebrow">Games</span><b class="num">'
     + cards.length + '</b></div>'
-    + '<div class="stat"><span class="eyebrow">Upset picks</span><b class="num">'
+    + '<div class="stat"><span class="eyebrow">Upsets</span><b class="num">'
     + flips + '</b></div>'
     + '<div class="stat"><span class="eyebrow">Model agrees</span><b class="num">'
     + agree + '</b></div></div></div>'
     + '<div class="seg seg--4">'
-    + v3Seg('v3gfilter', [['all', 'All'], ['flip', 'Upset picks'],
+    + v3Seg('v3gfilter', [['all', 'All'], ['flip', 'Upsets'],
                           ['agree', 'Agrees'], ['diff', 'Disagrees']],
             V.gfilter)
     + '</div>'
@@ -1013,25 +1013,6 @@ function v3Game(gid) {
   const shown = notes.filter(n => V.cat === 'all' || n.cat === V.cat);
 
   return '<div class="wrap">'
-    + '<div class="gamenav">'
-    + '<a class="back" data-v3back="1">‹ All games</a>'
-    + '</div>'
-    + '<div class="card">'
-    + '<div class="vs"><div><b>' + esc(c.away) + '</b><div class="sub">away</div>'
-    + '</div><div style="text-align:center;color:var(--mut2)">at</div>'
-    + '<div style="text-align:right"><b>' + esc(c.home) + '</b>'
-    + '<div class="sub">home</div></div></div>'
-    + '<div class="sub" style="margin-top:8px">' + esc(v3Kick(c)) + '</div>'
-    + v3WinBar(c)
-    + v3Compare(c)    + '</div>'
-    // PUBLIC MONEY IS GAME CONTEXT, so it sits with the matchup above the
-    // tabs rather than under whichever tab you happen to be on. The injury
-    // report is a SECTION, not context, so it became a tab of its own —
-    // under the matchup card it pushed every control two screens down.
-    + v3PublicMoney(gid)
-    // Directly under it, because it is the other half of the same feed: the
-    // bars above are the ticket share and this is the dollar share.
-    + v3Sharp(gid)
     // ONE DISTRIBUTION, ONE TAB.
     //
     // Bets and Score were two renderings of the same thing: `score_dist`
@@ -1050,7 +1031,7 @@ function v3Game(gid) {
     // rounded corners of the control let content slide visibly behind it.
     // THE GAME SWITCHER RIDES WITH IT.
     //
-    // It used to sit in `.gamenav` at the very top, beside the back link,
+    // It used to sit in its own nav at the very top, beside the back link,
     // which put it above the matchup card — so by the time you were reading
     // Outcome and wanted the same table for another game, the control for
     // changing game had scrolled off two screens ago and the only route was
@@ -1070,15 +1051,30 @@ function v3Game(gid) {
     // and at that height a pinned bar stops being a convenience.
     + '<div class="gtabs">'
     + '<div class="gtabs__row">'
+    // BACK LEADS THE ROW, and is the one control here that is not bordered.
+    //
+    // Three chevrons on one row is a puzzle: back, previous game and next
+    // game all point the same way. So it reads as navigation rather than as
+    // part of the stepper — plain, muted, outside the bordered group — which
+    // is the same distinction the rest of the app draws between leaving a
+    // screen and changing what is on it.
+    + '<button class="gback" data-v3back="1" aria-label="Back to all games">'
+    + '\u2039</button>'
     + v3GameSwitch(gid)
     + '<button class="askbtn askbtn--mini" data-v3sheet="ask"'
     + ' aria-label="Ask about this game">'
     + '<span>Ask</span><i>\u2192</i></button>'
     + '</div>'
     + '<div class="seg seg--5">'
-    + v3Seg('v3gtab', [['notes', 'Notes'], ['players', 'Players'],
-                       ['out', 'Outcome'], ['edge', 'Matchup'],
-                       ['inj', 'Injuries']], V.gameTab)
+    // ORDERED BY WHAT YOU ARE DECIDING, not by how the sections were built.
+    //
+    // The three things you can bet come first and sit together — the game
+    // price, the game result, the players — then the two that explain them.
+    // Notes used to sit BETWEEN Players and Outcome, which split the betting
+    // surfaces around a piece of commentary.
+    + v3Seg('v3gtab', [['odds', 'Odds'], ['out', 'Outcome'],
+                       ['players', 'Players'], ['notes', 'Notes'],
+                       ['edge', 'Matchup']], V.gameTab)
     + '</div></div>'
     // THE TAB'S OWN CONTENT COMES FIRST, CONTEXT UNDER IT.
     //
@@ -1088,10 +1084,10 @@ function v3Game(gid) {
     // back down, read, scroll up again. Both blocks are the same all week
     // whichever tab you are on, which is exactly what should not be between
     // a control and the rows it controls.
-    + (V.gameTab === 'players' ? v3GamePlayers(gid)
+    + (V.gameTab === 'odds' ? v3GameOdds(c, gid)
+     : V.gameTab === 'players' ? v3GamePlayers(gid)
      : V.gameTab === 'out' ? v3GameOutcome(c, gid)
-     : V.gameTab === 'edge' ? v3Matchup(c)
-     : V.gameTab === 'inj' ? v3Injuries(c, true)
+     : V.gameTab === 'edge' ? v3GameMatchup(c)
      : v3GameNotes(gid, cats, shown))
     + '</div>';
 }
@@ -1936,8 +1932,53 @@ function v3GamePlayers(gid) {
 //: `bets` and `score` were separate tabs before they became `out`. A saved
 //: session, a bookmark and a back entry can all still name one. ONE mapping,
 //: used by the click handler, the boot and `popstate` alike.
+// SECTIONS GET RENAMED AND SAVED STATE DOES NOT. `V.gameTab` is persisted
+// and put in the URL, so a name this app no longer renders has to resolve to
+// the section that absorbed it rather than falling through to Notes — which
+// is silent, and reads as "the link forgot where I was".
 function v3GTab(v) {
-  return (v === 'bets' || v === 'score') ? 'out' : v;
+  if (v === 'bets' || v === 'score') return 'out';
+  // The injury report is part of the matchup now: it is the question of who
+  // is on the field, which is what the efficiency table is comparing.
+  if (v === 'inj') return 'edge';
+  return v;
+}
+
+// THE MARKET, IN ONE PLACE.
+//
+// The price, the two win bars read against it, the public's tickets and the
+// sharp dollars used to sit ABOVE the section bar as a permanent preamble.
+// That put roughly a screen and a half between opening a game and reaching
+// any of its sections, and the section bar — the thing that moves you around
+// the game — was the one control you had to scroll to find.
+//
+// They belong together and they are one answer: what this game is priced at
+// and who is backing it. As a section they are a tap away instead of a
+// scroll, and every other section starts at the top of the page.
+function v3GameOdds(c, gid) {
+  return '<div class="card">'
+    + '<div class="vs"><div><b>' + esc(c.away) + '</b><div class="sub">away</div>'
+    + '</div><div style="text-align:center;color:var(--mut2)">at</div>'
+    + '<div style="text-align:right"><b>' + esc(c.home) + '</b>'
+    + '<div class="sub">home</div></div></div>'
+    + '<div class="sub" style="margin-top:8px">' + esc(v3Kick(c)) + '</div>'
+    + v3WinBar(c)
+    + v3Compare(c) + '</div>'
+    + v3PublicMoney(gid)
+    // Directly under it, because it is the other half of the same feed: the
+    // bars above are the ticket share and this is the dollar share.
+    + v3Sharp(gid);
+}
+
+// WHO IS ON THE FIELD, THEN HOW THE UNITS COMPARE.
+//
+// Injuries were a section of their own, which split one question across two
+// tabs: an efficiency table is a claim about personnel, and reading it
+// without knowing who is out is reading last month's teams. Injuries come
+// first because they are the part that changed this week — the EPA rates
+// under them are a season's worth and move slowly.
+function v3GameMatchup(c) {
+  return v3Injuries(c, true) + v3Matchup(c);
 }
 
 function v3GameOutcome(c, gid) {
@@ -3392,7 +3433,7 @@ function v3Do(kind, v) {
     case 'v3savedfilter': V.savedFilter = v; break;
     case 'v3pick':
       if (V.picks[v]) delete V.picks[v]; else V.picks[v] = true; break;
-    case 'v3game': V.tab = 'games'; V.game = v; V.gameTab = 'notes';
+    case 'v3game': V.tab = 'games'; V.game = v; V.gameTab = 'odds';
       V.cat = 'all'; V.answer = ''; V.answerErr = ''; V.q2 = '';
       V.answerLive = false; break;
     // STEPPING between games is not leaving the page the way tapping a game
