@@ -110,7 +110,7 @@ const V = Object.assign({
   gfilter: 'all',
   week: null, game: null, gameTab: 'odds', cat: 'all',
   picks: {}, betType: 'twos', stake: 10, shown: V3SHOW,
-  lodds: 100, rungs: 6, q: '', half: 'full',
+  lodds: 100, rungs: 6, q: '', half: 'full', metric: 'all',
   ask: '', answer: '',
   // The saved picks, and which of them the Picks tab is showing. `saved` was
   // a boolean nothing read; the slip and the saved copy are different things
@@ -352,32 +352,48 @@ function v3MarketControls() {
       + (m[0] === V.market) + '">' + esc(m[1])
       + (n === null ? '' : ' <i>' + n + '</i>') + '</button>';
   }).join('');
+  // ONLY THE ONE THAT STOPS A MISTAKE.
+  //
+  // "Our shortlist: the picks this project would actually place" and "Players
+  // you have starred" said what their own buttons say. Fades does not: the
+  // word reads like a bet to place, and it is the opposite — so that line
+  // stays, cut to the part that prevents the misread.
   const filterHelp = {
-    all: '',
-    short: 'Our shortlist: the picks this project would actually place.',
-    fav: 'Players you have starred. The same list v2 uses.',
-    fade: 'Players priced above our number. These are bets to LEAVE ALONE, '
-        + 'not bets to place \u2014 no book posts the other side.',
+    fade: 'Priced ABOVE our number \u2014 bets to leave alone, not to place.',
   }[V.filter] || '';
-  return '<div class="mkts">' + mkts + '</div>'
-    + '<p class="help">' + esc(cur[2]) + '</p>'
+  // ONE PINNED BAR, THREE TIGHT ROWS, AND THE PROSE UNDERNEATH IT.
+  //
+  // Stacked at full size these ran about 250px before the first player: six
+  // 44px market buttons in a 3x2 grid, a sentence about the market, a 4-way
+  // filter, a search box and a sort row. That is fine to read once and
+  // impossible to pin — a bar that deep leaves no board under it.
+  //
+  // So each control keeps ONE TAP and loses its padding. The markets become a
+  // strip that scrolls sideways instead of a grid that wraps, which is the
+  // whole 96px-to-32px saving; search and sort share a line, and "Sort by"
+  // goes, because a dropdown of sort names does not need a label saying it
+  // sorts. Roughly 118px, and every filter is still one tap from anywhere in
+  // the list.
+  //
+  // THE TWO HELP LINES STAY, BELOW THE BAR. They explain what you are looking
+  // at rather than change it, so they are not worth pinned pixels — and they
+  // are what makes the bar itself safe to shrink, because the meaning is
+  // still on the page.
+  return '<div class="pbar">'
+    + '<div class="mkts mkts--strip">' + mkts + '</div>'
     + '<div class="seg seg--4">'
     + v3Seg('v3filter', [['all', 'Everyone'], ['short', 'Shortlist'],
                          ['fade', 'Fades'], ['fav', 'Starred']], V.filter)
     + '</div>'
+    + '<div class="pbar__row">' + v3Search() + v3SortBar() + '</div>'
+    + '</div>'
+    + '<p class="help">' + esc(cur[2]) + '</p>'
     + (filterHelp ? '<p class="help">' + esc(filterHelp) + '</p>' : '');
 }
 
 function v3Week() {
   const cur = V3MKT.filter(m => m[0] === V.market)[0] || V3MKT[0];
 
-  const filterHelp = {
-    all: '',
-    short: 'Our shortlist: the picks this project would actually place.',
-    fav: 'Players you have starred. The same list v2 uses.',
-    fade: 'Players priced above our number. These are bets to LEAVE ALONE, '
-        + 'not bets to place \u2014 no book posts the other side.',
-  }[V.filter] || '';
 
   return '<div class="wrap">'
     + v3PastBanner()
@@ -385,7 +401,6 @@ function v3Week() {
     + '<p class="lede">Our number next to the sportsbook\u2019s.'
     + (V.week == null ? ' Tap a row for everything we know about it.' : '')
     + '</p>'
-    + v3MarketControls()
     // ONLY ON A LIVE WEEK. On a graded week the prices stopped moving and
     // "the market has moved toward us on 9 of 14" is a fact about the past
     // dressed as one about a board you could still bet.
@@ -393,9 +408,12 @@ function v3Week() {
        ? v3ClvNote(rowsFor(V.market, null).filter(r => r.priced && !r.blocked),
                    'of the picks on this market')
        : '')
+    // ABOVE THE PINNED BAR, on purpose. Narrowing to one game is something
+    // you do once and then work inside; market, shortlist, search and sort
+    // are what you reach for while reading. Pinning all five ran to 162px,
+    // and the least-used control was paying for a third of it.
     + v3GamePicker()
-    + v3Search()
-    + v3SortBar()
+    + v3MarketControls()
     + '<div class="list" id="v3rows">' + v3Rows() + '</div>'
     + v3Explainer()
     + '</div>';
@@ -800,7 +818,16 @@ function v3Explainer() {
     + 'price, the bet should come out ahead over time if our chance is right. '
     + '<b style="color:var(--ink)">Pricey</b> means the sportsbook is charging '
     + 'too much. A likely pick can still be pricey. We rate prices; you decide '
-    + 'what to bet.</p></div>';
+    + 'what to bet.</p>'
+    // Moved down from above the board, where it was five lines of standing
+    // explanation on every screen. It belongs with the other things that are
+    // true every week rather than at the top of the one thing that is not.
+    + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:12px">'
+    + '<b style="color:var(--ink)">Prices moved toward us</b> counts the picks '
+    + 'we rated above the opening price whose line then came our way. Over '
+    + 'three seasons that has run near 60%, against 54% for a shuffled list — '
+    + 'it is the one edge this project has measured, and it is about the PRICE '
+    + 'moving, not about the bet winning.</p></div>';
 }
 
 // THE ADJUSTED WIN PROBABILITY, derived the same way everywhere.
@@ -1137,18 +1164,38 @@ function v3Matchup(c) {
       + 'play-by-play for this season yet, so there is nothing to compare.'
       + '</p></div>';
   }
-  const g = m.games || {};
   // FULL GAME, FIRST HALF, SECOND HALF. The same eight rows rather than
   // twenty-four: a half is a different view of one matchup, not a different
   // matchup. A team that scripts its opening drives shows up in the first
   // half and is invisible in the season total.
   const halves = m.halves || [['full', 'Full game']];
-  const split = (m.splits && m.splits[V.half]) ? V.half : 'full';
-  const rows = (m.splits && m.splits[split]) || m.rows || [];
-  const seg = halves.length < 2 ? '' :
-    '<div class="seg seg--' + halves.length + '" style="margin-top:12px">'
-    + halves.map(h => '<button data-v3half="' + esc(h[0]) + '" aria-pressed="'
-        + (h[0] === split) + '">' + esc(h[1]) + '</button>').join('')
+  // INJURIES ARE A FOURTH VIEW OF THIS MATCHUP, not a sixth section of the
+  // game. Full game, first half and second half ask "how do these units
+  // rate"; the injury report asks "which of them is actually playing". Same
+  // question, same control — and as its own tab it was one more thing to
+  // find, on a bar that already had five.
+  const views = halves.concat([['inj', 'Injury']]);
+  const on = V.half === 'inj' ? 'inj'
+           : (m.splits && m.splits[V.half]) ? V.half : 'full';
+  const rows = (m.splits && m.splits[on]) || m.rows || [];
+  // STICKY, and offset by the height of the bar above it. `--gtabs-h` is
+  // written by `render` from the real measured bar, because that bar's height
+  // depends on how the matchup name wraps — hard-coding it left this one
+  // either overlapping the bar or floating below it.
+  const seg = '<div class="mxbar"><div class="seg seg--' + views.length + '">'
+    + views.map(h => '<button data-v3half="' + esc(h[0]) + '" aria-pressed="'
+        + (h[0] === on) + '">' + esc(h[1]) + '</button>').join('')
+    + '</div></div>';
+  // ONE METRIC AT A TIME, or all of them. Eight stacked headings meant
+  // scrolling past seven to re-read the one you were weighing.
+  const keys = rows.map(r => r.key);
+  const pick = keys.indexOf(V.metric) >= 0 ? V.metric : 'all';
+  const shownRows = pick === 'all' ? rows : rows.filter(r => r.key === pick);
+  const pills = rows.length < 2 ? '' : '<div class="cats mxpills">'
+    + [['all', 'All metrics']].concat(rows.map(r => [r.key, r.label]))
+        .map(k => '<button class="cat" data-v3metric="' + esc(k[0])
+          + '" aria-pressed="' + (k[0] === pick) + '">' + esc(k[1])
+          + '</button>').join('')
     + '</div>';
   const pct = v => (v * 100).toFixed(1) + '%';
   const fmt = (k, v) => k === 'epa_play' ? (v >= 0 ? '+' : '') + v.toFixed(3)
@@ -1170,28 +1217,31 @@ function v3Matchup(c) {
       + fmt(r.key, p.def_val) + ' allowed</div>'
       + '</div>';
   };
-  return '<div class="card"><div class="eyebrow">Based on</div>'
-    + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:4px">'
-    + 'Every game each side has played this season BEFORE this one'
-    + (Object.keys(g).length
-       ? ' \u2014 ' + Object.keys(g).map(t => esc(t) + ' ' + g[t]).join(', ')
-       : '') + '.</p>'
-    + (m.thin ? '<p class="help">Two games or fewer. Treat every number here '
-        + 'as a first impression rather than a rate.</p>' : '')
-    + '</div>'
-    + seg
-    + rows.map(r =>
-        '<h2 class="h1" style="font-size:17px;line-height:22px;margin-top:20px">'
-        + esc(r.label)
-        + (r.proxy ? ' <span class="tag tag--warn">proxy</span>' : '') + '</h2>'
-        + '<p class="help">' + esc(r.note) + '</p>'
-        + '<div class="card">' + r.sides.map(p => row(r, p)).join('') + '</div>'
-      ).join('')
-    + (m.missing && m.missing.length
-       ? '<div class="card"><div class="name">Not shown, and why</div>'
-         + m.missing.map(x => '<div class="gap"><b>' + esc(x.what) + '</b>'
-             + '<span>' + esc(x.why) + '</span></div>').join('') + '</div>'
-       : '');
+  // The "Based on" card and the "Not shown, and why" list are both gone.
+  //
+  // Neither answered a question the reader had in front of them: that these
+  // rates come from the season's earlier games is what a season rate IS, and
+  // a list of metrics the page is NOT showing is a note about the pipeline
+  // rather than about the game. Between them they cost a card at the top and
+  // a card at the bottom of every matchup.
+  //
+  // THE THIN WARNING STAYS. That one is not background — it says the numbers
+  // under it are two games' worth and should not be read as rates — so it
+  // keeps the same banner every other thin sample in the app uses.
+  return seg
+    + (V.half === 'inj' ? v3Injuries(c, true)
+       : (m.thin ? '<div class="thin" role="note"><b>Two games or fewer</b>'
+            + '<span>Treat every number here as a first impression rather '
+            + 'than a rate.</span></div>' : '')
+         + pills
+         + shownRows.map(r =>
+            '<h2 class="h1" style="font-size:17px;line-height:22px;'
+            + 'margin-top:20px">' + esc(r.label)
+            + (r.proxy ? ' <span class="tag tag--warn">proxy</span>' : '')
+            + '</h2>'
+            + '<p class="help">' + esc(r.note) + '</p>'
+            + '<div class="card">' + r.sides.map(p => row(r, p)).join('')
+            + '</div>').join(''));
 }
 
 function v3Injuries(c, full) {
@@ -1913,7 +1963,7 @@ function v3GameEmpty(gid) {
 function v3GamePlayers(gid) {
   const prev = V.game;
   V.game = gid;
-  const body = v3MarketControls() + v3Search() + v3SortBar()
+  const body = v3MarketControls()
     + '<div class="list" id="v3rows">' + v3Rows() + '</div>';
   V.game = prev;
   return '<p class="help" style="margin-top:16px">Every priced player in this '
@@ -1986,7 +2036,7 @@ function v3GameOdds(c, gid) {
 // first because they are the part that changed this week — the EPA rates
 // under them are a season's worth and move slowly.
 function v3GameMatchup(c) {
-  return v3Injuries(c, true) + v3Matchup(c);
+  return v3Matchup(c);
 }
 
 function v3GameOutcome(c, gid) {
@@ -2729,13 +2779,20 @@ function v3ClvNote(rows, what) {
   // Under a handful of picks the share is noise and printing it invites a
   // reader to draw a conclusion from four coin flips.
   if (!c || c.n < 4) return '';
-  return '<p class="help">Since these lines opened, the market has moved '
-    + 'toward our number on <b>' + c.toward + ' of ' + c.n + '</b> '
-    + esc(what) + ' we rated above the opening price'
-    + (c.pct >= 0.5 ? '' : '') + '. Over three seasons that has run near 60%, '
-    + 'against 54% for a shuffled list — it is the one edge this project has '
-    + 'measured, and it is about the PRICE moving, not about the bet '
-    + 'winning.</p>';
+  // ONE LINE, AND THE NUMBER IS THE LINE.
+  //
+  // This ran five lines above every board: the count, then three seasons of
+  // context, then what the number does and does not mean. All of it true, and
+  // none of it changing between one board and the next — so it was a
+  // paragraph of standing explanation charged to the top of a screen whose
+  // job is to show players. The count is what moves, so the count stays here
+  // and the explanation moved to "How to read a pick", which is where the
+  // page already keeps what is true every week.
+  //
+  // "we rated above the open" stays. It is not padding, it is the condition
+  // that defines the sample, and 77 of 115 without it is a different claim.
+  return '<p class="help">Prices moved toward us on <b>' + c.toward + ' of '
+    + c.n + '</b> ' + esc(what) + ' we rated above the open.</p>';
 }
 
 // THE CAVEAT BECOMES A NUMBER.
@@ -3254,6 +3311,20 @@ function render(fromHistory) {
   // down to reach the thing you tapped for. This puts the pinned bar at the
   // top of the pane, which is exactly where it comes to rest anyway, and the
   // new section starts immediately under it.
+  // THE PINNED BAR'S HEIGHT, PUBLISHED FOR WHATEVER PINS UNDER IT.
+  //
+  // The matchup's own bar sticks below this one, and its offset has to be the
+  // real height: the game bar grows a line when a long matchup name wraps, and
+  // a hard-coded number left the second bar either overlapping it or floating
+  // clear of it. Measured after the re-render, so it is the new layout, and
+  // `offsetHeight` rather than a rect because it is a height either way and
+  // does not care whether the bar is currently stuck.
+  if (scroll) {
+    const gb = document.querySelector && document.querySelector('.gtabs');
+    scroll.style && scroll.style.setProperty
+      && scroll.style.setProperty('--gtabs-h',
+           (gb && gb.offsetHeight ? gb.offsetHeight : 0) + 'px');
+  }
   if (scroll) {
     if (V.top === 'section') {
       // THE PANE IS RESTED AT ZERO BEFORE THE BAR IS MEASURED, because the
@@ -3296,7 +3367,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3pick',
                   'v3game', 'v3gamestep', 'v3back', 'v3gtab', 'v3cat', 'v3type',
                   'v3stake', 'v3ask', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
-                  'v3half',
+                  'v3half', 'v3metric',
                   'v3sortpick'];
 
 document.addEventListener('click', ev => {
@@ -3427,6 +3498,7 @@ function v3Do(kind, v) {
     case 'v3dir': V.desc = !V.desc; break;
     case 'v3clearq': V.q = ''; V.shown = V3SHOW; break;
     case 'v3half': V.half = v; break;
+    case 'v3metric': V.metric = v; break;
     case 'v3fav': toggleFav(v); break;
     case 'v3clear': V.picks = {}; break;
     case 'v3drop': delete V.picks[v]; break;

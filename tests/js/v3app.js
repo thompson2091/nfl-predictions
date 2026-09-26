@@ -648,16 +648,23 @@ if (cards.length) {
   let e = null;
   try { render(); } catch (ex) { e = ex; }
   ok('the injuries tab renders', !e, e && e.message);
+  // A FOURTH VIEW of the matchup, beside the halves: the halves ask how the
+  // units rate, this asks which of them is playing. So it is behind the same
+  // control rather than stacked above the table on every view of it.
+  ok('the injury report is a view of the matchup',
+     app().indexOf('data-v3half="inj"') >= 0);
+  ok('and is not stacked above the table on the other views',
+     app().indexOf('Injury report') < 0
+     && app().indexOf('No injury report') < 0);
+  V.half = 'inj'; render();
   ok('and shows the report', app().indexOf('Injury report') >= 0
      || app().indexOf('No injury report') >= 0);
-  // Who is available comes before how the units rate: the injuries changed
-  // this week, the EPA is a season's worth and moves slowly.
-  const mh = app();
-  const injAt = Math.max(mh.indexOf('Injury report'),
-                         mh.indexOf('No injury report'));
-  const epaAt = mh.indexOf('data-v3half');
-  ok('with injuries above the efficiency table',
-     epaAt < 0 || injAt < epaAt, 'inj ' + injAt + ', epa ' + epaAt);
+  ok('with the efficiency rows put away while it is showing',
+     app().indexOf('offense <i>vs</i>') < 0);
+  // The control itself stays, or there is no way back to the numbers.
+  ok('and the view control still there to leave by',
+     app().indexOf('data-v3half="full"') >= 0);
+  V.half = 'full'; render();
   // A saved `inj` must land on the section that absorbed it rather than
   // falling through to whatever is first.
   V.gameTab = x.v3GTab('inj');
@@ -725,10 +732,35 @@ if (cards.length) {
     const h = app();
     ok('and pairs one offense against the other defense',
        h.indexOf('offense') >= 0 && h.indexOf('defense') >= 0);
-    // A gap has to read as a gap rather than as an oversight.
-    ok('and says what it could not build', h.indexOf('Not shown, and why') >= 0);
+    // The "Based on" card and the "Not shown, and why" list are both gone.
+    // Neither answered a question in front of the reader: that a season rate
+    // comes from the season's earlier games is what a season rate IS, and a
+    // list of metrics the page is not showing is a note about the pipeline.
+    ok('no "Based on" preamble above the numbers',
+       h.indexOf('Based on') < 0);
+    ok('and no list of what was left out below them',
+       h.indexOf('Not shown, and why') < 0);
+
+    // ONE METRIC AT A TIME. Eight stacked headings meant scrolling past seven
+    // to re-read the one you were weighing.
+    const pills = (h.match(/data-v3metric="/g) || []).length;
+    if (pills > 1) {
+      ok('the metrics can be filtered to one', h.indexOf('All metrics') >= 0);
+      const k = /data-v3metric="((?!all)[^"]+)"/.exec(h);
+      ok('a pill names a real metric', !!k);
+      if (k) {
+        v3Do('v3metric', k[1]);
+        const one = app();
+        ok('picking one shows fewer headings than all of them',
+           (one.match(/tag--warn|class="mx"/g) || []).length
+           < (h.match(/tag--warn|class="mx"/g) || []).length);
+        ok('and the pills are still there to change it',
+           one.indexOf('All metrics') >= 0);
+        v3Do('v3metric', 'all');
+      }
+    }
   }
-  V.gameTab = 'notes'; V.game = null;
+  V.gameTab = 'notes'; V.game = null; V.metric = 'all';
 }
 
 // ── A past week of GAMES ────────────────────────────────────────────────
@@ -1454,6 +1486,106 @@ if (cards.length) {
   ok('opening a game from the list lands on the price',
      V.gameTab === 'odds', String(V.gameTab));
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
+// ── The props filters are one pinned bar ───────────────────────────────
+//
+// Stacked at full size they ran about 250px before the first player, which
+// is fine to read once and impossible to pin. Every control keeps one tap.
+{
+  V.tab = 'props'; V.game = null; V.week = null; V.q = ''; render();
+  const h = app();
+  ok('the filters share one bar', h.indexOf('class="pbar"') >= 0);
+  ok('the markets are a strip, not a grid that wraps',
+     h.indexOf('mkts mkts--strip') >= 0);
+  // All four still reachable without leaving the bar.
+  ok('market is in it', h.indexOf('data-v3mkt=') > h.indexOf('class="pbar"'));
+  ok('shortlist and fades are in it', h.indexOf('data-v3filter=') >= 0);
+  ok('search is in it', h.indexOf('data-v3q') >= 0);
+  ok('sort is in it', h.indexOf('data-v3sortsel') >= 0);
+  // ONE OF EACH. Search and sort moved INTO the bar, so leaving the old
+  // standalone copies in place would pin one and scroll the other, and typing
+  // in the wrong box would look like search was broken.
+  ok('and search appears once, not above the bar as well',
+     h.split('data-v3q').length - 1 === 1,
+     String(h.split('data-v3q').length - 1));
+  ok('and sort appears once', h.split('data-v3sortsel').length - 1 === 1,
+     String(h.split('data-v3sortsel').length - 1));
+  // The prose stays, under the bar rather than inside it: it explains what
+  // you are reading instead of changing it, so it is not worth pinned pixels.
+  const barAt = h.indexOf('class="pbar"');
+  const rowsAt = h.indexOf('id="v3rows"');
+  const helpAt = h.indexOf('class="help"', barAt);
+  ok('with the market explanation below the bar and above the rows',
+     helpAt > barAt && helpAt < rowsAt,
+     'bar ' + barAt + ', help ' + helpAt + ', rows ' + rowsAt);
+  // Narrowing to one game is set once and worked inside, so it sits above.
+  const pickAt = h.indexOf('data-v3gamesel');
+  ok('and the game filter above it rather than pinned too',
+     pickAt >= 0 && pickAt < barAt, 'picker ' + pickAt + ', bar ' + barAt);
+  // And the controls still WORK from the bar, not just draw in it.
+  v3Do('v3filter', 'short');
+  ok('the filter still filters from inside the bar', V.filter === 'short');
+  v3Do('v3filter', 'all');
+}
+
+// The same bar inside a game, pinned UNDER the game bar rather than over it.
+if (cards.length) {
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'players';
+  V.week = null; render();
+  const h = app();
+  ok('the game props section uses the same bar',
+     h.indexOf('class="pbar"') >= 0);
+  ok('and it comes after the game bar it pins under',
+     h.indexOf('class="pbar"') > h.indexOf('class="gtabs"'));
+  ok('and still has exactly one search box',
+     h.split('data-v3q').length - 1 === 1);
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
+// ── Standing explanation is not charged to the top of the board ────────
+//
+// Five lines of CLV context and a sentence restating each filter's own name
+// ran above the players on every props screen. All of it true, none of it
+// changing between one board and the next.
+{
+  V.tab = 'props'; V.game = null; V.week = null; V.filter = 'all'; render();
+  const h = app();
+  const barAt = h.indexOf('class="pbar"');
+  const rowsAt = h.indexOf('id="v3rows"');
+  ok('the three-season CLV explanation is not above the board',
+     h.indexOf('shuffled list', 0) < 0
+     || h.indexOf('shuffled list') > rowsAt,
+     'shuffled at ' + h.indexOf('shuffled list') + ', rows at ' + rowsAt);
+  // But the COUNT stays, and keeps the condition that defines its sample.
+  if (h.indexOf('Prices moved toward us on') >= 0) {
+    const cAt = h.indexOf('Prices moved toward us on');
+    ok('the count itself is still there', cAt < rowsAt);
+    ok('and still says which picks it counted',
+       h.indexOf('rated above the open', cAt) > cAt
+       && h.indexOf('rated above the open', cAt) < cAt + 200);
+  }
+  // And the explanation is still ON the page, in the card that explains.
+  ok('the explanation moved to How to read a pick',
+     h.indexOf('shuffled list') > rowsAt
+     || h.indexOf('How to read a pick') < 0);
+
+  // Filters that restate their own button are gone.
+  V.filter = 'fav'; render();
+  ok('Starred says nothing beyond its own label',
+     app().indexOf('The same list v2 uses') < 0);
+  V.filter = 'short'; render();
+  ok('nor does Shortlist',
+     app().indexOf('the picks this project would actually place') < 0);
+  // Fades is the exception and stays: the word reads like a bet to place and
+  // it is the opposite, so the line prevents a real mistake.
+  V.filter = 'fade'; render();
+  ok('but Fades still warns they are not bets to place',
+     app().indexOf('leave alone') >= 0);
+  ok('and does it in one line, not four',
+     app().indexOf('no book posts the other side') < 0);
+  V.filter = 'all';
+  if (barAt < 0) ok('the bar was on screen for this check', false);
 }
 
 done();

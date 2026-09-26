@@ -146,6 +146,53 @@ button{cursor:pointer}
    bar the wrapper's padding already gives it, and both together made the bar
    taller than the heading underneath. */
 .gtabs .seg{margin-top:8px}
+/* The matchup's own view control, pinned UNDER the game bar. `--gtabs-h` is
+   written by `render` from the measured bar; the fallback only matters for
+   the first paint. A lower `z-index` than `.gtabs` so that if the two ever
+   meet, the game bar is the one that stays readable. */
+.mxbar{position:sticky;top:var(--gtabs-h,0px);z-index:4;background:var(--bg);
+  margin:0 -16px;padding:8px 16px}
+.mxbar .seg{margin-top:0}
+/* One row that scrolls sideways rather than a block that wraps to three.
+   These sit under a bar that is already pinned, and a filter which pushes the
+   thing it filters off the screen is not a filter. */
+.mxpills{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;margin:12px -16px 0;padding:0 16px}
+.mxpills::-webkit-scrollbar{display:none}
+.mxpills .cat{flex-shrink:0}
+
+/* ---- the props filters, pinned ----
+   Stacked at full size these ran about 250px before the first player: six
+   44px market buttons in a 3x2 grid, a sentence, a 4-way filter, a search box
+   and a sort row. Fine to read once, impossible to pin. Each control keeps
+   one tap and loses its padding, which gets the bar to about 118px. */
+.pbar{position:sticky;top:var(--gtabs-h,0px);z-index:4;background:var(--bg);
+  margin:16px -16px 0;padding:8px 16px;display:flex;flex-direction:column;
+  gap:6px}
+/* The 96px-to-32px saving: a strip that scrolls sideways, not a grid that
+   wraps to two rows. Negative margins so it scrolls edge to edge while the
+   pills still line up with everything else. */
+.mkts--strip{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  grid-template-columns:none;margin:0 -16px;padding:0 16px}
+.mkts--strip::-webkit-scrollbar{display:none}
+.mkts--strip .mkt{flex-shrink:0;min-height:32px;height:32px;padding:0 12px;
+  border-radius:999px;font-size:13px;white-space:nowrap}
+.pbar .seg{margin-top:0}
+.pbar .seg button{height:32px;font-size:13px}
+.pbar__row{display:flex;align-items:center;gap:6px}
+.pbar .search{flex:1;min-width:0;margin-top:0}
+.pbar .search input{height:34px;padding-right:34px}
+.pbar .searchx{top:1px;right:2px}
+.pbar .picker{flex-shrink:0;margin-top:0;height:34px;gap:4px;padding:0 6px 0 10px}
+/* "SORT BY" goes: a dropdown listing sort names does not need a label saying
+   it sorts, and in a pinned row that label is 60px of nothing. */
+.pbar .picker .eyebrow{display:none}
+/* STAYS AT 16px. Anything smaller and iOS zooms the whole page when the
+   select takes focus, which on a pinned bar means the board jumps sideways
+   every time you change the sort. It truncates instead. */
+.pbar .picker select{height:32px;max-width:96px;flex:0 1 auto}
+.pbar .dirbtn{height:26px;padding:0 8px;font-size:12px}
 .seg{display:grid;gap:2px;padding:2px;background:var(--seg);border-radius:12px;
   margin-top:16px}
 .seg--2{grid-template-columns:repeat(2,minmax(0,1fr))}
