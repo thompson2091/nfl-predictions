@@ -2147,10 +2147,35 @@ function v3GameBets(gid) {
   // not. A live week passes null and nothing is colored, because a table of
   // green rows on a game nobody has played would be reading a forecast as a
   // result.
-  const table = (title, note, rowsIn, mark, actual) =>
-    '<h2 class="h1" style="font-size:19px;line-height:24px;margin-top:20px">'
+  // WHAT THE TABLE IS FOR, SAID BEFORE THE TABLE.
+  //
+  // At the posted number the rate is 50% by construction — the book is
+  // efficient, the median game sits 2.9pp off a coin flip and 50% is inside
+  // the interval in seven games out of eight. So a reader who came for "is
+  // this total high or low" got ten rows restating that more points are less
+  // likely. The row worth reading is where OUR number falls, and the gap
+  // between the two is the only thing here either of us is claiming.
+  const gap = (mark, ours) => {
+    if (mark == null || ours == null) return '';
+    const dd = ours - mark;
+    const at = r => r == null ? null : r.pct.toFixed(0) + '%';
+    const find = v => (rowsOf || []).filter(
+      r => Math.abs(r.line - v) < 0.26)[0];
+    if (Math.abs(dd) < 0.25)
+      return '<p class="help">Our number lands on the posted one, so there is '
+        + 'nothing here to disagree about.</p>';
+    return '<p class="help">Posted <b class="num">' + mark + '</b>, our number '
+      + '<b class="num">' + ours.toFixed(1) + '</b> \u2014 we are '
+      + Math.abs(dd).toFixed(1) + ' point' + (Math.abs(dd) >= 1.95 ? 's' : '')
+      + ' ' + (dd > 0 ? 'higher' : 'lower') + '.</p>';
+  };
+  let rowsOf = null;
+  const table = (title, note, rowsIn, mark, actual, ours) => {
+    rowsOf = rowsIn;
+    return '<h2 class="h1" style="font-size:19px;line-height:24px;margin-top:20px">'
     + esc(title) + '</h2>'
     + (note ? '<p class="help">' + note + '</p>' : '')
+    + gap(mark, ours)
     + (actual != null
        ? '<p class="help"><b>Finished at ' + actual + '.</b> Green cleared, '
          + 'red did not.</p>' : '')
@@ -2159,17 +2184,24 @@ function v3GameBets(gid) {
     + '<span>How often</span></div>'
     + rowsIn.map(r => {
         const on = mark != null && Math.abs(r.line - mark) < 0.01;
+        // Our number is rounded to the nearest half when it becomes a rung,
+        // so it is matched the same way rather than exactly.
+        const mine = !on && ours != null
+          && Math.abs(r.line - Math.round(ours * 2) / 2) < 0.01;
         const hit = actual == null ? null : actual > r.line;
         return '<div class="ltab__r' + (on ? ' ltab__r--on' : '')
+          + (mine ? ' ltab__r--mine' : '')
           + (hit == null ? '' : hit ? ' ltab__r--hit' : ' ltab__r--miss')
           + '">'
-          + '<span class="num">' + r.line + (on ? ' \u00b7 posted' : '')
+          + '<span class="num">' + r.line + (on ? ' \u00b7 posted'
+             : mine ? ' \u00b7 our number' : '')
           + '</span>'
           + '<span class="num">' + r.pct.toFixed(0) + '%</span>'
           + '<span>' + v3Mini(r.pct) + '<i class="num">' + r.n + ' of '
           + L.n + '</i></span></div>';
       }).join('')
     + '</div></div>';
+  };
 
   // The finals, where there are any. A live card has none and everything
   // below reads exactly as it did before.
@@ -2193,8 +2225,10 @@ function v3GameBets(gid) {
        ? '<div class="quotes">' + priced('spreads') + priced('totals')
          + '</div>' : '')
     + '</div>'
-    + table('Total points', 'The posted total is marked.',
-            (L.total || {}).rows || [], (L.total || {}).posted, finalTotal)
+    + table('Total points', 'How often games priced like this one went over '
+            + 'each number.',
+            (L.total || {}).rows || [], (L.total || {}).posted, finalTotal,
+            (L.total || {}).ours)
     + table('Winning margin',
             'How often the home side won by more than each number. Negative '
             + 'means the away side won.',

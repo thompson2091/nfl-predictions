@@ -487,6 +487,10 @@ button{cursor:pointer}
 .ltab__r:first-of-type{border-top:0}
 .ltab__r--on{background:var(--oursbg);border-radius:8px;
   box-shadow:0 0 0 6px var(--oursbg);position:relative}
+/* Our number, when it falls on a different rung from the posted one. Quieter
+   than `--on`: the posted line is the fact, ours is the opinion. */
+.ltab__r--mine{background:var(--inset);border-radius:8px;position:relative}
+.ltab__r--mine .num:first-child{color:var(--ours);font-weight:600}
 .ltab__r span:nth-child(2){font-weight:700}
 .ltab__r i{font-style:normal;font-size:11px;color:var(--mut2);
   margin-left:8px;white-space:nowrap}

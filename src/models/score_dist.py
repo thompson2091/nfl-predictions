@@ -393,7 +393,9 @@ TEAM_STEPS = [9.5, 13.5, 16.5, 17.5, 20.5, 23.5, 24.5, 27.5, 30.5, 34.5]
 
 
 def ladders(spread: float, total: float, home: str, away: str,
-            hist: pl.DataFrame | None = None) -> dict:
+            hist: pl.DataFrame | None = None,
+            our_total: float | None = None,
+            our_spread: float | None = None) -> dict:
     """How often each side clears a given number of points, and the game a total.
 
     The table a bettor actually reads: pick a number, see how often it was
@@ -422,15 +424,33 @@ def ladders(spread: float, total: float, home: str, away: str,
         {"team": home, "rows": [over("home_score", t) for t in TEAM_STEPS]},
         {"team": away, "rows": [over("away_score", t) for t in TEAM_STEPS]},
     ]
-    # The game total, stepped around the posted number so the row a reader
-    # came for is in the middle rather than at an end.
-    steps = sorted({round(total + d * 2) + 0.5 for d in range(-4, 5)})
-    out["total"] = {"posted": total, "rows": [over("total", t) for t in steps]}
+    # THE POSTED NUMBER IS ALWAYS A RUNG, and it used to be one only by luck.
+    #
+    # The rungs were `round(x + d*2) + 0.5`, and `round` is banker's: it takes
+    # 45.5 to 46 and 44.5 to 44. So the posted number landed on a rung only
+    # when it ended in .5 AND rounded down — 44.5 and 52.5 did, 45.5, 47.5,
+    # 46.0 and 50.0 never could. Measured on one board it missed 8 of 16 games,
+    # under a table whose note reads "the posted total is marked".
+    #
+    # `our_total` and `our_spread` join it for the same reason the exact-score
+    # card names our number: at the posted line the rate is 50% by
+    # construction — the book is efficient, the median game sits 2.9pp off a
+    # coin flip and 50% is inside the interval in seven games out of eight —
+    # so the row worth reading is the one where OUR number disagrees with it.
+    def _rungs(x: float, ours: float | None) -> list[float]:
+        out = {round(x + d * 2) + 0.5 for d in range(-4, 5)}
+        out.add(float(x))
+        if ours is not None:
+            out.add(round(float(ours) * 2) / 2)
+        return sorted(out)
+
+    out["total"] = {"posted": total, "ours": our_total,
+                    "rows": [over("total", t) for t in _rungs(total, our_total)]}
     # And the spread, as "how often did the favorite win by more than X".
     # Signed the schedule's way: positive `spread` means home favored.
-    sp_steps = sorted({round(spread + d * 2) + 0.5 for d in range(-4, 5)})
-    out["spread"] = {"posted": spread,
-                     "rows": [over("margin", t) for t in sp_steps]}
+    out["spread"] = {"posted": spread, "ours": our_spread,
+                     "rows": [over("margin", t)
+                              for t in _rungs(spread, our_spread)]}
     return out
 
 
@@ -439,8 +459,15 @@ def ladders_for_card(card: dict, hist: pl.DataFrame | None = None) -> dict | Non
     sp, tot = card.get("spread"), card.get("total")
     if sp is None or tot is None:
         return None
+    # Our number, in the same signs the ladder uses: the card's spread is
+    # negative when the home side is favored and the schedule's is positive.
+    b = card.get("blend") or {}
+    our_tot = b.get("total") if b.get("total") is not None else card.get("model_total")
+    our_sp = b.get("spread") if b.get("spread") is not None else card.get("model_spread")
     return ladders(-float(sp), float(tot), card.get("home") or "HOME",
-                   card.get("away") or "AWAY", hist=hist)
+                   card.get("away") or "AWAY", hist=hist,
+                   our_total=None if our_tot is None else float(our_tot),
+                   our_spread=None if our_sp is None else -float(our_sp))
 
 
 def scenarios(spread: float, total: float, home: str, away: str,

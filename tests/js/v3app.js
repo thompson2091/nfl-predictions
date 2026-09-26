@@ -1200,4 +1200,25 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 
+
+// ── The totals ladder says what it is for ───────────────────────────────
+//
+// At the posted number the rate is 50% by construction, so the table used to
+// restate that more points are less likely. The row worth reading is where
+// OUR number falls, and the posted one has to actually be a rung — it was one
+// only by luck of banker's rounding, missing 8 of 16 games under a note that
+// promised it was marked.
+{
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'out';
+  V.week = null; render();
+  const seen = app();
+  if (seen.indexOf('Total points') >= 0) {
+    ok('the posted total is actually a marked rung',
+       seen.indexOf('\u00b7 posted') >= 0);
+    ok('and the gap to our number is stated above the table',
+       seen.indexOf('our number') >= 0);
+  }
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
 done();

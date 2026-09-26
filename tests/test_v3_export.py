@@ -128,10 +128,18 @@ def payload_v3():
                          "teams": [{"team": "GB", "rows": [
                              {"line": 20.5, "n": 286, "pct": 71.0,
                               "lo": 66.0, "hi": 75.0}]}],
-                         "total": {"posted": 44.5, "rows": [
+                         # `ours` sits on a DIFFERENT rung from `posted` on
+                         # purpose: when the two coincide the card says there
+                         # is nothing to disagree about, which would not
+                         # exercise the gap line.
+                         "total": {"posted": 44.5, "ours": 46.4, "rows": [
                              {"line": 44.5, "n": 207, "pct": 51.4,
-                              "lo": 46.5, "hi": 56.2}]},
-                         "spread": {"posted": 6.5, "rows": [
+                              "lo": 46.5, "hi": 56.2},
+                             {"line": 46.5, "n": 181, "pct": 44.9,
+                              "lo": 40.1, "hi": 49.8}]},
+                         "spread": {"posted": 6.5, "ours": 5.7, "rows": [
+                             {"line": 5.5, "n": 194, "pct": 48.1,
+                              "lo": 43.2, "hi": 53.0},
                              {"line": 6.5, "n": 180, "pct": 44.7,
                               "lo": 39.9, "hi": 49.6}]}}},
             {"game_id": "ARI_SF", "home": "SF", "away": "ARI",
@@ -302,6 +310,8 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a scoreline is marked as where our model points",
                  "and our number is stated rather than only implied",
                  "and every row says how far it sits from that number",
+                 "the posted total is actually a marked rung",
+                 "and the gap to our number is stated above the table",
                  "the exact-score card says what the whole list is worth",
                  "and is styled apart from the row that actually happened",
                  "the opened player row names the money in their game",
@@ -639,7 +649,12 @@ def test_a_played_week_marks_which_lines_cleared():
 
     src = v3js.js()
     i = src.index("function v3GameBets")
-    body = src[i:i + 4000]
+    # To the NEXT top-level function, not a fixed 4,000 characters. The window
+    # was a magic number and the function outgrew it: adding the our-number
+    # rung pushed `final_home` past the cut and the test failed on code it was
+    # not looking at.
+    j = src.index("\nfunction ", i + 1)
+    body = src[i:j]
     assert "final_home" in body and "final_away" in body, (
         "the ladder never reads the final score")
     assert "ltab__r--hit" in body and "ltab__r--miss" in body
