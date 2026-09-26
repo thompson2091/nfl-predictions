@@ -314,6 +314,9 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "the posted total is actually a marked rung",
                  "the section bar has its own sticky wrapper",
                  "and the control inside it is unchanged",
+                 "switching section does not throw",
+                 "and lands on the section rather than the tab you left",
+                 "and the scroll intent is consumed, not left armed",
                  "and the gap to our number is stated above the table",
                  "the exact-score card says what the whole list is worth",
                  "the opened player row names the money in their game",
@@ -773,3 +776,34 @@ def test_only_the_game_section_bar_is_pinned():
     # the edge of the column rather than stopping short of it.
     assert "-16px" in rule and "16px" in rule, rule
     assert "z-index" in rule, "the pinned bar can be drawn under the content"
+
+
+def test_switching_game_section_scrolls_to_the_bar_not_the_page_top():
+    """Three scroll cases, not two.
+
+    Restoring the offset is right when you star a row. Zero is right when you
+    open a game. Neither is right for switching section INSIDE a game: the
+    offset leaves you deep in a section you have not read, and zero puts the
+    matchup card back above the thing you tapped for. The pinned bar is where
+    the pane comes to rest anyway.
+    """
+    from src.export import v3js
+
+    src = v3js.js()
+    i = src.index("function v3Do")
+    # `v3Do` is the last top-level function in the bundle, so "the next one"
+    # may not exist. `find` returning -1 would slice backwards and silently
+    # check the wrong region.
+    j = src.find("\nfunction ", i + 1)
+    j = len(src) if j < 0 else j
+    assert "V.top = 'section'" in src[i:j], (
+        "switching section no longer asks to scroll")
+    # And the render honors it by measuring the bar rather than assuming 0.
+    assert "V.top === 'section'" in src
+    assert ".gtabs" in src[src.index("V.top === 'section'"):
+                           src.index("V.top === 'section'") + 700], (
+        "the section scroll does not look for the pinned bar")
+    # Measured against the PANE: the app header sits outside the scroller.
+    k = src.index("V.top === 'section'")
+    assert "scroll.getBoundingClientRect" in src[k:k + 700], (
+        "the offset is measured against the window, which counts the header")

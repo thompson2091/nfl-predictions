@@ -1240,4 +1240,23 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   V.game = null; V.tab = 'props';
 }
 
+
+// ── Switching section starts at that section ────────────────────────────
+//
+// The bar is pinned, so keeping the scroll offset left you deep inside a
+// section you had not read, at a position that belonged to the one you left.
+{
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'notes';
+  V.week = null; render();
+  let threw = null;
+  try { v3Do('v3gtab', 'out'); } catch (e) { threw = e; }
+  ok('switching section does not throw', !threw, threw && threw.message);
+  ok('and lands on the section rather than the tab you left',
+     V.gameTab === 'out');
+  // The flag is consumed by the render, so the NEXT paint keeps its place.
+  ok('and the scroll intent is consumed, not left armed',
+     V.top === false, String(V.top));
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
 done();

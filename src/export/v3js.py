@@ -3166,7 +3166,31 @@ function render(fromHistory) {
   // game from halfway down the Games list landed you halfway down the GAME —
   // a different page at someone else's scroll offset. `v3Nav` actions set
   // `V.top`, and only those start at the beginning.
-  if (scroll) scroll.scrollTop = V.top ? 0 : y;
+  //
+  // `V.top === 'section'` is a THIRD case, for switching section inside a
+  // game. Zero is wrong there: it would land you above the matchup card with
+  // the section you just asked for still below the fold, so you would scroll
+  // down to reach the thing you tapped for. This puts the pinned bar at the
+  // top of the pane, which is exactly where it comes to rest anyway, and the
+  // new section starts immediately under it.
+  if (scroll) {
+    if (V.top === 'section') {
+      const bar = document.querySelector && document.querySelector('.gtabs');
+      let at = 0;
+      if (bar && bar.getBoundingClientRect && scroll.getBoundingClientRect) {
+        // Measured after the re-render, so it is the NEW layout, and relative
+        // to the pane rather than the window — the app header sits outside
+        // the scroller and would otherwise be counted.
+        at = scroll.scrollTop + bar.getBoundingClientRect().top
+             - scroll.getBoundingClientRect().top;
+      } else if (bar && has(bar.offsetTop)) {
+        at = bar.offsetTop;
+      }
+      scroll.scrollTop = Math.max(0, at);
+    } else {
+      scroll.scrollTop = V.top ? 0 : y;
+    }
+  }
   V.top = false;
   v3Save();
 }
@@ -3323,6 +3347,10 @@ function v3Do(kind, v) {
     case 'v3back': V.game = null; V.answer = ''; break;
     case 'v3gtab':
       V.gameTab = v3GTab(v);
+      // Start at the top of what you asked for. Keeping the offset left you
+      // deep inside a section you had not read, at a position that belonged
+      // to the one you left.
+      V.top = 'section';
       // Opening Players on a market this game holds nothing on is the
       // commonest way the tab looks broken. Done here rather than in the
       // renderer, which must not write state.
