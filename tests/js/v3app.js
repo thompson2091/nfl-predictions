@@ -1863,17 +1863,34 @@ if (cards.length) {
   ok('but sorting keeps your place', scroll.scrollTop === DEEP,
      'scrollTop ' + scroll.scrollTop);
 
-  // A SHORT LIST CANNOT BE SCROLLED THAT FAR. Filtering to one result leaves
-  // a page the browser clamps, which stranded the bar a third of the way down
-  // with the heading sliced off above it — the same tap felt broken on the
-  // short filter and right on every other one.
+  // A tall pane needs no help, and must not be given any.
+  ok('no dead space is added when the page can already scroll',
+     document.getElementById('app').style.paddingBottom === '0px',
+     String(document.getElementById('app').style.paddingBottom));
+
+  // A SHORT LIST CANNOT BE SCROLLED THAT FAR ON ITS OWN. Filtering to one
+  // result leaves a page the browser clamps, which stranded the bar a third
+  // of the way down. Landing at zero instead was tidier and made the short
+  // filter behave differently from every other one — Agrees pinned the bar,
+  // Upsets showed the whole page, one tap doing two things.
   scroll.scrollHeight = 900; scroll.clientHeight = 800;   // max scroll: 100
   scroll.scrollTop = 60;
   v3Do('v3filter', 'fade');
-  ok('a filter whose results do not fill the pane starts at the top',
-     scroll.scrollTop === 0, 'scrollTop ' + scroll.scrollTop);
-  ok('rather than stranded partway down where the clamp left it',
-     scroll.scrollTop !== BAR_AT && scroll.scrollTop !== 60);
+  ok('a short filter lands on the bar like every other one',
+     scroll.scrollTop === BAR_AT, 'scrollTop ' + scroll.scrollTop);
+  // The room is MADE: exactly the shortfall, so the new maximum is the offset
+  // being asked for.
+  ok('by padding the page by exactly what it was short',
+     document.getElementById('app').style.paddingBottom
+       === (BAR_AT - 100) + 'px',
+     String(document.getElementById('app').style.paddingBottom));
+
+  // And it is recomputed, not accumulated: a render that needs none clears it.
+  scroll.scrollHeight = 5000; scroll.clientHeight = 800;
+  v3Do('v3filter', 'all');
+  ok('and cleared again once the page is long enough',
+     document.getElementById('app').style.paddingBottom === '0px',
+     String(document.getElementById('app').style.paddingBottom));
 
   V.filter = 'all'; V.market = 'any';
   bar._rect = null; scroll._rect = null; scroll.scrollTop = 0;

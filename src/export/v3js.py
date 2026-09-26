@@ -3456,6 +3456,9 @@ function render(fromHistory) {
   // `offsetHeight` rather than a rect because it is a height either way and
   // does not care whether the bar is currently stuck.
   if (scroll) {
+    // Cleared before anything is measured: it is derived from the layout, so
+    // last render's value would be counted as part of this one's.
+    if (app.style) app.style.paddingBottom = '0px';
     const gb = document.querySelector && document.querySelector('.gtabs');
     scroll.style && scroll.style.setProperty
       && scroll.style.setProperty('--gtabs-h',
@@ -3494,22 +3497,29 @@ function render(fromHistory) {
       } else if (bar && has(bar.offsetTop)) {
         at = bar.offsetTop;
       }
-      // A SHORT LIST CANNOT BE SCROLLED THAT FAR, so do not half-do it.
+      // MAKE THE ROOM RATHER THAN GIVE UP ON IT.
       //
-      // Filtering to Upsets leaves one game card. The browser clamps the
-      // scroll to what the content allows, which left the bar stranded a
-      // third of the way down with the page heading sliced off above it — the
-      // same tap felt broken on the short filter and right on every other
-      // one.
+      // Filtering to Upsets leaves one game card, and a page that short
+      // cannot be scrolled far enough to bring the bar to the top — the
+      // browser clamps, and the bar came to rest a third of the way down with
+      // the heading sliced off above it. Landing at zero instead was tidier
+      // but it made the SHORT filter behave differently from every other one:
+      // Agrees pinned the bar, Upsets showed the whole page, and the same tap
+      // did two things.
       //
-      // `at > max` is exactly the case where the content BELOW the bar is
-      // shorter than the pane, so from the top the whole of it is already on
-      // screen. Zero is then the honest answer rather than a failed attempt
-      // at the bar: you see the heading, the counts, the filter and its
-      // results together.
+      // So the shortfall becomes padding under the content. `max` is where
+      // the pane can scroll to; adding exactly `at - max` makes the new
+      // maximum `at`, which is the offset being asked for. Every filter then
+      // lands the same way whatever it returns.
+      //
+      // Recomputed on EVERY render, not just this branch. Left over from a
+      // previous filter it would be scrollable dead space; removed only here,
+      // a later re-render would drop it under a reader standing on it.
       const max = (has(scroll.scrollHeight) && has(scroll.clientHeight))
         ? scroll.scrollHeight - scroll.clientHeight : null;
-      scroll.scrollTop = (max != null && at > max) ? 0 : Math.max(0, at);
+      if (bar && max != null && at > max && app.style)
+        app.style.paddingBottom = (at - max) + 'px';
+      scroll.scrollTop = Math.max(0, at);
     } else {
       scroll.scrollTop = V.top ? 0 : y;
     }
