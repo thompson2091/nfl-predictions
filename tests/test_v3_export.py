@@ -307,13 +307,15 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a player inherits the money on their own game",
                  "a player facing the money is told so, not merely told there is money",
                  "some board row sits in a game with money on it",
-                 "a scoreline is marked as where our model points",
+                 "the rows we like are tinted rather than labeled",
+                 "and no per-row percentage sits beside a per-scoreline count",
                  "and our number is stated rather than only implied",
                  "and every row says how far it sits from that number",
                  "the posted total is actually a marked rung",
+                 "the section bar has its own sticky wrapper",
+                 "and the control inside it is unchanged",
                  "and the gap to our number is stated above the table",
                  "the exact-score card says what the whole list is worth",
-                 "and is styled apart from the row that actually happened",
                  "the opened player row names the money in their game",
                  "and changing the stake keeps it open too",
                  "the bar opens the slip rather than navigating",
@@ -748,3 +750,26 @@ def test_the_slip_has_a_save_button_that_names_where_it_goes():
     assert "data-v3keep=" in body, "the slip has no save control"
     assert "Save to Picks" in body
     assert "Saved to Picks" in body, "a saved slip must say so"
+
+
+def test_only_the_game_section_bar_is_pinned():
+    """It sticks to the top of the scrolling pane, and nothing else does.
+
+    `#scroll` is the scroll container and the app header sits outside it, so
+    `top:0` is the top of the readable area and needs no header offset. Making
+    `.seg` itself sticky would have pinned the market pills and the halves
+    too, which belong in the flow.
+    """
+    from src.export import v3css
+
+    css = v3css.css()
+    assert ".gtabs{position:sticky" in css, "the section bar is not pinned"
+    assert ".seg{position:sticky" not in css, "every segmented control is pinned"
+    i = css.index(".gtabs{")
+    rule = css[i:css.index("}", i)]
+    # Without a background the rounded control lets content slide behind it.
+    assert "background" in rule, "the pinned bar is transparent"
+    # `.wrap` pads 16px a side; the bar cancels that so its background reaches
+    # the edge of the column rather than stopping short of it.
+    assert "-16px" in rule and "16px" in rule, rule
+    assert "z-index" in rule, "the pinned bar can be drawn under the content"

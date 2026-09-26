@@ -1181,10 +1181,12 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
     // centered on the MARKET's line, so this marker is the gap between the
     // two and often sits low. The old wording read as a bug beside a list
     // nobody had said was centered somewhere else.
-    ok('a scoreline is marked as where our model points',
-       seen.indexOf('where our model points') >= 0);
-    // FREQUENCY-AWARE. Pure proximity marked a score 0.64 away seen 7 times
-    // over one 0.78 away seen 21, putting our own favorite eighth.
+    // COLOR, NOT A LABEL. The rows we like are tinted, which can mark several
+    // and does not wrap onto two lines on a phone.
+    ok('the rows we like are tinted rather than labeled',
+       seen.indexOf('srow--like') >= 0 || seen.indexOf(' off') >= 0);
+    ok('and no per-row percentage sits beside a per-scoreline count',
+       seen.indexOf('where our model points') < 0);
     ok('and our number is stated rather than only implied',
        seen.indexOf('Our number') >= 0);
     ok('and every row says how far it sits from that number',
@@ -1192,8 +1194,6 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
     // IT MUST NOT READ AS A RESULT. `srow--on` marks what actually happened
     // on a played week; this marks where our number points, and the two are
     // different kinds of claim.
-    ok('and is styled apart from the row that actually happened',
-       seen.indexOf('srow--near') >= 0);
     ok('an unplayed game marks no row as having happened',
        seen.indexOf('\u00b7 this one') < 0 || seen.indexOf('final') >= 0);
   }
@@ -1219,6 +1219,25 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
        seen.indexOf('our number') >= 0);
   }
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
+
+// ── The game's section bar stays reachable ──────────────────────────────
+//
+// Notes, Players and Outcome are long sections — the ladder alone is four
+// tables — so switching from deep inside one meant scrolling back to a bar
+// that had left the screen.
+{
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'notes';
+  V.week = null; render();
+  ok('the section bar has its own sticky wrapper',
+     app().indexOf('class="gtabs"') >= 0);
+  // The segmented control itself stays exactly as it was; only the wrapper
+  // is new. (The CSS side is checked in tests/test_v3_export.py, which can
+  // read the stylesheet.)
+  ok('and the control inside it is unchanged',
+     app().indexOf('class="seg seg--5"') >= 0);
+  V.game = null; V.tab = 'props';
 }
 
 done();

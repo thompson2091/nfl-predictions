@@ -1049,11 +1049,19 @@ function v3Game(gid) {
     // Reading "PIT by 5.2" against "% to hit over 24" meant moving between
     // two tabs to see one distribution twice. Matchup stays separate because
     // it answers WHY rather than WHAT.
-    + '<div class="seg seg--5">'
+    // STICKS TO THE TOP OF THE PANE while you read. The sections are long —
+    // the ladder alone runs four tables — so switching from deep inside one
+    // meant scrolling all the way back up to a bar you could not see.
+    //
+    // Its own wrapper rather than making `.seg` sticky: the segmented control
+    // is used for the market pills and the halves too, and those belong in the
+    // flow. The wrapper also carries the page background, without which the
+    // rounded corners of the control let content slide visibly behind it.
+    + '<div class="gtabs"><div class="seg seg--5">'
     + v3Seg('v3gtab', [['notes', 'Notes'], ['players', 'Players'],
                        ['out', 'Outcome'], ['edge', 'Matchup'],
                        ['inj', 'Injuries']], V.gameTab)
-    + '</div>'
+    + '</div></div>'
     // THE TAB'S OWN CONTENT COMES FIRST, CONTEXT UNDER IT.
     //
     // The injury report and the public split sat between the tab bar and the
@@ -1990,35 +1998,40 @@ function v3GameScores(c) {
   // noise of any projection this page carries — two scorelines a point apart
   // are not meaningfully different distances from a number quoted to one
   // decimal.
+  // WITHIN THIS OF OUR NUMBER IS ONE WE LIKE. A point of score is inside the
+  // noise of a projection quoted to one decimal, so everything under it is the
+  // same call rather than a ranking.
   const NEAR_SLACK = 1.0;
-  let near = -1;
-  if (pj && (d.scores || []).length) {
-    const ds = d.scores.map(dist);
-    const floor = Math.min.apply(null, ds);
-    for (let i = 0; i < ds.length; i++) {
-      if (ds[i] <= floor + NEAR_SLACK) { near = i; break; }
-    }
-  }
-  const scores = (d.scores || []).map((x, i) => {
+
+  // SORTED BY DISTANCE TO OUR NUMBER, not by our rank.
+  //
+  // The kernel still CHOOSES which scorelines appear — that selection is the
+  // measured part. What it cannot do is put a probability on a row: `p` is the
+  // rate at a RANK ("our first pick lands 1.4% of the time"), not a property
+  // of the scoreline, so beside "26 times" it read as a contradiction — 23-20
+  // showed 1.4% on 26 games while 20-17 showed 0.6% on 31. It is stated once,
+  // in the footer, where it is true.
+  const ordered = (d.scores || []).map((x, i) => ({ x: x, rank: i }))
+    .sort((a, b) => (pj ? dist(a.x) - dist(b.x) : a.rank - b.rank));
+  const scores = ordered.map(o => {
+    const x = o.x;
+    const dd = pj ? dist(x) : null;
+    const liked = pj && dd <= NEAR_SLACK;
     const landed = played && x.home === fh && x.away === fa;
-    const nearest = !played && i === near;
+    // COLOR, NOT A LABEL. A row we like is tinted; it used to append
+    // "where our model points" to one row, which wrapped onto two lines on a
+    // phone and could only ever mark a single score.
     return '<div class="srow' + (landed ? ' srow--on' : '')
-      + (nearest ? ' srow--near' : '') + '">'
+      + (liked && !landed ? ' srow--like' : '') + '">'
       + '<b class="num">' + esc(d.home) + ' ' + x.home
       + '\u2013' + x.away + ' ' + esc(d.away)
-      + (landed ? ' \u00b7 this one'
-         : nearest ? ' \u00b7 where our model points' : '') + '</b>'
-      // OUR NUMBER, NOT THE HISTORICAL SHARE. `p` is the measured rate at
-      // this rank — what the k-th pick actually does, walk-forward — where
-      // `pct` was this scoreline's share of the lookalike games and said
-      // nothing about whether we picked it well. The raw count stays as the
-      // support behind the row.
-      // Three figures, because they answer three different questions: how
-      // often a pick at this rank lands, how often THIS score has happened,
-      // and how far it sits from our own projection.
-      + '<span class="sub num">' + (has(x.p) ? x.p.toFixed(1) + '%' : '')
-      + (x.n ? ' \u00b7 ' + x.n + ' times' : '')
-      + (pj ? ' \u00b7 ' + dist(x).toFixed(1) + ' off' : '')
+      + (landed ? ' \u00b7 this one' : '') + '</b>'
+      // Only what belongs to THIS scoreline: how often it has happened, and
+      // how far it sits from our number. The positional rate moved to the
+      // footer, where it is true — `p` is the rate at a RANK, so beside "26
+      // times" it read as a contradiction.
+      + '<span class="sub num">' + (x.n ? x.n + ' times' : '')
+      + (pj ? ' \u00b7 ' + dd.toFixed(1) + ' off' : '')
       + '</span></div>';
   }).join('');
   // The two headline boxes become right-or-wrong once the game is in.
@@ -2076,17 +2089,19 @@ function v3GameScores(c) {
          + d.scores_covered.toFixed(0) + '%</b>'
          + '<span class="sub">' + (100 - d.scores_covered).toFixed(0)
          + '% of games finish on a score nobody listed</span></div>' : '')
-    + '<p class="help" style="margin-top:10px">Real finals, ordered by how well '
-    + 'each fits <b style="color:var(--ink)">the market\u2019s</b> spread and '
-    + 'total \u2014 which predicts the final better than our own projection '
-    + 'does, so the list is centered there rather than on us. The row marked '
-    + '<b style="color:var(--ours)">where our model points</b> is the gap '
-    + 'between the two.</p>'
-    + '<p class="help">The percentages are measured, not modelled: the top '
-    + 'pick lands about 1 in 70, the next nine about 1 in 180 each, and the '
-    + 'rest about 1 in 300. Those are the only three steps the record '
-    + 'separates \u2014 within a step the order is our preference, not a '
-    + 'measured ranking.</p></div>';
+    + '<p class="help" style="margin-top:10px">Nearest our number first. '
+    + 'Tinted rows are within a point of it \u2014 close enough that we do not '
+    + 'claim to tell them apart.</p>'
+    + '<p class="help">Which sixteen appear is our call: real finals, weighted '
+    + 'by how well each fits the market\u2019s spread and total, which predicts '
+    + 'the final better than our own projection does. How often each has '
+    + 'happened is beside it, so a close-but-rare score and a common-but-'
+    + 'further one are both visible rather than settled for you.</p>'
+    + '<p class="help">On the record our best pick lands about <b '
+    + 'style="color:var(--ink)">1 in 70</b> and the rest about <b '
+    + 'style="color:var(--ink)">1 in 180</b> \u2014 a rate per POSITION in our '
+    + 'ranking, not per scoreline, which is why it is here and not on the '
+    + 'rows.</p></div>';
 }
 
 // THE GAME MARKETS AS A SCORE LADDER, NOT AS A LIST OF BOOKS.

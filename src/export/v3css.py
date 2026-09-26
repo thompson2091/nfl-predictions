@@ -115,6 +115,13 @@ button{cursor:pointer}
 .mkt--none{opacity:.55}
 .mkt--none i{color:var(--mut)}
 .help{margin:10px 2px 0;font-size:13px;line-height:18px;color:var(--mut)}
+/* The game's section bar, pinned to the top of the scrolling pane.
+   `#scroll` is the scroll container and the app header sits OUTSIDE it, so
+   `top:0` is the top of the readable area and needs no header offset. The
+   negative margins and matching padding let the background reach the full
+   width of the pane, so nothing shows through beside the control. */
+.gtabs{position:sticky;top:0;z-index:5;background:var(--bg);
+  margin:0 -16px;padding:8px 16px}
 .seg{display:grid;gap:2px;padding:2px;background:var(--seg);border-radius:12px;
   margin-top:16px}
 .seg--2{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -304,11 +311,12 @@ button{cursor:pointer}
 .mrow--on .mrow__l{color:var(--good);font-weight:600}
 .srow--on{background:var(--goodbg);border-radius:8px}
 .srow--on b{color:var(--good)}
-/* Nearest our projection. Deliberately quieter than `--on`: that one marks
-   what actually happened, this one marks where our number points, and the
-   two must not read as the same kind of claim. */
-.srow--near{background:var(--inset);border-radius:8px}
-.srow--near b{color:var(--ours)}
+/* Close enough to our number that we like it. Quieter than `--on`, which marks
+   what actually happened on a played week — an opinion must not look like a
+   result. Tint rather than a label: it can mark several rows, and a phrase
+   appended to a scoreline wrapped onto two lines on a phone. */
+.srow--like{background:var(--oursbg);border-radius:8px}
+.srow--like b{color:var(--ours)}
 .box b{font-size:17px;font-weight:600}
 .cats{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .cat{min-height:36px;padding:0 14px;border-radius:999px;font-size:15px;
