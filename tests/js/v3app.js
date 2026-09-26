@@ -1497,8 +1497,15 @@ if (cards.length) {
   V.tab = 'props'; V.game = null; V.week = null; V.q = ''; render();
   const h = app();
   ok('the filters share one bar', h.indexOf('class="pbar"') >= 0);
-  ok('the markets are a strip, not a grid that wraps',
-     h.indexOf('mkts mkts--strip') >= 0);
+  // A SEGMENTED CONTROL, the same one the filter row uses. As pills sized to
+  // their own labels the row was only as wide as the names happened to be,
+  // and six of them overflowed into a sideways scroll.
+  const nServed = x.V3MKT.filter(m => served(m[0])).length;
+  ok('the markets divide the width evenly instead of overflowing',
+     h.indexOf('class="seg seg--' + nServed + '"') >= 0,
+     'expected seg--' + nServed);
+  ok('and are not a grid that wraps to two rows',
+     h.indexOf('class="mkts"') < 0 && h.indexOf('mkts--strip') < 0);
   // All four still reachable without leaving the bar.
   ok('market is in it', h.indexOf('data-v3mkt=') > h.indexOf('class="pbar"'));
   ok('shortlist and fades are in it', h.indexOf('data-v3filter=') >= 0);
@@ -1598,6 +1605,19 @@ if (cards.length) {
   V.tab = 'props'; V.game = null; V.week = null; V.market = 'any'; render();
   const h = app();
   const bar = h.slice(h.indexOf('class="pbar"'), h.indexOf('id="v3rows"'));
+  // Shorter still, because an even sixth of a phone is about 50px.
+  ok('every short label fits a sixth of a phone',
+     x.V3MKT.every(m => m[4].length <= 7),
+     x.V3MKT.map(m => m[4]).join(' | '));
+  // THE TWO RECEIVING MARKETS MUST NOT SHARE A STEM. One counts catches and
+  // one counts yards; shortened toward the same word they became "Rec" and
+  // "Rec yd", a letter apart and side by side. Same first three characters is
+  // the failure, not just an exact match.
+  const recL = x.V3MKT.filter(m => m[0] === 'rec')[0][4];
+  const rydL = x.V3MKT.filter(m => m[0] === 'recyds')[0][4];
+  ok('the two receiving markets cannot be misread for each other',
+     recL.slice(0, 3).toLowerCase() !== rydL.slice(0, 3).toLowerCase(),
+     recL + ' vs ' + rydL);
   // Over the markets this payload actually serves, not a hard-coded six:
   // the fixture serves four, so naming them would pass by not looking.
   const servedM = x.V3MKT.filter(m => served(m[0]));

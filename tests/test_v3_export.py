@@ -361,7 +361,11 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "Starred says nothing beyond its own label",
                  "but Fades still warns they are not bets to place",
                  "and does it in one line, not four",
-                 "the markets are a strip, not a grid that wraps",
+                 "the markets divide the width evenly instead of "
+                 "overflowing",
+                 "and are not a grid that wraps to two rows",
+                 "every short label fits a sixth of a phone",
+                 "the two receiving markets cannot be misread for each other",
                  "and search appears once, not above the bar as well",
                  "with the market explanation below the bar and above the rows",
                  "the game props section uses the same bar",

@@ -169,21 +169,10 @@ button{cursor:pointer}
 .pbar{position:sticky;top:var(--gtabs-h,0px);z-index:4;background:var(--bg);
   margin:16px -16px 0;padding:8px 16px;display:flex;flex-direction:column;
   gap:6px}
-/* The 96px-to-32px saving: a strip that scrolls sideways, not a grid that
-   wraps to two rows. Negative margins so it scrolls edge to edge while the
-   pills still line up with everything else. */
-.mkts--strip{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;
-  scrollbar-width:none;-webkit-overflow-scrolling:touch;
-  grid-template-columns:none;margin:0 -16px;padding:0 16px}
-.mkts--strip::-webkit-scrollbar{display:none}
-/* SIZED TO FIT THE ROW, not to the longest name. Six markets on a phone is
-   about 50px each, which is why the labels are short (`V3MKT[4]`). They may
-   still shrink — inside a game each pill also carries a player count — so
-   they shrink evenly and ellipsis rather than pushing the last market off the
-   edge behind a sideways scroll nothing on screen advertises. */
-.mkts--strip .mkt{flex:0 1 auto;min-width:0;min-height:32px;height:32px;
-  padding:0 10px;border-radius:999px;font-size:13px;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis}
+/* A market that holds nobody for this game, greyed rather than counted. The
+   count it replaces did not fit an even sixth of a phone; the question it
+   answered — is there anyone in here — still gets an answer. */
+.pbar .seg button.mkt--none{opacity:.45}
 .pbar .seg{margin-top:0}
 .pbar .seg button{height:32px;font-size:13px}
 .pbar__row{display:flex;align-items:center;gap:6px}

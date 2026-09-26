@@ -47,10 +47,17 @@ const V3TABS = [
 // key, button label, what the bet pays on, the question the screen answers.
 // `[key, name, what it pays, page title, PILL]`.
 //
-// THE FIFTH IS A SHORT LABEL AND ONLY THE PILLS USE IT. Six markets on one
-// row of a phone is about 50px each, and "Receiving yds" does not go in 50px
-// — so the strip scrolled sideways, which hides half the markets behind a
-// gesture nothing on screen advertises.
+// THE FIFTH IS A SHORT LABEL AND ONLY THE MARKET CONTROL USES IT. Six markets
+// on one row of a phone is about 50px each, and "Receiving yds" does not go
+// in 50px.
+//
+// THE THREE YARDAGE MARKETS SHARE ONE PATTERN AND THE COUNT MARKET DOES NOT.
+// Rush, Rec and Pass are the same bet on three body parts, so they read as a
+// set; receptions is a different kind of number, so it is named for what it
+// counts. Shortening both receiving markets toward their stem gave "Rec" and
+// "Rec yd" — a letter apart, sitting next to each other, one counting catches
+// and one counting yards. "Catches" is two characters longer than that and
+// cannot be misread.
 //
 // It is a separate field rather than a rename because the full name still has
 // work to do: it is the heading on the board, the subject of "no priced
@@ -59,10 +66,10 @@ const V3TABS = [
 const V3MKT = [
   ['any', 'Scores a TD',
    'Pays if the player scores a touchdown at any point in the game.',
-   'Who scores this week?', 'TD'],
+   'Who scores this week?', 'Anytime'],
   ['first', 'Scores first',
    'Pays only if the player scores the game’s very first touchdown. Harder, so it pays more.',
-   'Who scores first?', 'First TD'],
+   'Who scores first?', 'First'],
   ['rec', 'Catches',
    'Pays if the player makes more catches than the number shown.',
    'Who beats their catches line?', 'Catches'],
@@ -71,7 +78,7 @@ const V3MKT = [
    'Who beats their rushing line?', 'Rush'],
   ['recyds', 'Receiving yds',
    'Pays if the player gains more receiving yards than the number shown.',
-   'Who beats their receiving line?', 'Rec yds'],
+   'Who beats their receiving line?', 'Rec'],
   ['passyds', 'Passing yds',
    'Pays if the quarterback throws for more yards than the number shown.',
    'Who beats their passing line?', 'Pass'],
@@ -356,12 +363,26 @@ function v3MarketControls() {
   const cur = V3MKT.filter(m => m[0] === V.market)[0] || V3MKT[0];
   // Inside a game each button carries how many players it holds, because a
   // market can hold none and the only way to find out was to tap it.
-  const mkts = V3MKT.filter(m => served(m[0])).map(m => {
+  // THE SAME SEGMENTED CONTROL THE FILTER ROW USES.
+  //
+  // These were rounded pills sized to their own labels, which meant the row
+  // was only as wide as the names happened to be — six of them overflowed and
+  // scrolled sideways, hiding half the markets behind a gesture nothing on
+  // screen advertises. A `seg` divides the width evenly instead, so every
+  // market is on screen at every width and the control reads as one thing
+  // rather than six loose buttons.
+  //
+  // THE PLAYER COUNT GOES, THE DIMMING STAYS. An even sixth of a phone is
+  // about 50px and a number does not fit beside a name in it. The count was
+  // there to answer "does this market hold anyone for this game" without
+  // tapping — `mkt--none` still answers that, by greying the ones that hold
+  // nobody. The exact figure is the part that did not survive the width.
+  const served_ = V3MKT.filter(m => served(m[0]));
+  const mkts = served_.map(m => {
     const n = V.game ? v3GameMkt(m[0], V.game) : null;
-    return '<button class="mkt' + (n === 0 ? ' mkt--none' : '')
-      + '" data-v3mkt="' + m[0] + '" aria-pressed="'
-      + (m[0] === V.market) + '">' + esc(m[4] || m[1])
-      + (n === null ? '' : ' <i>' + n + '</i>') + '</button>';
+    return '<button' + (n === 0 ? ' class="mkt--none"' : '')
+      + ' data-v3mkt="' + m[0] + '" aria-pressed="'
+      + (m[0] === V.market) + '">' + esc(m[4] || m[1]) + '</button>';
   }).join('');
   // ONLY THE ONE THAT STOPS A MISTAKE.
   //
@@ -391,7 +412,7 @@ function v3MarketControls() {
   // are what makes the bar itself safe to shrink, because the meaning is
   // still on the page.
   return '<div class="pbar">'
-    + '<div class="mkts mkts--strip">' + mkts + '</div>'
+    + '<div class="seg seg--' + served_.length + '">' + mkts + '</div>'
     + '<div class="seg seg--4">'
     + v3Seg('v3filter', [['all', 'Everyone'], ['short', 'Shortlist'],
                          ['fade', 'Fades'], ['fav', 'Starred']], V.filter)
