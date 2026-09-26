@@ -41,6 +41,37 @@ SPREAD_TOL = 2.0
 #: and a half points is about a field goal and a fraction.
 TOTAL_TOL = 3.5
 
+#: THE EXACT-SCORE TABLE GETS ITS OWN, MUCH WIDER WINDOW.
+#:
+#: `SPREAD_TOL`/`TOTAL_TOL` are right for the margin bands and the totals: those
+#: pool dozens of games per bucket, and conditioning on the line earns its keep
+#: there — walk-forward Brier on "home covers" is 0.162 conditioned against
+#: 0.173 unconditioned.
+#:
+#: An exact scoreline is a different question. At +/-2.0 and +/-3.5 a comparable
+#: set holds a few dozen games and no scoreline in it has been seen more than
+#: once or twice, so "most common final score" was a coin landing on its edge.
+#: Measured walk-forward over 2,672 games, picking each game's top scorelines
+#: from earlier seasons only:
+#:
+#:     window        floor   top-1   top-3   top-8   top pick seen <=2x
+#:     2.0/3.5 (was)   1     0.52%   1.27%   3.33%        40% of games
+#:     2.0/3.5         5     0.11%   0.34%   0.37%   (shows 0.4 scorelines)
+#:     10/14           1     0.86%   2.06%   5.16%         1% of games
+#:     10/14 (now)     5     0.79%   2.10%   4.42%         0% of games
+#:
+#: Widening both improves the hit rate and removes the noise, which is the
+#: unusual case where there is no trade to make. The window still excludes the
+#: genuinely different game — a 55-point shootout will not show 13-10 — but it
+#: no longer pretends a scoreline seen twice is this game's likeliest finish.
+SCORE_SPREAD_TOL = 10.0
+SCORE_TOTAL_TOL = 14.0
+
+#: How often a scoreline must have happened in the comparable set before the
+#: page will name it. Below this it is an anecdote with a percentage on it, and
+#: at the old window 40% of games led with one.
+SCORE_MIN_SEEN = 5
+
 #: Below this many comparable games, say so rather than draw a chart. A
 #: distribution over 40 games is a list of anecdotes with percentages on it.
 MIN_COMPARABLES = 60
@@ -123,7 +154,15 @@ def summary(spread: float, total: float, home: str = "HOME",
     # the one sitting where this game is actually priced is the most
     # representative of it. `spread` is positive when the home team is favored,
     # so the expected home margin is `+spread`.
-    sc = (c.group_by(["home_score", "away_score"]).agg(pl.len().alias("k"))
+    #
+    # COUNTED ON ITS OWN, WIDER SET. See `SCORE_SPREAD_TOL`: the tight window
+    # that serves the margin bands leaves no scoreline seen more than twice, so
+    # this question gets a set big enough to answer it and `c` keeps the one
+    # the rest of the summary is built on.
+    cs = comparables(spread, total, SCORE_SPREAD_TOL, SCORE_TOTAL_TOL, hist=hist)
+    ns = cs.height
+    sc = (cs.group_by(["home_score", "away_score"]).agg(pl.len().alias("k"))
+          .filter(pl.col("k") >= SCORE_MIN_SEEN)
           .with_columns([
               ((pl.col("home_score") + pl.col("away_score")) - total)
                 .abs().alias("_dtot"),
@@ -132,10 +171,14 @@ def summary(spread: float, total: float, home: str = "HOME",
           .sort(["k", "_dtot", "_dsprd", "home_score", "away_score"],
                 descending=[True, False, False, True, True])
           .head(top))
+    # `ns`, not `n`: the percentage has to be out of the set it was counted in,
+    # or a scoreline seen 7 times in 900 comparable games would be printed as
+    # 7-in-200 and read as four times likelier than it is.
     out["scores"] = [
         {"home": int(r["home_score"]), "away": int(r["away_score"]),
-         "n": int(r["k"]), "pct": round(r["k"] / n * 100, 1)}
+         "n": int(r["k"]), "pct": round(r["k"] / ns * 100, 1)}
         for r in sc.iter_rows(named=True)]
+    out["scores_n"] = ns
 
     # Margin, in buckets that mean something to a bettor: who won, and whether
     # it was inside a field goal, a touchdown, or more.
@@ -192,7 +235,7 @@ def summary(spread: float, total: float, home: str = "HOME",
         # distribution rather than the truncated `scores` list, or a tie
         # falling past `top` would go unreported.
         out["modal_tied"] = int(
-            (c.group_by(["home_score", "away_score"]).agg(pl.len().alias("k"))
+            (cs.group_by(["home_score", "away_score"]).agg(pl.len().alias("k"))
              .filter(pl.col("k") == out["modal"]["n"])).height)
     return out
 

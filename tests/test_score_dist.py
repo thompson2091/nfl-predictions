@@ -32,20 +32,39 @@ def test_the_site_spread_is_flipped_exactly_once():
     assert got["home_win"]["n"] == 4
 
 
-def test_exact_scores_are_counted_not_rated():
+def test_a_scoreline_seen_twice_is_not_offered_at_all():
     """A scoreline seen four times in three hundred is not a probability.
 
-    They carry their counts so a reader can see the sample; the margin bands
-    pool dozens of games each and are the numbers that carry weight.
+    This used to be enforced by printing the count beside it and trusting the
+    reader. It is now enforced by `SCORE_MIN_SEEN`: at the old window 40% of
+    real games led with a scoreline that had happened twice, under the heading
+    "most likely final score", and no count printed next to it undid that.
+
+    This fixture holds a handful of games, so nothing in it clears the floor
+    and the right answer is an empty list.
     """
     got = sd.for_card({"home": "GB", "away": "ATL", "spread": -6.5,
                        "total": 44.5}, _hist())
-    top = got["scores"][0]
-    assert top["n"] == 2 and top["home"] == 27 and top["away"] == 24
-    assert "n" in top, "an exact scoreline without its count invites pricing"
-    # And the bands carry intervals, which the scorelines deliberately do not.
+    assert got["scores"] == [], (
+        "a fixture this thin should offer no scorelines at all, got "
+        + repr(got["scores"]))
+    # The bands still carry intervals; they pool dozens of games each and are
+    # the numbers that carry weight.
     assert all("lo" in m and "hi" in m for m in got["margins"])
-    assert all("lo" not in s for s in got["scores"])
+
+
+def test_a_scoreline_that_clears_the_floor_carries_its_count():
+    """When there IS enough history, the count travels with the row so a
+    reader can see the sample it came from."""
+    hist = sd.history()
+    if hist.is_empty():
+        pytest.skip("no schedules on disk")
+    got = sd.for_card({"home": "GB", "away": "ATL", "spread": -6.5,
+                      "total": 44.5}, hist)
+    assert got["scores"], "the real archive should clear the floor"
+    for r in got["scores"]:
+        assert r["n"] >= sd.SCORE_MIN_SEEN
+        assert "lo" not in r, "scorelines deliberately carry no interval"
 
 
 def test_a_thin_window_says_so_rather_than_drawing_a_chart():

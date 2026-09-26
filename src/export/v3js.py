@@ -1958,8 +1958,13 @@ function v3GameScores(c) {
       + '<b class="num">' + esc(d.home) + ' ' + x.home
       + '\u2013' + x.away + ' ' + esc(d.away)
       + (landed ? ' \u00b7 this one' : '') + '</b>'
+      // `scores_n`, NOT `d.n`. The exact-score table is counted on a much
+      // wider comparable set than the margin bands beside it — see
+      // `score_dist.SCORE_SPREAD_TOL` — so printing this count against the
+      // bands' denominator would report 26 of 404 for a figure that is 26 of
+      // 2,418, and overstate it six-fold.
       + '<span class="sub num">' + x.pct.toFixed(1) + '% \u00b7 ' + x.n
-      + ' of ' + d.n + '</span></div>';
+      + ' of ' + (d.scores_n || d.n) + '</span></div>';
   }).join('');
   // The two headline boxes become right-or-wrong once the game is in.
   const wonTone = !played ? '' : (fh > fa ? ' box--good' : ' box--bad');
