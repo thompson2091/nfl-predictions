@@ -134,9 +134,16 @@ def for_game(payload: dict, card: dict) -> dict:
             "home_win_pct": (sc.get("home_win") or {}).get("pct"),
             "over_pct": (sc.get("over") or {}).get("pct"),
             "mean_total": sc.get("mean_total"),
-            "common_scores": [f"{card.get('home')} {x['home']}-{x['away']} "
-                              f"{card.get('away')} ({x['pct']}%)"
-                              for x in (sc.get("scores") or [])[:5]],
+            # `p`, the MEASURED rate at that rank, not the scoreline's share
+            # of the comparable games. The model that orders this list prices
+            # it fourteen times too high, so the number comes from the record.
+            "likeliest_scores": [f"{card.get('home')} {x['home']}-{x['away']} "
+                                 f"{card.get('away')} ({x.get('p')}%)"
+                                 for x in (sc.get("scores") or [])[:5]],
+            # And the part a list of near-identical percentages hides.
+            "chance_none_of_those_land_pct": (
+                None if sc.get("scores_covered") is None
+                else round(100 - sc["scores_covered"], 1)),
         }
     pub = ((payload.get("games") or {}).get("public") or {}).get(gid)
     if pub:

@@ -413,8 +413,16 @@ if (cards.length) {
   // moving between them.
   V.gameTab = 'out'; render();
   ok('the final-score tab renders', app().indexOf('How it finished') >= 0);
+  // "Likeliest", not "Most common": the list is ordered for THIS game by a
+  // kernel over real finals, not by league-wide frequency. The heading is
+  // asserted because it is the claim the card makes.
   ok('and leads with the bands rather than the exact scores',
-     app().indexOf('How it finished') < app().indexOf('Most common exact'));
+     app().indexOf('How it finished') >= 0
+       && app().indexOf('Likeliest exact scores') > app().indexOf('How it finished'),
+     'bands at ' + app().indexOf('How it finished')
+       + ', scores at ' + app().indexOf('Likeliest exact scores'));
+  ok('the exact-score card says what the whole list is worth',
+     app().indexOf('finish on a score nobody listed') >= 0);
 
   // The per-book listing printed eleven spreads a game, each with a fair
   // chance of 50% — because a spread IS a coin flip, so the column that

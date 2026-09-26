@@ -1987,13 +1987,13 @@ function v3GameScores(c) {
       + '\u2013' + x.away + ' ' + esc(d.away)
       + (landed ? ' \u00b7 this one'
          : nearest ? ' \u00b7 nearest our number' : '') + '</b>'
-      // `scores_n`, NOT `d.n`. The exact-score table is counted on a much
-      // wider comparable set than the margin bands beside it — see
-      // `score_dist.SCORE_SPREAD_TOL` — so printing this count against the
-      // bands' denominator would report 26 of 404 for a figure that is 26 of
-      // 2,418, and overstate it six-fold.
-      + '<span class="sub num">' + x.pct.toFixed(1) + '% \u00b7 ' + x.n
-      + ' of ' + (d.scores_n || d.n) + '</span></div>';
+      // OUR NUMBER, NOT THE HISTORICAL SHARE. `p` is the measured rate at
+      // this rank — what the k-th pick actually does, walk-forward — where
+      // `pct` was this scoreline's share of the lookalike games and said
+      // nothing about whether we picked it well. The raw count stays as the
+      // support behind the row.
+      + '<span class="sub num">' + (has(x.p) ? x.p.toFixed(1) + '%' : '')
+      + (x.n ? ' \u00b7 ' + x.n + ' times' : '') + '</span></div>';
   }).join('');
   // The two headline boxes become right-or-wrong once the game is in.
   const wonTone = !played ? '' : (fh > fa ? ' box--good' : ' box--bad');
@@ -2005,6 +2005,12 @@ function v3GameScores(c) {
     + '<b>' + d.n + ' past games</b> hung within 2 points of this spread and '
     + '3.5 of this total. Not a simulation \u2014 what actually happened in '
     + 'them.</p>'
+    // THE SCORES TABLE DOES NOT USE THAT SET, and saying "139 past games" above
+    // a list whose rows read "of 2286" was two denominators in one card.
+    + (d.scores_n && d.scores_n !== d.n
+       ? '<p class="help">The exact-score list above is drawn from a wider net '
+         + '\u2014 ' + d.scores_n + ' games \u2014 because a scoreline needs far '
+         + 'more history behind it than a margin band does.</p>' : '')
     + '<div class="two" style="margin-top:12px">'
     + '<div class="box' + wonTone + '"><span class="eyebrow">' + esc(d.home)
     + ' won</span><b class="num">' + d.home_win.pct.toFixed(0) + '%</b>'
@@ -2026,12 +2032,24 @@ function v3GameScores(c) {
     + 'How it finished</h2>'
     + '<div class="card">' + margins + '</div>'
     + '<h2 class="h1" style="font-size:19px;line-height:24px;margin-top:20px">'
-    + 'Most common exact scores</h2>'
+    + 'Likeliest exact scores</h2>'
     + '<div class="card">' + scores
-    + '<p class="help" style="margin-top:10px">Counts, not odds. The top '
-    + 'scoreline here appeared a handful of times in ' + d.n + ' games, so '
-    + 'treat the order as interesting and the percentage as very rough. The '
-    + 'bands above pool far more games each.</p></div>';
+    // THE NUMBER THE OLD CARD HID. Eight rows of near-identical percentages
+    // invited a reader to pick one; what they needed was that the whole list
+    // is a long shot. Said first, in the biggest type on the card.
+    + (has(d.scores_covered)
+       ? '<div class="box" style="margin-top:12px">'
+         + '<span class="eyebrow">These ' + (d.scores || []).length
+         + ' put together</span><b class="num">'
+         + d.scores_covered.toFixed(0) + '%</b>'
+         + '<span class="sub">' + (100 - d.scores_covered).toFixed(0)
+         + '% of games finish on a score nobody listed</span></div>' : '')
+    + '<p class="help" style="margin-top:10px">Ordered for THIS game \u2014 '
+    + 'real finals, weighted by how well each fits this spread and total. The '
+    + 'percentages are measured: how often our first pick lands, and how often '
+    + 'the rest do. Only the top one is separable from the others '
+    + '\u2014 across the record ranks two and below run together, so they share '
+    + 'a number rather than pretending to an order.</p></div>';
 }
 
 // THE GAME MARKETS AS A SCORE LADDER, NOT AS A LIST OF BOOKS.

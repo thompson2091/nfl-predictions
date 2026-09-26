@@ -47,11 +47,49 @@ def test_the_scores_are_counted_on_a_bigger_set_than_the_bands(hist):
         f"scores counted on {s['scores_n']} vs bands on {s['n']}")
 
 
-def test_the_percentage_matches_its_own_denominator(hist):
-    """One definition per number: `pct` must be `n / scores_n`, not `n / n`."""
+def test_the_probability_is_the_measured_rate_not_the_share(hist):
+    """`p` is what the k-th pick ACTUALLY lands, measured walk-forward — not
+    this scoreline's share of the lookalike games.
+
+    The share said nothing about whether we picked well: a scoreline can be
+    common in general and a poor call here. The kernel's own weight is no use
+    either — normalized it gives the top pick 19.4% against a measured 1.37%.
+    """
     s = sd.summary(6.5, 44.5, "GB", "ATL", hist=hist)
-    for r in s["scores"]:
-        assert r["pct"] == pytest.approx(r["n"] / s["scores_n"] * 100, abs=0.06)
+    rates = sd._rank_rates(())
+    assert rates, "no measured rank rates"
+    assert s["scores"][0]["p"] == pytest.approx(100 * rates[1], abs=0.01)
+    # And it is emphatically NOT the share of the comparable set.
+    top = s["scores"][0]
+    share = 100 * top["n"] / s["scores_n"]
+    assert abs(top["p"] - share) > 0.05, (
+        "p has collapsed back into the historical share")
+
+
+def test_the_flat_band_shares_one_number(hist):
+    """Ranks two and below run 0.62, 0.62, 0.58, 0.54, 0.66, 0.37, 0.79 — they
+    rise as often as they fall, on about fifteen events each. Printing them as
+    they fall out would tell a reader the eighth pick beats the fifth."""
+    s = sd.summary(6.5, 44.5, "GB", "ATL", hist=hist)
+    tail = [r["p"] for r in s["scores"][1:]]
+    assert len(set(tail)) == 1, f"the flat band prints {len(set(tail))} numbers"
+    assert s["scores"][0]["p"] > tail[0], "the top pick must lead the band"
+
+
+def test_the_card_says_what_the_whole_list_is_worth(hist):
+    """Eight rows of near-identical percentages invite picking one. The number
+    a reader needs is that the entire list is a long shot."""
+    s = sd.summary(6.5, 44.5, "GB", "ATL", hist=hist)
+    assert 2.0 < s["scores_covered"] < 15.0, s["scores_covered"]
+
+
+def test_the_list_is_ordered_for_this_game_not_the_league(hist):
+    """The whole point of the kernel. A three-point game and a seven-point
+    game must not lead with the same scoreline."""
+    a = sd.summary(-3.0, 45.5, "DAL", "BAL", hist=hist)["scores"][0]
+    b = sd.summary(7.0, 44.5, "GB", "ATL", hist=hist)["scores"][0]
+    assert (a["home"], a["away"]) != (b["home"], b["away"]), (
+        "both games led with the same scoreline")
 
 
 def test_a_shootout_still_does_not_show_a_defensive_scoreline(hist):

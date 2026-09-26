@@ -82,8 +82,16 @@ def payload_v3():
                                      "hi": 75.4},
                         "over": {"n": 207, "pct": 51.4, "lo": 46.5,
                                  "hi": 56.2},
-                        "scores": [{"home": 31, "away": 24, "n": 4,
-                                    "pct": 1.0}],
+                        # Shaped as `score_dist.summary` now leaves it: `p` is
+                        # the MEASURED rate at that rank, not the scoreline's
+                        # share, and ranks two and below share one number
+                        # because the record cannot separate them.
+                        "scores_n": 2418,
+                        "scores_covered": 5.5,
+                        "scores_flat_from": 2,
+                        "scores": [{"home": 27, "away": 20, "n": 22, "p": 1.37},
+                                   {"home": 20, "away": 17, "n": 23, "p": 0.59},
+                                   {"home": 23, "away": 20, "n": 23, "p": 0.59}],
                         "margins": [{"band": "GB by 15+", "n": 106,
                                      "pct": 26.3, "lo": 22.2, "hi": 30.8}]},
              "injuries": {"GB": [{"player": "Jayden Reed", "pos": "WR",
@@ -292,6 +300,7 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a player facing the money is told so, not merely told there is money",
                  "some board row sits in a game with money on it",
                  "a scoreline is marked as nearest our number",
+                 "the exact-score card says what the whole list is worth",
                  "and is styled apart from the row that actually happened",
                  "the opened player row names the money in their game",
                  "and changing the stake keeps it open too",
