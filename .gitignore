@@ -39,3 +39,8 @@ logs/
 # Built by `make launch`; disposable, rebuilt every time.
 public/
 data/raw/game_notes_cache/
+
+# graphify builds a code graph under graphify-out/. It is a derived artifact:
+# rebuildable from the source with `graphify . --update`, and it churns on every
+# rebuild, so committing it would add noise to every diff.
+graphify-out/
