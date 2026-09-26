@@ -176,8 +176,14 @@ button{cursor:pointer}
   scrollbar-width:none;-webkit-overflow-scrolling:touch;
   grid-template-columns:none;margin:0 -16px;padding:0 16px}
 .mkts--strip::-webkit-scrollbar{display:none}
-.mkts--strip .mkt{flex-shrink:0;min-height:32px;height:32px;padding:0 12px;
-  border-radius:999px;font-size:13px;white-space:nowrap}
+/* SIZED TO FIT THE ROW, not to the longest name. Six markets on a phone is
+   about 50px each, which is why the labels are short (`V3MKT[4]`). They may
+   still shrink — inside a game each pill also carries a player count — so
+   they shrink evenly and ellipsis rather than pushing the last market off the
+   edge behind a sideways scroll nothing on screen advertises. */
+.mkts--strip .mkt{flex:0 1 auto;min-width:0;min-height:32px;height:32px;
+  padding:0 10px;border-radius:999px;font-size:13px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
 .pbar .seg{margin-top:0}
 .pbar .seg button{height:32px;font-size:13px}
 .pbar__row{display:flex;align-items:center;gap:6px}
@@ -193,6 +199,14 @@ button{cursor:pointer}
    every time you change the sort. It truncates instead. */
 .pbar .picker select{height:32px;max-width:96px;flex:0 1 auto}
 .pbar .dirbtn{height:26px;padding:0 8px;font-size:12px}
+
+/* The one edge this project has measured, called out rather than set in the
+   same muted grey as "pays if the player scores a touchdown" — where it read
+   as another line of instructions. Green because it is the good news, and
+   because the app already spends `--good` on things that went our way. */
+.clv{margin:12px 0 0;padding:10px 14px;border-radius:12px;
+  background:var(--goodbg);color:var(--good);font-size:13px;line-height:18px}
+.clv b{font-weight:700}
 .seg{display:grid;gap:2px;padding:2px;background:var(--seg);border-radius:12px;
   margin-top:16px}
 .seg--2{grid-template-columns:repeat(2,minmax(0,1fr))}

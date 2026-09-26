@@ -20,7 +20,8 @@ const x = loadPage(process.argv[2], process.argv[3],
    'V3BETTYPES',
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
-   'v3Sharp', 'v3SharpSides', 'V3RATIO_SMALL', 'v3GTab',
+   'v3Sharp', 'v3SharpSides', 'V3RATIO_SMALL', 'v3GTab', 'v3MktLabel',
+   'v3Clv',
    'v3NowImplied', 'v3Clv', 'v3ClvNote', 'v3GameMoney']);
 const { V, render, v3Screen, v3Games, v3Game, v3Picks, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
@@ -1586,6 +1587,103 @@ if (cards.length) {
      app().indexOf('no book posts the other side') < 0);
   V.filter = 'all';
   if (barAt < 0) ok('the bar was on screen for this check', false);
+}
+
+// ── Short labels on the pills, full names everywhere else ──────────────
+//
+// Six markets on one row of a phone is about 50px each, and "Receiving yds"
+// does not go in 50px — so the strip scrolled sideways, hiding half the
+// markets behind a gesture nothing on screen advertises.
+{
+  V.tab = 'props'; V.game = null; V.week = null; V.market = 'any'; render();
+  const h = app();
+  const bar = h.slice(h.indexOf('class="pbar"'), h.indexOf('id="v3rows"'));
+  // Over the markets this payload actually serves, not a hard-coded six:
+  // the fixture serves four, so naming them would pass by not looking.
+  const servedM = x.V3MKT.filter(m => served(m[0]));
+  ok('the fixture serves enough markets to fill a row', servedM.length >= 4,
+     String(servedM.length));
+  ok('the pills use the short label',
+     servedM.every(m => bar.indexOf('>' + m[4]) >= 0),
+     servedM.map(m => m[4]).join(' | '));
+  ok('and not the long one',
+     servedM.every(m => m[4] === m[1] || bar.indexOf('>' + m[1] + '<') < 0),
+     servedM.map(m => m[1]).join(' | '));
+  // Every market has one, or a pill silently falls back to the long name and
+  // the row overflows again.
+  ok('every market carries a short label',
+     x.V3MKT.every(m => typeof m[4] === 'string' && m[4].length > 0
+                        && m[4].length <= 8),
+     JSON.stringify(x.V3MKT.map(m => m[4])));
+  // The full name still has work to do off the pills.
+  V.market = 'rush';
+  ok('the prose still uses the full name',
+     x.v3MktLabel().indexOf('rushing') >= 0, x.v3MktLabel());
+  V.market = 'any';
+}
+
+// ── The board has the game screen's bar, pinned ────────────────────────
+{
+  V.tab = 'props'; V.game = null; V.week = null; render();
+  let h = app();
+  ok('the board bar is in the same pinned wrapper as the game screen',
+     h.indexOf('class="gtabs"') >= 0);
+  ok('and the filters pin under it',
+     h.indexOf('class="pbar"') > h.indexOf('class="gtabs"'));
+  ok('it still offers every game', h.indexOf('data-v3gamesel') >= 0);
+  ok('with a forward stepper from all games',
+     h.indexOf('data-v3boardgame=') >= 0);
+  // Back and Ask are about ONE game, so neither shows until one is chosen.
+  ok('no Ask across sixteen matchups', h.indexOf('data-v3sheet="ask"') < 0);
+  ok('and no back from all games', h.indexOf('class="gback"') < 0);
+
+  // Stepping filters the board rather than opening the game screen.
+  const step = /data-v3boardgame="([^"]+)"/.exec(h);
+  ok('a stepper names a real game', !!step);
+  if (step) {
+    v3Do('v3boardgame', step[1]);
+    ok('stepping filters the board', V.game === step[1]);
+    ok('and does not leave the board', V.tab === 'props');
+    h = app();
+    ok('now Ask is offered', h.indexOf('data-v3sheet="ask"') >= 0);
+    ok('and back is too', h.indexOf('class="gback"') >= 0);
+    v3Do('v3boardgame', '');
+    ok('back returns to all games', V.game === null, String(V.game));
+  }
+}
+
+// ── The measured edge is called out, on both boards ────────────────────
+//
+// It was set in the same muted grey as "pays if the player scores a
+// touchdown", where the one edge this project has measured read as another
+// line of instructions. And it only appeared on the props board, which made
+// it look like a fact about touchdown props rather than about every line.
+{
+  V.tab = 'props'; V.game = null; V.week = null; render();
+  const ph = app();
+  if (ph.indexOf('prices moved') >= 0 || ph.indexOf('class="clv"') >= 0) {
+    ok('the props board calls it out rather than greying it',
+       ph.indexOf('class="clv"') >= 0);
+    ok('and not as help text', ph.indexOf('class="help">Prices moved') < 0);
+  }
+  V.tab = 'games'; V.game = null; render();
+  const gh = app();
+  // Only where the payload HAS a measurable set. `v3ClvNote` prints nothing
+  // under four qualifying lines, and asserting regardless would turn a thin
+  // fixture into a failure about the games board.
+  const grows = ((DATA.games || {}).rows || [])
+    .filter(r => r.priced && !r.blocked);
+  const gc = x.v3Clv(grows);
+  ok('the games board is wired to the same measurement',
+     !gc || gc.n < 4 || gh.indexOf('class="clv"') >= 0,
+     'clv=' + JSON.stringify(gc));
+  // A graded week's prices stopped moving, so it says nothing there.
+  if (gc && gc.n >= 4) {
+    V.week = 1; render();
+    ok('and says nothing on a graded week', app().indexOf('class="clv"') < 0);
+    V.week = null;
+  }
+  V.tab = 'props';
 }
 
 done();

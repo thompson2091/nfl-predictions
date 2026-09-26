@@ -45,25 +45,36 @@ const V3TABS = [
 ];
 
 // key, button label, what the bet pays on, the question the screen answers.
+// `[key, name, what it pays, page title, PILL]`.
+//
+// THE FIFTH IS A SHORT LABEL AND ONLY THE PILLS USE IT. Six markets on one
+// row of a phone is about 50px each, and "Receiving yds" does not go in 50px
+// — so the strip scrolled sideways, which hides half the markets behind a
+// gesture nothing on screen advertises.
+//
+// It is a separate field rather than a rename because the full name still has
+// work to do: it is the heading on the board, the subject of "no priced
+// players on scores a td", and the label in the empty-state grid, which has
+// the width for it. A pill is the one place the name is competing for space.
 const V3MKT = [
   ['any', 'Scores a TD',
    'Pays if the player scores a touchdown at any point in the game.',
-   'Who scores this week?'],
+   'Who scores this week?', 'TD'],
   ['first', 'Scores first',
    'Pays only if the player scores the game’s very first touchdown. Harder, so it pays more.',
-   'Who scores first?'],
+   'Who scores first?', 'First TD'],
   ['rec', 'Catches',
    'Pays if the player makes more catches than the number shown.',
-   'Who beats their catches line?'],
+   'Who beats their catches line?', 'Catches'],
   ['rush', 'Rushing yds',
    'Pays if the player runs for more yards than the number shown.',
-   'Who beats their rushing line?'],
+   'Who beats their rushing line?', 'Rush'],
   ['recyds', 'Receiving yds',
    'Pays if the player gains more receiving yards than the number shown.',
-   'Who beats their receiving line?'],
+   'Who beats their receiving line?', 'Rec yds'],
   ['passyds', 'Passing yds',
    'Pays if the quarterback throws for more yards than the number shown.',
-   'Who beats their passing line?'],
+   'Who beats their passing line?', 'Pass'],
 ];
 
 // The board's market keys are `any` and `first`; the history files are built
@@ -349,7 +360,7 @@ function v3MarketControls() {
     const n = V.game ? v3GameMkt(m[0], V.game) : null;
     return '<button class="mkt' + (n === 0 ? ' mkt--none' : '')
       + '" data-v3mkt="' + m[0] + '" aria-pressed="'
-      + (m[0] === V.market) + '">' + esc(m[1])
+      + (m[0] === V.market) + '">' + esc(m[4] || m[1])
       + (n === null ? '' : ' <i>' + n + '</i>') + '</button>';
   }).join('');
   // ONLY THE ONE THAT STOPS A MISTAKE.
@@ -408,11 +419,7 @@ function v3Week() {
        ? v3ClvNote(rowsFor(V.market, null).filter(r => r.priced && !r.blocked),
                    'of the picks on this market')
        : '')
-    // ABOVE THE PINNED BAR, on purpose. Narrowing to one game is something
-    // you do once and then work inside; market, shortlist, search and sort
-    // are what you reach for while reading. Pinning all five ran to 162px,
-    // and the least-used control was paying for a third of it.
-    + v3GamePicker()
+    + v3BoardBar()
     + v3MarketControls()
     + '<div class="list" id="v3rows">' + v3Rows() + '</div>'
     + v3Explainer()
@@ -424,6 +431,50 @@ function v3Week() {
 // Asked for directly: "a lot of times I'm looking at a specific game and
 // clicking between the markets and need to reselect the game every time".
 // `v3Do` deliberately leaves `V.game` alone on a market change.
+// THE SAME BAR THE GAME SCREEN HAS, on the board.
+//
+// It was a plain "Game" dropdown sitting in the flow, which meant two
+// different controls for one idea — step between games on a game screen,
+// choose one from a list on the board — and the board's scrolled away the
+// moment you started reading. This is the game screen's control: back,
+// steppers either side of the name, Ask on the right, in the same pinned
+// wrapper, so `--gtabs-h` offsets the filter bar under it without knowing
+// which screen it is on.
+//
+// BACK AND ASK APPEAR ONLY WITH A GAME CHOSEN. Both are about one game: back
+// means leave it, which on the board is "all games" rather than a screen to
+// return to, and Ask has nothing to ask about across sixteen matchups. A
+// disabled button that is nearly always disabled is worse than no button.
+function v3BoardBar() {
+  const cards = v3GameSet().cards || [];
+  if (!cards.length) return '';
+  let i = -1;
+  cards.forEach((c, k) => { if (c.game_id === V.game) i = k; });
+  const step = d => {
+    const j = i + d;
+    // From "all games" the forward arrow starts at the first, and there is
+    // nothing behind it — the same rule the game screen uses at either end.
+    return (j < 0 || j >= cards.length) ? ''
+      : '<button class="gstep" data-v3boardgame="' + esc(cards[j].game_id)
+        + '" aria-label="' + (d < 0 ? 'Previous' : 'Next') + ' game">'
+        + (d < 0 ? '\u2039' : '\u203a') + '</button>';
+  };
+  const opts = ['<option value="">All games</option>'].concat(
+    cards.map(c => '<option value="' + esc(c.game_id) + '"'
+      + (V.game === c.game_id ? ' selected' : '') + '>'
+      + esc(c.away + ' at ' + c.home) + '</option>')).join('');
+  return '<div class="gtabs"><div class="gtabs__row">'
+    + (V.game ? '<button class="gback" data-v3boardgame="" '
+        + 'aria-label="Back to all games">\u2039</button>' : '')
+    + '<div class="gsel">' + step(-1)
+    + '<select data-v3gamesel aria-label="Filter to one game">' + opts
+    + '</select>' + step(1) + '</div>'
+    + (V.game ? '<button class="askbtn askbtn--mini" data-v3sheet="ask"'
+        + ' aria-label="Ask about this game">'
+        + '<span>Ask</span><i>\u2192</i></button>' : '')
+    + '</div></div>';
+}
+
 function v3GamePicker() {
   const cards = v3GameSet().cards || [];
   if (!cards.length) return '';
@@ -999,6 +1050,18 @@ function v3Games() {
     + flips + '</b></div>'
     + '<div class="stat"><span class="eyebrow">Model agrees</span><b class="num">'
     + agree + '</b></div></div></div>'
+    // THE SAME MEASUREMENT, over game lines rather than player props.
+    //
+    // It only ever appeared on the props board, which made the project's one
+    // measured edge look like a fact about touchdown props. It is a fact
+    // about every line we rate, and the games board rates the moneylines,
+    // spreads and totals — so it belongs here too, and only on a live week
+    // for the same reason: on a graded week the prices stopped moving.
+    + (V.week == null
+       ? v3ClvNote(((DATA.games || {}).rows || [])
+                     .filter(r => r.priced && !r.blocked),
+                   'of the game lines on this board')
+       : '')
     + '<div class="seg seg--4">'
     + v3Seg('v3gfilter', [['all', 'All'], ['flip', 'Upsets'],
                           ['agree', 'Agrees'], ['diff', 'Disagrees']],
@@ -2791,8 +2854,12 @@ function v3ClvNote(rows, what) {
   //
   // "we rated above the open" stays. It is not padding, it is the condition
   // that defines the sample, and 77 of 115 without it is a different claim.
-  return '<p class="help">Prices moved toward us on <b>' + c.toward + ' of '
-    + c.n + '</b> ' + esc(what) + ' we rated above the open.</p>';
+  //
+  // AND IT IS CALLED OUT RATHER THAN SET IN THE HELP GREY. This is the one
+  // edge the project has measured; printed in the same muted type as "pays if
+  // the player scores a touchdown" it read as another line of instructions.
+  return '<p class="clv"><b>' + c.toward + ' of ' + c.n + '</b> prices moved '
+    + 'toward us \u2014 ' + esc(what) + ' we rated above the open.</p>';
 }
 
 // THE CAVEAT BECOMES A NUMBER.
@@ -3367,7 +3434,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3pick',
                   'v3game', 'v3gamestep', 'v3back', 'v3gtab', 'v3cat', 'v3type',
                   'v3stake', 'v3ask', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
-                  'v3half', 'v3metric',
+                  'v3half', 'v3metric', 'v3boardgame',
                   'v3sortpick'];
 
 document.addEventListener('click', ev => {
@@ -3499,6 +3566,10 @@ function v3Do(kind, v) {
     case 'v3clearq': V.q = ''; V.shown = V3SHOW; break;
     case 'v3half': V.half = v; break;
     case 'v3metric': V.metric = v; break;
+    // The board's steppers CHANGE THE FILTER; they do not open the game. An
+    // empty value is "all games", which is what back means here.
+    case 'v3boardgame': V.game = v || null; V.shown = V3SHOW; V.open = null;
+      break;
     case 'v3fav': toggleFav(v); break;
     case 'v3clear': V.picks = {}; break;
     case 'v3drop': delete V.picks[v]; break;
