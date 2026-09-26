@@ -360,6 +360,9 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "switching market starts at the top of the new market",
                  "and switching Everyone / Shortlist / Fades does the same",
                  "but sorting keeps your place",
+                 "a filter whose results do not fill the pane starts at the "
+                 "top",
+                 "rather than stranded partway down where the clamp left it",
                  "the games filter is in the shared pinned bar",
                  "the counts are above it rather than pinned with it",
                  "and the cards it filters below it",

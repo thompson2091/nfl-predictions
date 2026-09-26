@@ -2082,7 +2082,17 @@ function v3GameEmpty(gid) {
 function v3GamePlayers(gid) {
   const prev = V.game;
   V.game = gid;
-  const body = v3MarketControls()
+  // THE SAME GREEN LINE THE BOARD CARRIES, counted over THIS GAME's picks.
+  //
+  // The board's number is the whole market; a game screen reading the whole
+  // market's number under this game's rows would be quoting a statistic about
+  // somewhere else. `rowsFor` keys the game as `gameId`, and `v3Same` is what
+  // every other filter on this screen compares with.
+  const body = v3MarketControls(V.week == null
+      ? v3ClvNote(rowsFor(V.market, null).filter(
+          r => r.priced && !r.blocked && v3Same(r.gameId, gid)),
+          'of this game\u2019s picks on this market')
+      : '')
     + '<div class="list" id="v3rows">' + v3Rows() + '</div>';
   V.game = prev;
   // No preamble. "Every priced player in this game, on the market you pick"
@@ -3484,7 +3494,22 @@ function render(fromHistory) {
       } else if (bar && has(bar.offsetTop)) {
         at = bar.offsetTop;
       }
-      scroll.scrollTop = Math.max(0, at);
+      // A SHORT LIST CANNOT BE SCROLLED THAT FAR, so do not half-do it.
+      //
+      // Filtering to Upsets leaves one game card. The browser clamps the
+      // scroll to what the content allows, which left the bar stranded a
+      // third of the way down with the page heading sliced off above it — the
+      // same tap felt broken on the short filter and right on every other
+      // one.
+      //
+      // `at > max` is exactly the case where the content BELOW the bar is
+      // shorter than the pane, so from the top the whole of it is already on
+      // screen. Zero is then the honest answer rather than a failed attempt
+      // at the bar: you see the heading, the counts, the filter and its
+      // results together.
+      const max = (has(scroll.scrollHeight) && has(scroll.clientHeight))
+        ? scroll.scrollHeight - scroll.clientHeight : null;
+      scroll.scrollTop = (max != null && at > max) ? 0 : Math.max(0, at);
     } else {
       scroll.scrollTop = V.top ? 0 : y;
     }

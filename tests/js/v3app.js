@@ -1376,6 +1376,9 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // pane's edge, then stops there. Exactly `max(0, layout - scrolled)`.
   pane._rect = () => ({ top: Math.max(0, BAR_AT - scroll.scrollTop) });
   scroll._rect = () => ({ top: 0 });
+  // A pane with room to scroll that far. Left at zero the page cannot reach
+  // the bar at all, and the assertions below would be measuring the clamp.
+  scroll.scrollHeight = 5000; scroll.clientHeight = 800;
 
   V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'notes';
   V.week = null; render();
@@ -1427,6 +1430,7 @@ if (cards.length > 1) {
     const pane = document.querySelector('.gtabs');
     pane._rect = () => ({ top: Math.max(0, BAR_AT - scroll.scrollTop) });
     scroll._rect = () => ({ top: 0 });
+    scroll.scrollHeight = 5000; scroll.clientHeight = 800;
     scroll.scrollTop = DEEP;
 
     v3Do('v3gamestep', step[1]);
@@ -1588,6 +1592,15 @@ if (cards.length) {
      h.indexOf('class="pbar"') > h.indexOf('class="gtabs"'));
   ok('and still has exactly one search box',
      h.split('data-v3q').length - 1 === 1);
+  // The same green line, counted over THIS GAME's picks. The board's number
+  // is the whole market, and quoting that under one game's rows would be a
+  // statistic about somewhere else.
+  if (h.indexOf('class="clv"') >= 0) {
+    ok('the game props section carries the measured edge too',
+       h.indexOf('class="clv"') > h.indexOf('class="pbar"'));
+    ok('and says it is this game it counted',
+       h.indexOf('this game') > 0);
+  }
   // NOTHING BETWEEN THE TWO PINNED BARS. A sentence there is charged to the
   // one part of the page that cannot afford one, and it described the screen
   // to someone already looking at it.
@@ -1824,6 +1837,7 @@ if (cards.length) {
   const bar = document.querySelector('.gtabs');
   bar._rect = () => ({ top: Math.max(0, BAR_AT - scroll.scrollTop) });
   scroll._rect = () => ({ top: 0 });
+  scroll.scrollHeight = 5000; scroll.clientHeight = 800;
 
   V.tab = 'props'; V.game = null; V.week = null;
   V.market = 'any'; V.filter = 'all'; render();
@@ -1849,8 +1863,21 @@ if (cards.length) {
   ok('but sorting keeps your place', scroll.scrollTop === DEEP,
      'scrollTop ' + scroll.scrollTop);
 
+  // A SHORT LIST CANNOT BE SCROLLED THAT FAR. Filtering to one result leaves
+  // a page the browser clamps, which stranded the bar a third of the way down
+  // with the heading sliced off above it — the same tap felt broken on the
+  // short filter and right on every other one.
+  scroll.scrollHeight = 900; scroll.clientHeight = 800;   // max scroll: 100
+  scroll.scrollTop = 60;
+  v3Do('v3filter', 'fade');
+  ok('a filter whose results do not fill the pane starts at the top',
+     scroll.scrollTop === 0, 'scrollTop ' + scroll.scrollTop);
+  ok('rather than stranded partway down where the clamp left it',
+     scroll.scrollTop !== BAR_AT && scroll.scrollTop !== 60);
+
   V.filter = 'all'; V.market = 'any';
   bar._rect = null; scroll._rect = null; scroll.scrollTop = 0;
+  scroll.scrollHeight = 0; scroll.clientHeight = 0;
 }
 
 done();
