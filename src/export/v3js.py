@@ -1276,9 +1276,19 @@ function v3Matchup(c) {
   // than the thing it chooses, and far too tall to pin. One full-width select
   // is a fixed 38px whatever the list holds, which is what lets it ride in the
   // pinned bar with the halves instead of scrolling away above them.
+  // ALPHABETICAL IN THE LIST, and only in the list. A dropdown is something
+  // you scan for a name you already have in mind, so the order that helps is
+  // the one that lets you stop scanning. The SECTIONS keep the order the
+  // pipeline sends, which is roughly how much each metric explains — that is
+  // a ranking, and sorting it by first letter would throw it away.
+  //
+  // Tied on the label, the key decides. Labels are unique today; a sort that
+  // silently depends on that is how a list starts coming back in two orders.
+  const byName = rows.slice().sort((a, b) =>
+    a.label.localeCompare(b.label) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   const sel = rows.length < 2 ? '' : '<div class="picker mxsel">'
     + '<select data-v3metricsel aria-label="Filter to one metric">'
-    + [['all', 'All metrics']].concat(rows.map(r => [r.key, r.label]))
+    + [['all', 'All metrics']].concat(byName.map(r => [r.key, r.label]))
         .map(k => '<option value="' + esc(k[0]) + '"'
           + (k[0] === pick ? ' selected' : '') + '>' + esc(k[1])
           + '</option>').join('')

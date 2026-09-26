@@ -756,6 +756,26 @@ if (cards.length) {
       const k = /<option value="((?!all)[^"]+)"/.exec(
         h.slice(h.indexOf('data-v3metricsel')));
       ok('an option names a real metric', !!k);
+      // ALPHABETICAL, with "All metrics" pinned on top. A dropdown is scanned
+      // for a name you already have in mind.
+      const opts = h.slice(h.indexOf('data-v3metricsel'))
+        .split('<option').slice(1)
+        .map(o => o.slice(o.indexOf('>') + 1, o.indexOf('</option>')));
+      ok('All metrics leads the list', opts[0] === 'All metrics', opts[0]);
+      const names = opts.slice(1);
+      ok('and the rest are alphabetical',
+         names.join('|') === names.slice().sort((a, b) =>
+           a.localeCompare(b)).join('|'), names.join(' | '));
+      // The SECTIONS are not resorted: their order is roughly how much each
+      // metric explains, which is a ranking rather than a list.
+      const heads = (h.match(/font-size:17px[^>]*>([^<]+)/g) || [])
+        .map(t => t.slice(t.indexOf('>') + 1));
+      if (heads.length > 1) {
+        ok('while the sections keep the order the pipeline sent',
+           heads.join('|') !== heads.slice().sort((a, b) =>
+             a.localeCompare(b)).join('|')
+           || heads.length < 2, heads.join(' | '));
+      }
       if (k) {
         fireDoc('change', { target: {
           getAttribute: a => a === 'data-v3metricsel' ? '' : null,
