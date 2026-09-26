@@ -1759,4 +1759,36 @@ if (cards.length) {
   V.tab = 'props';
 }
 
+// ── The games board's filter is pinned too ─────────────────────────────
+//
+// Sixteen game cards is four screens, and the control that narrows them sat
+// above all four.
+{
+  V.tab = 'games'; V.game = null; V.week = null; V.gfilter = 'all'; render();
+  const h = app();
+  const barAt = h.indexOf('class="pbar pbar--free"');
+  ok('the games filter is in the shared pinned bar', barAt >= 0);
+  ok('and it is the filter that is pinned, not a copy of it',
+     h.split('data-v3gfilter="all"').length - 1 === 1);
+  ok('with the seg inside it',
+     h.indexOf('data-v3gfilter=') > barAt);
+  // The counts and the measured edge stay in the flow above: read once, and
+  // they are what makes the bar the top of the page once you scroll.
+  const statAt = h.indexOf('Model agrees');
+  ok('the counts are above it rather than pinned with it',
+     statAt >= 0 && statAt < barAt, 'stats ' + statAt + ', bar ' + barAt);
+  if (h.indexOf('class="clv"') >= 0) {
+    ok('and so is the measured edge',
+       h.indexOf('class="clv"') < barAt);
+  }
+  // The rows it filters come after it, or it is pinning nothing.
+  ok('and the cards it filters below it',
+     h.indexOf('data-v3game=') > barAt);
+  // Still works from the bar.
+  v3Do('v3gfilter', 'flip');
+  ok('the pinned filter still filters', V.gfilter === 'flip');
+  v3Do('v3gfilter', 'all');
+  V.tab = 'props';
+}
+
 done();

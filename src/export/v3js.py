@@ -1083,11 +1083,20 @@ function v3Games() {
                      .filter(r => r.priced && !r.blocked),
                    'of the game lines on this board')
        : '')
-    + '<div class="seg seg--4">'
+    // PINNED, like every other filter in the app. Sixteen game cards is four
+    // screens, and the control that narrows them sat above all four. The
+    // counts and the measured edge above it stay in the flow: they are read
+    // once, and they are what makes this bar the top of the page once you
+    // start scrolling.
+    //
+    // `pbar` is the shared pinned-filter bar rather than a props-only one, so
+    // the two boards cannot drift apart visually. `--free` because this one
+    // stands on its own instead of tucking under a bar above it.
+    + '<div class="pbar pbar--free"><div class="seg seg--4">'
     + v3Seg('v3gfilter', [['all', 'All'], ['flip', 'Upsets'],
                           ['agree', 'Agrees'], ['diff', 'Disagrees']],
             V.gfilter)
-    + '</div>'
+    + '</div></div>'
     + '<div class="list">' + (rows || '<div class="empty">'
       + (V.gfilter === 'flip'
          ? 'Our model picks the same winner as the book in every game this week.'

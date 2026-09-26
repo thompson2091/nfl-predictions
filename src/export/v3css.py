@@ -178,6 +178,12 @@ button{cursor:pointer}
    answered — is there anyone in here — still gets an answer. */
 .pbar .seg button.mkt--none{opacity:.45}
 .pbar .seg{margin-top:0}
+/* Standing on its own rather than tucked under another pinned bar, so it
+   needs air above the control. PADDING, not margin: a sticky element's margin
+   sits outside the box its `top` offset positions, so a margin here would
+   stick the bar that far down the screen and leave scrolling content showing
+   through the gap. */
+.pbar--free{padding-top:10px}
 .pbar .seg button{height:32px;font-size:13px}
 .pbar__row{display:flex;align-items:center;gap:6px}
 .pbar .search{flex:1;min-width:0;margin-top:0}
