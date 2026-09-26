@@ -742,23 +742,43 @@ if (cards.length) {
     ok('and no list of what was left out below them',
        h.indexOf('Not shown, and why') < 0);
 
-    // ONE METRIC AT A TIME. Eight stacked headings meant scrolling past seven
-    // to re-read the one you were weighing.
-    const pills = (h.match(/data-v3metric="/g) || []).length;
-    if (pills > 1) {
+    // ONE METRIC AT A TIME, CHOSEN FROM A DROPDOWN. Eleven metrics with names
+    // like "Late-half scoring drives" wrapped to six rows of pills — a chooser
+    // taller than the thing it chooses, and far too tall to pin.
+    if (h.indexOf('data-v3metricsel') >= 0) {
       ok('the metrics can be filtered to one', h.indexOf('All metrics') >= 0);
-      const k = /data-v3metric="((?!all)[^"]+)"/.exec(h);
-      ok('a pill names a real metric', !!k);
+      const barAt = h.indexOf('class="mxbar"');
+      ok('and the chooser rides in the pinned bar, not under it',
+         h.indexOf('data-v3metricsel') > barAt
+         && h.indexOf('data-v3metricsel') < h.indexOf('</div>', barAt + 400));
+      ok('it is one control, not a pill per metric',
+         h.indexOf('mxpills') < 0 && h.indexOf('data-v3metric=') < 0);
+      const k = /<option value="((?!all)[^"]+)"/.exec(
+        h.slice(h.indexOf('data-v3metricsel')));
+      ok('an option names a real metric', !!k);
       if (k) {
-        v3Do('v3metric', k[1]);
+        fireDoc('change', { target: {
+          getAttribute: a => a === 'data-v3metricsel' ? '' : null,
+          value: k[1] } });
         const one = app();
         ok('picking one shows fewer headings than all of them',
-           (one.match(/tag--warn|class="mx"/g) || []).length
-           < (h.match(/tag--warn|class="mx"/g) || []).length);
-        ok('and the pills are still there to change it',
+           (one.match(/class="mx"/g) || []).length
+           < (h.match(/class="mx"/g) || []).length,
+           'one=' + (one.match(/class="mx"/g) || []).length
+           + ' all=' + (h.match(/class="mx"/g) || []).length);
+        ok('and the chooser is still there to change it',
            one.indexOf('All metrics') >= 0);
-        v3Do('v3metric', 'all');
+        fireDoc('change', { target: {
+          getAttribute: a => a === 'data-v3metricsel' ? '' : null,
+          value: 'all' } });
       }
+      // The injury view has no metrics, so the chooser is absent rather than
+      // present and inert.
+      V.half = 'inj'; render();
+      ok('and is absent on the injury view',
+         app().indexOf('data-v3metricsel') < 0);
+      ok('while the view control stays', app().indexOf('data-v3half=') >= 0);
+      V.half = 'full'; render();
     }
   }
   V.gameTab = 'notes'; V.game = null; V.metric = 'all';
@@ -1548,6 +1568,19 @@ if (cards.length) {
      h.indexOf('class="pbar"') > h.indexOf('class="gtabs"'));
   ok('and still has exactly one search box',
      h.split('data-v3q').length - 1 === 1);
+  // NOTHING BETWEEN THE TWO PINNED BARS. A sentence there is charged to the
+  // one part of the page that cannot afford one, and it described the screen
+  // to someone already looking at it.
+  ok('and no preamble between the bars and the rows',
+     h.indexOf('The same board as This week') < 0);
+  const gAt = h.indexOf('class="gtabs"');
+  const pAt = h.indexOf('class="pbar"');
+  ok('the two bars are adjacent', pAt > gAt && gAt >= 0);
+  // The market's own sentence — "pays if the player scores a touchdown" —
+  // stays. It says what the market IS, which the short pill labels no longer
+  // can, and it sits below the pinned bars where it costs nothing.
+  ok('but the market explanation survives the cut',
+     h.slice(pAt, h.indexOf('id="v3rows"')).indexOf('class="help"') >= 0);
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 

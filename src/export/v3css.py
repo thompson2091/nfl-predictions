@@ -153,21 +153,25 @@ button{cursor:pointer}
 .mxbar{position:sticky;top:var(--gtabs-h,0px);z-index:4;background:var(--bg);
   margin:0 -16px;padding:8px 16px}
 .mxbar .seg{margin-top:0}
-/* One row that scrolls sideways rather than a block that wraps to three.
-   These sit under a bar that is already pinned, and a filter which pushes the
-   thing it filters off the screen is not a filter. */
-.mxpills{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
-  -webkit-overflow-scrolling:touch;margin:12px -16px 0;padding:0 16px}
-.mxpills::-webkit-scrollbar{display:none}
-.mxpills .cat{flex-shrink:0}
+/* Eleven metrics with names like "Late-half scoring drives" wrapped to six
+   rows of pills — a chooser taller than the thing it chooses. One full-width
+   select is a fixed 38px whatever the list holds, which is what lets it ride
+   in the pinned bar rather than scroll away above it. */
+.mxsel{margin-top:6px;height:38px;padding:0 10px}
+.mxsel select{height:36px;font-weight:600}
 
 /* ---- the props filters, pinned ----
    Stacked at full size these ran about 250px before the first player: six
    44px market buttons in a 3x2 grid, a sentence, a 4-way filter, a search box
    and a sort row. Fine to read once, impossible to pin. Each control keeps
    one tap and loses its padding, which gets the bar to about 118px. */
+/* NO TOP MARGIN. This always follows a pinned bar, and a sticky element's
+   margin sits outside the box the `top` offset positions — so 16px here stuck
+   it 16px BELOW the bar above and left a transparent stripe of scrolling
+   content between the two. The 8px the bar above already pads with is the
+   gap; 2px here keeps the first row off it. */
 .pbar{position:sticky;top:var(--gtabs-h,0px);z-index:4;background:var(--bg);
-  margin:16px -16px 0;padding:8px 16px;display:flex;flex-direction:column;
+  margin:0 -16px;padding:2px 16px 8px;display:flex;flex-direction:column;
   gap:6px}
 /* A market that holds nobody for this game, greyed rather than counted. The
    count it replaces did not fit an even sixth of a phone; the question it

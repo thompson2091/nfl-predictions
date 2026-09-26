@@ -1266,21 +1266,30 @@ function v3Matchup(c) {
   // written by `render` from the real measured bar, because that bar's height
   // depends on how the matchup name wraps — hard-coding it left this one
   // either overlapping the bar or floating below it.
-  const seg = '<div class="mxbar"><div class="seg seg--' + views.length + '">'
-    + views.map(h => '<button data-v3half="' + esc(h[0]) + '" aria-pressed="'
-        + (h[0] === on) + '">' + esc(h[1]) + '</button>').join('')
-    + '</div></div>';
   // ONE METRIC AT A TIME, or all of them. Eight stacked headings meant
   // scrolling past seven to re-read the one you were weighing.
   const keys = rows.map(r => r.key);
   const pick = keys.indexOf(V.metric) >= 0 ? V.metric : 'all';
   const shownRows = pick === 'all' ? rows : rows.filter(r => r.key === pick);
-  const pills = rows.length < 2 ? '' : '<div class="cats mxpills">'
+  // A DROPDOWN, NOT PILLS. There are eleven metrics with names like "Late-half
+  // scoring drives", so as pills they wrapped to six rows — a chooser taller
+  // than the thing it chooses, and far too tall to pin. One full-width select
+  // is a fixed 38px whatever the list holds, which is what lets it ride in the
+  // pinned bar with the halves instead of scrolling away above them.
+  const sel = rows.length < 2 ? '' : '<div class="picker mxsel">'
+    + '<select data-v3metricsel aria-label="Filter to one metric">'
     + [['all', 'All metrics']].concat(rows.map(r => [r.key, r.label]))
-        .map(k => '<button class="cat" data-v3metric="' + esc(k[0])
-          + '" aria-pressed="' + (k[0] === pick) + '">' + esc(k[1])
-          + '</button>').join('')
-    + '</div>';
+        .map(k => '<option value="' + esc(k[0]) + '"'
+          + (k[0] === pick ? ' selected' : '') + '>' + esc(k[1])
+          + '</option>').join('')
+    + '</select></div>';
+  const seg = '<div class="mxbar"><div class="seg seg--' + views.length + '">'
+    + views.map(h => '<button data-v3half="' + esc(h[0]) + '" aria-pressed="'
+        + (h[0] === on) + '">' + esc(h[1]) + '</button>').join('')
+    + '</div>'
+    // The injury report has no metrics to filter, so the chooser is absent
+    // rather than present and inert.
+    + (on === 'inj' ? '' : sel) + '</div>';
   const pct = v => (v * 100).toFixed(1) + '%';
   const fmt = (k, v) => k === 'epa_play' ? (v >= 0 ? '+' : '') + v.toFixed(3)
     : pct(v);
@@ -1313,11 +1322,10 @@ function v3Matchup(c) {
   // under it are two games' worth and should not be read as rates — so it
   // keeps the same banner every other thin sample in the app uses.
   return seg
-    + (V.half === 'inj' ? v3Injuries(c, true)
+    + (on === 'inj' ? v3Injuries(c, true)
        : (m.thin ? '<div class="thin" role="note"><b>Two games or fewer</b>'
             + '<span>Treat every number here as a first impression rather '
             + 'than a rate.</span></div>' : '')
-         + pills
          + shownRows.map(r =>
             '<h2 class="h1" style="font-size:17px;line-height:22px;'
             + 'margin-top:20px">' + esc(r.label)
@@ -2050,8 +2058,11 @@ function v3GamePlayers(gid) {
   const body = v3MarketControls()
     + '<div class="list" id="v3rows">' + v3Rows() + '</div>';
   V.game = prev;
-  return '<p class="help" style="margin-top:16px">Every priced player in this '
-    + 'game, on the market you pick. The same board as This week.</p>' + body;
+  // No preamble. "Every priced player in this game, on the market you pick"
+  // described the screen to someone already looking at it, and it sat between
+  // two pinned bars and the rows — the one place on the page that cannot
+  // afford a sentence.
+  return body;
 }
 
 // HOW THIS GAME IS LIKELY TO FINISH, from games that were priced like it.
@@ -3455,7 +3466,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3pick',
                   'v3game', 'v3gamestep', 'v3back', 'v3gtab', 'v3cat', 'v3type',
                   'v3stake', 'v3ask', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
-                  'v3half', 'v3metric', 'v3boardgame',
+                  'v3half', 'v3boardgame',
                   'v3sortpick'];
 
 document.addEventListener('click', ev => {
@@ -3538,6 +3549,8 @@ document.addEventListener('change', ev => {
   } else if (t.getAttribute('data-v3gamesel') != null) {
     V.game = t.value === '' ? null : t.value;
     V.shown = V3SHOW; V.open = null; render();
+  } else if (t.getAttribute('data-v3metricsel') != null) {
+    V.metric = t.value; render();
   } else if (t.getAttribute('data-v3sortsel') != null) {
     V.sort = t.value; render();
   } else if (t.getAttribute('data-v3gameto') != null) {
@@ -3586,7 +3599,6 @@ function v3Do(kind, v) {
     case 'v3dir': V.desc = !V.desc; break;
     case 'v3clearq': V.q = ''; V.shown = V3SHOW; break;
     case 'v3half': V.half = v; break;
-    case 'v3metric': V.metric = v; break;
     // The board's steppers CHANGE THE FILTER; they do not open the game. An
     // empty value is "all games", which is what back means here.
     case 'v3boardgame': V.game = v || null; V.shown = V3SHOW; V.open = null;
