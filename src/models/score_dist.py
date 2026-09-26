@@ -102,9 +102,21 @@ SCORE_BW_MARGIN = 4.0
 SCORE_BW_TOTAL = 6.0
 
 
+#: Where the measured rate actually steps down. Ranks are NOT a smooth ladder:
+#: measured walk-forward over 2,416 games the per-rank rate is 1.37% at rank 1,
+#: 0.59% across 2-5, 0.54% across 6-10 and 0.34% across 11-20. Testing the
+#: neighbours, 2-5 against 6-10 is z=+0.50 — one band, not two — while 6-10
+#: against 11-20 is z=+2.54 and is real.
+#:
+#: So the order carries information at THIS granularity and no finer. Three
+#: tiers is what the record supports, and a descending number per row would be
+#: inventing nine.
+SCORE_TIERS = ((1, 1), (2, 10), (11, 20))
+
+
 @lru_cache(maxsize=4)
 def _rank_rates(seasons: tuple) -> tuple:
-    """How often the k-th ranked scoreline actually happens.
+    """How often a scoreline in each tier actually happens.
 
     **THE KERNEL RANKS WELL AND PRICES TERRIBLY.** Normalized, it gives its own
     top pick 19.4% when that pick lands 1.37% of the time — fourteen times
@@ -117,7 +129,7 @@ def _rank_rates(seasons: tuple) -> tuple:
     h = history()
     if h.is_empty():
         return ()
-    out = [0] * 11
+    out = [0] * (SCORE_TIERS[-1][1] + 1)
     n = 0
     for season in sorted(h["season"].unique().to_list())[1:]:
         past = h.filter(pl.col("season") < season)
@@ -125,19 +137,32 @@ def _rank_rates(seasons: tuple) -> tuple:
         if past.height < 400:
             continue
         for g in cur.iter_rows(named=True):
-            picks = _ranked(past, g["spread_line"], g["total_line"], 10)
+            picks = [(h, a) for h, a, _ in
+                     _ranked(past, g["spread_line"], g["total_line"],
+                             SCORE_TIERS[-1][1])]
             actual = (g["home_score"], g["away_score"])
             n += 1
             if actual in picks:
                 out[picks.index(actual) + 1] += 1
     if not n:
         return ()
-    return tuple(c / n for c in out)
+    # Pooled per tier, because that is the granularity the record separates.
+    rates = []
+    for lo, hi in SCORE_TIERS:
+        k = hi - lo + 1
+        rates.append(sum(out[lo:hi + 1]) / (n * k))
+    return tuple(rates)
 
 
 def _ranked(hist: pl.DataFrame, spread: float, total: float,
-            top: int) -> list[tuple[int, int]]:
-    """Real scorelines, ordered by how well each fits this game's line."""
+            top: int) -> list[tuple[int, int, int]]:
+    """Real scorelines, ordered by how well each fits this game's line.
+
+    Returns `(home, away, times)` — the count is the one the ranking was
+    computed from, so the number a row shows and the place it sits come from
+    the same set. Counting the row against the narrow band instead put "seen 4
+    times" beside a scoreline ranked on 30 occurrences league-wide.
+    """
     base = (hist.group_by(["home_score", "away_score"]).agg(pl.len().alias("k"))
             .filter(pl.col("k") >= SCORE_MIN_SEEN))
     if base.is_empty():
@@ -147,7 +172,7 @@ def _ranked(hist: pl.DataFrame, spread: float, total: float,
                        base["k"].to_list()):
         dm = ((h - a) - spread) / SCORE_BW_MARGIN
         dt = ((h + a) - total) / SCORE_BW_TOTAL
-        w.append(((int(h), int(a)), k * math.exp(-0.5 * (dm * dm + dt * dt))))
+        w.append(((int(h), int(a), int(k)), k * math.exp(-0.5 * (dm * dm + dt * dt))))
     w.sort(key=lambda x: -x[1])
     return [p for p, _ in w[:top]]
 
@@ -195,9 +220,15 @@ def comparables(spread: float, total: float,
 
 
 def summary(spread: float, total: float, home: str = "HOME",
-            away: str = "AWAY", top: int = 8,
+            away: str = "AWAY", top: int = 16,
             hist: pl.DataFrame | None = None) -> dict:
     """The distribution, split into what it can and cannot support.
+
+    `top` is 16 rather than 8 so the third tier is visible. With eight rows
+    every one sat in the first two tiers, which the record cannot separate, so
+    the column read as one repeated number and the ordering looked arbitrary.
+    Ranks 11-20 land 0.34% against 0.56% — a real step (z=+2.54) — and showing
+    it is what makes the list read as ordered.
 
     `scores` are exact finals with their counts — interesting, and too thin to
     price. `margins` and `totals` bucket hundreds of games each and carry
@@ -244,9 +275,6 @@ def summary(spread: float, total: float, home: str = "HOME",
     # decreasing numbers that the record cannot tell apart.
     cs = comparables(spread, total, SCORE_SPREAD_TOL, SCORE_TOTAL_TOL, hist=hist)
     ns = cs.height
-    seen = {(int(r["home_score"]), int(r["away_score"])): int(r["k"])
-            for r in (cs.group_by(["home_score", "away_score"])
-                        .agg(pl.len().alias("k")).iter_rows(named=True))}
     picks = _ranked(hist if hist is not None else history(), spread, total, top)
     rates = _rank_rates(())
     # THE FLAT BAND IS POOLED, on purpose. Measured rank by rank the rates run
@@ -254,21 +282,26 @@ def summary(spread: float, total: float, home: str = "HOME",
     # because each rests on about fifteen events. Printing them as they fall
     # out would tell a reader the eighth pick beats the fifth, which this
     # record cannot support. One number for the band says what is known.
-    tail = rates[2:len(picks) + 1] if len(rates) > 2 else ()
-    flat = (sum(tail) / len(tail)) if tail else None
+    def _tier(rank: int):
+        for t, (lo, hi) in enumerate(SCORE_TIERS):
+            if lo <= rank <= hi:
+                return t
+        return len(SCORE_TIERS) - 1
     out["scores"] = [
-        {"home": h, "away": a,
-         "p": round(100 * (rates[1] if i == 0 else flat), 2)
-              if rates and (i == 0 or flat is not None) else None,
-         "n": seen.get((h, a), 0)}
-        for i, (h, a) in enumerate(picks)]
+        {"home": h, "away": a, "tier": _tier(i + 1),
+         "p": round(100 * rates[_tier(i + 1)], 2) if rates else None,
+         "n": k}
+        for i, (h, a, k) in enumerate(picks)]
     out["scores_n"] = ns
     # WHAT THE WHOLE LIST IS WORTH, which is the number a reader most needs and
     # the one a table of percentages hides: nine games in ten finish on a
     # scoreline nobody listed.
-    out["scores_covered"] = round(100 * sum(rates[1:len(picks) + 1]), 2) if rates else None
-    # Only the top row is separable from the rest on this record.
-    out["scores_flat_from"] = 2 if rates else None
+    out["scores_covered"] = (
+        round(sum(r["p"] for r in out["scores"] if r["p"] is not None), 2)
+        if rates else None)
+    # Where the number changes, so the page can rule a line rather than imply
+    # a gradient that the record does not have.
+    out["scores_tiers"] = [list(t) for t in SCORE_TIERS]
 
     # Margin, in buckets that mean something to a bettor: who won, and whether
     # it was inside a field goal, a touchdown, or more.
@@ -324,9 +357,18 @@ def summary(spread: float, total: float, home: str = "HOME",
         # are tied, which is the commoner case. Counted across the whole
         # distribution rather than the truncated `scores` list, or a tie
         # falling past `top` would go unreported.
-        out["modal_tied"] = int(
-            (cs.group_by(["home_score", "away_score"]).agg(pl.len().alias("k"))
-             .filter(pl.col("k") == out["modal"]["n"])).height)
+        # HOW MANY SHARE THE TOP SPOT. Under the old frequency ordering this
+        # was routinely six, which is what made the build non-deterministic.
+        # The kernel scores on a continuous weight, so a genuine tie needs two
+        # scorelines equidistant from the line AND equally common — rare, and
+        # still worth reporting rather than assuming away.
+        out["modal_tied"] = sum(
+            1 for r in out["scores"]
+            if r["n"] == out["modal"]["n"]
+            and abs((r["home"] - r["away"]) - (out["modal"]["home"]
+                                               - out["modal"]["away"])) == 0
+            and (r["home"] + r["away"]) == (out["modal"]["home"]
+                                            + out["modal"]["away"]))
     return out
 
 

@@ -65,6 +65,7 @@ def test_a_scoreline_that_clears_the_floor_carries_its_count():
     for r in got["scores"]:
         assert r["n"] >= sd.SCORE_MIN_SEEN
         assert "lo" not in r, "scorelines deliberately carry no interval"
+        assert r["p"] is not None, "a row without a measured rate"
 
 
 def test_a_thin_window_says_so_rather_than_drawing_a_chart():
@@ -125,7 +126,7 @@ def test_the_scenarios_partition_rather_than_overlap():
     assert abs(sum(c["pct"] for c in sc["cells"]) - 100) < 0.5
 
 
-def test_the_favourite_is_named_rather_than_called_home():
+def test_the_favorite_is_named_rather_than_called_home():
     """"Home by 8-14" is a sentence a reader has to translate."""
     sc = sd.scenarios_for_card({"home": "GB", "away": "ATL", "spread": -6.5,
                                 "total": 44.5}, _hist())
@@ -138,7 +139,7 @@ def test_the_favourite_is_named_rather_than_called_home():
     assert away_fav["fav"] == "ATL"
 
 
-def test_the_headline_numbers_are_labelled_as_overlapping():
+def test_the_headline_numbers_are_labeled_as_overlapping():
     """They do overlap, which is why they are separate from the partition."""
     sc = sd.scenarios_for_card({"home": "GB", "away": "ATL", "spread": -6.5,
                                 "total": 44.5}, _hist())

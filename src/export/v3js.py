@@ -1666,7 +1666,7 @@ function v3Note(n) {
   const figs = (n.stats || []).map(s =>
     '<div class="fig"><b class="num">' + esc(s.v) + '</b><span>' + esc(s.l)
     + '</span></div>').join('');
-  // `context` before the rest: a coaching note that renders unlabelled reads
+  // `context` before the rest: a coaching note that renders unlabeled reads
   // as a reason to bet, and `situational_features` measured thirteen of these
   // on 2,853 games without one of them clearing the vig.
   const flag = n.counted ? '<span class="tag tag--good">Counted</span>'
@@ -1952,12 +1952,19 @@ function v3GameScores(c) {
             : m.band.indexOf(d.home) === 0 ? 'var(--ours)' : 'var(--mut3)')
       + '<span class="mrow__v num">' + m.pct.toFixed(1) + '%</span></div>';
   }).join('');
-  // WHICH OF THESE IS NEAREST OUR NUMBER.
+  // WHERE OUR MODEL POINTS, WHICH IS NOT WHERE THE LIST IS CENTRED.
   //
-  // The list is ordered by how often each scoreline has happened, which is a
-  // fact about games like this one and not about this one. The projection is
-  // the opposite: specific to this game and hopeless as an exact score. Marking
-  // the nearest row joins them without pretending either is the other.
+  // The list is ordered by fit to the MARKET's spread and total, because the
+  // market is measurably the better center: moving the kernel off it by the
+  // point or so our blend typically differs costs top-1 1.37% -> 1.20%, and by
+  // four points 1.37% -> 0.70%. Ordering by our own number would be flattering
+  // and worse.
+  //
+  // So this marker will often sit low, and that is the information rather than
+  // a contradiction — the distance between the market's favorite and ours is
+  // the disagreement this whole site is about. It was labeled "nearest our
+  // number" beside a list nobody had said was centered anywhere else, which
+  // read as a bug.
   //
   // `spread` here is AWAY-positive, as `v3Compare` reads it.
   // Adjusted first, then the model, then the book — the same order of
@@ -1968,15 +1975,29 @@ function v3GameScores(c) {
       ? [c.model_total / 2 - c.model_spread / 2, c.model_total / 2 + c.model_spread / 2]
     : (has(c.spread) && has(c.total))
       ? [c.total / 2 - c.spread / 2, c.total / 2 + c.spread / 2] : null;
+  const dist = x => pj ? Math.hypot(x.home - pj[0], x.away - pj[1]) : null;
+
+  // THE MARKER IS FREQUENCY-AWARE, and it has to be.
+  //
+  // Taking the mathematically nearest row ignored how often a scoreline
+  // occurs. On Dallas at Baltimore our number was 24.5-27.6: it marked 24-28,
+  // 0.64 away and seen 7 times, over 24-27, 0.78 away and seen 21 — so our
+  // own favorite appeared eighth, which reads as a contradiction rather than
+  // as information.
+  //
+  // Among the rows that sit about as close as the closest does, this takes the
+  // one we rate highest. `NEAR_SLACK` is a point of score, which is inside the
+  // noise of any projection this page carries — two scorelines a point apart
+  // are not meaningfully different distances from a number quoted to one
+  // decimal.
+  const NEAR_SLACK = 1.0;
   let near = -1;
-  if (pj) {
-    let best = Infinity;
-    (d.scores || []).forEach((x, i) => {
-      // Straight-line distance in (home, away) points. Ties go to the more
-      // common scoreline, which is the earlier row.
-      const dd = Math.pow(x.home - pj[0], 2) + Math.pow(x.away - pj[1], 2);
-      if (dd < best - 1e-9) { best = dd; near = i; }
-    });
+  if (pj && (d.scores || []).length) {
+    const ds = d.scores.map(dist);
+    const floor = Math.min.apply(null, ds);
+    for (let i = 0; i < ds.length; i++) {
+      if (ds[i] <= floor + NEAR_SLACK) { near = i; break; }
+    }
   }
   const scores = (d.scores || []).map((x, i) => {
     const landed = played && x.home === fh && x.away === fa;
@@ -1986,14 +2007,19 @@ function v3GameScores(c) {
       + '<b class="num">' + esc(d.home) + ' ' + x.home
       + '\u2013' + x.away + ' ' + esc(d.away)
       + (landed ? ' \u00b7 this one'
-         : nearest ? ' \u00b7 nearest our number' : '') + '</b>'
+         : nearest ? ' \u00b7 where our model points' : '') + '</b>'
       // OUR NUMBER, NOT THE HISTORICAL SHARE. `p` is the measured rate at
       // this rank — what the k-th pick actually does, walk-forward — where
       // `pct` was this scoreline's share of the lookalike games and said
       // nothing about whether we picked it well. The raw count stays as the
       // support behind the row.
+      // Three figures, because they answer three different questions: how
+      // often a pick at this rank lands, how often THIS score has happened,
+      // and how far it sits from our own projection.
       + '<span class="sub num">' + (has(x.p) ? x.p.toFixed(1) + '%' : '')
-      + (x.n ? ' \u00b7 ' + x.n + ' times' : '') + '</span></div>';
+      + (x.n ? ' \u00b7 ' + x.n + ' times' : '')
+      + (pj ? ' \u00b7 ' + dist(x).toFixed(1) + ' off' : '')
+      + '</span></div>';
   }).join('');
   // The two headline boxes become right-or-wrong once the game is in.
   const wonTone = !played ? '' : (fh > fa ? ' box--good' : ' box--bad');
@@ -2033,7 +2059,13 @@ function v3GameScores(c) {
     + '<div class="card">' + margins + '</div>'
     + '<h2 class="h1" style="font-size:19px;line-height:24px;margin-top:20px">'
     + 'Likeliest exact scores</h2>'
-    + '<div class="card">' + scores
+    + '<div class="card">'
+    + (pj ? '<div class="pub__h" style="margin-bottom:8px">'
+            + '<span class="eyebrow">Our number</span> '
+            + '<span class="sub num">' + esc(d.home) + ' ' + pj[0].toFixed(1)
+            + '\u2013' + pj[1].toFixed(1) + ' ' + esc(d.away)
+            + '</span></div>' : '')
+    + scores
     // THE NUMBER THE OLD CARD HID. Eight rows of near-identical percentages
     // invited a reader to pick one; what they needed was that the whole list
     // is a long shot. Said first, in the biggest type on the card.
@@ -2044,12 +2076,17 @@ function v3GameScores(c) {
          + d.scores_covered.toFixed(0) + '%</b>'
          + '<span class="sub">' + (100 - d.scores_covered).toFixed(0)
          + '% of games finish on a score nobody listed</span></div>' : '')
-    + '<p class="help" style="margin-top:10px">Ordered for THIS game \u2014 '
-    + 'real finals, weighted by how well each fits this spread and total. The '
-    + 'percentages are measured: how often our first pick lands, and how often '
-    + 'the rest do. Only the top one is separable from the others '
-    + '\u2014 across the record ranks two and below run together, so they share '
-    + 'a number rather than pretending to an order.</p></div>';
+    + '<p class="help" style="margin-top:10px">Real finals, ordered by how well '
+    + 'each fits <b style="color:var(--ink)">the market\u2019s</b> spread and '
+    + 'total \u2014 which predicts the final better than our own projection '
+    + 'does, so the list is centered there rather than on us. The row marked '
+    + '<b style="color:var(--ours)">where our model points</b> is the gap '
+    + 'between the two.</p>'
+    + '<p class="help">The percentages are measured, not modelled: the top '
+    + 'pick lands about 1 in 70, the next nine about 1 in 180 each, and the '
+    + 'rest about 1 in 300. Those are the only three steps the record '
+    + 'separates \u2014 within a step the order is our preference, not a '
+    + 'measured ranking.</p></div>';
 }
 
 // THE GAME MARKETS AS A SCORE LADDER, NOT AS A LIST OF BOOKS.

@@ -1177,8 +1177,18 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   V.week = null; render();
   const seen = app();
   if (seen.indexOf('srow') >= 0) {
-    ok('a scoreline is marked as nearest our number',
-       seen.indexOf('nearest our number') >= 0);
+    // "where our model points", not "nearest our number": the list is
+    // centered on the MARKET's line, so this marker is the gap between the
+    // two and often sits low. The old wording read as a bug beside a list
+    // nobody had said was centered somewhere else.
+    ok('a scoreline is marked as where our model points',
+       seen.indexOf('where our model points') >= 0);
+    // FREQUENCY-AWARE. Pure proximity marked a score 0.64 away seen 7 times
+    // over one 0.78 away seen 21, putting our own favorite eighth.
+    ok('and our number is stated rather than only implied',
+       seen.indexOf('Our number') >= 0);
+    ok('and every row says how far it sits from that number',
+       seen.indexOf(' off') >= 0);
     // IT MUST NOT READ AS A RESULT. `srow--on` marks what actually happened
     // on a played week; this marks where our number points, and the two are
     // different kinds of claim.

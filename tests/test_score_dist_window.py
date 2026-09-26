@@ -33,6 +33,9 @@ def test_every_scoreline_shown_has_really_happened_enough_times(hist):
     s = sd.summary(6.5, 44.5, "GB", "ATL", hist=hist)
     assert s["scores"], "no scorelines survived the floor"
     for r in s["scores"]:
+        # `n` is the count from the set the RANKING used, so it is directly
+        # comparable with the floor. It used to come from the narrow band,
+        # which put "seen 4 times" beside a row ranked on 30 occurrences.
         assert r["n"] >= sd.SCORE_MIN_SEEN, (
             f"{r['home']}-{r['away']} was seen {r['n']} times, "
             f"below SCORE_MIN_SEEN={sd.SCORE_MIN_SEEN}")
@@ -58,7 +61,9 @@ def test_the_probability_is_the_measured_rate_not_the_share(hist):
     s = sd.summary(6.5, 44.5, "GB", "ATL", hist=hist)
     rates = sd._rank_rates(())
     assert rates, "no measured rank rates"
-    assert s["scores"][0]["p"] == pytest.approx(100 * rates[1], abs=0.01)
+    # `rates` is per TIER now, not per rank: the record separates three steps
+    # and no more, so rates[0] is the top pick's.
+    assert s["scores"][0]["p"] == pytest.approx(100 * rates[0], abs=0.01)
     # And it is emphatically NOT the share of the comparable set.
     top = s["scores"][0]
     share = 100 * top["n"] / s["scores_n"]
@@ -66,14 +71,21 @@ def test_the_probability_is_the_measured_rate_not_the_share(hist):
         "p has collapsed back into the historical share")
 
 
-def test_the_flat_band_shares_one_number(hist):
-    """Ranks two and below run 0.62, 0.62, 0.58, 0.54, 0.66, 0.37, 0.79 — they
-    rise as often as they fall, on about fifteen events each. Printing them as
-    they fall out would tell a reader the eighth pick beats the fifth."""
+def test_the_number_steps_exactly_where_the_record_separates(hist):
+    """Three tiers, because three is what the measurement supports.
+
+    Ranks 2-5 against 6-10 is z=+0.50 — one band — while 6-10 against 11-20 is
+    z=+2.54 and is real. Nine descending numbers would invent an order the
+    outcomes do not have; one flat number for sixteen rows hides a step that
+    is there.
+    """
     s = sd.summary(6.5, 44.5, "GB", "ATL", hist=hist)
-    tail = [r["p"] for r in s["scores"][1:]]
-    assert len(set(tail)) == 1, f"the flat band prints {len(set(tail))} numbers"
-    assert s["scores"][0]["p"] > tail[0], "the top pick must lead the band"
+    ps = [r["p"] for r in s["scores"]]
+    assert len(set(ps)) == len(sd.SCORE_TIERS), (
+        f"{len(set(ps))} distinct numbers, expected {len(sd.SCORE_TIERS)}")
+    # And they descend: a later tier can never be likelier than an earlier one.
+    assert ps == sorted(ps, reverse=True), ps
+    assert ps[0] > ps[-1], "the list does not step down at all"
 
 
 def test_the_card_says_what_the_whole_list_is_worth(hist):
