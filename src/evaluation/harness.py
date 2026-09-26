@@ -196,7 +196,32 @@ def score_fold(target_type: str, model_dir: Path, test_season: int,
                model_name: str, active_models: list[str],
                keep_rows: bool = False, companion_dir: Path | None = None,
                val_season: int | None = None) -> tuple[pl.DataFrame, dict, pl.DataFrame | None]:
-    """Score one fold's held-out season through the path production serves.
+    """Score one fold's held-out season through the MODEL path, not the served one.
+
+    The two are not the same and the difference is deliberate. Production runs
+    `predict._anchor_to_market`, which level-calibrates and then blends toward
+    the sportsbook price; this stops after the joint model. Blending here would
+    fold market information into a measurement whose whole purpose is comparing
+    models to each other, and would score the market on the seasons where it
+    has prices while scoring the model on the ones where it does not.
+
+    Nothing downstream mislabels the result: `topk` carries `model_only` and
+    `ours` side by side with a `blended` flag, so the two numbers are published
+    as two numbers.
+
+    This docstring used to say "through the path production serves", which was
+    not true and is the kind of claim that costs a day later — see
+    `docs/MODEL_ITERATION.md` on the third scoring path.
+
+    **Rank calibration is not part of the difference.** `predict` and
+    `scripts/10_backtest.py` both call `apply_rank_calibration` and this does
+    not, but all three are no-ops: `rank_calibration.would_be_applied` returns
+    False for both markets — first TD never reaches the correction, and anytime
+    TD is disabled by the joint-model guard whenever `team_td_rate.json` exists,
+    which every training run writes. If a model directory ever lacks that file
+    (the legacy fallback the guard was written for) the correction would wake up
+    in those two paths and not in this one, and the three would then disagree
+    silently. That is the reason to keep this paragraph.
 
     The universe is built from the **unfiltered** labeled frame, so the
     denominator does not move when the candidate filter does. See
