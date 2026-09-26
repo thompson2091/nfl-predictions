@@ -336,6 +336,8 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "the betting sections come first and are not split by "
                  "commentary",
                  "opening a game from the list lands on the price",
+                 "the sections are labeled for their contents",
+                 "and the keys behind them are unchanged",
                  "and the filters are inside the tab, under it",
                  "search narrows the board",
                  "the matchup tab renders",

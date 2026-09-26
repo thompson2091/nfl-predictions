@@ -1070,10 +1070,18 @@ function v3Game(gid) {
     //
     // The three things you can bet come first and sit together — the game
     // price, the game result, the players — then the two that explain them.
-    // Notes used to sit BETWEEN Players and Outcome, which split the betting
-    // surfaces around a piece of commentary.
-    + v3Seg('v3gtab', [['odds', 'Odds'], ['out', 'Outcome'],
-                       ['players', 'Players'], ['notes', 'Notes'],
+    // Notes used to sit BETWEEN them, splitting the betting surfaces around
+    // a piece of commentary.
+    //
+    // NAMED FOR WHAT IS IN THEM. `Outcome` covered the score distribution and
+    // not the ladder of lines sitting under it, and both are about the score.
+    // `Props` rather than `Players` because it is the Props board scoped to
+    // this game — the same rows, the same markets, the same sort — and giving
+    // one concept two names on one screen is how a reader concludes they are
+    // two boards. The KEYS are unchanged: they are in saved state and in
+    // links, and renaming a label is not a reason to break those.
+    + v3Seg('v3gtab', [['odds', 'Odds'], ['out', 'Score'],
+                       ['players', 'Props'], ['notes', 'Notes'],
                        ['edge', 'Matchup']], V.gameTab)
     + '</div></div>'
     // THE TAB'S OWN CONTENT COMES FIRST, CONTEXT UNDER IT.

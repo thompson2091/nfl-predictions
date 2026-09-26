@@ -1437,6 +1437,16 @@ if (cards.length) {
   ok('the betting sections come first and are not split by commentary',
      at('odds') < at('out') && at('out') < at('players')
      && at('players') < at('notes') && at('notes') < at('edge'));
+  // The LABELS say what is in each: the ladder of lines under the score
+  // distribution is about the score, and the player rows are the Props board
+  // scoped to this game rather than a second, differently named one.
+  ok('the sections are labeled for their contents',
+     gh.indexOf('>Score<') >= 0 && gh.indexOf('>Props<') >= 0
+     && gh.indexOf('>Outcome<') < 0 && gh.indexOf('>Players<') < 0);
+  // Renaming a label must not move the reader: the keys are in saved state
+  // and in links.
+  ok('and the keys behind them are unchanged',
+     at('out') >= 0 && at('players') >= 0);
   // Opening a game from the list lands on the price, which is what the page
   // showed before the market block became a section rather than a preamble.
   V.game = null; V.tab = 'games'; V.gameTab = 'notes'; render();
