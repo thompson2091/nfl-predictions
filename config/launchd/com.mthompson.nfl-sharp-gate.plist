@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.mthompson.nfl-sharp-gate</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/mthompson/projects/personal/nfl-predictions/scripts/sharp_gate.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions</string>
+  <!-- MONDAY, AND ONLY MONDAY, because that is the one day of the week when a
+       week's open, its splits and its close are all on disk and all belong to
+       the same week. Sunday's last close capture lands at 19:50 and the week
+       rollover runs on Tuesday, so Monday is the whole window.
+
+       Two slots rather than one. If the Mac is asleep at 10:00 launchd fires
+       on next wake and collapses the missed slot, so the second is not a
+       duplicate — it is the backstop for a lid that stayed shut all morning.
+       A second firing that finds the same verdict says nothing: the script
+       keeps a signature of the last one it reported.
+
+       This is a MEASUREMENT, not a capture, and the difference matters for how
+       much a missed run costs. Nothing here is lost by skipping a week — the
+       archive it reads is written by the odds and public-money jobs, and the
+       gate can be run by hand at any time. A missed capture is gone; a missed
+       measurement is late. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <key>StandardOutPath</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions/logs/launchd_sharp_gate.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions/logs/launchd_sharp_gate.err</string>
+</dict>
+</plist>
