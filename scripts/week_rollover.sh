@@ -170,6 +170,29 @@ esac
 run board     "$PY" scripts/47_export_site.py       || exit 1
 run site      "$PY" scripts/20_export_html.py      || exit 1
 
+# THE LIVE SITE IS THE POINT OF THE REBUILD.
+#
+# Everything above this line leaves a new board on THIS LAPTOP. Without a
+# deploy the site kept serving the previous week until someone remembered,
+# which is the failure that is hardest to notice: the page loads, it is
+# internally consistent, and it is a week old.
+#
+# Its own build rather than `--no-build`: the steps above write the v1 site,
+# and `site/v3` comes from `52_export_v3.py`, which only the deploy runs.
+#
+# ONLY WITH THE DEPLOY KEY IN PLACE. Without it ssh falls through to asking
+# for a password, and there is nobody at the keyboard at 07:00 on a Tuesday —
+# on macOS that can raise a dialog against an empty desktop instead of
+# failing. Not fatal either way: the board is built and local, and the deploy
+# is one command away.
+if [ -f "$HOME/.ssh/id_ed25519_squarespro" ]; then
+    run deploy "$PY" scripts/58_deploy.py \
+        || say "     deploy failed — the board is built; run" \
+               "\`python scripts/58_deploy.py\` when you can"
+else
+    say "  -> deploy skipped: no deploy key at ~/.ssh/id_ed25519_squarespro"
+fi
+
 say "  week $WEEK board built."
 say "=== $(date -u +%FT%TZ) done ==="
 

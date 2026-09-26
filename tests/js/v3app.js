@@ -1897,4 +1897,76 @@ if (cards.length) {
   scroll.scrollHeight = 0; scroll.clientHeight = 0;
 }
 
+// ── The exact scores grade themselves once the game is in ──────────────
+//
+// Before kickoff a tinted row is one we like. After it, the same tint still
+// said "we like this" about a game already decided — the only section on the
+// page that did not grade itself, while the boxes above it turn green or red.
+if (cards.length) {
+  const c = cards[0];
+  const keep = { s: c.scores, fh: c.final_home, fa: c.final_away };
+  if (keep.s && (keep.s.scores || []).length > 1) {
+    V.tab = 'games'; V.game = c.game_id; V.gameTab = 'out'; V.week = null;
+
+    // A PROJECTION THAT LANDS ON ONE OF THE LISTED SCORES, so a row really is
+    // "one we called". Without it nothing is liked, nothing can be red, and
+    // the assertions about red below pass by counting zero.
+    //
+    // `pj` is [home, away] from the blend's spread and total, so the inverse
+    // is total = home + away and spread = away - home.
+    const near = keep.s.scores[1] || keep.s.scores[0];
+    const keepBlend = c.blend;
+    c.blend = Object.assign({}, c.blend || {},
+      { total: near.home + near.away, spread: near.away - near.home });
+
+    // LIVE: a liked row is a call, in the call color, and nothing is graded.
+    c.final_home = null; c.final_away = null; render();
+    const live = app();
+    ok('before kickoff nothing is graded',
+       live.indexOf('srow--on') < 0 && live.indexOf('srow--miss') < 0);
+    // Whether any row is within a point of our number depends on the
+    // payload, so this records what the fixture can exercise rather than
+    // asserting a tint into existence.
+    const hadLike = live.indexOf('srow--like') >= 0;
+
+    // PLAYED, and the final IS on the list: that row goes green.
+    const hit = keep.s.scores[0];
+    c.final_home = hit.home; c.final_away = hit.away; render();
+    const won = app();
+    ok('the score the game finished on is marked green',
+       won.indexOf('srow--on') >= 0);
+    ok('and the call color is gone, because it is no longer a call',
+       won.indexOf('srow--like') < 0, hadLike ? 'had one live' : 'none live');
+    if (!hadLike) {
+      ok('NOTE: this payload has no row within a point of our number, so the '
+         + 'call-to-result switch is only half exercised', true);
+    }
+    ok('and the footer says green is the final',
+       won.indexOf('Green is the score this game actually finished on') >= 0);
+    ok('without claiming it is missing', won.indexOf('not on this list') < 0);
+
+    // PLAYED, and the final is NOT on the list. Nothing green, and the footer
+    // has to say so — otherwise a played game with no green row reads as
+    // broken marking rather than as a score nobody listed.
+    c.final_home = 99; c.final_away = 98; render();
+    const off = app();
+    ok('a final nobody listed leaves no green row',
+       off.indexOf('srow--on') < 0);
+    ok('and the footer says the final is not on the list',
+       off.indexOf('not on this list') >= 0);
+    // Rows we pointed at are red; rows we never pointed at are not.
+    const reds = (off.match(/srow--miss/g) || []).length;
+    const rows = (off.match(/class="srow/g) || []).length;
+    ok('only the rows we called are red, not all of them',
+       reds < rows, reds + ' of ' + rows);
+    // GUARD THE GUARD. With no liked row there are no reds, and the line
+    // above passes by counting zero — the red path would ship untested.
+    ok('and there is at least one red to have been counted',
+       reds > 0, reds + ' reds of ' + rows + ' rows');
+    c.blend = keepBlend;
+  }
+  c.scores = keep.s; c.final_home = keep.fh; c.final_away = keep.fa;
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
 done();

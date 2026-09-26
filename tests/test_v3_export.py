@@ -353,6 +353,13 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "it is one control, not a pill per metric",
                  "and is absent on the injury view",
                  "the filters share one bar",
+                 "before kickoff nothing is graded",
+                 "and the call color is gone, because it is no longer a call",
+                 "the score the game finished on is marked green",
+                 "a final nobody listed leaves no green row",
+                 "and there is at least one red to have been counted",
+                 "and the footer says the final is not on the list",
+                 "only the rows we called are red, not all of them",
                  "the props board calls it out rather than greying it",
                  "and below the filters, where switching market shows it "
                  "change",

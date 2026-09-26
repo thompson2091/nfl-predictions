@@ -401,6 +401,10 @@ button{cursor:pointer}
    appended to a scoreline wrapped onto two lines on a phone. */
 .srow--like{background:var(--oursbg);border-radius:8px}
 .srow--like b{color:var(--ours)}
+/* Once the game is in, a row we pointed at that did not land. Same weight as
+   the green: the section grades itself like the boxes above it. */
+.srow--miss{background:var(--badbg);border-radius:8px}
+.srow--miss b{color:var(--bad)}
 .box b{font-size:17px;font-weight:600}
 .cats{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .cat{min-height:36px;padding:0 14px;border-radius:999px;font-size:15px;

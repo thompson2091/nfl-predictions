@@ -2286,11 +2286,24 @@ function v3GameScores(c) {
     const dd = pj ? dist(x) : null;
     const liked = pj && dd <= NEAR_SLACK;
     const landed = played && x.home === fh && x.away === fa;
+    // ONCE THE GAME IS IN, THE TINT IS A RESULT RATHER THAN AN INTENTION.
+    //
+    // Before kickoff a tinted row is one we like. After it, the same tint
+    // still said "we like this" about a game already decided, which is the
+    // only section on the page that did not grade itself — the two headline
+    // boxes turn green or red, the margin band marks the one that landed, and
+    // this list carried yesterday's opinion in yesterday's color.
+    //
+    // Red is only for rows we CALLED. A scoreline we never pointed at is not
+    // a miss, it is one of the fifteen that did not happen, and painting all
+    // of them red would say nothing about the model.
+    const missed = played && liked && !landed;
     // COLOR, NOT A LABEL. A row we like is tinted; it used to append
     // "where our model points" to one row, which wrapped onto two lines on a
     // phone and could only ever mark a single score.
     return '<div class="srow' + (landed ? ' srow--on' : '')
-      + (liked && !landed ? ' srow--like' : '') + '">'
+      + (missed ? ' srow--miss' : '')
+      + (liked && !played ? ' srow--like' : '') + '">'
       + '<b class="num">' + esc(d.home) + ' ' + x.home
       + '\u2013' + x.away + ' ' + esc(d.away)
       + (landed ? ' \u00b7 this one' : '') + '</b>'
@@ -2302,6 +2315,12 @@ function v3GameScores(c) {
       + (pj ? ' \u00b7 ' + dd.toFixed(1) + ' off' : '')
       + '</span></div>';
   }).join('');
+  // A PLAYED GAME WITH NO GREEN ROW IS AMBIGUOUS otherwise: you cannot tell
+  // whether the marking is broken or the final simply is not among the
+  // sixteen — which is the common case, since a fifth of games finish on a
+  // score nobody lists.
+  const anyLanded = played && (d.scores || []).some(
+    x => x.home === fh && x.away === fa);
   // The two headline boxes become right-or-wrong once the game is in.
   const wonTone = !played ? '' : (fh > fa ? ' box--good' : ' box--bad');
   const overTone = !played ? ''
@@ -2357,9 +2376,17 @@ function v3GameScores(c) {
          + d.scores_covered.toFixed(0) + '%</b>'
          + '<span class="sub">' + (100 - d.scores_covered).toFixed(0)
          + '% of games finish on a score nobody listed</span></div>' : '')
-    + '<p class="help" style="margin-top:10px">Nearest our number first. '
-    + 'Tinted rows are within a point of it \u2014 close enough that we do not '
-    + 'claim to tell them apart.</p>'
+    // WHAT THE COLORS MEAN, IN THE TENSE THE GAME IS IN. Before kickoff they
+    // are a call; after it they are a result, and one sentence cannot be both
+    // without being wrong half the time.
+    + (played
+       ? '<p class="help" style="margin-top:10px">Nearest our number first. '
+         + 'Green is the score this game actually finished on'
+         + (anyLanded ? '' : ', which is not on this list')
+         + '. Red is one we pointed at and it did not land.</p>'
+       : '<p class="help" style="margin-top:10px">Nearest our number first. '
+         + 'Tinted rows are within a point of it \u2014 close enough that we '
+         + 'do not claim to tell them apart.</p>')
     + '<p class="help">Which sixteen appear is our call: real finals, weighted '
     + 'by how well each fits the market\u2019s spread and total, which predicts '
     + 'the final better than our own projection does. How often each has '
