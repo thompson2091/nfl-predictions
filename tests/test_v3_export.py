@@ -324,8 +324,9 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "the bar opens the slip rather than navigating",
                  "tapping it opens the slip sheet",
                  "and stays on the board underneath",
-                 "the ask control sits under the score card",
-                 "and above the tab bar",
+                 "the ask control is inside the pinned bar",
+                 "and above the section control it shares the bar with",
+                 "and appears once, not in both places",
                  "and does not leave the tab",
                  "the notes tab opens with how the game may unfold",
                  "the public split sits above the tab bar",
@@ -337,7 +338,16 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "the matchup offers the halves",
                  "tapping Players lands on a market that has players",
                  "a game with nothing quoted says so once",
-                 "otherwise it names the markets that do hold players"):
+                 "otherwise it names the markets that do hold players",
+                 # The pinned bar carries the switcher and Ask, and a thin
+                 # window states itself instead of withholding the tables.
+                 "the game switcher is inside the pinned bar",
+                 "stepping keeps the section you were reading",
+                 "and lands in the same place as the arrows",
+                 "a thin game says so",
+                 "and still draws the margin bands",
+                 "and does not refuse",
+                 "a full sample shows no banner"):
         assert path in r.stdout, f"{path!r} never ran:\n{r.stdout}"
 
 
@@ -799,11 +809,24 @@ def test_switching_game_section_scrolls_to_the_bar_not_the_page_top():
     assert "V.top = 'section'" in src[i:j], (
         "switching section no longer asks to scroll")
     # And the render honors it by measuring the bar rather than assuming 0.
+    #
+    # Bounded by the BRANCH, not by a character count. A fixed window made the
+    # test fail on a comment getting longer, which says nothing about the code.
     assert "V.top === 'section'" in src
-    assert ".gtabs" in src[src.index("V.top === 'section'"):
-                           src.index("V.top === 'section'") + 700], (
+    k = src.index("if (V.top === 'section')")
+    branch = src[k:src.index("scroll.scrollTop = V.top ?", k)]
+    assert ".gtabs" in branch, (
         "the section scroll does not look for the pinned bar")
     # Measured against the PANE: the app header sits outside the scroller.
-    k = src.index("V.top === 'section'")
-    assert "scroll.getBoundingClientRect" in src[k:k + 700], (
+    assert "scroll.getBoundingClientRect" in branch, (
         "the offset is measured against the window, which counts the header")
+    # AND THE PANE IS RESTED AT ZERO FIRST. A sticky bar you have scrolled
+    # past reports itself pinned at the pane's edge, so measuring it where you
+    # stand gives back the offset you already had — the scroll did nothing in
+    # the one case the pinned bar is for. `tests/js/v3app.js` proves the
+    # behavior against a stub that models the pinning; this pins the cause,
+    # because the two lines read as a redundant write and invite deletion.
+    assert "scroll.scrollTop = 0;" in branch, (
+        "the bar is measured while stuck, so the offset is whatever you had")
+    assert branch.index("scroll.scrollTop = 0;") < branch.index(".gtabs"), (
+        "the bar is measured before the pane is rested, so it reads as pinned")

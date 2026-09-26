@@ -1015,7 +1015,6 @@ function v3Game(gid) {
   return '<div class="wrap">'
     + '<div class="gamenav">'
     + '<a class="back" data-v3back="1">‹ All games</a>'
-    + v3GameSwitch(gid)
     + '</div>'
     + '<div class="card">'
     + '<div class="vs"><div><b>' + esc(c.away) + '</b><div class="sub">away</div>'
@@ -1025,14 +1024,6 @@ function v3Game(gid) {
     + '<div class="sub" style="margin-top:8px">' + esc(v3Kick(c)) + '</div>'
     + v3WinBar(c)
     + v3Compare(c)    + '</div>'
-    // ASKING SITS DIRECTLY UNDER THE SCORE CARD.
-    //
-    // It is the first thing to do with a game rather than the last, and
-    // below the public split it fell under the fold on a phone: the control
-    // that answers anything was the one thing you had to scroll to find.
-    // Above the tab bar, so every tab has it.
-    + '<button class="askbtn" data-v3sheet="ask">'
-    + '<span>Ask about this game</span><i>\u2192</i></button>'
     // PUBLIC MONEY IS GAME CONTEXT, so it sits with the matchup above the
     // tabs rather than under whichever tab you happen to be on. The injury
     // report is a SECTION, not context, so it became a tab of its own —
@@ -1057,7 +1048,34 @@ function v3Game(gid) {
     // is used for the market pills and the halves too, and those belong in the
     // flow. The wrapper also carries the page background, without which the
     // rounded corners of the control let content slide visibly behind it.
-    + '<div class="gtabs"><div class="seg seg--5">'
+    // THE GAME SWITCHER RIDES WITH IT.
+    //
+    // It used to sit in `.gamenav` at the very top, beside the back link,
+    // which put it above the matchup card — so by the time you were reading
+    // Outcome and wanted the same table for another game, the control for
+    // changing game had scrolled off two screens ago and the only route was
+    // back out to the list and in again. Pinned, changing game is the same
+    // one tap as changing section, from wherever you have read to.
+    // ASKING IS PINNED TOO, and shares the switcher's row.
+    //
+    // It used to sit directly under the score card, which is the first thing
+    // you see and then the last thing you can reach: by the Outcome tables it
+    // was three screens up. Pinned, it is available from wherever you have
+    // read to, which is the point of a button whose whole job is "about THIS
+    // game".
+    //
+    // On the same row rather than its own, because the bar already carries a
+    // switcher and a five-way control. A third full-width row put it near
+    // 140px on a phone — a sixth of the screen permanently spent on chrome —
+    // and at that height a pinned bar stops being a convenience.
+    + '<div class="gtabs">'
+    + '<div class="gtabs__row">'
+    + v3GameSwitch(gid)
+    + '<button class="askbtn askbtn--mini" data-v3sheet="ask"'
+    + ' aria-label="Ask about this game">'
+    + '<span>Ask</span><i>\u2192</i></button>'
+    + '</div>'
+    + '<div class="seg seg--5">'
     + v3Seg('v3gtab', [['notes', 'Notes'], ['players', 'Players'],
                        ['out', 'Outcome'], ['edge', 'Matchup'],
                        ['inj', 'Injuries']], V.gameTab)
@@ -1523,7 +1541,7 @@ function v3GameSwitch(gid) {
   const step = d => {
     const j = i + d;
     return (i < 0 || j < 0 || j >= cards.length) ? ''
-      : '<button class="gstep" data-v3game="' + esc(cards[j].game_id)
+      : '<button class="gstep" data-v3gamestep="' + esc(cards[j].game_id)
         + '" aria-label="' + (d < 0 ? 'Previous' : 'Next') + ' game">'
         + (d < 0 ? '\u2039' : '\u203a') + '</button>';
   };
@@ -1923,7 +1941,32 @@ function v3GTab(v) {
 }
 
 function v3GameOutcome(c, gid) {
-  return v3GameScores(c) + v3GameBets(gid);
+  return v3ThinNote(c) + v3GameScores(c) + v3GameBets(gid);
+}
+
+// A THIN WINDOW IS A CAVEAT, NOT A REFUSAL.
+//
+// Both tables below used to withhold themselves under `MIN_COMPARABLES`,
+// which left the Outcome tab as two cards explaining twice why it was empty.
+// That is the wrong trade: the distribution is still THIS game's comparables,
+// and 52 games is thin for a percentage while being perfectly informative
+// about shape — which side wins, by roughly how much, whether the total sits
+// high or low. Withholding it gave the reader nothing to be careful WITH.
+//
+// So it is stated once, above both tables, in the terms that actually matter:
+// the ordering holds and the percentages are soft. Once, because `summary`
+// and `ladders` read the SAME comparable set, so the two notices were the
+// same fact printed twice.
+function v3ThinNote(c) {
+  const d = c && c.scores;
+  if (!d || !d.n || !d.thin) return '';
+  return '<div class="thin" role="note"><b>Thin sample \u00b7 ' + d.n
+    + ' past games</b>'
+    + '<span>Not many games have been priced near this spread and total'
+    + (has(d.min_n) ? ', against the ' + d.min_n + ' this normally wants' : '')
+    + '. The shape below is real \u2014 it is what those games did \u2014 but '
+    + 'a single extra game moves the percentages by a point or more, so read '
+    + 'them as a lean rather than a price.</span></div>';
 }
 
 function v3GameScores(c) {
@@ -1931,12 +1974,6 @@ function v3GameScores(c) {
   if (!d || !d.n) {
     return '<div class="card"><p class="lede" style="font-size:15px">No line '
       + 'on this game yet, so there is nothing to compare it with.</p></div>';
-  }
-  if (d.thin) {
-    return '<div class="card"><p class="lede" style="font-size:15px">Only '
-      + d.n + ' past games were priced near this spread and total \u2014 too '
-      + 'few to draw a distribution from. Under ' + d.min_n + ' it would be a '
-      + 'list of anecdotes with percentages on it.</p></div>';
   }
   const bar = (pct, tone) => '<div class="mbar"><i style="width:'
     + Math.max(1, pct) + '%' + (tone ? ';background:' + tone : '') + '"></i></div>';
@@ -2125,11 +2162,6 @@ function v3GameBets(gid) {
   if (!L || !L.n) {
     return '<div class="card"><p class="lede" style="font-size:15px">No line '
       + 'on this game yet, so there is nothing to compare it with.</p></div>';
-  }
-  if (L.thin) {
-    return '<div class="card"><p class="lede" style="font-size:15px">Only '
-      + L.n + ' past games were priced near this spread and total — too few '
-      + 'to build a table from.</p></div>';
   }
 
   // The best price on each side of the MAIN line, so "is it a good bet" has
@@ -3175,13 +3207,25 @@ function render(fromHistory) {
   // new section starts immediately under it.
   if (scroll) {
     if (V.top === 'section') {
+      // THE PANE IS RESTED AT ZERO BEFORE THE BAR IS MEASURED, because the
+      // bar is sticky. Once you have scrolled past it the bar is PINNED, so
+      // its rect already sits at the pane's top edge and `rect.top -
+      // pane.top` is zero — adding that to the offset you were at returned
+      // the offset you were at. The scroll was a no-op in the one case the
+      // pinned bar exists for: you tapped Outcome from deep inside Notes and
+      // stayed deep inside Notes' old offset.
+      //
+      // At zero the bar is back in the normal flow, where its rect is its
+      // layout position. Both writes happen in the same task, so there is no
+      // paint between them and nothing flickers.
+      scroll.scrollTop = 0;
       const bar = document.querySelector && document.querySelector('.gtabs');
       let at = 0;
       if (bar && bar.getBoundingClientRect && scroll.getBoundingClientRect) {
         // Measured after the re-render, so it is the NEW layout, and relative
         // to the pane rather than the window — the app header sits outside
         // the scroller and would otherwise be counted.
-        at = scroll.scrollTop + bar.getBoundingClientRect().top
+        at = bar.getBoundingClientRect().top
              - scroll.getBoundingClientRect().top;
       } else if (bar && has(bar.offsetTop)) {
         at = bar.offsetTop;
@@ -3200,7 +3244,7 @@ function render(fromHistory) {
 // throwing — which is why `test_every_v3_control_is_handled` exists.
 const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3pick', 'v3more',
                   'v3keep', 'v3unkeep', 'v3savedfilter', 'v3pickopen',
-                  'v3game', 'v3back', 'v3gtab', 'v3cat', 'v3type',
+                  'v3game', 'v3gamestep', 'v3back', 'v3gtab', 'v3cat', 'v3type',
                   'v3stake', 'v3ask', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
                   'v3half',
@@ -3291,7 +3335,14 @@ document.addEventListener('change', ev => {
   } else if (t.getAttribute('data-v3gameto') != null) {
     // The TAB is kept. Jumping to the next game's notes when you were reading
     // its score ladder is the same annoyance in a different place.
-    V.game = t.value; V.open = null; V.answer = ''; V.top = true; render();
+    //
+    // And so is the PLACE. `true` sent you to the top of the new game, above
+    // the matchup card, with the section you had asked to keep below the fold
+    // — the control is pinned now, so the reader has not moved and the page
+    // should not either. `'section'` lands the new game's same section under
+    // the bar you just used.
+    V.game = t.value; V.open = null; V.answer = '';
+    V.top = 'section'; render();
   }
 });
 
@@ -3344,6 +3395,13 @@ function v3Do(kind, v) {
     case 'v3game': V.tab = 'games'; V.game = v; V.gameTab = 'notes';
       V.cat = 'all'; V.answer = ''; V.answerErr = ''; V.q2 = '';
       V.answerLive = false; break;
+    // STEPPING between games is not leaving the page the way tapping a game
+    // in the list is: you are mid-read, and the arrow is beside the section
+    // bar. So unlike `v3game` this keeps `V.gameTab` and lands on that same
+    // section, which is what the sibling `<select>` in the same control does.
+    case 'v3gamestep': V.tab = 'games'; V.game = v; V.open = null;
+      V.cat = 'all'; V.answer = ''; V.answerErr = ''; V.q2 = '';
+      V.answerLive = false; V.top = 'section'; break;
     case 'v3back': V.game = null; V.answer = ''; break;
     case 'v3gtab':
       V.gameTab = v3GTab(v);

@@ -94,6 +94,13 @@ button{cursor:pointer}
   font-weight:inherit;padding:0;margin:0}
 .past{margin:12px 0 0;padding:10px 14px;border-radius:12px;
   background:var(--warnbg);color:var(--warn);font-size:13px;line-height:18px}
+/* The same shape as `.past`, because it is the same kind of statement: read
+   what follows with this in mind. Stacked rather than one run of text so the
+   count is scannable without reading the sentence. */
+.thin{margin:12px 0 0;padding:10px 14px;border-radius:12px;
+  background:var(--warnbg);color:var(--warn);font-size:13px;line-height:18px;
+  display:flex;flex-direction:column;gap:2px}
+.thin b{font-weight:600}
 
 /* ---- page intro ---- */
 .h1{margin:16px 0 0;font-size:30px;line-height:36px;font-weight:700}
@@ -122,6 +129,19 @@ button{cursor:pointer}
    width of the pane, so nothing shows through beside the control. */
 .gtabs{position:sticky;top:0;z-index:5;background:var(--bg);
   margin:0 -16px;padding:8px 16px}
+/* Switcher and Ask share a row; the five-way control gets its own. Three
+   full-width rows ran to about 140px on a phone, and a pinned bar that deep
+   costs more screen than the scrolling it saves. */
+.gtabs__row{display:flex;align-items:center;gap:8px}
+/* In `.gamenav` the selector shares a row with the back link and is capped so
+   it does not crowd it. Pinned it is the row, so it takes the space. */
+.gtabs .gsel{flex:1;min-width:0;justify-content:stretch}
+.gtabs .gsel select{flex:1;min-width:0;max-width:none;text-align:center;
+  text-align-last:center}
+/* The control's 16px top margin is the gap it needs IN THE FLOW. Inside the
+   bar the wrapper's padding already gives it, and both together made the bar
+   taller than the heading underneath. */
+.gtabs .seg{margin-top:8px}
 .seg{display:grid;gap:2px;padding:2px;background:var(--seg);border-radius:12px;
   margin-top:16px}
 .seg--2{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -360,6 +380,12 @@ button{cursor:pointer}
   border:1px solid var(--btnline);font-size:15px;font-weight:600;
   box-shadow:0 1px 2px rgba(22,24,29,.06)}
 .askbtn i{font-style:normal;color:var(--mut);font-size:17px}
+/* The pinned form: content-width and the switcher's height, so the two read
+   as one control rather than a button with a dropdown stuck to it. */
+.askbtn--mini{width:auto;min-height:36px;height:36px;margin:0;padding:0 12px;
+  flex-shrink:0;border-radius:10px;font-size:14px;gap:6px;
+  justify-content:center}
+.askbtn--mini i{font-size:15px}
 .qs{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .q{min-height:36px;padding:6px 12px;border-radius:999px;
   border:1px solid var(--btnline);background:var(--card);text-align:left;

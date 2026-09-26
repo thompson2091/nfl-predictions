@@ -163,8 +163,8 @@ def _ranked(hist: pl.DataFrame, spread: float, total: float,
     the same set. Counting the row against the narrow band instead put "seen 4
     times" beside a scoreline ranked on 30 occurrences league-wide.
     """
-    base = (hist.group_by(["home_score", "away_score"]).agg(pl.len().alias("k"))
-            .filter(pl.col("k") >= SCORE_MIN_SEEN))
+    base = (hist.group_by(["home_score", "away_score"], maintain_order=True)
+            .agg(pl.len().alias("k")).filter(pl.col("k") >= SCORE_MIN_SEEN))
     if base.is_empty():
         return []
     w = []
@@ -173,7 +173,12 @@ def _ranked(hist: pl.DataFrame, spread: float, total: float,
         dm = ((h - a) - spread) / SCORE_BW_MARGIN
         dt = ((h + a) - total) / SCORE_BW_TOTAL
         w.append(((int(h), int(a), int(k)), k * math.exp(-0.5 * (dm * dm + dt * dt))))
-    w.sort(key=lambda x: -x[1])
+    # Symmetric scorelines tie on the weight exactly: 24-30 and 17-23 sit the
+    # same distance either side of a 47 total, so with equal counts the kernel
+    # returns the identical float. A bare `-x[1]` leaves those to the order
+    # `group_by` happened to emit, and because the list is cut at `top` the
+    # coin flip decides which scoreline is shown at all, not just where.
+    w.sort(key=lambda x: (-x[1], -x[0][2], x[0][0], x[0][1]))
     return [p for p, _ in w[:top]]
 
 def _wilson(hits: int, n: int, z: float = 1.96) -> tuple[float, float]:

@@ -24,6 +24,19 @@ function mkNode(tag) {
     // number is enough: nothing here lays anything out, so the only question
     // a harness can ask is whether the page put back what it took.
     scrollTop: 0, scrollHeight: 0, clientHeight: 0,
+    // GEOMETRY, only where a test installs it. Nothing here lays anything
+    // out, so a node reports no box by default — but a page that measures a
+    // STICKY element cannot be checked without one: a stuck bar reports the
+    // pane's top edge, not its place in the document, and code that confuses
+    // the two is correct at the top of a page and a no-op everywhere else.
+    // A test sets `_rect` to a function of the pane's `scrollTop` and gets
+    // exactly that distinction; leaving it unset keeps the old behavior.
+    _rect: null,
+    getBoundingClientRect() {
+      return n._rect ? n._rect()
+                     : { top: 0, left: 0, bottom: 0, right: 0,
+                         width: 0, height: 0 };
+    },
     // Only the attribute form, and only over this node's own subtree. Enough
     // for `[data-pane]`, which is what the page looks for; anything more
     // would be stubbing a selector engine.

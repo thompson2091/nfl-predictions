@@ -804,17 +804,25 @@ if (cards.length) {
     ok('the ask control is on the ' + t + ' tab',
        app().indexOf('data-v3sheet="ask"') >= 0);
   });
-  // ABOVE THE PUBLIC SPLIT, not below it. Under that block it fell past the
-  // fold on a phone: the control that answers anything was the one you had
-  // to scroll to find.
+  // IN THE PINNED BAR, not under the score card. Under the card it was the
+  // first thing you saw and then the last thing you could reach: by the
+  // Outcome tables it was three screens up. Pinned it is a tap from wherever
+  // you have read to, which is what a button scoped to "this game" is for.
   V.gameTab = 'notes'; render();
   const gh = app();
   const askAt = gh.indexOf('data-v3sheet="ask"');
-  const pubAt = gh.indexOf('Share of bets');
-  ok('the ask control sits under the score card',
-     askAt >= 0 && (pubAt < 0 || askAt < pubAt),
-     'ask at ' + askAt + ', public split at ' + pubAt);
-  ok('and above the tab bar', askAt < gh.indexOf('data-v3gtab="players"'));
+  const barAt = gh.indexOf('class="gtabs"');
+  const segAt = gh.indexOf('data-v3gtab="players"');
+  ok('the ask control is inside the pinned bar',
+     askAt > barAt && barAt >= 0,
+     'ask at ' + askAt + ', bar at ' + barAt);
+  ok('and above the section control it shares the bar with',
+     askAt < segAt, 'ask at ' + askAt + ', seg at ' + segAt);
+  // Pinned means it rides with the bar, so it must not ALSO be left in the
+  // flow — two ask buttons on one screen is the bug this replaced.
+  ok('and appears once, not in both places',
+     gh.split('data-v3sheet="ask"').length - 1 === 1,
+     String(gh.split('data-v3sheet="ask"').length - 1));
 
   // And it opens over whichever tab raised it, rather than navigating away.
   V.gameTab = 'edge'; render();
@@ -1256,6 +1264,145 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // The flag is consumed by the render, so the NEXT paint keeps its place.
   ok('and the scroll intent is consumed, not left armed',
      V.top === false, String(V.top));
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
+
+// ── And starts there FROM DEEP INSIDE the section you are leaving ───────
+//
+// The case above is checked at the top of the page, where a sticky bar and a
+// static one behave identically — which is why it passed while the feature
+// did nothing. The bar is `position: sticky`, so once you have scrolled past
+// it the browser reports it PINNED at the pane's top edge: `rect.top -
+// pane.top` is zero, and code that adds that to the current offset lands you
+// back where you started. Modeling the stickiness is the only way to tell
+// the two apart.
+{
+  const BAR_AT = 300;               // the bar's place in the document
+  const DEEP = 900;                 // and how far past it you had read
+  const scroll = document.getElementById('scroll');
+  const pane = document.querySelector('.gtabs');
+  // `top: 0` sticky: the bar rides up with the content until it reaches the
+  // pane's edge, then stops there. Exactly `max(0, layout - scrolled)`.
+  pane._rect = () => ({ top: Math.max(0, BAR_AT - scroll.scrollTop) });
+  scroll._rect = () => ({ top: 0 });
+
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'notes';
+  V.week = null; render();
+  scroll.scrollTop = DEEP;
+  // Proves the model, not the page: at this depth the bar really is pinned,
+  // so a test that read the rect and believed it would see zero.
+  ok('the harness models a bar that is pinned when you are deep in a section',
+     pane.getBoundingClientRect().top === 0);
+
+  v3Do('v3gtab', 'out');
+  ok('switching section from deep inside one lands on the new section',
+     scroll.scrollTop === BAR_AT, 'scrollTop ' + scroll.scrollTop);
+  ok('and does not leave you at the offset you came from',
+     scroll.scrollTop !== DEEP);
+
+  pane._rect = null; scroll._rect = null; scroll.scrollTop = 0;
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
+// ── Changing game without leaving where you are reading ────────────────
+//
+// The switcher sat in `.gamenav` above the matchup card, so by the time you
+// were in the Outcome tables and wanted the same table for another game, the
+// control had scrolled off and the only route was out to the list and back in.
+if (cards.length > 1) {
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'out';
+  V.week = null; render();
+  const gh = app();
+  const barAt = gh.indexOf('class="gtabs"');
+  ok('the game switcher is inside the pinned bar',
+     gh.indexOf('data-v3gameto') > barAt && barAt >= 0);
+  ok('and not left behind above the matchup card as well',
+     gh.split('data-v3gameto').length - 1 === 1,
+     String(gh.split('data-v3gameto').length - 1));
+  ok('the arrows are there too',
+     gh.indexOf('data-v3gamestep') > barAt);
+
+  // BOTH CONTROLS BEHAVE THE SAME WAY. The arrows used to run through
+  // `v3game`, which is the games LIST's action: it reset the section to Notes
+  // and went to the page top, so the arrow beside the Outcome tab took you to
+  // another game's Notes while the dropdown beside it kept Outcome.
+  const step = /data-v3gamestep="([^"]+)"/.exec(gh);
+  ok('an arrow names a real game', !!step);
+  if (step) {
+    // Same pinned-bar geometry as the section test, so "landed on the
+    // section" is a measured offset rather than a consumed flag.
+    const BAR_AT = 300, DEEP = 900;
+    const scroll = document.getElementById('scroll');
+    const pane = document.querySelector('.gtabs');
+    pane._rect = () => ({ top: Math.max(0, BAR_AT - scroll.scrollTop) });
+    scroll._rect = () => ({ top: 0 });
+    scroll.scrollTop = DEEP;
+
+    v3Do('v3gamestep', step[1]);
+    ok('stepping keeps the section you were reading',
+       V.gameTab === 'out', String(V.gameTab));
+    ok('and changes the game', V.game === step[1]);
+    ok('and lands on that section, not the top of the new game',
+       scroll.scrollTop === BAR_AT, 'scrollTop ' + scroll.scrollTop);
+
+    // The dropdown is the same control and must agree.
+    const other = (cards.filter(c => c.game_id !== V.game)[0] || {}).game_id;
+    if (other) {
+      V.gameTab = 'out'; render(); scroll.scrollTop = DEEP;
+      fireDoc('change', { target: {
+        getAttribute: k => k === 'data-v3gameto' ? '' : null,
+        value: other } });
+      ok('the dropdown keeps the section too', V.gameTab === 'out');
+      ok('and lands in the same place as the arrows',
+         scroll.scrollTop === BAR_AT, 'scrollTop ' + scroll.scrollTop);
+    }
+    pane._rect = null; scroll._rect = null; scroll.scrollTop = 0;
+  }
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
+// ── A thin window is a caveat, not a refusal ───────────────────────────
+//
+// Under `MIN_COMPARABLES` the Outcome tab used to be two cards explaining
+// twice why it was empty. The comparables are still this game's; 52 games is
+// thin for a PERCENTAGE and perfectly informative about SHAPE, and
+// withholding the shape left nothing to be careful with.
+if (cards.length) {
+  const c = cards[0];
+  const keep = { scores: c.scores, ladders: c.ladders };
+  if (keep.scores && keep.scores.n) {
+    // Same payload, declared thin — the Python side already computes
+    // everything below `MIN_COMPARABLES`, so this is exactly what a thin
+    // game serves.
+    c.scores = Object.assign({}, keep.scores,
+                             { thin: true, n: 52, min_n: 60 });
+    if (c.ladders) c.ladders = Object.assign({}, keep.ladders,
+                                             { thin: true, n: 52 });
+    V.tab = 'games'; V.game = c.game_id; V.gameTab = 'out';
+    V.week = null; render();
+    const gh = app();
+    ok('a thin game says so', gh.indexOf('class="thin"') >= 0);
+    ok('and says it once, not once per table',
+       gh.split('class="thin"').length - 1 === 1,
+       String(gh.split('class="thin"').length - 1));
+    ok('and names the count', gh.indexOf('52 past games') >= 0);
+    // THE POINT OF THE CHANGE: the tables are still there.
+    ok('and still draws the margin bands',
+       gh.indexOf('class="mrow') >= 0);
+    ok('and still draws the ladder',
+       gh.indexOf('data-v3half') >= 0 || gh.indexOf('class="lfields"') >= 0
+       || gh.indexOf('Over') >= 0);
+    ok('and does not refuse',
+       gh.indexOf('too few to draw a distribution') < 0
+       && gh.indexOf('too few to build a table') < 0);
+
+    // And a healthy sample carries no banner at all.
+    c.scores = keep.scores; c.ladders = keep.ladders;
+    render();
+    ok('a full sample shows no banner',
+       app().indexOf('class="thin"') < 0);
+  }
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 

@@ -122,3 +122,44 @@ def test_the_modal_is_no_longer_a_six_way_tie(hist):
     assert s["modal_tied"] <= 2, (
         f"{s['modal_tied']} scorelines tied for most common")
     assert s["modal"]["n"] >= sd.SCORE_MIN_SEEN
+
+
+def test_scorelines_that_tie_on_the_weight_still_come_back_in_one_order(hist):
+    """Ties are common and the list is truncated, so an unstable order changes
+    which scoreline appears at all.
+
+    Symmetric finals tie on the kernel exactly: 24-30 and 17-23 sit the same
+    distance either side of a 47 total, so with equal counts the weight is the
+    identical float. Shuffling the input has to make no difference.
+    """
+    for spread, total in [(-3.0, 47.0), (2.5, 51.0), (-1.0, 42.0)]:
+        w = hist.filter(
+            (abs(hist["spread_line"] - spread) <= sd.SCORE_SPREAD_TOL)
+            & (abs(hist["total_line"] - total) <= sd.SCORE_TOTAL_TOL))
+        first = sd._ranked(w, spread, total, 16)
+        for seed in (0, 1, 2):
+            shuffled = w.sample(fraction=1.0, shuffle=True, seed=seed)
+            assert sd._ranked(shuffled, spread, total, 16) == first, (
+                f"row order changed the table at {spread}/{total}, seed {seed}")
+
+
+def test_the_ranking_really_does_have_ties_to_break(hist):
+    """Guard the guard: if ties stopped happening the test above would pass
+    while proving nothing, and the tiebreak could be dropped unnoticed."""
+    import collections
+    import math
+
+    spread, total = -1.0, 42.0
+    w = hist.filter(
+        (abs(hist["spread_line"] - spread) <= sd.SCORE_SPREAD_TOL)
+        & (abs(hist["total_line"] - total) <= sd.SCORE_TOTAL_TOL))
+    import polars as pl
+    base = (w.group_by(["home_score", "away_score"], maintain_order=True)
+            .agg(pl.len().alias("k")).filter(pl.col("k") >= sd.SCORE_MIN_SEEN))
+    seen = collections.Counter()
+    for h, a, k in zip(base["home_score"], base["away_score"], base["k"]):
+        dm = ((h - a) - spread) / sd.SCORE_BW_MARGIN
+        dt = ((h + a) - total) / sd.SCORE_BW_TOTAL
+        seen[k * math.exp(-0.5 * (dm * dm + dt * dt))] += 1
+    assert sum(c for c in seen.values() if c > 1) >= 2, (
+        "no tied weights, so the ordering test is vacuous")
