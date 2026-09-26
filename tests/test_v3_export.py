@@ -353,6 +353,13 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "it is one control, not a pill per metric",
                  "and is absent on the injury view",
                  "the filters share one bar",
+                 "the props board calls it out rather than greying it",
+                 "and below the filters, where switching market shows it "
+                 "change",
+                 "and above the rows it describes",
+                 "switching market starts at the top of the new market",
+                 "and switching Everyone / Shortlist / Fades does the same",
+                 "but sorting keeps your place",
                  "the games filter is in the shared pinned bar",
                  "the counts are above it rather than pinned with it",
                  "and the cards it filters below it",

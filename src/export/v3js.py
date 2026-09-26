@@ -359,7 +359,11 @@ function v3Screen() {
 
 // The market pills and the three filters, built once because two screens
 // show them and a control added to one has to appear on the other.
-function v3MarketControls() {
+// `after` lands between the pinned bar and the prose under it. The board
+// passes its CLV line there: that number is PER MARKET, so read from above
+// the bar it never changed in front of you — you tapped Rush, the rows
+// redrew, and the one line that also moved was two screens up.
+function v3MarketControls(after) {
   const cur = V3MKT.filter(m => m[0] === V.market)[0] || V3MKT[0];
   // Inside a game each button carries how many players it holds, because a
   // market can hold none and the only way to find out was to tap it.
@@ -419,6 +423,7 @@ function v3MarketControls() {
     + '</div>'
     + '<div class="pbar__row">' + v3Search() + v3SortBar() + '</div>'
     + '</div>'
+    + (after || '')
     + '<p class="help">' + esc(cur[2]) + '</p>'
     + (filterHelp ? '<p class="help">' + esc(filterHelp) + '</p>' : '');
 }
@@ -433,15 +438,18 @@ function v3Week() {
     + '<p class="lede">Our number next to the sportsbook\u2019s.'
     + (V.week == null ? ' Tap a row for everything we know about it.' : '')
     + '</p>'
+    + v3BoardBar()
+    // UNDER THE PINNED BAR, because the number is per market. Above it, you
+    // tapped Rush, the rows redrew, and the one line that also changed was
+    // two screens up where you could not see it.
+    //
     // ONLY ON A LIVE WEEK. On a graded week the prices stopped moving and
     // "the market has moved toward us on 9 of 14" is a fact about the past
     // dressed as one about a board you could still bet.
-    + (V.week == null
+    + v3MarketControls(V.week == null
        ? v3ClvNote(rowsFor(V.market, null).filter(r => r.priced && !r.blocked),
                    'of the picks on this market')
        : '')
-    + v3BoardBar()
-    + v3MarketControls()
     + '<div class="list" id="v3rows">' + v3Rows() + '</div>'
     + v3Explainer()
     + '</div>';
@@ -3457,7 +3465,15 @@ function render(fromHistory) {
       // layout position. Both writes happen in the same task, so there is no
       // paint between them and nothing flickers.
       scroll.scrollTop = 0;
-      const bar = document.querySelector && document.querySelector('.gtabs');
+      // WHICHEVER BAR THIS SCREEN LEADS WITH. The game screen and the props
+      // board lead with `.gtabs` and stack `.pbar` under it; the games board
+      // has only `.pbar--free`. The two never appear together, so falling
+      // back is the whole rule — and two queries rather than one selector
+      // list because the harness memoises by selector string, and a list
+      // would hand back a node the geometry was never installed on.
+      const bar = document.querySelector
+        && (document.querySelector('.gtabs')
+            || document.querySelector('.pbar--free'));
       let at = 0;
       if (bar && bar.getBoundingClientRect && scroll.getBoundingClientRect) {
         // Measured after the re-render, so it is the NEW layout, and relative
@@ -3607,10 +3623,21 @@ function v3Do(kind, v) {
     }
     // The market changes; the GAME FILTER DOES NOT. Looking at one game and
     // clicking between markets should not mean re-picking the game each time.
-    case 'v3mkt': V.market = v; V.shown = V3SHOW; break;
+    //
+    // ALL THREE START AT THE TOP OF WHAT THEY JUST BUILT. Keeping the offset
+    // was right when these controls sat above the board and went with it: you
+    // were in one list and stayed where you were. Pinned, they changed the
+    // list UNDER a bar that does not move, so tapping Rush from forty rows
+    // down landed you forty rows into a different market — past the green CLV
+    // line that had just changed, and past whatever the top of the new list
+    // was, which is the part you asked for.
+    //
+    // `'section'` rather than `true`: zero is the top of the PAGE, above the
+    // title and the counts, and these controls are not navigation.
+    case 'v3mkt': V.market = v; V.shown = V3SHOW; V.top = 'section'; break;
     case 'v3sort': V.sort = v; break;
-    case 'v3filter': V.filter = v; V.shown = V3SHOW; break;
-    case 'v3gfilter': V.gfilter = v; break;
+    case 'v3filter': V.filter = v; V.shown = V3SHOW; V.top = 'section'; break;
+    case 'v3gfilter': V.gfilter = v; V.top = 'section'; break;
     case 'v3more': V.shown = 1e9; break;
     // Tapping the open row closes it: one open at a time, so the board does
     // not turn into a wall of detail panels you have to close individually.

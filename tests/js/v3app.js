@@ -1734,10 +1734,31 @@ if (cards.length) {
 {
   V.tab = 'props'; V.game = null; V.week = null; render();
   const ph = app();
-  if (ph.indexOf('prices moved') >= 0 || ph.indexOf('class="clv"') >= 0) {
+  if (ph.indexOf('class="clv"') >= 0) {
     ok('the props board calls it out rather than greying it',
        ph.indexOf('class="clv"') >= 0);
     ok('and not as help text', ph.indexOf('class="help">Prices moved') < 0);
+    // BELOW THE PINNED BAR. The number is per market, so from above the bar
+    // it never changed in front of you: you tapped Rush, the rows redrew,
+    // and the one line that also moved was two screens up.
+    const clvAt = ph.indexOf('class="clv"');
+    ok('and below the filters, where switching market shows it change',
+       clvAt > ph.indexOf('class="pbar"'),
+       'clv ' + clvAt + ', bar ' + ph.indexOf('class="pbar"'));
+    ok('and above the rows it describes',
+       clvAt < ph.indexOf('id="v3rows"'));
+    // The note is built from `rowsFor(V.market, ...)`, so it is per market by
+    // construction — this checks the wiring survives, not the arithmetic:
+    // switching market must re-render it rather than leave the first one up.
+    const countOf = t => (/(\d+) of (\d+)/.exec(
+      t.slice(t.indexOf('class="clv"'))) || [])[0];
+    const a = countOf(ph);
+    V.market = 'rush'; render();
+    const bh = app();
+    ok('and it is rebuilt for the market you switch to',
+       bh.indexOf('class="clv"') < 0 || !!countOf(bh),
+       'was ' + a + ', now ' + countOf(bh));
+    V.market = 'any'; render();
   }
   V.tab = 'games'; V.game = null; render();
   const gh = app();
@@ -1789,6 +1810,47 @@ if (cards.length) {
   ok('the pinned filter still filters', V.gfilter === 'flip');
   v3Do('v3gfilter', 'all');
   V.tab = 'props';
+}
+
+// ── Changing the list starts you at the top of it ──────────────────────
+//
+// Keeping the offset was right when these controls sat above the board and
+// scrolled with it. Pinned, they change the list UNDER a bar that does not
+// move — so tapping Rush from forty rows down landed you forty rows into a
+// different market, past the CLV line that had just changed with it.
+{
+  const BAR_AT = 300, DEEP = 900;
+  const scroll = document.getElementById('scroll');
+  const bar = document.querySelector('.gtabs');
+  bar._rect = () => ({ top: Math.max(0, BAR_AT - scroll.scrollTop) });
+  scroll._rect = () => ({ top: 0 });
+
+  V.tab = 'props'; V.game = null; V.week = null;
+  V.market = 'any'; V.filter = 'all'; render();
+
+  scroll.scrollTop = DEEP;
+  v3Do('v3mkt', 'rush');
+  ok('switching market starts at the top of the new market',
+     scroll.scrollTop === BAR_AT, 'scrollTop ' + scroll.scrollTop);
+
+  scroll.scrollTop = DEEP;
+  v3Do('v3filter', 'short');
+  ok('and switching Everyone / Shortlist / Fades does the same',
+     scroll.scrollTop === BAR_AT, 'scrollTop ' + scroll.scrollTop);
+
+  // NOT the top of the PAGE: the title and the counts stay above, and these
+  // controls are not navigation.
+  ok('at the bar rather than the top of the page', scroll.scrollTop !== 0);
+
+  // Sorting is not a different list, it is the same one in another order —
+  // you are looking at a row and want it moved, not to start over.
+  scroll.scrollTop = DEEP;
+  v3Do('v3sort', 'model');
+  ok('but sorting keeps your place', scroll.scrollTop === DEEP,
+     'scrollTop ' + scroll.scrollTop);
+
+  V.filter = 'all'; V.market = 'any';
+  bar._rect = null; scroll._rect = null; scroll.scrollTop = 0;
 }
 
 done();
