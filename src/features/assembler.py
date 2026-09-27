@@ -33,7 +33,7 @@ from src.prediction.predict import _norm_name_expr
 # dynamically rather than hand-maintained. See build_oc_features docstring.
 # from src.features.oc_features import build_oc_features
 from src.features.odds_features import build_odds_features
-from src.features.situational_features import build_situational_features
+from src.features.situational_features import build_roster_situational_features
 from src.features.coverage_features import build_coverage_features
 from src.features.momentum_features import build_momentum_features
 from src.features.personnel_features import build_personnel_features
@@ -451,7 +451,12 @@ def assemble_features() -> pl.DataFrame:
         print("  Sportsbook odds features: none (no cached odds data)")
 
     # === Situational features ===
-    sit_player_feats, sit_game_feats = build_situational_features(
+    # NAMED FOR WHAT IT READS. The schedule-only `build_situational_features`
+    # took this name on 2026-09-24 for the game model, and this call — four
+    # arguments, two returns — was left pointing at it. `04_features.py` is
+    # the only caller, that week's rollover found the board already built and
+    # exited before reaching it, and the break sat undetected for three days.
+    sit_player_feats, sit_game_feats = build_roster_situational_features(
         rosters, schedules, depth_charts, weekly_stats,
     )
     print(f"  Situational player features: {sit_player_feats.shape}")

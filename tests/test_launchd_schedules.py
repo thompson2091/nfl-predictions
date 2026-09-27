@@ -19,7 +19,8 @@ INSTALLED = Path.home() / "Library" / "LaunchAgents"
 #: Every job this project relies on. A new one belongs here the day it is
 #: written, not the day someone notices it was never committed.
 JOBS = ("nfl-odds-open", "nfl-odds-close", "nfl-inactives",
-        "nfl-public-money", "nfl-week-rollover", "nfl-sharp-gate")
+        "nfl-public-money", "nfl-week-rollover", "nfl-sharp-gate",
+        "nfl-sunday-wrap")
 
 
 def _path(name: str) -> Path:
@@ -81,3 +82,38 @@ def test_no_schedule_carries_a_credential():
         assert not bad.search(text), f"{job} looks like it carries a secret"
         assert "EnvironmentVariables" not in text, (
             f"{job} sets environment variables inline — keep them in .env")
+
+
+def test_the_job_list_is_the_directory():
+    """GUARD THE GUARD. Every check in this file is parametrized over `JOBS`,
+    so a schedule that is never added to that tuple is not tested by any of
+    them — and the file still reports twenty passing tests. The failure is
+    silent in both directions: a job committed and untested, or a name left
+    in the list after its plist was deleted.
+    """
+    on_disk = {p.stem.replace("com.mthompson.", "")
+               for p in COMMITTED.glob("com.mthompson.*.plist")}
+    assert on_disk == set(JOBS), (
+        f"committed but untested: {sorted(on_disk - set(JOBS))}; "
+        f"listed but missing: {sorted(set(JOBS) - on_disk)}")
+
+
+def test_the_sunday_wrap_runs_after_the_late_games_and_again_after():
+    """One attempt is not enough and the script knows it.
+
+    The late games settle around 23:30 ET and nflverse publishes their
+    play-by-play some time after that, so the first run often lands before the
+    data does. Every run is a no-op unless a new final appeared since the
+    last, which is what makes scheduling several of them cheap.
+    """
+    d = plistlib.loads(_path("nfl-sunday-wrap").read_bytes())
+    ci = d["StartCalendarInterval"]
+    ci = [ci] if isinstance(ci, dict) else ci
+    assert len(ci) >= 2, "one attempt cannot outlast a publishing delay"
+    # The first sits on Sunday, after the late window.
+    sun = [c for c in ci if c.get("Weekday") == 0]
+    assert sun and max(c["Hour"] for c in sun) >= 22, (
+        "the Sunday attempt has to be after the late games, not during them")
+    # And at least one lands on Monday, for data published overnight.
+    assert any(c.get("Weekday") == 1 for c in ci), (
+        "nothing picks up play-by-play that publishes after midnight")
