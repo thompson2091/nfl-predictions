@@ -87,3 +87,60 @@ def test_every_step_the_sunday_wrap_runs_imports(script):
     assert p.exists(), f"{script}.py is gone but the wrap still runs it"
     # Parse rather than exec: these scripts do the work at module level.
     ast.parse(p.read_text())
+
+
+# ── The freshness gate has to be visible to the things that run it ─────────
+
+
+def test_a_refusal_does_not_look_like_success():
+    """Exit 0 on a refusal is a gate nobody downstream can see.
+
+    On 2026-09-27 the v1 site had been declining to publish for five days
+    while every job that ran it reported a clean run — and the deploy that now
+    follows would have shipped past it.
+    """
+    from src.evaluation.freshness import EXPORT_REFUSED
+
+    assert EXPORT_REFUSED not in (0, 1), (
+        "0 reads as success and 1 reads as a crash; a refusal is neither")
+    for name in ("34_export_dashboard.py", "47_export_site.py",
+                 "20_export_html.py", "52_export_v3.py"):
+        src = (REPO / "scripts" / name).read_text()
+        assert "EXPORT_REFUSED" in src, (
+            f"{name} can refuse but not say so in its exit code")
+
+
+def test_every_export_that_publishes_passes_the_gate():
+    """INCLUDING THE ONE THAT REACHES THE PUBLIC.
+
+    `52_export_v3.py` calls `47_export_site.build` directly, and the refusal
+    lives in `main` rather than in `build` — so for as long as it existed, the
+    only export anyone outside this machine reads was the one export not
+    checked. It carried a model promoted on the 25th beside closing-line
+    figures measured on the 22nd.
+    """
+    src = (REPO / "scripts" / "52_export_v3.py").read_text()
+    assert "_gate(" in src, (
+        "the v3 export publishes to the live site without a freshness check")
+    tree = ast.parse(src)
+    gate_line = next(
+        (n.lineno for n in ast.walk(tree)
+         if isinstance(n, ast.Call)
+         and getattr(n.func, "attr", None) == "_gate"), None)
+    build_line = next(
+        (n.lineno for n in ast.walk(tree)
+         if isinstance(n, ast.Call)
+         and getattr(n.func, "attr", None) == "build"), None)
+    assert gate_line and build_line and gate_line < build_line, (
+        "the gate has to run before the payload is built, not after")
+
+
+@pytest.mark.parametrize("job", ["sunday_wrap.sh", "week_rollover.sh"])
+def test_the_scheduled_jobs_stop_on_a_refusal_rather_than_deploying(job):
+    """Both of these deploy at the end, so 'kept going' means 'published'."""
+    src = (REPO / "scripts" / job).read_text()
+    assert "export_or_stop" in src, (
+        f"{job} runs an export without distinguishing a refusal from a pass")
+    # And the deploy must come after, so a refusal can prevent it.
+    assert src.index("export_or_stop") < src.index("58_deploy.py"), (
+        f"{job} deploys before the export it is meant to gate on")

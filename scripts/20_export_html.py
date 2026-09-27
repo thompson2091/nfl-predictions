@@ -112,6 +112,9 @@ def _meta(cap, target_type: str) -> list[str]:
     return bits
 
 
+from src.evaluation.freshness import EXPORT_REFUSED
+
+
 def _gate(force: bool) -> bool:
     """Refuse to publish numbers that describe a different model.
 
@@ -190,5 +193,5 @@ if __name__ == "__main__":
     p.add_argument("--force", action="store_true",
                    help="publish even when artifacts predate the served model")
     a = p.parse_args()
-    raise SystemExit(0 if not _gate(a.force)
+    raise SystemExit(EXPORT_REFUSED if not _gate(a.force)
                      else main(a.out, a.open, not a.verbose, not a.full))

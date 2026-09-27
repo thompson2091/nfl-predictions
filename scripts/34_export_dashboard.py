@@ -979,6 +979,9 @@ def build(season: int | None, week: int | None) -> dict:
     })
 
 
+from src.evaluation.freshness import EXPORT_REFUSED
+
+
 def _gate(force: bool) -> bool:
     """Refuse to publish numbers that describe a different model.
 
@@ -1022,7 +1025,7 @@ def main() -> int:
                          "this makes six of them")
     args = ap.parse_args()
     if not _gate(getattr(args, "force", False)):
-        return 0
+        return EXPORT_REFUSED
 
     print("building dashboard ...", file=sys.stderr)
     sink = io.StringIO()

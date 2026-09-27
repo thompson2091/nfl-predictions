@@ -1844,7 +1844,7 @@ def main() -> int:
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     if not mod._gate(args.force):
-        return 0
+        return mod.EXPORT_REFUSED
 
     print("building site ...", file=sys.stderr)
     sink = io.StringIO()

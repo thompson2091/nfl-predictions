@@ -40,6 +40,29 @@ run() {
     fi
 }
 
+# A REFUSAL IS NOT A CRASH, AND NEITHER IS IT SUCCESS.
+#
+# Exit 3 means the export declined because its artifacts describe a model
+# other than the one being served. That is a chore, not a bug: the board is
+# fine, the evaluation numbers beside it are not, and publishing anyway would
+# put one model's predictions next to another's record. Say which, and stop
+# before the deploy rather than shipping past it.
+export_or_stop() {
+    local name="$1"; shift
+    say "  -> $name"
+    "$@" >> "$LOG" 2>&1
+    local rc=$?
+    case $rc in
+      0) return 0 ;;
+      3) say "     REFUSED: artifacts predate the served model. Nothing was"
+         say "     published. Run \`make evaluate\` (and \`make longshot\`),"
+         say "     then re-run this. See $LOG for the list."
+         return 3 ;;
+      *) say "     FAILED (exit $rc) — see $LOG"
+         return 1 ;;
+    esac
+}
+
 say "=== $(date -u +%FT%TZ) sunday wrap ==="
 
 # ONLY PUBLISH WHEN THERE IS SOMETHING NEW TO SHOW.
@@ -103,8 +126,8 @@ if [ "$BEFORE" = "$AFTER" ] && [ "${1:-}" != "--force" ]; then
     exit 0
 fi
 
-run board "$PY" scripts/47_export_site.py  || exit 1
-run site  "$PY" scripts/20_export_html.py  || exit 1
+export_or_stop board "$PY" scripts/47_export_site.py  || exit 1
+export_or_stop site  "$PY" scripts/20_export_html.py  || exit 1
 
 # Same guard as the rollover: without the key ssh falls through to asking for
 # a password, and there is nobody at the keyboard at midnight.

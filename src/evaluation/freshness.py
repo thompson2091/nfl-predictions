@@ -141,6 +141,19 @@ def stale_artifacts(market: str, model_dir: Path | None = None) -> list[dict]:
     return stale
 
 
+#: What an export exits with when it refuses on freshness.
+#:
+#: NOT 0, which is what it used to be. The rollover and the Sunday wrap both
+#: run an export and check the exit code, so a gate that returns success is a
+#: gate nobody downstream can see — on 2026-09-27 the v1 site had been
+#: refusing to publish for five days while every job that ran it reported a
+#: clean run, and the deploy that now follows would have shipped past it.
+#:
+#: Not 1 either. A crash is a bug and a refusal is a chore, and a caller that
+#: cannot tell them apart has to treat every chore as an emergency.
+EXPORT_REFUSED = 3
+
+
 def export_blockers(markets=("anytime_td", "first_td")) -> list[str]:
     """Reasons a page must not be published right now, in plain sentences.
 

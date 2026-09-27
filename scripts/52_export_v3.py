@@ -29,12 +29,29 @@ def main() -> int:
     ap.add_argument("--brand", default="Pick Six")
     ap.add_argument("--no-ai", action="store_true",
                     help="ship the template sentences; make no API call")
+    ap.add_argument("--force", action="store_true",
+                    help="publish even when artifacts predate the served model")
     a = ap.parse_args()
 
     spec = importlib.util.spec_from_file_location(
         "site_export", Path(__file__).with_name("47_export_site.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+
+    # THE SAME GATE THE OTHER EXPORTS PASS THROUGH.
+    #
+    # This calls `build` directly, and the freshness refusal lives in the
+    # exports' `main` rather than in `build` — so v3 walked straight past it.
+    # On 2026-09-27 that meant the LIVE site carried a model promoted on the
+    # 25th beside closing-line and longshot figures measured on the 22nd,
+    # while the v1 pages the gate does cover had been refusing for five days.
+    # The one export that reaches the public was the one not checked.
+    gspec = importlib.util.spec_from_file_location(
+        "dash_export", Path(__file__).with_name("34_export_dashboard.py"))
+    gmod = importlib.util.module_from_spec(gspec)
+    gspec.loader.exec_module(gmod)
+    if not gmod._gate(a.force):
+        return gmod.EXPORT_REFUSED
 
     print("building v3 ...", file=sys.stderr)
     payload = mod.build(a.season, a.week, a.brand)
