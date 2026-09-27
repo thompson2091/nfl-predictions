@@ -317,7 +317,10 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a player inherits the money on their own game",
                  "a player facing the money is told so, not merely told there is money",
                  "some board row sits in a game with money on it",
-                 "the rows we like are tinted rather than labeled",
+                 "every row carries its place in the order",
+                 "the list is in the order the model ranked them",
+                 "and the proximity tint is gone with the ordering it "
+                 "belonged to",
                  "and no per-row percentage sits beside a per-scoreline count",
                  "and our number is stated rather than only implied",
                  "and every row says how far it sits from that number",
@@ -359,7 +362,8 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a final nobody listed leaves no green row",
                  "and there is at least one red to have been counted",
                  "and the footer says the final is not on the list",
-                 "only the rows we called are red, not all of them",
+                 "a final nobody listed leaves the whole list red",
+                 "and every score that did not happen is red",
                  "the props board calls it out rather than greying it",
                  "and below the filters, where switching market shows it "
                  "change",

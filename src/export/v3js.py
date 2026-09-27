@@ -2253,38 +2253,24 @@ function v3GameScores(c) {
       ? [c.total / 2 - c.spread / 2, c.total / 2 + c.spread / 2] : null;
   const dist = x => pj ? Math.hypot(x.home - pj[0], x.away - pj[1]) : null;
 
-  // THE MARKER IS FREQUENCY-AWARE, and it has to be.
+  // LIKELIEST FIRST, WHICH IS THE RANK THE KERNEL PRODUCED.
   //
-  // Taking the mathematically nearest row ignored how often a scoreline
-  // occurs. On Dallas at Baltimore our number was 24.5-27.6: it marked 24-28,
-  // 0.64 away and seen 7 times, over 24-27, 0.78 away and seen 21 — so our
-  // own favorite appeared eighth, which reads as a contradiction rather than
-  // as information.
+  // This was sorted by distance to our projected score for a while, and that
+  // ordering is measurably the wrong way round: walk-forward over 2,416
+  // games, the row nearest our number lands 0.58% of the time — 1 in 173 —
+  // while the kernel's own first pick lands 1.37%, 1 in 73. Leading with the
+  // nearest put a score less than half as likely at the top, and the footer's
+  // "our best pick lands 1 in 70" described a row nobody could point at.
   //
-  // Among the rows that sit about as close as the closest does, this takes the
-  // one we rate highest. `NEAR_SLACK` is a point of score, which is inside the
-  // noise of any projection this page carries — two scorelines a point apart
-  // are not meaningfully different distances from a number quoted to one
-  // decimal.
-  // WITHIN THIS OF OUR NUMBER IS ONE WE LIKE. A point of score is inside the
-  // noise of a projection quoted to one decimal, so everything under it is the
-  // same call rather than a ranking.
-  const NEAR_SLACK = 1.0;
-
-  // SORTED BY DISTANCE TO OUR NUMBER, not by our rank.
-  //
-  // The kernel still CHOOSES which scorelines appear — that selection is the
-  // measured part. What it cannot do is put a probability on a row: `p` is the
-  // rate at a RANK ("our first pick lands 1.4% of the time"), not a property
-  // of the scoreline, so beside "26 times" it read as a contradiction — 23-20
-  // showed 1.4% on 26 games while 20-17 showed 0.6% on 31. It is stated once,
-  // in the footer, where it is true.
-  const ordered = (d.scores || []).map((x, i) => ({ x: x, rank: i }))
-    .sort((a, b) => (pj ? dist(a.x) - dist(b.x) : a.rank - b.rank));
+  // Proximity to a point estimate is not the same question as how often a
+  // scoreline happens: 23-20 can sit half a point from our number while the
+  // kernel rates 20-23 higher because it has happened more often in games
+  // priced like this one. The distance is still SHOWN on every row, because
+  // it is worth knowing; it just no longer decides the order.
+  const ordered = (d.scores || []).map((x, i) => ({ x: x, rank: i + 1 }));
   const scores = ordered.map(o => {
     const x = o.x;
     const dd = pj ? dist(x) : null;
-    const liked = pj && dd <= NEAR_SLACK;
     const landed = played && x.home === fh && x.away === fa;
     // ONCE THE GAME IS IN, THE TINT IS A RESULT RATHER THAN AN INTENTION.
     //
@@ -2294,17 +2280,18 @@ function v3GameScores(c) {
     // boxes turn green or red, the margin band marks the one that landed, and
     // this list carried yesterday's opinion in yesterday's color.
     //
-    // Red is only for rows we CALLED. A scoreline we never pointed at is not
-    // a miss, it is one of the fifteen that did not happen, and painting all
-    // of them red would say nothing about the model.
-    const missed = played && liked && !landed;
-    // COLOR, NOT A LABEL. A row we like is tinted; it used to append
-    // "where our model points" to one row, which wrapped onto two lines on a
-    // phone and could only ever mark a single score.
+    // EVERY ROW IS GRADED, not just the ones we leaned on. Sixteen scores
+    // were put up and one of them happened; the other fifteen were wrong, and
+    // showing them in the same neutral grey as a live board hid the thing the
+    // list is worst at. On a played week this reads as the scoreboard it is.
+    const missed = played && !landed;
+    // COLOR, NOT A LABEL. The tint for "within a point of our number" is gone
+    // with the ordering it belonged to: it marked proximity, which turned out
+    // to be a worse guide to the final than the rank beside it.
     return '<div class="srow' + (landed ? ' srow--on' : '')
-      + (missed ? ' srow--miss' : '')
-      + (liked && !played ? ' srow--like' : '') + '">'
-      + '<b class="num">' + esc(d.home) + ' ' + x.home
+      + (missed ? ' srow--miss' : '') + '">'
+      + '<b class="num"><i class="srank">' + o.rank + '</i>'
+      + esc(d.home) + ' ' + x.home
       + '\u2013' + x.away + ' ' + esc(d.away)
       + (landed ? ' \u00b7 this one' : '') + '</b>'
       // Only what belongs to THIS scoreline: how often it has happened, and
@@ -2380,13 +2367,14 @@ function v3GameScores(c) {
     // are a call; after it they are a result, and one sentence cannot be both
     // without being wrong half the time.
     + (played
-       ? '<p class="help" style="margin-top:10px">Nearest our number first. '
-         + 'Green is the score this game actually finished on'
+       ? '<p class="help" style="margin-top:10px">Likeliest first. Green is '
+         + 'the score this game actually finished on'
          + (anyLanded ? '' : ', which is not on this list')
-         + '. Red is one we pointed at and it did not land.</p>'
-       : '<p class="help" style="margin-top:10px">Nearest our number first. '
-         + 'Tinted rows are within a point of it \u2014 close enough that we '
-         + 'do not claim to tell them apart.</p>')
+         + '. Every other one we put up was wrong.</p>'
+       : '<p class="help" style="margin-top:10px">Likeliest first. The number '
+         + 'on each row is its place in that order; the points beside it are '
+         + 'how far the score sits from our projection, which is worth '
+         + 'knowing and is NOT what the order is based on.</p>')
     + '<p class="help">Which sixteen appear is our call: real finals, weighted '
     + 'by how well each fits the market\u2019s spread and total, which predicts '
     + 'the final better than our own projection does. How often each has '

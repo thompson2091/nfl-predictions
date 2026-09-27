@@ -399,8 +399,11 @@ button{cursor:pointer}
    what actually happened on a played week — an opinion must not look like a
    result. Tint rather than a label: it can mark several rows, and a phrase
    appended to a scoreline wrapped onto two lines on a phone. */
-.srow--like{background:var(--oursbg);border-radius:8px}
-.srow--like b{color:var(--ours)}
+/* The rank, which IS the order. Measured walk-forward, row 1 lands 1.37% and
+   the row nearest our number lands 0.58% — so the number has to be visible,
+   or the list looks like an unordered pile of plausible scores. */
+.srank{font-style:normal;display:inline-block;min-width:1.6em;
+  color:var(--mut2);font-size:12px;font-weight:600}
 /* Once the game is in, a row we pointed at that did not land. Same weight as
    the green: the section grades itself like the boxes above it. */
 .srow--miss{background:var(--badbg);border-radius:8px}

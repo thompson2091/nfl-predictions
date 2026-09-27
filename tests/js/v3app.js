@@ -1279,14 +1279,28 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
     // centered on the MARKET's line, so this marker is the gap between the
     // two and often sits low. The old wording read as a bug beside a list
     // nobody had said was centered somewhere else.
-    // COLOR, NOT A LABEL. The rows we like are tinted, which can mark several
-    // and does not wrap onto two lines on a phone.
-    ok('the rows we like are tinted rather than labeled',
-       seen.indexOf('srow--like') >= 0 || seen.indexOf(' off') >= 0);
+    // LIKELIEST FIRST, and the rank is on the row. Sorting by distance to our
+    // number put a score less than half as likely at the top: walk-forward,
+    // the nearest row lands 0.58% against the kernel's own first pick at
+    // 1.37%.
+    ok('every row carries its place in the order',
+       (seen.match(/class="srank"/g) || []).length
+       === (seen.match(/class="srow/g) || []).length,
+       (seen.match(/class="srank"/g) || []).length + ' ranks, '
+       + (seen.match(/class="srow/g) || []).length + ' rows');
+    ok('and the proximity tint is gone with the ordering it belonged to',
+       seen.indexOf('srow--like') < 0);
     ok('and no per-row percentage sits beside a per-scoreline count',
        seen.indexOf('where our model points') < 0);
     ok('and our number is stated rather than only implied',
        seen.indexOf('Our number') >= 0);
+    // RANK ORDER, not distance order. The scores arrive ranked, so the first
+    // row rendered must be the first one in the payload.
+    ok('the list is in the order the model ranked them',
+       seen.indexOf('>1</i>') < seen.indexOf('>2</i>')
+       || seen.indexOf('>2</i>') < 0,
+       'rank 1 at ' + seen.indexOf('>1</i>')
+       + ', rank 2 at ' + seen.indexOf('>2</i>'));
     ok('and every row says how far it sits from that number',
        seen.indexOf(' off') >= 0);
     // IT MUST NOT READ AS A RESULT. `srow--on` marks what actually happened
@@ -1924,10 +1938,7 @@ if (cards.length) {
     const live = app();
     ok('before kickoff nothing is graded',
        live.indexOf('srow--on') < 0 && live.indexOf('srow--miss') < 0);
-    // Whether any row is within a point of our number depends on the
-    // payload, so this records what the fixture can exercise rather than
-    // asserting a tint into existence.
-    const hadLike = live.indexOf('srow--like') >= 0;
+
 
     // PLAYED, and the final IS on the list: that row goes green.
     const hit = keep.s.scores[0];
@@ -1936,11 +1947,14 @@ if (cards.length) {
     ok('the score the game finished on is marked green',
        won.indexOf('srow--on') >= 0);
     ok('and the call color is gone, because it is no longer a call',
-       won.indexOf('srow--like') < 0, hadLike ? 'had one live' : 'none live');
-    if (!hadLike) {
-      ok('NOTE: this payload has no row within a point of our number, so the '
-         + 'call-to-result switch is only half exercised', true);
-    }
+       won.indexOf('srow--like') < 0);
+    // EVERY OTHER ROW IS RED. Sixteen scores were put up and one happened;
+    // the other fifteen were wrong, and leaving them neutral hid the thing
+    // the list is worst at.
+    const wRed = (won.match(/srow--miss/g) || []).length;
+    const wRows = (won.match(/class="srow/g) || []).length;
+    ok('and every score that did not happen is red',
+       wRed === wRows - 1, wRed + ' red of ' + wRows + ' rows');
     ok('and the footer says green is the final',
        won.indexOf('Green is the score this game actually finished on') >= 0);
     ok('without claiming it is missing', won.indexOf('not on this list') < 0);
@@ -1957,10 +1971,10 @@ if (cards.length) {
     // Rows we pointed at are red; rows we never pointed at are not.
     const reds = (off.match(/srow--miss/g) || []).length;
     const rows = (off.match(/class="srow/g) || []).length;
-    ok('only the rows we called are red, not all of them',
-       reds < rows, reds + ' of ' + rows);
-    // GUARD THE GUARD. With no liked row there are no reds, and the line
-    // above passes by counting zero — the red path would ship untested.
+    // With the final on nobody's list, every row is wrong and every row is
+    // red — there is no green to subtract.
+    ok('a final nobody listed leaves the whole list red',
+       reds === rows, reds + ' of ' + rows);
     ok('and there is at least one red to have been counted',
        reds > 0, reds + ' reds of ' + rows + ' rows');
     c.blend = keepBlend;
