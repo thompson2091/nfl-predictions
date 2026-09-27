@@ -91,7 +91,62 @@ class IsotonicCalibrator:
         from sklearn.isotonic import IsotonicRegression
         self.iso = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
         self.iso.fit(raw_probs, y_true)
+        self._smooth_saturated(raw_probs, y_true)
         print(f"  Isotonic calibration fit on {len(raw_probs):,} rows")
+
+    def _smooth_saturated(self, raw_probs: np.ndarray,
+                          y_true: np.ndarray) -> None:
+        """Replace a 0 or a 1 with what its own bin can support.
+
+        ISOTONIC ENDS IN 0 AND 1 AND MEANS NEITHER. A bin is set to 1.0 when
+        every calibration sample that fell in it happened to be a positive —
+        on a thin tail that is a handful of games, not a certainty. On
+        2026-09-27 the anytime-TD curve stepped from 0.722 straight to 1.000
+        and published a player at 100% to score a touchdown, with the edge, the
+        EV and a "Good value" tag all computed from it.
+
+        Each saturated knot becomes the Laplace estimate of its OWN bin:
+        (k + 1) / (m + 2), the posterior mean under a uniform prior. A bin of
+        3 for 3 is 80%, one of 40 for 40 is 97.6% — the correction shrinks as
+        the evidence grows, which is the property worth having and the reason
+        this is not a fixed cap. Nothing is chosen: `k` and `m` are counted off
+        the calibration data the fit already saw.
+
+        Monotonicity is preserved by construction — the top bin can only be
+        pulled down toward the bin below it, never past it, and the bottom bin
+        can only be pulled up.
+        """
+        y = np.asarray(self.iso.y_thresholds_, dtype=float)
+        x = np.asarray(self.iso.X_thresholds_, dtype=float)
+        if y.size < 2:
+            return
+        raw = np.asarray(raw_probs, dtype=float)
+        truth = np.asarray(y_true, dtype=float)
+
+        def laplace(mask: np.ndarray) -> float | None:
+            m = int(mask.sum())
+            if m == 0:
+                return None
+            k = float(truth[mask].sum())
+            return (k + 1.0) / (m + 2.0)
+
+        # The top: every sample at or above the first knot that reads 1.0.
+        if float(y.max()) >= 1.0:
+            lo = float(x[y >= 1.0].min())
+            est = laplace(raw >= lo)
+            if est is not None:
+                inner = y[y < 1.0]
+                floor = float(inner.max()) if inner.size else 0.0
+                y[y >= 1.0] = max(est, floor)
+        # And the bottom, the same way.
+        if float(y.min()) <= 0.0:
+            hi = float(x[y <= 0.0].max())
+            est = laplace(raw <= hi)
+            if est is not None:
+                inner = y[y > 0.0]
+                ceil = float(inner.min()) if inner.size else 1.0
+                y[y <= 0.0] = min(est, ceil)
+        self.iso.y_thresholds_ = y
 
     def _resolved(self) -> tuple[float, float]:
         """The range this fit actually resolved, read off its own knots.

@@ -192,3 +192,75 @@ def test_no_calibrator_can_publish_a_certainty():
                 f"{market}/{name} publishes past what its knots resolved")
     if not seen:
         pytest.skip("no isotonic calibrator on disk")
+
+
+def test_a_saturated_isotonic_bin_is_smoothed_by_its_own_evidence():
+    """(k+1)/(m+2), so the correction shrinks as the evidence grows.
+
+    A fixed cap would be a constant and would say the same thing about a bin
+    of three and a bin of forty. This says far less about the thin one, which
+    is the whole point: the tail is uncertain because it is THIN, not because
+    tails are uncertain.
+    """
+    import numpy as np
+
+    from src.models.calibration import IsotonicCalibrator
+
+    tops = []
+    for tail in (3, 40):
+        rng = np.random.default_rng(0)
+        raw = np.concatenate([rng.uniform(0, 0.6, 3000),
+                              np.linspace(0.95, 0.99, tail)])
+        y = np.concatenate([
+            (rng.uniform(size=3000) < raw[:3000]).astype(float),
+            np.ones(tail)])
+        c = IsotonicCalibrator()
+        c.fit(raw, y)
+        knots = np.asarray(c.iso.y_thresholds_, dtype=float)
+        assert knots.max() < 1.0, "a saturated bin survived the smoothing"
+        assert knots.min() > 0.0, "a zeroed bin survived the smoothing"
+        # Isotonic's whole contract: it may change confidence, never order.
+        assert np.all(np.diff(knots) >= -1e-12), "smoothing broke monotonicity"
+        tops.append(float(knots.max()))
+    # THE PROPERTY, not an arithmetic constant: more evidence, less shrinkage.
+    # The bin is whatever the knot covers, so its exact count is not knowable
+    # from the tail size alone — asserting a number here would be asserting
+    # the fixture rather than the formula.
+    assert tops[1] > tops[0], (
+        f"forty positives ({tops[1]:.4f}) should read higher than three "
+        f"({tops[0]:.4f}); the correction is not scaling with evidence")
+    assert tops[0] < 0.95, (
+        f"three positives should not read {tops[0]:.4f}")
+
+
+def test_the_smoothing_touches_only_the_saturated_ends():
+    """It corrects saturation, not calibration.
+
+    Every interior knot has to come back exactly as isotonic fitted it, or
+    this is quietly reshaping the whole curve under the name of a tail fix.
+    """
+    import numpy as np
+    from sklearn.isotonic import IsotonicRegression
+
+    from src.models.calibration import IsotonicCalibrator
+
+    rng = np.random.default_rng(1)
+    raw = rng.uniform(0.05, 0.95, 5000)
+    y = (rng.uniform(size=5000) < raw).astype(float)
+
+    ref = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+    ref.fit(raw, y)
+    before = np.asarray(ref.y_thresholds_, dtype=float)
+
+    c = IsotonicCalibrator()
+    c.fit(raw, y)
+    after = np.asarray(c.iso.y_thresholds_, dtype=float)
+
+    assert before.shape == after.shape
+    untouched = (before > 0.0) & (before < 1.0)
+    assert untouched.any(), "fixture has no interior knots to check"
+    assert np.allclose(before[untouched], after[untouched]), (
+        "an unsaturated knot was altered")
+    # And the ends did move, or the test proves nothing about the fix.
+    assert not np.allclose(before, after), (
+        "nothing was smoothed; this fixture cannot exercise the fix")
