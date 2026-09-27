@@ -93,10 +93,38 @@ class IsotonicCalibrator:
         self.iso.fit(raw_probs, y_true)
         print(f"  Isotonic calibration fit on {len(raw_probs):,} rows")
 
+    def _resolved(self) -> tuple[float, float]:
+        """The range this fit actually resolved, read off its own knots.
+
+        ISOTONIC ENDS IN 0 AND 1 AND MEANS NEITHER. Its top bin is set to 1.0
+        whenever every calibration sample in it happened to be a positive,
+        which on a thin tail is a handful of games rather than a finding; the
+        bottom bin is 0.0 the same way. On 2026-09-27 the anytime-TD curve
+        stepped from 0.722 straight to 1.000 at a raw score of 0.691, with
+        nothing between — so a player landing a thousandth over that line was
+        published at 100% to score a touchdown, and the +36pp edge and "Good
+        value" tag under it were computed from that.
+
+        The clip that used to be here was `1e-6`, which turns 1.0 into
+        0.999999 and displays as 100.0%: cosmetic, not a bound.
+
+        The honest ceiling is the highest value the calibration data resolved
+        to — the largest knot that is not saturated. It is read from the fit
+        rather than chosen, so it moves with the data and there is no constant
+        here to go stale. Ranking is untouched: isotonic is monotone, and this
+        only flattens the saturated tail onto the last real value.
+        """
+        y = np.asarray(self.iso.y_thresholds_, dtype=float)
+        inner = y[(y > 0.0) & (y < 1.0)]
+        if inner.size == 0:
+            return 1e-6, 1 - 1e-6
+        return float(inner.min()), float(inner.max())
+
     def calibrate(self, raw_probs: np.ndarray) -> np.ndarray:
         if self.iso is None:
             return self.fallback.calibrate(raw_probs)
-        return np.clip(self.iso.predict(raw_probs), 1e-6, 1 - 1e-6)
+        lo, hi = self._resolved()
+        return np.clip(self.iso.predict(raw_probs), lo, hi)
 
     def save(self, path: Path) -> None:
         with open(path, "wb") as f:

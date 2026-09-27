@@ -144,3 +144,51 @@ def test_the_scheduled_jobs_stop_on_a_refusal_rather_than_deploying(job):
     # And the deploy must come after, so a refusal can prevent it.
     assert src.index("export_or_stop") < src.index("58_deploy.py"), (
         f"{job} deploys before the export it is meant to gate on")
+
+
+# ── A published probability has to be one the calibration could support ───
+
+
+def test_no_calibrator_can_publish_a_certainty():
+    """0% and 100% are isotonic artifacts, not findings.
+
+    Isotonic sets its top bin to 1.0 whenever every calibration sample in it
+    happened to be a positive — on a thin tail that is a handful of games. On
+    2026-09-27 the anytime-TD curve stepped from 0.722 straight to 1.000, and
+    a player a thousandth over that line was published at 100% to score a
+    touchdown, with a +36pp edge and a "Good value" tag computed from it.
+    """
+    import pickle
+
+    import numpy as np
+
+    from src.models.calibration import IsotonicCalibrator
+    from src.utils.paths import get_path
+
+    seen = False
+    for market in ("anytime_td", "first_td"):
+        for name in ("xgb_calibrator.pkl", "lgbm_calibrator.pkl",
+                     "lr_calibrator.pkl"):
+            p = get_path("models", market) / name
+            if not p.exists():
+                continue
+            with open(p, "rb") as f:
+                if pickle.load(f).get("iso") is None:
+                    continue
+            c = IsotonicCalibrator.load(p)
+            seen = True
+            grid = np.linspace(0.0, 1.0, 501)
+            out = c.calibrate(grid)
+            assert out.max() < 1.0, (
+                f"{market}/{name} publishes a certainty: "
+                f"max={out.max():.9f}")
+            assert out.min() > 0.0, (
+                f"{market}/{name} publishes an impossibility: "
+                f"min={out.min():.9f}")
+            # And the bound has to come from the fit, not from a constant: a
+            # curve that resolved to 0.72 must not be reporting 0.999999.
+            lo, hi = c._resolved()
+            assert out.max() <= hi + 1e-12 and out.min() >= lo - 1e-12, (
+                f"{market}/{name} publishes past what its knots resolved")
+    if not seen:
+        pytest.skip("no isotonic calibrator on disk")
