@@ -1983,4 +1983,57 @@ if (cards.length) {
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 
+// ── The headline boxes grade the CALL, not the outcome ─────────────────
+//
+// They said "IND won 38%" and went red because Indianapolis lost — but 38%
+// IS the call that Indianapolis loses, so a correct read was marked wrong.
+// The over box had the same fault the other way: 46% with the game going
+// over is a miss, and it went green.
+if (cards.length) {
+  const c = cards[0];
+  const keep = { s: c.scores, fh: c.final_home, fa: c.final_away };
+  if (keep.s && keep.s.home_win && keep.s.over) {
+    V.tab = 'games'; V.game = c.game_id; V.gameTab = 'out'; V.week = null;
+    // An underdog home team: the model leans AWAY.
+    c.scores = Object.assign({}, keep.s, {
+      home_win: { n: 133, pct: 37.4, lo: 32.5, hi: 42.5 },
+      over: { n: 162, pct: 45.5, lo: 41.0, hi: 51.4 }, total: 48 });
+
+    c.final_home = null; c.final_away = null; render();
+    const live = app();
+    ok('the box names the side we lean, not always the home team',
+       live.indexOf(c.away + ' to win') >= 0,
+       'expected ' + c.away + ' to win');
+    ok('with that side\u2019s probability, not its complement',
+       live.indexOf('>63%<') >= 0);
+    ok('and the total box names the side too',
+       live.indexOf('Under 48') >= 0 && live.indexOf('>55%<') >= 0);
+
+    // The away team wins and the game goes UNDER: both calls right.
+    c.final_home = 10; c.final_away = 20; render();
+    const right = app();
+    ok('leaning away and the away team winning is green',
+       (right.match(/box--good/g) || []).length === 2,
+       (right.match(/box--good/g) || []).length + ' green, '
+       + (right.match(/box--bad/g) || []).length + ' red');
+
+    // The home team wins and it goes OVER: both calls wrong.
+    c.final_home = 40; c.final_away = 30; render();
+    const wrong = app();
+    ok('and the home team winning after we leaned away is red',
+       (wrong.match(/box--bad/g) || []).length === 2,
+       (wrong.match(/box--good/g) || []).length + ' green, '
+       + (wrong.match(/box--bad/g) || []).length + ' red');
+    ok('which is the case that used to be colored backwards',
+       wrong.indexOf('box--good') < 0);
+
+    // A tie and a push are neither right nor wrong.
+    c.final_home = 24; c.final_away = 24; render();
+    ok('a tie is neither color', app().indexOf('it ended level') >= 0);
+    ok('and a push says so', app().indexOf(', push') >= 0);
+  }
+  c.scores = keep.s; c.final_home = keep.fh; c.final_away = keep.fa;
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
 done();

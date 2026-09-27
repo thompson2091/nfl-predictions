@@ -2308,10 +2308,41 @@ function v3GameScores(c) {
   // score nobody lists.
   const anyLanded = played && (d.scores || []).some(
     x => x.home === fh && x.away === fa);
-  // The two headline boxes become right-or-wrong once the game is in.
-  const wonTone = !played ? '' : (fh > fa ? ' box--good' : ' box--bad');
-  const overTone = !played ? ''
-    : ((fh + fa) > d.total ? ' box--good' : ' box--bad');
+  // THE SIDE WE LEAN, AND WHETHER THAT SIDE WAS RIGHT.
+  //
+  // These read as a grade and were not one. They said "IND won 38%" and went
+  // red because Indianapolis lost — but 38% IS the call that Indianapolis
+  // loses, so the box marked a correct read wrong. The over box had the same
+  // fault pointing the other way: 46% with the game going over is a MISS,
+  // and it went green. Both were coloring the outcome rather than the
+  // prediction, which is the one thing a green-or-red box means.
+  //
+  // So each box states the side it favors. Under 50% for the home team is a
+  // claim about the away team, and printing it as a home-team number asked
+  // the reader to do the flip and then graded them on it.
+  const hw = d.home_win.pct;
+  const homeFav = hw >= 50;
+  const winTeam = homeFav ? d.home : d.away;
+  const winPct = homeFav ? hw : 100 - hw;
+  // The interval belongs to the side being shown: the away band is the home
+  // band mirrored, not the same two numbers under a different name.
+  const winLo = homeFav ? d.home_win.lo : 100 - d.home_win.hi;
+  const winHi = homeFav ? d.home_win.hi : 100 - d.home_win.lo;
+  const tied = played && fh === fa;
+  const winHit = played && !tied && (homeFav ? fh > fa : fa > fh);
+
+  const overFav = d.over.pct >= 50;
+  const totPct = overFav ? d.over.pct : 100 - d.over.pct;
+  const totLo = overFav ? d.over.lo : 100 - d.over.hi;
+  const totHi = overFav ? d.over.hi : 100 - d.over.lo;
+  const finalTot = played ? fh + fa : null;
+  const push = played && finalTot === d.total;
+  const wentOver = played && finalTot > d.total;
+  const totHit = played && !push && (overFav === wentOver);
+
+  // A tie and a push are neither right nor wrong, so they are neither color.
+  const wonTone = (!played || tied) ? '' : (winHit ? ' box--good' : ' box--bad');
+  const overTone = (!played || push) ? '' : (totHit ? ' box--good' : ' box--bad');
 
   return '<div class="card"><div class="eyebrow">Based on</div>'
     + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:4px">'
@@ -2325,19 +2356,21 @@ function v3GameScores(c) {
          + '\u2014 ' + d.scores_n + ' games \u2014 because a scoreline needs far '
          + 'more history behind it than a margin band does.</p>' : '')
     + '<div class="two" style="margin-top:12px">'
-    + '<div class="box' + wonTone + '"><span class="eyebrow">' + esc(d.home)
-    + ' won</span><b class="num">' + d.home_win.pct.toFixed(0) + '%</b>'
+    + '<div class="box' + wonTone + '"><span class="eyebrow">' + esc(winTeam)
+    + ' to win</span><b class="num">' + winPct.toFixed(0) + '%</b>'
     + '<span class="sub num">'
-    + (played ? (fh > fa ? esc(d.home) + ' did' : esc(d.home) + ' did not')
-              : d.home_win.lo.toFixed(0) + '\u2013'
-                + d.home_win.hi.toFixed(0) + '% range') + '</span></div>'
-    + '<div class="box' + overTone + '"><span class="eyebrow">Went over '
-    + d.total + '</span><b class="num">' + d.over.pct.toFixed(0) + '%</b>'
+    + (played ? (tied ? 'it ended level'
+                 : winHit ? esc(winTeam) + ' did' : esc(winTeam) + ' did not')
+              : winLo.toFixed(0) + '\u2013' + winHi.toFixed(0) + '% range')
+    + '</span></div>'
+    + '<div class="box' + overTone + '"><span class="eyebrow">'
+    + (overFav ? 'Over ' : 'Under ') + d.total + '</span>'
+    + '<b class="num">' + totPct.toFixed(0) + '%</b>'
     + '<span class="sub num">'
-    + (played ? 'finished ' + (fh + fa) + ((fh + fa) > d.total ? ', over'
-                                                              : ', under')
-              : d.over.lo.toFixed(0) + '\u2013' + d.over.hi.toFixed(0)
-                + '% range') + '</span></div></div>'
+    + (played ? 'finished ' + finalTot
+                + (push ? ', push' : wentOver ? ', over' : ', under')
+              : totLo.toFixed(0) + '\u2013' + totHi.toFixed(0) + '% range')
+    + '</span></div></div>'
     + '<p class="help">Average result in those games: '
     + d.mean_total + ' total points, winner by '
     + Math.abs(d.mean_margin) + '.</p></div>'

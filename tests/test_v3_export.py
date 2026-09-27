@@ -318,6 +318,12 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a player facing the money is told so, not merely told there is money",
                  "some board row sits in a game with money on it",
                  "every row carries its place in the order",
+                 "the box names the side we lean, not always the home team",
+                 "leaning away and the away team winning is green",
+                 "and the home team winning after we leaned away is red",
+                 "which is the case that used to be colored backwards",
+                 "a tie is neither color",
+                 "and a push says so",
                  "the list is in the order the model ranked them",
                  "and the proximity tint is gone with the ordering it "
                  "belonged to",
