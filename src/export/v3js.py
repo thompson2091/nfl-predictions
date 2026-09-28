@@ -2165,7 +2165,66 @@ function v3GameOdds(c, gid) {
     + v3PublicMoney(gid)
     // Directly under it, because it is the other half of the same feed: the
     // bars above are the ticket share and this is the dollar share.
-    + v3Sharp(gid);
+    + v3Sharp(gid)
+    + v3Angles(c);
+}
+
+// WHAT THE SPLITS SAY, AND WHAT THEY ARE WORTH.
+//
+// An angle is "teams off a 20+ loss are 7-1 against the spread this year" —
+// the kind of line that travels. That one is true and it is eight games.
+// Over 504 team-weeks since 2015 the same split covers 52.6%, break-even at
+// -110 is 52.38%, and the interval runs 48.2% to 56.9%. Twenty angles were
+// measured together and NOT ONE clears at the lower bound.
+//
+// So the long-run record leads and the season sits in brackets behind it,
+// which is the opposite of how these are usually quoted and the only ordering
+// that survives being read quickly. `since` is the column that will matter
+// later: an angle added because it was hot is graded from the day it was
+// added, where nothing can have been selected on.
+function v3Angles(c) {
+  const A = DATA.angles || {};
+  const hits = (A.week || {});
+  const mine = [];
+  [c.away, c.home].forEach(t => (hits[t] || []).forEach(
+    id => mine.push([t, id])));
+  if (!mine.length || !(A.rows || []).length) return '';
+  const by = {};
+  (A.rows || []).forEach(r => { by[r.id] = r; });
+  const be = has(A.break_even) ? A.break_even : 0.5238;
+  const rec = d => d ? d.w + '-' + d.l : null;
+  const rows = mine.map(pair => {
+    const r = by[pair[0] && pair[1] ? pair[1] : ''];
+    if (!r) return '';
+    const a = r.all;
+    const good = a && a.lo > be;
+    return '<div class="angle">'
+      + '<div class="angle__h"><b>' + esc(pair[0]) + ' \u00b7 '
+      + esc(r.label) + '</b>'
+      + '<span class="num ' + (good ? 'good' : '') + '">'
+      + (a ? (a.pct * 100).toFixed(1) + '%' : '\u2014') + '</span></div>'
+      + '<div class="angle__f num">'
+      + (a ? rec(a) + ' since 2015 \u00b7 ' + (a.lo * 100).toFixed(0)
+             + '\u2013' + (a.hi * 100).toFixed(0) + '%' : '')
+      + (r.season && r.season.n ? ' \u00b7 ' + rec(r.season) + ' this year'
+         : '')
+      + (r.since && r.since.n ? ' \u00b7 ' + rec(r.since) + ' since added'
+         : '')
+      + '</div></div>';
+  }).filter(Boolean).join('');
+  if (!rows) return '';
+  return '<h2 class="h1" style="font-size:19px;line-height:24px;'
+    + 'margin-top:20px">Angles on this game</h2>'
+    + '<div class="card">' + rows
+    // THE DENOMINATOR IS THE FINDING, so it is on the card rather than in a
+    // footnote. Without it a reader sees four splits and no idea that sixteen
+    // others were measured at the same time and said nothing.
+    + '<p class="help" style="margin-top:10px">Break-even at \u2212110 is '
+    + (be * 100).toFixed(1) + '%. Of the ' + (A.rows || []).length
+    + ' angles measured together, <b style="color:var(--ink)">'
+    + (A.rows || []).filter(r => r.all && r.all.lo > be).length
+    + '</b> clear it once the interval is taken into account. A season\u2019s '
+    + 'worth of any one of these is a handful of games.</p></div>';
 }
 
 // WHO IS ON THE FIELD, THEN HOW THE UNITS COMPARE.

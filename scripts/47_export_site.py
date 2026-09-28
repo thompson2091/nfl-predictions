@@ -437,6 +437,38 @@ def _flag_role_doubt(payload: dict, market: str) -> None:
             if lead["proj"] > r["proj"]:
                 r["role_doubt"] = True
 
+
+def _angles_block(payload: dict, season: int | None, week: int | None) -> None:
+    """Every ATS angle's record, and which of them each team carries.
+
+    Shipped WHOLE, failures included. A board of the angles that currently
+    clear is a board of survivors: with twenty splits at 95% confidence one is
+    expected to look good by chance, so the twenty is the finding and any
+    subset of it is a sales pitch. See `src.evaluation.angles` for why nothing
+    is ever dropped for going cold.
+    """
+    try:
+        import polars as pl
+
+        from src.evaluation import angles as A
+
+        sched = pl.read_parquet(get_path("raw") / "schedules.parquet")
+        payload["angles"] = {
+            "break_even": A.BREAK_EVEN,
+            "rows": A.measure(sched, season),
+            "week": (A.qualifying(sched, season, week)
+                     if season and week else {}),
+        }
+    except Exception as e:                                       # noqa: BLE001
+        # Never fatal: the board is the product and this is context on it.
+        payload["angles"] = {"break_even": A_BE_FALLBACK, "rows": [],
+                             "week": {}, "problem": str(e)[:200]}
+
+
+#: Only reached if the import above failed, in which case the real one is
+#: unavailable to read it from.
+A_BE_FALLBACK = 0.5238
+
 def _mark_consensus_lines(payload: dict) -> None:
     """Which of a player's posted lines is the one to lead with.
 
@@ -1783,6 +1815,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     _attach_ou_shortlists(payload)
     # And after that, because a row showing only an opening line is a line
     # like any other and belongs in the count.
+    _angles_block(payload, s, w)
     _mark_consensus_lines(payload)
     payload["brand"] = brand
     payload["season"] = s

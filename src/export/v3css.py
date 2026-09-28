@@ -184,6 +184,14 @@ button{cursor:pointer}
    stick the bar that far down the screen and leave scrolling content showing
    through the gap. */
 .pbar--free{padding-top:10px}
+
+/* ---- ATS angles ---- */
+.angle{padding:8px 0;border-top:1px solid var(--line3)}
+.angle:first-child{border-top:0}
+.angle__h{display:flex;align-items:baseline;justify-content:space-between;
+  gap:10px;font-size:15px}
+.angle__h b{font-weight:600}
+.angle__f{margin-top:2px;font-size:12px;line-height:16px;color:var(--mut)}
 .pbar .seg button{height:32px;font-size:13px}
 .pbar__row{display:flex;align-items:center;gap:6px}
 .pbar .search{flex:1;min-width:0;margin-top:0}
