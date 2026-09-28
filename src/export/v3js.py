@@ -3412,9 +3412,17 @@ function v3AnglesPage() {
     + '<b class="num">' + rows.length + '</b></div>'
     + '<div class="stat"><span class="eyebrow">Clear the vig</span>'
     + '<b class="num' + (clears ? ' good' : '') + '">' + clears + '</b></div>'
-    + '<div class="stat"><span class="eyebrow">Break-even</span>'
-    + '<b class="num">' + (be * 100).toFixed(1) + '%</b></div>'
+    + '<div class="stat"><span class="eyebrow">Chance alone</span>'
+    + '<b class="num">' + (rows.length * 0.05).toFixed(1) + '</b></div>'
     + '</div></div>'
+    // "3 of 50 clear" reads as a finding until you know the expectation was
+    // 2.5. At 95% confidence one split in twenty clears by chance, so the
+    // count that would arrive from nothing at all belongs beside the count
+    // that did.
+    + '<p class="help">At 95% confidence about one split in twenty clears '
+    + 'BY CHANCE, so ' + (rows.length * 0.05).toFixed(1) + ' of these '
+    + 'would be expected to look good with no edge anywhere. '
+    + (clears ? clears + ' do.' : 'None do.') + '</p>'
     + '<div class="card" style="margin-top:12px">'
     + rows.map(r => {
         const a = r.all;

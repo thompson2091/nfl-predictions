@@ -160,3 +160,42 @@ def test_only_the_long_run_can_be_tinted():
         "the season column can be tinted; it must never be")
     assert "a.lo > be" in body, (
         "the tint is no longer tied to the interval clearing break-even")
+
+
+def test_no_angle_reads_the_future(sched):
+    """NEXT WEEK'S CLOSING LINE IS THIS WEEK'S RESULT, WEARING A HAT.
+
+    Two angles were written against `next_spread` on the reasoning that next
+    week's line is posted before this week kicks off. That is true of
+    look-ahead lines and false of this data: `spread_line` is each game's
+    CLOSING number, set after the previous week has been played. "Favored,
+    underdog next week" came back at 43.6% over 1,049 games and its mirror at
+    55.4% — a nine-point edge across eleven seasons in the most efficient
+    market there is, which is what a leak looks like when it is working.
+
+    Nothing may reach forward again. A lag is fine; a lead is the outcome.
+    """
+    tg = A.team_weeks(sched)
+    assert "next_spread" not in tg.columns, (
+        "a forward-looking column is back on the frame")
+    import inspect
+    src = inspect.getsource(A)
+    body = src[src.index("ANGLES: tuple"):src.index("def team_weeks")]
+    assert "shift(-1)" not in body and "next_" not in body, (
+        "an angle predicate reaches into a later week")
+
+
+def test_the_board_states_its_own_false_positive_budget(sched):
+    """"3 of 50 clear" reads as a finding until you know the expectation was
+    2.5. With fifty splits at 95% confidence, a couple clearing is what chance
+    alone produces."""
+    rows = A.measure(sched)
+    expected = len(rows) * A.EXPECTED_FALSE_POSITIVES
+    assert expected > 1.0, (
+        "with this many angles the expected count of chance clears is under "
+        "one, so the warning on the board would be overstating it")
+    from src.export import v3js
+    src = v3js.js()
+    i = src.index("function v3AnglesPage")
+    assert "by chance" in src[i:i + 4500], (
+        "the board does not say how many clears chance alone would produce")

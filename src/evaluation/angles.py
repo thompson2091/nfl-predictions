@@ -61,6 +61,8 @@ class Angle:
 #: THE FOUNDING TWENTY, all registered the same day, none chosen for being hot.
 #: Their all-time record IS their evidence, because nothing selected them.
 _REG = date(2026, 9, 28)
+#: The second batch, registered together the same evening.
+_REG2 = date(2026, 9, 28)
 
 ANGLES: tuple[Angle, ...] = (
     Angle("blowout_loss", "Off a 20+ loss",
@@ -115,7 +117,93 @@ ANGLES: tuple[Angle, ...] = (
     Angle("indoors", "Indoors",
           "The game is indoors.", _REG,
           pl.col("roof").is_in(["dome", "closed"])),
+
+    # ---- THE SECOND THIRTY, registered together on the same day -----------
+    #
+    # Registered, not mined: none was chosen for being hot, and all thirty are
+    # measured whatever they say. That matters more at fifty than at twenty —
+    # see `EXPECTED_FALSE_POSITIVES` below.
+    Angle("three_losses", "Off three straight losses",
+          "{team} has lost three in a row.", _REG2,
+          (pl.col("prev_margin") < 0) & (pl.col("prev2_margin") < 0)
+          & (pl.col("prev3_margin") < 0)),
+    Angle("three_wins", "Off three straight wins",
+          "{team} has won three in a row.", _REG2,
+          (pl.col("prev_margin") > 0) & (pl.col("prev2_margin") > 0)
+          & (pl.col("prev3_margin") > 0)),
+    Angle("off_cover", "Off a cover", "{team} covered last week.", _REG2,
+          pl.col("prev_cover")),
+    Angle("off_ats_loss", "Off a non-cover",
+          "{team} did not cover last week.", _REG2, ~pl.col("prev_cover")),
+    Angle("two_covers", "Off two straight covers",
+          "{team} has covered two in a row.", _REG2,
+          pl.col("prev_cover") & pl.col("prev2_cover")),
+    Angle("two_non_covers", "Off two straight non-covers",
+          "{team} has failed to cover twice.", _REG2,
+          (~pl.col("prev_cover")) & (~pl.col("prev2_cover"))),
+    Angle("close_loss", "Off a one-score loss",
+          "{team} lost by {detail} last week.", _REG2,
+          (pl.col("prev_margin") < 0) & (pl.col("prev_margin") >= -8)),
+    Angle("close_win", "Off a one-score win",
+          "{team} won by {detail} last week.", _REG2,
+          (pl.col("prev_margin") > 0) & (pl.col("prev_margin") <= 8)),
+    Angle("scored_30", "Off scoring 30+",
+          "{team} scored {detail} last week.", _REG2, pl.col("prev_pf") >= 30),
+    Angle("scored_under_14", "Off scoring under 14",
+          "{team} scored {detail} last week.", _REG2, pl.col("prev_pf") < 14),
+    Angle("allowed_30", "Off allowing 30+",
+          "{team} allowed {detail} last week.", _REG2, pl.col("prev_pa") >= 30),
+    Angle("allowed_under_14", "Off allowing under 14",
+          "{team} allowed {detail} last week.", _REG2, pl.col("prev_pa") < 14),
+    Angle("third_road", "Third straight road game",
+          "{team} is on the road a third straight week.", _REG2,
+          (~pl.col("at_home")) & (~pl.col("prev_home"))
+          & (~pl.col("prev2_home"))),
+    Angle("second_road", "Second straight road game",
+          "{team} is on the road again.", _REG2,
+          (~pl.col("at_home")) & (~pl.col("prev_home"))),
+    Angle("home_after_road", "Home after two road games",
+          "{team} is home after two away.", _REG2,
+          pl.col("at_home") & (~pl.col("prev_home")) & (~pl.col("prev2_home"))),
+    Angle("rematch", "Rematch with last week's opponent",
+          "{team} plays the same opponent again.", _REG2,
+          pl.col("opp") == pl.col("prev_opp")),
+    Angle("qb_change", "New starting quarterback",
+          "{team} has a different starter under center.", _REG2,
+          pl.col("qb_change") & pl.col("prev_qb").is_not_null()),
+    Angle("spread_3", "Line of exactly 3",
+          "The line is 3.", _REG2, pl.col("my_spread").abs() == 3),
+    Angle("spread_7", "Line of exactly 7",
+          "The line is 7.", _REG2, pl.col("my_spread").abs() == 7),
+    Angle("pickem", "Pick'em or within a point",
+          "The line is a pick'em.", _REG2, pl.col("my_spread").abs() <= 1),
+    Angle("dog_3_or_less", "Underdog of 3 or less",
+          "{team} is getting {detail}.", _REG2,
+          (pl.col("my_spread") < 0) & (pl.col("my_spread") >= -3)),
+    Angle("fav_3_or_less", "Favored by 3 or less",
+          "{team} is laying {detail}.", _REG2,
+          (pl.col("my_spread") > 0) & (pl.col("my_spread") <= 3)),
+    Angle("thursday", "On Thursday",
+          "{team} plays Thursday.", _REG2, pl.col("weekday") == "Thursday"),
+    Angle("monday", "On Monday",
+          "{team} plays Monday.", _REG2, pl.col("weekday") == "Monday"),
+    Angle("early_season", "Weeks 1-4",
+          "It is early in the season.", _REG2, pl.col("week") <= 4),
+    Angle("late_season", "Week 15 onward",
+          "It is late in the season.", _REG2, pl.col("week") >= 15),
+    Angle("on_grass", "On grass",
+          "The game is on grass.", _REG2,
+          pl.col("surface").str.contains("grass")),
+    Angle("div_fav", "Divisional favorite",
+          "{team} is favored in a divisional game.", _REG2,
+          pl.col("div_game") & (pl.col("my_spread") > 0)),
 )
+
+#: WITH FIFTY SPLITS AT 95% CONFIDENCE, TWO OR THREE ARE EXPECTED TO CLEAR BY
+#: CHANCE ALONE. That is not a caveat on the board, it is a number the board
+#: has to print beside the count that actually cleared — "3 of 50 clear" reads
+#: as a finding until you know the expectation was 2.5.
+EXPECTED_FALSE_POSITIVES = 0.05
 
 
 def team_weeks(schedules: pl.DataFrame) -> pl.DataFrame:
@@ -137,6 +225,10 @@ def team_weeks(schedules: pl.DataFrame) -> pl.DataFrame:
             pl.col(f"{o}_team").alias("opp"),
             pl.lit(is_home).alias("at_home"),
             (sign * pl.col("result")).alias("margin"),
+            pl.col(f"{t}_score").alias("pf"), pl.col(f"{o}_score").alias("pa"),
+            pl.col(f"{t}_qb_id").alias("qb"),
+            pl.col(f"{t}_coach").alias("coach"),
+            pl.col("surface"), pl.col("weekday"),
             (sign * (pl.col("result") - pl.col("spread_line"))).alias("cover_by"),
             # `spread_line` is the HOME spread, so the away side is its
             # negation; positive means this team is favored.
@@ -150,13 +242,49 @@ def team_weeks(schedules: pl.DataFrame) -> pl.DataFrame:
         ])
 
     tg = pl.concat([side(True), side(False)]).sort(["season", "team", "week"])
-    return tg.with_columns([
-        pl.col("margin").shift(1).over(["season", "team"]).alias("prev_margin"),
-        pl.col("margin").shift(2).over(["season", "team"]).alias("prev2_margin"),
-        pl.col("overtime").shift(1).over(["season", "team"]).alias("prev_ot"),
+    tg = tg.with_columns([
+        (pl.col("cover_by") > 0).alias("covered"),
         (pl.col("gametime").str.slice(0, 2).cast(pl.Int32, strict=False) >= 20)
         .alias("prime"),
-        (pl.col("cover_by") > 0).alias("covered"),
+    ])
+    # LAGS ARE TAKEN OVER (season, team) AND NEVER ACROSS ONE. A team's last
+    # game in January is not the one before its opener.
+    lag = lambda c, n=1: pl.col(c).shift(n).over(["season", "team"])
+    tg = tg.with_columns([
+        lag("margin").alias("prev_margin"),
+        lag("margin", 2).alias("prev2_margin"),
+        lag("margin", 3).alias("prev3_margin"),
+        lag("overtime").alias("prev_ot"),
+        lag("covered").alias("prev_cover"),
+        lag("covered", 2).alias("prev2_cover"),
+        lag("pf").alias("prev_pf"),
+        lag("pa").alias("prev_pa"),
+        lag("at_home").alias("prev_home"),
+        lag("at_home", 2).alias("prev2_home"),
+        lag("opp").alias("prev_opp"),
+        lag("qb").alias("prev_qb"),
+        lag("my_spread").alias("prev_spread"),
+        # NEXT WEEK'S SPREAD IS NOT AVAILABLE AND THE COLUMN IS GONE.
+        #
+        # It was here for the look-ahead and sandwich spots, on the reasoning
+        # that next week's line is posted before this week kicks off. That is
+        # true of look-ahead lines and false of this data: `spread_line` is
+        # each game's CLOSING number, and next week's close is set after this
+        # week's result is known. So a team whose line improves next week is
+        # largely a team that played well this week, and conditioning on it
+        # reads the outcome being predicted.
+        #
+        # The size of it is what gave it away. "Favored, underdog next week"
+        # came back at 43.6% over 1,049 games (z=-4.17) and the mirror,
+        # "underdog, favorite next week", at 55.4% (z=+3.46) — a nine-point
+        # ATS edge persisting for eleven seasons in the most efficient market
+        # there is. The symmetry is the tell: both sides point at the team
+        # having already played the game.
+    ])
+    return tg.with_columns([
+        (pl.col("qb") != pl.col("prev_qb")).alias("qb_change"),
+        # Beat the same opponent already this season, or lost to them.
+        pl.col("week").alias("_wk"),
     ])
 
 
