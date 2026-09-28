@@ -1,5 +1,5 @@
 // Pick Six — offline shell. Generated; do not edit.
-const CACHE = 'picksix-v3-20260928T230127+0000';
+const CACHE = 'picksix-v3-20260928T233029+0000';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
