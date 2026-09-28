@@ -41,7 +41,11 @@ const V3TABS = [
   ['games', 'Games', 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4'],
   ['props', 'Props', 'M12 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM5 21c0-3.9 3.1-6 7-6s7 2.1 7 6'],
   ['picks', 'Picks', 'M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2zM9 9h6M9 13h4'],
-  ['ladder', 'Ladder', 'M7 3v18M17 3v18M7 7h10M7 12h10M7 17h10'],
+  // Replaced the let-it-ride ladder. That was a calculator — it took a
+  // stake and a price and multiplied; nothing in it was measured. This
+  // is the opposite: twenty splits, every one of them graded, and the
+  // headline is that none of them clears.
+  ['angles', 'Angles', 'M4 19h16M4 19l5-7 4 3 6-9'],
 ];
 
 // key, button label, what the bet pays on, the question the screen answers.
@@ -232,7 +236,7 @@ function v3Weeks() {
   // Slip and Ladder do not vary by week, so they offer none — and because
   // this one function decides, the header hides the control and `v3Do` drops
   // a stale week on the way in, from the same answer.
-  if (V.tab === 'picks' || V.tab === 'ladder') return [];
+  if (V.tab === 'picks' || V.tab === 'angles') return [];
   if (V.tab === 'games') {
     return Object.keys(((DATA.games || {}).past) || {})
       .map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
@@ -352,7 +356,7 @@ function v3Screen() {
   switch (V.tab) {
     case 'props': return v3Week();
     case 'picks': return v3Picks();
-    case 'ladder': return v3Ladder();
+    case 'angles': return v3AnglesPage();
     default: return V.game ? v3Game(V.game) : v3Games();
   }
 }
@@ -2197,20 +2201,35 @@ function v3Angles(c) {
     const r = by[pair[0] && pair[1] ? pair[1] : ''];
     if (!r) return '';
     const a = r.all;
+    // COLOR TRACKS THE LONG RUN ONLY, and only once the interval clears.
+    // Tinting a hot season would put green on eight games, which is the exact
+    // reading the card exists to prevent.
     const good = a && a.lo > be;
+    // THIS YEAR LEADS, WITH ITS RECORD UNDER IT. The season number is the one
+    // that gets quoted, so hiding it in a footnote just means it gets read
+    // somewhere else without the denominator. "12.5%" persuades; "12.5%" over
+    // "1-7" cannot, because the sample is sitting under the claim.
+    const cell = (eyebrow, d, tone) => '<div class="cell">'
+      + '<span class="eyebrow">' + eyebrow + '</span>'
+      + '<b class="num' + (tone ? ' good' : '') + '">'
+      + (d && d.n ? (d.pct * 100).toFixed(1) + '%' : '\u2014') + '</b>'
+      + '<span class="sub num">' + (d && d.n ? d.w + '-' + d.l : 'no games')
+      + '</span></div>';
     return '<div class="angle">'
-      + '<div class="angle__h"><b>' + esc(pair[0]) + ' \u00b7 '
-      + esc(r.label) + '</b>'
-      + '<span class="num ' + (good ? 'good' : '') + '">'
-      + (a ? (a.pct * 100).toFixed(1) + '%' : '\u2014') + '</span></div>'
-      + '<div class="angle__f num">'
-      + (a ? rec(a) + ' since 2015 \u00b7 ' + (a.lo * 100).toFixed(0)
-             + '\u2013' + (a.hi * 100).toFixed(0) + '%' : '')
-      + (r.season && r.season.n ? ' \u00b7 ' + rec(r.season) + ' this year'
-         : '')
-      + (r.since && r.since.n ? ' \u00b7 ' + rec(r.since) + ' since added'
-         : '')
-      + '</div></div>';
+      + '<div class="angle__t"><b>' + esc(pair[0]) + ' \u00b7 '
+      + esc(r.label) + '</b></div>'
+      + '<div class="angle__s">'
+      + cell('This year', r.season, false)
+      + cell('Since 2015', a, good)
+      // Only where it has run long enough to say anything. An angle added
+      // this week has nothing here yet, and an empty column reads as a
+      // missing number rather than as a test that has not started.
+      + (r.since && r.since.n ? cell('Since added', r.since, false) : '')
+      + '</div>'
+      + '<div class="angle__f num">' + (a
+        ? (a.lo * 100).toFixed(0) + '\u2013' + (a.hi * 100).toFixed(0)
+          + '% either way on ' + a.n + ' games'
+        : '') + '</div></div>';
   }).filter(Boolean).join('');
   if (!rows) return '';
   return '<h2 class="h1" style="font-size:19px;line-height:24px;'
@@ -3350,6 +3369,82 @@ function v3LadderSummary() {
     + Math.max(1, Math.round(1 / p)) + '.';
 }
 
+
+// EVERY ANGLE, INCLUDING THE ONES THAT SAY NOTHING.
+//
+// The card on a game shows the two or three splits those teams carry. This is
+// the whole board, and it exists because the denominator is the finding:
+// twenty were measured together and a reader shown only the top few has no
+// way to know that. With twenty splits at 95% confidence one is expected to
+// look good by chance, so zero clearing is a clean null rather than a
+// disappointing one.
+//
+// Sorted by the LONG RUN, not by this season. Sorting by the hot column would
+// rebuild the thing this page is an answer to.
+function v3AnglesPage() {
+  const A = DATA.angles || {};
+  const rows = (A.rows || []).slice();
+  const be = has(A.break_even) ? A.break_even : 0.5238;
+  if (!rows.length) {
+    return '<div class="wrap"><h1 class="h1">Angles</h1>'
+      + '<div class="card"><p class="lede" style="font-size:15px">Nothing '
+      + 'measured yet. This needs a graded schedule on disk.</p></div></div>';
+  }
+  const clears = rows.filter(r => r.all && r.all.lo > be).length;
+  const cell = (eyebrow, d, tone) => '<div class="cell">'
+    + '<span class="eyebrow">' + eyebrow + '</span>'
+    + '<b class="num' + (tone ? ' good' : '') + '">'
+    + (d && d.n ? (d.pct * 100).toFixed(1) + '%' : '\u2014') + '</b>'
+    + '<span class="sub num">' + (d && d.n ? d.w + '-' + d.l : 'no games')
+    + '</span></div>';
+  return '<div class="wrap">'
+    + '<h1 class="h1">Angles</h1>'
+    + '<p class="lede">Splits people bet on, every one of them graded against '
+    + 'the closing spread. Break-even at \u2212110 is '
+    + (be * 100).toFixed(1) + '%.</p>'
+    + '<div class="card"><div class="stats">'
+    + '<div class="stat"><span class="eyebrow">Tracked</span>'
+    + '<b class="num">' + rows.length + '</b></div>'
+    + '<div class="stat"><span class="eyebrow">Clear the vig</span>'
+    + '<b class="num' + (clears ? ' good' : '') + '">' + clears + '</b></div>'
+    + '<div class="stat"><span class="eyebrow">Break-even</span>'
+    + '<b class="num">' + (be * 100).toFixed(1) + '%</b></div>'
+    + '</div></div>'
+    + '<div class="card" style="margin-top:12px">'
+    + rows.map(r => {
+        const a = r.all;
+        const good = a && a.lo > be;
+        return '<div class="angle">'
+          + '<div class="angle__t"><b>' + esc(r.label) + '</b>'
+          // A row added because it was hot says so on its face. Its all-time
+          // record contains the stretch that got it noticed, so it is not
+          // evidence, and "Since added" is the column that will be.
+          + (r.mined ? ' <span class="tag tag--warn">added later</span>' : '')
+          + '</div>'
+          + '<div class="angle__s">'
+          + cell('This year', r.season, false)
+          + cell('Since 2015', a, good)
+          + (r.since && r.since.n ? cell('Since added', r.since, false) : '')
+          + '</div>'
+          + '<div class="angle__f num">' + (a
+             ? (a.lo * 100).toFixed(0) + '\u2013' + (a.hi * 100).toFixed(0)
+               + '% either way on ' + a.n + ' games'
+             : '') + '</div></div>';
+      }).join('')
+    + '</div>'
+    + '<div class="card" style="margin-top:12px">'
+    + '<div class="name">Why none of them is a system</div>'
+    + '<p class="lede" style="font-size:15px;line-height:20px">A split has to '
+    + 'clear ' + (be * 100).toFixed(1) + '% to pay for the vig, and at three '
+    + 'to five hundred games an interval runs eight points wide \u2014 wide '
+    + 'enough to contain both "no edge" and "a good edge". Every angle here '
+    + 'has been public for decades, which is the other half of it: the price '
+    + 'already knows.</p>'
+    + '<p class="help">Nothing is dropped for going cold. A split that '
+    + 'reverted is the most useful row on this page, and a board with the '
+    + 'losers removed is a board of survivors.</p></div>'
+    + '</div>';
+}
 function v3Ladder() {
   return '<div class="wrap"><h1 class="h1">The ladder</h1>'
     + '<p class="lede">Start small. Each time a bet wins, the whole amount '

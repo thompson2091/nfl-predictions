@@ -48,8 +48,8 @@ ok('the header names the brand', app().indexOf(DATA.brand) >= 0, DATA.brand);
 ok('the board offers the week picker', app().indexOf('data-v3week') >= 0);
 V.tab = 'picks'; render();
 ok('and the slip does not', app().indexOf('data-v3week') < 0);
-V.tab = 'ladder'; render();
-ok('nor the ladder', app().indexOf('data-v3week') < 0);
+V.tab = 'angles'; render();
+ok('nor the angles board', app().indexOf('data-v3week') < 0);
 V.tab = 'props'; render();
 
 // ── Every tab ───────────────────────────────────────────────────────────
@@ -692,29 +692,35 @@ if (cards.length) {
 // to answer — what does MY bet at MY price turn into — could be asked twelve
 // ways. The table is patched in place on each keystroke, never re-rendered,
 // or the field being typed into is replaced and loses focus.
-V.tab = 'ladder'; V.stake = 10; V.lodds = 100; V.rungs = 6; render();
+V.tab = 'angles'; render();
 const L = () => app();
-ok('the ladder offers input fields', L().indexOf('data-v3l="stake"') >= 0
-   && L().indexOf('data-v3l="odds"') >= 0
-   && L().indexOf('data-v3l="rungs"') >= 0);
-const rungsOf = h => (h.match(/class="rung/g) || []).length;
-const six = rungsOf(L());
-V.rungs = 10;
-ok('changing the step count changes the table',
-   (x.v3Rungs().match(/class="rung/g) || []).length === 10);
-V.rungs = 6;
-// $10 at +100 doubles each step: six wins is $640.
-ok('the maths follows the inputs', x.v3Rungs().indexOf('$640.00') >= 0,
-   'ten dollars at even money, six times');
-V.lodds = -150;
-ok('and follows the price', x.v3Rungs().indexOf('$640.00') < 0);
-V.lodds = 100;
-// A half-typed price must not snap the table to something absurd.
-ok('a price under 100 is ignored rather than coerced',
-   x.v3Num('-1') === -1);
-ok('and the fields parse what a person types',
-   x.v3Num('$25') === 25 && x.v3Num('+150') === 150
-   && x.v3Num('-150') === -150);
+ok('the angles board lists every angle tracked',
+   (L().match(/class="angle"/g) || []).length
+   === ((DATA.angles || {}).rows || []).length,
+   (L().match(/class="angle"/g) || []).length + ' drawn, '
+   + (((DATA.angles || {}).rows || []).length) + ' measured');
+// THE DENOMINATOR IS THE FINDING. A board showing only what currently clears
+// is a board of survivors, so the count of both has to be on the page.
+ok('and says how many clear the vig', L().indexOf('Clear the vig') >= 0);
+ok('and what clearing means', L().indexOf('Break-even') >= 0);
+// Sorted by the long run. Sorting by the hot column rebuilds the thing this
+// page is an answer to.
+{
+  const rs = ((DATA.angles || {}).rows || []).map(r => r.all && r.all.pct);
+  const sorted = rs.slice().sort((a, b) => b - a);
+  ok('sorted by the long run rather than by this season',
+     JSON.stringify(rs) === JSON.stringify(sorted));
+}
+// Losers stay. Dropping them is how a board becomes a sales pitch.
+{
+  const rs = ((DATA.angles || {}).rows || []);
+  const losing = rs.filter(r => r.all && r.all.pct < 0.5).length;
+  ok('losing angles are on the board too', losing > 0 || rs.length === 0,
+     losing + ' below 50%');
+}
+// The math the old ladder page did is gone with it; these still-exported
+// helpers are unreachable and are flagged for removal rather than deleted
+// inside this change.
 V.tab = 'games';
 
 // ── Games is the way in ─────────────────────────────────────────────────

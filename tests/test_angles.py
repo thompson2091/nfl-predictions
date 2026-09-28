@@ -111,13 +111,36 @@ def test_qualifying_teams_match_the_splits(sched):
             assert hit.height, f"{team} listed for {aid} but does not match it"
 
 
-def test_the_card_leads_with_the_long_run_not_the_season():
-    """"7-1 this year" is the number that travels and the one that is noise."""
+def test_the_season_number_never_appears_without_its_record():
+    """"7-1 this year" is the number that travels, so it leads the card — and
+    the only thing that keeps that honest is the record sitting under it.
+    "12.5%" persuades; "12.5%" over "1-7" cannot, because the sample is under
+    the claim. Hiding the season number instead just means it gets read
+    somewhere else without the denominator.
+    """
     from src.export import v3js
     src = v3js.js()
     i = src.index("function v3Angles")
-    body = src[i:i + 3000]
-    assert "since 2015" in body, "the long-run record is not on the card"
-    assert body.index("since 2015") < body.index("this year"), (
-        "the season record is printed ahead of the long-run one")
+    body = src[i:i + 3500]
+    # One helper renders every column, so a percentage cannot be drawn
+    # without the record: they are the same expression.
+    assert "const cell = (eyebrow, d, tone)" in body, (
+        "the columns are no longer built by one helper, so a percentage can "
+        "now be shown without its win-loss")
+    assert "d.w + '-' + d.l" in body, "the record is not printed"
+    for col in ("This year", "Since 2015"):
+        assert col in body, f"the {col!r} column is gone"
     assert "Break-even" in body, "the card does not say what clears"
+
+
+def test_only_the_long_run_can_be_tinted():
+    """Green on a hot season is the exact reading this card exists to stop:
+    eight games at 88% would go green and look like a finding."""
+    from src.export import v3js
+    src = v3js.js()
+    i = src.index("function v3Angles")
+    body = src[i:i + 3500]
+    assert "cell('This year', r.season, false)" in body, (
+        "the season column can be tinted; it must never be")
+    assert "a.lo > be" in body, (
+        "the tint is no longer tied to the interval clearing break-even")

@@ -253,6 +253,40 @@ def payload_v3():
     p["history"] = {"anytime_td": {"has": [1, 2],
                                    "accuracy": {"1": {"n": 120}, "2": {"n": 118}}}}
     p["history_path"] = "data/h-{market}-{week}.json"
+    # THE ANGLES BOARD, with a winner, a loser and one added later — the three
+    # shapes the page has to draw. Without a losing row the "nothing is
+    # dropped for going cold" assertion passes by having nothing to drop.
+    p["angles"] = {
+        "break_even": 0.5238,
+        "rows": [
+            {"id": "blowout_loss", "label": "Off a 20+ loss",
+             "blurb": "{team} lost by {detail} last week.",
+             "added": "2026-09-28", "mined": False,
+             "all": {"n": 504, "w": 265, "l": 239, "pct": 0.526,
+                     "lo": 0.482, "hi": 0.569, "clears": False},
+             "since": None,
+             "season": {"n": 8, "w": 7, "l": 1, "pct": 0.875,
+                        "lo": 0.529, "hi": 0.978, "clears": True}},
+            {"id": "div_dog", "label": "Divisional underdog",
+             "blurb": "{team} is a divisional underdog.",
+             "added": "2026-10-05", "mined": True,
+             "all": {"n": 1046, "w": 548, "l": 498, "pct": 0.524,
+                     "lo": 0.494, "hi": 0.554, "clears": False},
+             "since": {"n": 30, "w": 14, "l": 16, "pct": 0.467,
+                       "lo": 0.298, "hi": 0.643, "clears": False},
+             "season": {"n": 13, "w": 8, "l": 5, "pct": 0.615,
+                        "lo": 0.355, "hi": 0.823, "clears": False}},
+            {"id": "off_ot", "label": "Off an overtime game",
+             "blurb": "{team} went to overtime last week.",
+             "added": "2026-09-28", "mined": False,
+             "all": {"n": 301, "w": 141, "l": 160, "pct": 0.468,
+                     "lo": 0.413, "hi": 0.525, "clears": False},
+             "since": None,
+             "season": {"n": 5, "w": 3, "l": 2, "pct": 0.60,
+                        "lo": 0.231, "hi": 0.882, "clears": False}},
+        ],
+        "week": {"ATL": ["blowout_loss"], "GB": ["div_dog", "off_ot"]},
+    }
     return p
 
 

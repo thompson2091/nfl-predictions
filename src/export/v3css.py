@@ -186,12 +186,17 @@ button{cursor:pointer}
 .pbar--free{padding-top:10px}
 
 /* ---- ATS angles ---- */
-.angle{padding:8px 0;border-top:1px solid var(--line3)}
+.angle{padding:10px 0;border-top:1px solid var(--line3)}
 .angle:first-child{border-top:0}
-.angle__h{display:flex;align-items:baseline;justify-content:space-between;
-  gap:10px;font-size:15px}
-.angle__h b{font-weight:600}
-.angle__f{margin-top:2px;font-size:12px;line-height:16px;color:var(--mut)}
+.angle__t{font-size:15px}
+.angle__t b{font-weight:600}
+/* Equal columns so the season and the long run carry the same visual weight
+   and can be read against each other, which is the whole point of the card. */
+.angle__s{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));
+  gap:10px;margin-top:6px}
+.angle__s .cell b{font-size:19px;line-height:24px;font-weight:700}
+.angle__s .cell .sub{font-size:12px;line-height:16px;color:var(--mut)}
+.angle__f{margin-top:6px;font-size:12px;line-height:16px;color:var(--mut2)}
 .pbar .seg button{height:32px;font-size:13px}
 .pbar__row{display:flex;align-items:center;gap:6px}
 .pbar .search{flex:1;min-width:0;margin-top:0}
