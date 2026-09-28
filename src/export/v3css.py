@@ -197,6 +197,43 @@ button{cursor:pointer}
 .angle__s .cell b{font-size:19px;line-height:24px;font-weight:700}
 .angle__s .cell .sub{font-size:12px;line-height:16px;color:var(--mut)}
 .angle__f{margin-top:6px;font-size:12px;line-height:16px;color:var(--mut2)}
+
+/* ---- the angles table ----
+   A grid rather than stacked cards: forty-six rows is a table, and the whole
+   reason to read it is comparing one column down the page. */
+.arow{display:grid;grid-template-columns:minmax(0,1fr) 62px 62px 46px;
+  align-items:center;gap:6px;width:100%;padding:10px 0;text-align:left;
+  border:0;border-top:1px solid var(--line3);background:transparent;
+  color:var(--ink)}
+.arow--h{padding:0 0 6px;border-top:0}
+.arow--h span{text-align:right}
+.arow--h span:first-child{text-align:left}
+.arow--on{background:var(--inset)}
+.arow__l{font-size:14px;line-height:18px;font-weight:600;min-width:0}
+.arow__l .tag{font-size:10px;padding:1px 6px;margin-left:4px;
+  font-style:normal;vertical-align:middle}
+.arow>span:nth-child(n+2){display:flex;flex-direction:column;
+  align-items:flex-end}
+.arow>span b{font-size:15px;font-weight:700;line-height:18px}
+.arow>span i{font-style:normal;font-size:11px;line-height:14px;
+  color:var(--mut2)}
+.arow>span.good b{color:var(--good)}
+
+/* The games behind a season record, opened in place. */
+.adet{padding:2px 0 10px;background:var(--inset);border-radius:10px;
+  margin:0 -8px 4px;padding-left:8px;padding-right:8px}
+.agame{display:grid;grid-template-columns:24px minmax(0,1fr) 46px 58px 68px;
+  gap:6px;align-items:center;padding:5px 0;font-size:13px;
+  border-top:1px solid var(--line3)}
+.agame--h{border-top:0;padding-top:8px}
+.agame--h span{text-align:right}
+.agame--h span:nth-child(2){text-align:left}
+.agame>span:nth-child(n+3){text-align:right}
+.agame--won>span:last-child{color:var(--good);font-weight:600}
+.agame--lost>span:last-child{color:var(--bad);font-weight:600}
+/* The plain-language line above the fixtures, for a reader who has not met
+   the term. "Off a 20+ loss" is jargon the first time you see it. */
+.adet__p{font-size:13px;line-height:18px;color:var(--mut);padding:8px 0 2px}
 .pbar .seg button{height:32px;font-size:13px}
 .pbar__row{display:flex;align-items:center;gap:6px}
 .pbar .search{flex:1;min-width:0;margin-top:0}

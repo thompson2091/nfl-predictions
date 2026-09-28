@@ -458,6 +458,9 @@ def _angles_block(payload: dict, season: int | None, week: int | None) -> None:
             "rows": A.measure(sched, season),
             "week": (A.qualifying(sched, season, week)
                      if season and week else {}),
+            # The games behind each season record, so "0-5" can be opened.
+            # Five losses is an anecdote until you can see which five.
+            "games": A.season_games(sched, season) if season else {},
         }
     except Exception as e:                                       # noqa: BLE001
         # Never fatal: the board is the product and this is context on it.

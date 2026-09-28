@@ -694,15 +694,79 @@ if (cards.length) {
 // or the field being typed into is replaced and loses focus.
 V.tab = 'angles'; render();
 const L = () => app();
+// One row per angle, plus a header row.
+// Counted by the row action, which is one per angle exactly. `class="arow`
+// also matches `arow__l` and `arow--h`, which is how the first version of
+// this said seven rows for three angles.
 ok('the angles board lists every angle tracked',
-   (L().match(/class="angle"/g) || []).length
+   (L().match(/data-v3angle="/g) || []).length
    === ((DATA.angles || {}).rows || []).length,
-   (L().match(/class="angle"/g) || []).length + ' drawn, '
+   (L().match(/data-v3angle="/g) || []).length + ' drawn, '
    + (((DATA.angles || {}).rows || []).length) + ' measured');
 // THE DENOMINATOR IS THE FINDING. A board showing only what currently clears
 // is a board of survivors, so the count of both has to be on the page.
-ok('and says how many clear the vig', L().indexOf('Clear the vig') >= 0);
-ok('and what clearing means', L().indexOf('Break-even') >= 0);
+ok('and says how many clear the vig', L().indexOf('That make money') >= 0);
+ok('and what clearing means', L().indexOf('just to break even') >= 0);
+// PLAIN WORDS. The first version said "splits graded against the closing
+// spread" over a stat called "chance alone" — three pieces of jargon before
+// the reader reaches a number.
+ok('and says it without jargon',
+   L().indexOf('closing spread') < 0 && L().indexOf('Chance alone') < 0
+   && L().indexOf('95% confidence') < 0);
+ok('and explains why half is not enough',
+   L().indexOf('bookmaker keeps a cut') >= 0);
+// Tapping a row opens this season's games.
+{
+  const first = /data-v3angle="([^"]+)"/.exec(L());
+  ok('a row can be opened', !!first);
+  if (first) {
+    ok('and nothing is open to begin with', L().indexOf('class="adet"') < 0);
+    v3Do('v3angle', first[1]);
+    const o = L();
+    ok('opening one shows its games', o.indexOf('class="agame') >= 0);
+    ok('with a plain-language description above them',
+       o.indexOf('class="adet__p"') >= 0);
+    // One at a time, or the board becomes a wall of fixture lists.
+    ok('and only one is open', (o.match(/class="adet"/g) || []).length === 1);
+    v3Do('v3angle', first[1]);
+    ok('tapping it again closes it', L().indexOf('class="adet"') < 0);
+  }
+}
+// Sorting is offered and actually reorders.
+{
+  const byLong = (L().match(/data-v3angle="([^"]+)"/g) || []).join('|');
+  v3Do('v3anglesort', 'name');
+  const byName = (L().match(/data-v3angle="([^"]+)"/g) || []).join('|');
+  ok('the board can be sorted', byLong !== byName, 'order did not change');
+  v3Do('v3anglesort', 'all');
+}
+// Categories, so forty-six rows can be read as five lists.
+{
+  const cats = {};
+  ((DATA.angles || {}).rows || []).forEach(r => { cats[r.cat] = 1; });
+  const names = Object.keys(cats);
+  ok('every angle carries a category', names.indexOf('Other') < 0,
+     names.join(','));
+  ok('and the board offers them as a filter',
+     L().indexOf('data-v3anglecat') >= 0);
+  if (names.length) {
+    const before = (L().match(/data-v3angle="/g) || []).length;
+    fireDoc('change', { target: {
+      getAttribute: a => a === 'data-v3anglecat' ? '' : null,
+      value: names[0] } });
+    const after = (L().match(/data-v3angle="/g) || []).length;
+    ok('filtering to one kind shows fewer rows', after < before || names.length === 1,
+       before + ' -> ' + after);
+    ok('and only that kind',
+       after === ((DATA.angles || {}).rows || [])
+         .filter(r => r.cat === names[0]).length);
+    fireDoc('change', { target: {
+      getAttribute: a => a === 'data-v3anglecat' ? '' : null,
+      value: 'all' } });
+    ok('and clears back to all', (L().match(/data-v3angle="/g) || []).length
+       === before);
+  }
+}
 // Sorted by the long run. Sorting by the hot column rebuilds the thing this
 // page is an answer to.
 {

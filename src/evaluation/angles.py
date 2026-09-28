@@ -199,6 +199,102 @@ ANGLES: tuple[Angle, ...] = (
           pl.col("div_game") & (pl.col("my_spread") > 0)),
 )
 
+#: PLAIN ENGLISH FOR EACH, because the label is jargon the first time you meet
+#: it. "Off a 20+ loss" tells a handicapper everything and a newcomer nothing,
+#: and the reason people bet the split is usually the interesting part — it is
+#: nearly always a claim that the market overreacts to something.
+PLAIN: dict[str, str] = {
+    "blowout_loss": "Beaten by three touchdowns or more last week. The theory "
+                    "is that the line overcorrects after an embarrassment.",
+    "bad_loss": "Beaten by two touchdowns or more last week.",
+    "blowout_win": "Won by three touchdowns or more last week. The theory is "
+                   "that the line chases a statement win too far.",
+    "two_losses": "Has lost its last two games.",
+    "two_wins": "Has won its last two games.",
+    "off_bye": "Had a week off, so extra rest and time to prepare.",
+    "short_week": "Playing again on four days or fewer, usually a Thursday.",
+    "rest_edge": "Has at least three more days off than the opponent.",
+    "rest_deficit": "Has at least three fewer days off than the opponent.",
+    "home_dog": "At home and still not favored, which says the market rates "
+                "the visitor highly.",
+    "road_fav": "Favoured despite playing away from home.",
+    "big_fav": "Favoured by ten points or more. Big favorites have to win "
+               "convincingly, not just win.",
+    "big_dog": "Getting ten points or more, so it can lose and still pay.",
+    "div_dog": "An underdog against a team it plays twice a year. Familiarity "
+               "is supposed to keep these close.",
+    "prime": "A national night game.",
+    "prime_dog": "An underdog in a national night game.",
+    "high_total": "The two teams are expected to score 50 or more between "
+                  "them.",
+    "low_total": "A game expected to be low-scoring, 40 points or fewer.",
+    "off_ot": "Played overtime last week, so an extra quarter of football in "
+              "the legs.",
+    "indoors": "Played under a roof, so no weather.",
+    "three_losses": "Has lost three in a row.",
+    "three_wins": "Has won three in a row.",
+    "off_cover": "Beat the spread last week, whether or not it won.",
+    "off_ats_loss": "Failed to beat the spread last week.",
+    "two_covers": "Has beaten the spread two weeks running.",
+    "two_non_covers": "Has failed to beat the spread two weeks running.",
+    "close_loss": "Lost by eight points or fewer \u2014 one score.",
+    "close_win": "Won by eight points or fewer \u2014 one score.",
+    "scored_30": "Put up 30 or more last week.",
+    "scored_under_14": "Scored fewer than 14 last week.",
+    "allowed_30": "Gave up 30 or more last week.",
+    "allowed_under_14": "Held the opponent under 14 last week.",
+    "third_road": "Away from home a third straight week.",
+    "second_road": "Away from home a second straight week.",
+    "home_after_road": "Home at last after two straight on the road.",
+    "rematch": "Playing the same opponent it played last week.",
+    "qb_change": "A different quarterback is starting than last week.",
+    "spread_3": "The line is exactly three \u2014 a field goal, the most "
+                "common margin in football.",
+    "spread_7": "The line is exactly seven \u2014 a touchdown.",
+    "pickem": "Essentially a coin flip; neither side is favored.",
+    "dog_3_or_less": "A small underdog, getting three points or fewer.",
+    "fav_3_or_less": "A small favorite, laying three points or fewer.",
+    "thursday": "Playing on Thursday night.",
+    "monday": "Playing on Monday night.",
+    "early_season": "One of the first four weeks, when form is still unknown.",
+    "late_season": "Week 15 or later, when some teams have nothing to play "
+                   "for.",
+    "on_grass": "Played on natural grass rather than turf.",
+    "div_fav": "Favoured against a team it plays twice a year.",
+}
+
+
+#: WHAT KIND OF THING EACH ONE IS. Forty-six rows is past the length anyone
+#: reads top to bottom, and the groupings people already think in — how the
+#: team has been playing, how rested it is, what the line says, where it is —
+#: are the ones worth filtering by.
+CATEGORY: dict[str, str] = {
+    # How the team has been playing.
+    "blowout_loss": "Form", "bad_loss": "Form", "blowout_win": "Form",
+    "two_losses": "Form", "two_wins": "Form", "three_losses": "Form",
+    "three_wins": "Form", "off_cover": "Form", "off_ats_loss": "Form",
+    "two_covers": "Form", "two_non_covers": "Form", "close_loss": "Form",
+    "close_win": "Form", "scored_30": "Form", "scored_under_14": "Form",
+    "allowed_30": "Form", "allowed_under_14": "Form", "off_ot": "Form",
+    # Time off.
+    "off_bye": "Rest", "short_week": "Rest", "rest_edge": "Rest",
+    "rest_deficit": "Rest",
+    # What the price says about them.
+    "home_dog": "The line", "road_fav": "The line", "big_fav": "The line",
+    "big_dog": "The line", "div_dog": "The line", "div_fav": "The line",
+    "spread_3": "The line", "spread_7": "The line", "pickem": "The line",
+    "dog_3_or_less": "The line", "fav_3_or_less": "The line",
+    # Where they are in the season and who they just saw.
+    "third_road": "Spot", "second_road": "Spot", "home_after_road": "Spot",
+    "rematch": "Spot", "qb_change": "Spot",
+    # Everything about the occasion rather than the team.
+    "prime": "Setting", "prime_dog": "Setting", "high_total": "Setting",
+    "low_total": "Setting", "indoors": "Setting", "thursday": "Setting",
+    "monday": "Setting", "early_season": "Setting", "late_season": "Setting",
+    "on_grass": "Setting",
+}
+
+
 #: WITH FIFTY SPLITS AT 95% CONFIDENCE, TWO OR THREE ARE EXPECTED TO CLEAR BY
 #: CHANCE ALONE. That is not a caveat on the board, it is a number the board
 #: has to print beside the count that actually cleared — "3 of 50 clear" reads
@@ -329,10 +425,42 @@ def measure(schedules: pl.DataFrame, season: int | None = None) -> list[dict]:
         cur = f.filter(pl.col("season") == season) if season else f.head(0)
         out.append({
             "id": a.id, "label": a.label, "blurb": a.blurb,
+            "plain": PLAIN.get(a.id, ""),
+            "cat": CATEGORY.get(a.id, "Other"),
             "added": a.added.isoformat(), "mined": a.mined,
             "all": allt, "since": _record(added), "season": _record(cur),
         })
     out.sort(key=lambda r: -r["all"]["pct"])
+    return out
+
+
+def season_games(schedules: pl.DataFrame, season: int) -> dict:
+    """The games behind each angle's season record, so "0-5" can be opened.
+
+    A record with no games under it is a number to take on faith. Five losses
+    is an anecdote until you can see which five — and on a season sample that
+    is the whole of what there is to check.
+
+    Ungraded games are carried with `covered: None` rather than dropped: a
+    fixture that has not kicked off is part of the angle this week and leaving
+    it out makes the list disagree with the board that pointed at it.
+    """
+    tg = team_weeks(schedules).filter(pl.col("season") == season)
+    out: dict = {}
+    for a in ANGLES:
+        rows = []
+        for r in tg.filter(a.predicate).sort("week").iter_rows(named=True):
+            graded = r["cover_by"] is not None and r["cover_by"] != 0
+            rows.append({
+                "week": r["week"], "team": r["team"], "opp": r["opp"],
+                "home": bool(r["at_home"]), "spread": r["my_spread"],
+                "pf": r["pf"], "pa": r["pa"],
+                "covered": bool(r["covered"]) if graded else None,
+                "by": round(float(r["cover_by"]), 1)
+                      if r["cover_by"] is not None else None,
+            })
+        if rows:
+            out[a.id] = rows
     return out
 
 

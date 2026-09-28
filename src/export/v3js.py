@@ -133,6 +133,7 @@ const V = Object.assign({
   week: null, game: null, gameTab: 'odds', cat: 'all',
   picks: {}, betType: 'twos', stake: 10, shown: V3SHOW,
   lodds: 100, rungs: 6, q: '', half: 'full', metric: 'all',
+  angleSort: 'all', angleOpen: null, angleCat: 'all',
   ask: '', answer: '',
   // The saved picks, and which of them the Picks tab is showing. `saved` was
   // a boolean nothing read; the slip and the saved copy are different things
@@ -3388,61 +3389,147 @@ function v3LadderSummary() {
 // rebuild the thing this page is an answer to.
 function v3AnglesPage() {
   const A = DATA.angles || {};
-  const rows = (A.rows || []).slice();
+  const all = (A.rows || []).slice();
   const be = has(A.break_even) ? A.break_even : 0.5238;
-  if (!rows.length) {
+  if (!all.length) {
     return '<div class="wrap"><h1 class="h1">Angles</h1>'
       + '<div class="card"><p class="lede" style="font-size:15px">Nothing '
       + 'measured yet. This needs a graded schedule on disk.</p></div></div>';
   }
-  const clears = rows.filter(r => r.all && r.all.lo > be).length;
-  const cell = (eyebrow, d, tone) => '<div class="cell">'
-    + '<span class="eyebrow">' + eyebrow + ' ATS</span>'
-    + '<b class="num' + (tone ? ' good' : '') + '">'
-    + (d && d.n ? (d.pct * 100).toFixed(1) + '%' : '\u2014') + '</b>'
-    + '<span class="sub num">' + (d && d.n ? d.w + '-' + d.l : 'no games')
-    + '</span></div>';
+  const clears = all.filter(r => r.all && r.all.lo > be).length;
+  // SORTED BY THE LONG RUN BY DEFAULT. Leading with this season would rebuild
+  // the thing this page is an answer to; it is still offered, because a
+  // reader who wants the hot column should find it here rather than compute
+  // it from a video.
+  const pct = (d) => (d && d.n) ? d.pct : -1;
+  const SORTS = {
+    all: r => -pct(r.all),
+    season: r => -pct(r.season),
+    games: r => -(r.all ? r.all.n : 0),
+    name: r => r.label,
+  };
+  const key = SORTS[V.angleSort] ? V.angleSort : 'all';
+  // CATEGORIES IN THE ORDER THEY APPEAR, not alphabetically: the list is
+  // already grouped by the kind of thing each angle is, and re-sorting the
+  // names puts "Form" after "The line" for no reason a reader can see.
+  const cats = [];
+  all.forEach(r => { if (r.cat && cats.indexOf(r.cat) < 0) cats.push(r.cat); });
+  const cat = (V.angleCat && cats.indexOf(V.angleCat) >= 0)
+    ? V.angleCat : 'all';
+  const shown = cat === 'all' ? all : all.filter(r => r.cat === cat);
+  const rows = shown.slice().sort((a, b) => {
+    const x = SORTS[key](a), y = SORTS[key](b);
+    if (x < y) return -1;
+    if (x > y) return 1;
+    // Ties fall back to the long run, then the name, so the order is the same
+    // on every build rather than whatever the sort happened to leave.
+    return (-pct(a.all) + pct(b.all)) || (a.label < b.label ? -1 : 1);
+  });
+  const games = A.games || {};
+  const cellv = d => (d && d.n) ? (d.pct * 100).toFixed(0) + '%' : '\u2014';
+  const rec = d => (d && d.n) ? d.w + '-' + d.l : '';
+
+  const detail = (r) => {
+    const gs = games[r.id] || [];
+    if (!gs.length) {
+      return '<div class="adet">'
+        + (r.plain ? '<p class="adet__p">' + esc(r.plain) + '</p>' : '')
+        + '<p class="help" style="margin:0 0 8px">No games this season yet.'
+        + '</p></div>';
+    }
+    return '<div class="adet">'
+      + (r.plain ? '<p class="adet__p">' + esc(r.plain) + '</p>' : '')
+      + '<div class="agame agame--h">'
+      + '<span class="eyebrow">Wk</span><span class="eyebrow">Game</span>'
+      + '<span class="eyebrow">Line</span><span class="eyebrow">Score</span>'
+      + '<span class="eyebrow">ATS</span></div>'
+      + gs.map(g => {
+          const done = g.covered !== null && g.covered !== undefined;
+          const tone = !done ? '' : (g.covered ? ' agame--won' : ' agame--lost');
+          return '<div class="agame' + tone + '">'
+            + '<span class="num">' + g.week + '</span>'
+            + '<span>' + esc(g.team) + ' ' + (g.home ? 'vs' : 'at') + ' '
+            + esc(g.opp) + '</span>'
+            + '<span class="num">' + (has(g.spread)
+               ? (g.spread > 0 ? '\u2212' : '+') + Math.abs(g.spread) : '')
+            + '</span>'
+            + '<span class="num">' + (has(g.pf) && has(g.pa)
+               ? g.pf + '\u2013' + g.pa : '\u2014') + '</span>'
+            + '<span class="num">' + (!done ? 'to play'
+               : (g.covered ? 'cover' : 'no') + ' ' + (g.by > 0 ? '+' : '')
+                 + g.by) + '</span></div>';
+        }).join('')
+      + '</div>';
+  };
+
   return '<div class="wrap">'
     + '<h1 class="h1">Angles</h1>'
-    + '<p class="lede">Splits people bet on, every one of them graded against '
-    + 'the closing spread. Break-even at \u2212110 is '
-    + (be * 100).toFixed(1) + '%.</p>'
+    // PLAIN WORDS. The first version of this said "splits graded against the
+    // closing spread" over a stat called "chance alone", which is three
+    // pieces of jargon before the reader reaches a number. Everything here
+    // now says what it means or is not on the page.
+    + '<p class="lede">Betting patterns people follow \u2014 \u201cteams '
+    + 'bounce back after a beating\u201d, that sort of thing. Each row is how '
+    + 'often that pattern actually beat the point spread. Tap one to see this '
+    + 'season\u2019s games.</p>'
     + '<div class="card"><div class="stats">'
-    + '<div class="stat"><span class="eyebrow">Tracked</span>'
-    + '<b class="num">' + rows.length + '</b></div>'
-    + '<div class="stat"><span class="eyebrow">Clear the vig</span>'
+    + '<div class="stat"><span class="eyebrow">Patterns</span>'
+    + '<b class="num">' + all.length + '</b></div>'
+    + '<div class="stat"><span class="eyebrow">That make money</span>'
     + '<b class="num' + (clears ? ' good' : '') + '">' + clears + '</b></div>'
-    + '<div class="stat"><span class="eyebrow">Chance alone</span>'
-    + '<b class="num">' + (rows.length * 0.05).toFixed(1) + '</b></div>'
+    + '<div class="stat"><span class="eyebrow">Needed to</span>'
+    + '<b class="num">' + (be * 100).toFixed(1) + '%</b></div>'
+    + '</div>'
+    + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:12px">'
+    + 'Winning half your bets loses money, because the bookmaker keeps a cut. '
+    + 'You need <b style="color:var(--ink)">' + (be * 100).toFixed(1)
+    + '%</b> just to break even. '
+    + (clears
+       ? 'Of these ' + all.length + ' patterns, ' + clears + ' beat that.'
+       : 'Not one of these ' + all.length + ' patterns beats that.')
+    + '</p>'
+    // The false-positive budget, said without the phrase.
+    + '<p class="help">And that is with ' + all.length + ' patterns on the '
+    + 'board. Try that many and two or three will look good on luck alone, so '
+    + 'even a couple of winners here would not mean much.</p></div>'
+    // A SELECT FOR THE CATEGORY AND A SEG FOR THE SORT, the same pairing the
+    // matchup bar uses. Five categories as pills would wrap, and the sort has
+    // four fixed options that are worth seeing at once.
+    + '<div class="pbar pbar--free">'
+    + '<div class="picker mxsel"><select data-v3anglecat '
+    + 'aria-label="Filter by kind">'
+    + ['all'].concat(cats).map(c => '<option value="' + esc(c) + '"'
+        + (c === cat ? ' selected' : '') + '>'
+        + (c === 'all' ? 'All ' + all.length + ' patterns'
+           : esc(c) + ' (' + all.filter(r => r.cat === c).length + ')')
+        + '</option>').join('')
+    + '</select></div>'
+    + '<div class="seg seg--4">'
+    + v3Seg('v3anglesort', [['all', 'Long run'], ['season', 'This year'],
+                            ['games', 'Sample'], ['name', 'A\u2013Z']], key)
     + '</div></div>'
-    // "3 of 50 clear" reads as a finding until you know the expectation was
-    // 2.5. At 95% confidence one split in twenty clears by chance, so the
-    // count that would arrive from nothing at all belongs beside the count
-    // that did.
-    + '<p class="help">At 95% confidence about one split in twenty clears '
-    + 'BY CHANCE, so ' + (rows.length * 0.05).toFixed(1) + ' of these '
-    + 'would be expected to look good with no edge anywhere. '
-    + (clears ? clears + ' do.' : 'None do.') + '</p>'
-    + '<div class="card" style="margin-top:12px">'
+    + '<div class="card" style="margin-top:0">'
+    + '<div class="arow arow--h">'
+    + '<span class="eyebrow">Angle</span>'
+    + '<span class="eyebrow">Yr ATS</span>'
+    + '<span class="eyebrow">All ATS</span>'
+    + '<span class="eyebrow">Games</span></div>'
     + rows.map(r => {
         const a = r.all;
         const good = a && a.lo > be;
-        return '<div class="angle">'
-          + '<div class="angle__t"><b>' + esc(r.label) + '</b>'
-          // A row added because it was hot says so on its face. Its all-time
-          // record contains the stretch that got it noticed, so it is not
-          // evidence, and "Since added" is the column that will be.
-          + (r.mined ? ' <span class="tag tag--warn">added later</span>' : '')
-          + '</div>'
-          + '<div class="angle__s">'
-          + cell('This year', r.season, false)
-          + cell('Since 2015', a, good)
-          + (r.since && r.since.n ? cell('Since added', r.since, false) : '')
-          + '</div>'
-          + '<div class="angle__f num">' + (a
-             ? (a.lo * 100).toFixed(0) + '\u2013' + (a.hi * 100).toFixed(0)
-               + '% either way on ' + a.n + ' games'
-             : '') + '</div></div>';
+        const open = V.angleOpen === r.id;
+        return '<button class="arow' + (open ? ' arow--on' : '')
+          + '" data-v3angle="' + esc(r.id) + '" aria-expanded="' + open + '">'
+          + '<span class="arow__l">' + esc(r.label)
+          + (r.mined ? ' <i class="tag tag--warn">added</i>' : '') + '</span>'
+          + '<span class="num"><b>' + cellv(r.season) + '</b>'
+          + '<i>' + rec(r.season) + '</i></span>'
+          + '<span class="num' + (good ? ' good' : '') + '"><b>'
+          + cellv(a) + '</b><i>' + (a ? (a.lo * 100).toFixed(0) + '\u2013'
+            + (a.hi * 100).toFixed(0) + '%' : '') + '</i></span>'
+          + '<span class="num"><b>' + (a ? a.n : '') + '</b></span>'
+          + '</button>'
+          + (open ? detail(r) : '');
       }).join('')
     + '</div>'
     + '<div class="card" style="margin-top:12px">'
@@ -3450,14 +3537,15 @@ function v3AnglesPage() {
     + '<p class="lede" style="font-size:15px;line-height:20px">A split has to '
     + 'clear ' + (be * 100).toFixed(1) + '% to pay for the vig, and at three '
     + 'to five hundred games an interval runs eight points wide \u2014 wide '
-    + 'enough to contain both "no edge" and "a good edge". Every angle here '
-    + 'has been public for decades, which is the other half of it: the price '
-    + 'already knows.</p>'
+    + 'enough to contain both \u201cno edge\u201d and \u201ca good edge\u201d. '
+    + 'Every angle here has been public for decades, which is the other half '
+    + 'of it: the price already knows.</p>'
     + '<p class="help">Nothing is dropped for going cold. A split that '
     + 'reverted is the most useful row on this page, and a board with the '
     + 'losers removed is a board of survivors.</p></div>'
     + '</div>';
 }
+
 function v3Ladder() {
   return '<div class="wrap"><h1 class="h1">The ladder</h1>'
     + '<p class="lede">Start small. Each time a bet wins, the whole amount '
@@ -3759,7 +3847,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3pick',
                   'v3game', 'v3gamestep', 'v3back', 'v3gtab', 'v3cat', 'v3type',
                   'v3stake', 'v3ask', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
-                  'v3half', 'v3boardgame',
+                  'v3half', 'v3boardgame', 'v3anglesort', 'v3angle',
                   'v3sortpick'];
 
 document.addEventListener('click', ev => {
@@ -3842,6 +3930,10 @@ document.addEventListener('change', ev => {
   } else if (t.getAttribute('data-v3gamesel') != null) {
     V.game = t.value === '' ? null : t.value;
     V.shown = V3SHOW; V.open = null; render();
+  } else if (t.getAttribute('data-v3anglecat') != null) {
+    // A `<select>` fires `change`, not `click`. Wired only into the click
+    // table it drew correctly, highlighted correctly and filtered nothing.
+    V.angleCat = t.value; V.angleOpen = null; V.top = 'section'; render();
   } else if (t.getAttribute('data-v3metricsel') != null) {
     V.metric = t.value; render();
   } else if (t.getAttribute('data-v3sortsel') != null) {
@@ -3907,6 +3999,10 @@ function v3Do(kind, v) {
     // empty value is "all games", which is what back means here.
     case 'v3boardgame': V.game = v || null; V.shown = V3SHOW; V.open = null;
       break;
+    case 'v3anglesort': V.angleSort = v; V.top = 'section'; break;
+    // Tapping the open one closes it: one at a time, or the board turns into
+    // a wall of fixture lists you have to close individually.
+    case 'v3angle': V.angleOpen = (V.angleOpen === v) ? null : v; break;
     case 'v3fav': toggleFav(v); break;
     case 'v3clear': V.picks = {}; break;
     case 'v3drop': delete V.picks[v]; break;

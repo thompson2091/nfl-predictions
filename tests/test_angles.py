@@ -139,14 +139,24 @@ def test_every_percentage_says_it_is_against_the_spread():
     Each of these is a cover rate against the CLOSING spread."""
     from src.export import v3js
     src = v3js.js()
-    for fn in ("function v3Angles", "function v3AnglesPage"):
-        i = src.index(fn)
-        body = src[i:i + 4000]
-        assert "' ATS</span>'" in body, (
-            f"{fn} draws a percentage with no unit on it")
-    i = src.index("function v3Angles")
-    assert "COVERED THE CLOSING SPREAD" in src[i:i + 4000], (
+
+    def body_of(name: str) -> str:
+        i = src.index(name)
+        j = src.index("\nfunction ", i + 1)
+        return src[i:j if j > 0 else len(src)]
+
+    # The game card builds every column through one helper, so the unit is
+    # appended once and cannot be forgotten on a single figure.
+    card = body_of("function v3Angles(")
+    assert "' ATS</span>'" in card, (
+        "the game card draws a percentage with no unit on it")
+    assert "COVERED THE CLOSING SPREAD" in card, (
         "the card never says in full what the number measures")
+
+    # The board is a table, so the unit rides on the column headings instead.
+    page = body_of("function v3AnglesPage(")
+    assert "Yr ATS" in page and "All ATS" in page, (
+        "the board's percentage columns are unlabelled")
 
 
 def test_only_the_long_run_can_be_tinted():
@@ -197,5 +207,11 @@ def test_the_board_states_its_own_false_positive_budget(sched):
     from src.export import v3js
     src = v3js.js()
     i = src.index("function v3AnglesPage")
-    assert "by chance" in src[i:i + 4500], (
-        "the board does not say how many clears chance alone would produce")
+    j = src.index("\nfunction ", i + 1)
+    page = src[i:j if j > 0 else len(src)]
+    # Said in plain words rather than as "false positives at 95% confidence",
+    # which was three pieces of jargon before the reader reached a number.
+    assert "on luck alone" in page, (
+        "the board does not say that some of these would look good by luck")
+    assert "bookmaker keeps a cut" in page, (
+        "the board does not explain why winning half is not enough")
