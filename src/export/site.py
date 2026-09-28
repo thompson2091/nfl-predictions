@@ -861,6 +861,10 @@ function rowsFor(key, view) {
       proj: has(r.proj) ? r.proj : r.mu, lo: r.lo, hi: r.hi,
       ours: r.ours, book: r.fair_prob, edge: r.edge_pp,
       modelOnly: r.model_only,
+      // Set by `_flag_role_doubt`: the market will not quote the passer
+      // we have leading this team, so our number for the one it does
+      // quote was built on him being a backup.
+      role_doubt: !!r.role_doubt,
       odds: has(r.odds) ? r.odds : r.open_odds,
       dec: has(r.odds) ? amToDec(r.odds)
          : (has(r.open_odds) ? amToDec(r.open_odds) : null),

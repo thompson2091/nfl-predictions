@@ -381,6 +381,62 @@ def _yards_projections(payload: dict, market: str, season: int, week: int) -> No
     blk["priced_rows"] = len(priced)
 
 
+
+def _flag_role_doubt(payload: dict, market: str) -> None:
+    """Mark a row whose number was built for a player the market will not quote.
+
+    THIS IS A CONTRADICTION, NOT A DISAGREEMENT, and that distinction is the
+    whole reason it is here. Our number being far from the posted line is
+    normal and is usually us being right: measured over 67,518 graded rows,
+    a gap of 50-100% between projection and line comes in at 60.2% for us
+    against 51.6% when the two nearly agree. Flagging a big gap would flag
+    our best work.
+
+    What is not normal is the market declining to price the player we have as
+    the team's lead passer while pricing someone we have well below him. That
+    is not the books valuing him differently — it is the books knowing he is
+    not playing. On 2026-09-28 Chicago's board projected Caleb Williams at 219
+    passing yards with NO quote anywhere, while Case Keenum, projected 90, was
+    quoted at 166: our number for Keenum was built on him being third choice.
+    Left alone that publishes a 76-yard "edge" on the under, tagged as value.
+
+    Scoped to passing yards on purpose. A team has one passer and the gap
+    between starting and not is the whole workload, so an unpriced leader is
+    a strong statement. Receivers and backs split work many ways and go
+    unquoted for ordinary reasons, so the same rule there would fire on noise.
+
+    Two signals were measured first and neither survived. The size of the gap
+    is covered above. Being quoted late rather than from the open, which is
+    the shape this case has, runs 54.6% against 56.3% for quoted-from-open
+    over 63,236 rows — no signal at all, because posting yardage lines late is
+    just what books do. A hard move between open and close is the closest
+    thing to a real one, at 47.9% over 71 rows where the line moved 30% AND 15
+    yards, but that is z=-1.43 against the baseline and its interval covers
+    it. So this flag is deductive rather than fitted: it does not claim a
+    measured edge, it reports an inconsistency the board cannot otherwise show.
+    """
+    if market != "passing_yards":
+        return
+    blk = (payload.get("yards") or {}).get(market) or {}
+    rows = [r for r in (blk.get("rows") or []) if r.get("proj") is not None]
+    if not rows:
+        return
+    by_team: dict = {}
+    for r in rows:
+        by_team.setdefault(r.get("team"), []).append(r)
+    for _team, rs in by_team.items():
+        if len(rs) < 2:
+            continue
+        lead = max(rs, key=lambda r: r["proj"])
+        if lead.get("point") is not None:
+            continue          # the market agrees with us about who throws
+        priced = [r for r in rs if r.get("point") is not None]
+        for r in priced:
+            # Only where the market's man is one we rate BELOW the player it
+            # will not quote. Equal or higher is no contradiction.
+            if lead["proj"] > r["proj"]:
+                r["role_doubt"] = True
+
 def _mark_consensus_lines(payload: dict) -> None:
     """Which of a player's posted lines is the one to lead with.
 
@@ -1716,6 +1772,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
             if got is not None:
                 _YARD_Q[mk] = got
             _yards_projections(payload, mk, s, w)
+            _flag_role_doubt(payload, mk)
 
     _attach_opens(payload, s, w)
     # After the opens are attached, because it prices against them.

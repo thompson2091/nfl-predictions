@@ -690,6 +690,14 @@ function v3Row(row) {
     + (v[0] ? '<span class="' + v[1] + '">' + v[0] + '</span>' : '')
     + warn
     + (row.thin ? '<span class="tag tag--warn">Thin market</span>' : '')
+    // A CONTRADICTION, NOT A DISAGREEMENT. The market declining to quote the
+    // passer we have as this team's lead, while pricing someone we rate below
+    // him, is the books knowing he is not playing — so our number for the man
+    // they DO quote was built on him being a backup. Our number being merely
+    // far from the line is normal and is usually us being right, which is why
+    // that is not what this marks. See `_flag_role_doubt`.
+    + (row.role_doubt
+       ? '<span class="tag tag--bad">Role changed</span>' : '')
     + (scr ? '<span class="tag tag--warn">Script risk</span>' : '')
     + '<span class="tag">' + (open ? 'Hide detail' : 'More') + '</span>'
     + '</div></div></button>'
