@@ -133,6 +133,22 @@ def test_the_season_number_never_appears_without_its_record():
     assert "Break-even" in body, "the card does not say what clears"
 
 
+def test_every_percentage_says_it_is_against_the_spread():
+    """"48.9%" on its own is a percentage of nothing, and a reader who takes
+    it for a win rate is reading a different and much more flattering number.
+    Each of these is a cover rate against the CLOSING spread."""
+    from src.export import v3js
+    src = v3js.js()
+    for fn in ("function v3Angles", "function v3AnglesPage"):
+        i = src.index(fn)
+        body = src[i:i + 4000]
+        assert "' ATS</span>'" in body, (
+            f"{fn} draws a percentage with no unit on it")
+    i = src.index("function v3Angles")
+    assert "COVERED THE CLOSING SPREAD" in src[i:i + 4000], (
+        "the card never says in full what the number measures")
+
+
 def test_only_the_long_run_can_be_tinted():
     """Green on a hot season is the exact reading this card exists to stop:
     eight games at 88% would go green and look like a finding."""

@@ -2209,8 +2209,11 @@ function v3Angles(c) {
     // that gets quoted, so hiding it in a footnote just means it gets read
     // somewhere else without the denominator. "12.5%" persuades; "12.5%" over
     // "1-7" cannot, because the sample is sitting under the claim.
+    // "48.9%" ON ITS OWN IS A PERCENTAGE OF NOTHING. Every one of these is a
+    // cover rate against the closing spread, and a reader who assumes it is a
+    // win rate is reading a different and much more flattering number.
     const cell = (eyebrow, d, tone) => '<div class="cell">'
-      + '<span class="eyebrow">' + eyebrow + '</span>'
+      + '<span class="eyebrow">' + eyebrow + ' ATS</span>'
       + '<b class="num' + (tone ? ' good' : '') + '">'
       + (d && d.n ? (d.pct * 100).toFixed(1) + '%' : '\u2014') + '</b>'
       + '<span class="sub num">' + (d && d.n ? d.w + '-' + d.l : 'no games')
@@ -2234,6 +2237,8 @@ function v3Angles(c) {
   if (!rows) return '';
   return '<h2 class="h1" style="font-size:19px;line-height:24px;'
     + 'margin-top:20px">Angles on this game</h2>'
+    + '<p class="help">How often teams in each of these situations have '
+    + 'COVERED THE CLOSING SPREAD \u2014 not how often they won.</p>'
     + '<div class="card">' + rows
     // THE DENOMINATOR IS THE FINDING, so it is on the card rather than in a
     // footnote. Without it a reader sees four splits and no idea that sixteen
@@ -3392,7 +3397,7 @@ function v3AnglesPage() {
   }
   const clears = rows.filter(r => r.all && r.all.lo > be).length;
   const cell = (eyebrow, d, tone) => '<div class="cell">'
-    + '<span class="eyebrow">' + eyebrow + '</span>'
+    + '<span class="eyebrow">' + eyebrow + ' ATS</span>'
     + '<b class="num' + (tone ? ' good' : '') + '">'
     + (d && d.n ? (d.pct * 100).toFixed(1) + '%' : '\u2014') + '</b>'
     + '<span class="sub num">' + (d && d.n ? d.w + '-' + d.l : 'no games')
