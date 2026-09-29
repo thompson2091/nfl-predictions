@@ -459,3 +459,60 @@ def test_a_thin_row_does_not_go_green_however_good_it_looks(sched):
     assert fat["lo"] > A.BREAK_EVEN and fat["n"] >= A.TINT_MIN_GAMES
     # The floor has to be well above the reporting minimum, or it is no floor.
     assert A.TINT_MIN_GAMES >= 5 * A.MIN_GAMES
+
+
+def test_a_record_so_far_excludes_the_game_it_describes(sched):
+    """`wins_before` counts the season up to but NOT including this week.
+
+    `cum_sum` includes the current row, so without subtracting it back out a
+    team is credited with the result of the game being predicted — "losing
+    record but favored" would then be partly a measure of having just lost.
+    """
+    tg = A.team_weeks(sched)
+    for c in ("wins_before", "losses_before"):
+        assert c in tg.columns, f"{c} is gone"
+    # A team's first game of a season has no record behind it, whatever it did.
+    first = tg.filter(pl.col("week") == pl.col("week").min()
+                      .over(["season", "team"]))
+    assert int(first["wins_before"].sum()) == 0, (
+        "a team carries wins into its own opener")
+    assert int(first["losses_before"].sum()) == 0
+    # And the two together never exceed the games already played.
+    played = tg.with_columns(
+        (pl.col("wins_before") + pl.col("losses_before")).alias("_n"))
+    over = played.filter(pl.col("_n") >= pl.col("week"))
+    assert over.is_empty(), (
+        f"{over.height} rows count more games than the week allows; the "
+        "current result is being counted")
+
+
+def test_an_opponent_angle_reads_the_opponent_not_the_team(sched):
+    """The first three angles on this board that ask about the other side.
+
+    A self-join on the game is easy to get backwards, and backwards it would
+    silently restate an angle that is already here: `opp_off_bye` would become
+    `off_bye`, and the two would agree to the game.
+    """
+    tg = A.team_weeks(sched)
+    assert "opp_prev_margin" in tg.columns
+    # THE JOIN IS THE RIGHT WAY ROUND: a team's `opp_prev_margin` is the
+    # OTHER side's `prev_margin` in the same game.
+    by = {(r["game_id"], r["team"]): r for r in tg.iter_rows(named=True)}
+    checked = 0
+    for (gid, team), r in list(by.items()):
+        other = by.get((gid, r["opp"]))
+        if other is None or other["prev_margin"] is None:
+            continue
+        assert r["opp_prev_margin"] == other["prev_margin"], (
+            f"{team} in {gid} carries the wrong side's last result")
+        checked += 1
+        if checked > 400:
+            break
+    assert checked > 100, f"only {checked} pairs checked"
+    # And it is NOT the team's own, which is what a self-join gone wrong gives.
+    same = tg.filter(pl.col("opp_prev_margin").is_not_null()
+                     & pl.col("prev_margin").is_not_null()
+                     & (pl.col("opp_prev_margin") == pl.col("prev_margin")))
+    assert same.height < tg.height * 0.2, (
+        "the opponent's last result matches the team's own too often; the "
+        "join is probably reading the same row back")

@@ -90,6 +90,8 @@ _REG2 = date(2026, 9, 28)
 _REG3 = date(2026, 9, 29)
 #: The bye pair, asked for and measured the same day.
 _REG4 = date(2026, 9, 30)
+#: The ninth batch: the opponent's situation, and the rest of a list of ten.
+_REG5 = date(2026, 9, 30)
 
 ANGLES: tuple[Angle, ...] = (
     Angle("blowout_loss", "Off a 20+ loss",
@@ -268,6 +270,54 @@ ANGLES: tuple[Angle, ...] = (
     # why the composition effect was invisible: a board that tracks the two
     # flat cells and omits the two steep ones cannot show that side and role
     # are worth four points between them.
+    # ---- TEN MEASURED, NINE ADDED -----------------------------------------
+    #
+    # THE FIRST THREE ARE ABOUT THE OPPONENT, which is a dimension none of the
+    # sixty above has: they all ask what shape the team is in, and none asks
+    # what shape the team across from it is in. Both land on 50%, which is
+    # only sayable because both are tracked.
+    #
+    # `div_home_dog` IS WORTH A ROW BECAUSE IT IS 50.00%. It is the claim that
+    # divisional home dogs are live, and over eleven seasons it is 208-208 —
+    # an answer that can only be given if the question is on the board.
+    #
+    # THE TENTH WAS LEFT OUT. "Divisional home underdog with a low total"
+    # covers 57.76% under 42 and 51.85% under 44, so the threshold picks the
+    # answer, and the cuts are nested subsets of a split that is exactly even.
+    # Shipping it would ship a choice of number as if it were football.
+    Angle("opp_off_bye", "Facing a team off a bye",
+          "{team} plays an opponent coming off a bye.", _REG5,
+          pl.col("opp_rest") >= 13, mined=True),
+    Angle("opp_short_week", "Facing a team on a short week",
+          "{team} plays an opponent on a short week.", _REG5,
+          pl.col("opp_rest") <= 4, mined=True),
+    Angle("opp_blowout_loss", "Facing a team off a 20+ loss",
+          "{team} plays an opponent beaten by {detail} last week.", _REG5,
+          pl.col("opp_prev_margin") <= -20, mined=True),
+    Angle("div_home_dog", "Divisional home underdog",
+          "{team} is a home underdog against a divisional rival.", _REG5,
+          pl.col("div_game") & pl.col("at_home") & (pl.col("my_spread") < 0),
+          mined=True),
+    Angle("div_back_to_back", "Second divisional game in a row",
+          "{team} plays a second straight divisional game.", _REG5,
+          pl.col("div_game") & pl.col("prev_div"), mined=True),
+    Angle("close_loss_3", "Off a loss by a field goal or less",
+          "{team} lost by {detail} last week.", _REG5,
+          (pl.col("prev_margin") < 0) & (pl.col("prev_margin") >= -3),
+          mined=True),
+    Angle("close_win_3", "Off a win by a field goal or less",
+          "{team} won by {detail} last week.", _REG5,
+          (pl.col("prev_margin") > 0) & (pl.col("prev_margin") <= 3),
+          mined=True),
+    Angle("bad_team_favored", "Losing record but favored",
+          "{team} is favored with a losing record.", _REG5,
+          (pl.col("losses_before") > pl.col("wins_before"))
+          & (pl.col("my_spread") > 0) & (pl.col("week") >= 5), mined=True),
+    Angle("good_team_dog", "Winning record but an underdog",
+          "{team} is an underdog with a winning record.", _REG5,
+          (pl.col("wins_before") > pl.col("losses_before"))
+          & (pl.col("my_spread") < 0) & (pl.col("week") >= 5), mined=True),
+
     # ---- THE BYE PAIR, added on request and measured before adding ---------
     #
     # `off_bye` was already here; these are the three it did not cover. Marked
@@ -379,6 +429,18 @@ PLAIN: dict[str, str] = {
                    "for.",
     "on_grass": "Played on natural grass rather than turf.",
     "div_fav": "Favoured against a team it plays twice a year.",
+    "opp_off_bye": "Their opponent had a week off; they did not.",
+    "opp_short_week": "Their opponent is playing on four days\u2019 rest or "
+                      "fewer.",
+    "opp_blowout_loss": "Their opponent was beaten by three touchdowns or "
+                        "more last week.",
+    "div_home_dog": "A home underdog against a team it plays twice a year.",
+    "div_back_to_back": "A second divisional game in consecutive weeks.",
+    "close_loss_3": "Lost by three points or fewer last week.",
+    "close_win_3": "Won by three points or fewer last week.",
+    "bad_team_favored": "Favored despite having lost more than it has won.",
+    "good_team_dog": "Getting points despite having won more than it has "
+                     "lost.",
     "bye_div": "Off a bye, against a team it plays twice a year.",
     "pre_bye": "Their last game before a week off.",
     "pre_bye_div": "Their last game before a week off, against a divisional "
@@ -423,6 +485,14 @@ CATEGORY: dict[str, str] = {
     "fav_after_dog": "The line", "dog_after_fav": "The line",
     # Where they are in the season and who they just saw.
     "third_road": "Spot", "second_road": "Spot", "home_after_road": "Spot",
+    # THE OPPONENT is its own kind: every other angle here asks what shape the
+    # team is in, and these three ask about the team across from it.
+    "opp_off_bye": "Opponent", "opp_short_week": "Opponent",
+    "opp_blowout_loss": "Opponent",
+    "div_home_dog": "The line", "bad_team_favored": "The line",
+    "good_team_dog": "The line",
+    "close_loss_3": "Form", "close_win_3": "Form",
+    "div_back_to_back": "Spot",
     "rematch": "Spot", "qb_change": "Spot", "revenge": "Spot",
     "qb_second": "Spot", "new_coach": "Spot",
     "road_after_two_home": "Spot",
@@ -572,8 +642,29 @@ def team_weeks(schedules: pl.DataFrame) -> pl.DataFrame:
                    & (pl.col("_nxt") > pl.col("week") + 1))
            .select(["season", "team", "week"])
            .with_columns(pl.lit(True).alias("pre_bye")))
-    return (tg.join(pre, on=["season", "team", "week"], how="left")
-              .with_columns(pl.col("pre_bye").fill_null(False)))
+    tg = (tg.join(pre, on=["season", "team", "week"], how="left")
+            .with_columns(pl.col("pre_bye").fill_null(False)))
+    # THE OPPONENT'S SITUATION, which nothing here had ever used: all sixty
+    # angles above are about the team itself. `opp_rest` already rides on the
+    # frame; the opponent's LAST RESULT does not, and a self-join on the game
+    # is the whole of it.
+    tg = tg.join(
+        tg.select(["game_id", pl.col("team").alias("opp"),
+                   pl.col("prev_margin").alias("opp_prev_margin")]),
+        on=["game_id", "opp"], how="left")
+    # RECORD SO FAR, counted BEFORE this week's game. `cum_sum` includes the
+    # current row, so each is subtracted back out — without that a team is
+    # credited with the result it has not played yet.
+    tg = tg.sort(["season", "team", "week"]).with_columns(
+        (pl.col("margin") > 0).cast(pl.Int8).alias("_w"))
+    tg = tg.with_columns([
+        (pl.col("_w").cum_sum().over(["season", "team"]) - pl.col("_w"))
+            .alias("wins_before"),
+        ((1 - pl.col("_w")).cum_sum().over(["season", "team"])
+         - (1 - pl.col("_w"))).alias("losses_before"),
+        pl.col("div_game").shift(1).over(["season", "team"]).alias("prev_div"),
+    ])
+    return tg.drop("_w")
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
