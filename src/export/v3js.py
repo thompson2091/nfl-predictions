@@ -144,6 +144,9 @@ const V = Object.assign({
   //: The earliest season the long-run column counts. Every season is shipped
   //: separately so this can move without another measurement.
   angleFrom: 0, angleQ: '',
+  //: The same table on a game card, with its own sort and filter so ordering
+  //: one does not reorder the other.
+  gaSort: 'season', gaDesc: true, gaOpen: null, gaTeam: 'all',
   ask: '', answer: '',
   // The saved picks, and which of them the Picks tab is showing. `saved` was
   // a boolean nothing read; the slip and the saved copy are different things
@@ -2229,73 +2232,100 @@ function v3GameOdds(c, gid) {
 // An angle is "teams off a 20+ loss are 7-1 against the spread this year" —
 // the kind of line that travels. That one is true and it is eight games.
 // Over 504 team-weeks since 2015 the same split covers 52.6%, break-even at
-// -110 is 52.38%, and the interval runs 48.2% to 56.9%. Twenty angles were
-// measured together and NOT ONE clears at the lower bound.
+// -110 is 52.38%, and the interval runs 48.2% to 56.9%. Forty-nine angles
+// were measured together and NOT ONE clears at the lower bound.
 //
-// So the long-run record leads and the season sits in brackets behind it,
-// which is the opposite of how these are usually quoted and the only ordering
-// that survives being read quickly. `since` is the column that will matter
-// later: an angle added because it was hot is graded from the day it was
-// added, where nothing can have been selected on.
+// THE SAME TABLE AS THE BOARD, for the same reason it is a table there: the
+// median game carries seventeen of these, which is past the length anyone
+// reads top to bottom, and the whole use of it is comparing one column down
+// the list. Sorting and the team filter have their own state, so ordering
+// this card does not reorder the Angles page behind it.
+//
+// KEYED BY GAME. This used to look up the two teams and print whatever came
+// back, which was a week-3 answer under a week-4 fixture: ARI came off a
+// 24-point loss in week 3 and its week-4 card said "ARI · Off a 20+ loss"
+// when ARI's last result was a six-point loss.
 function v3Angles(c) {
   const A = DATA.angles || {};
-  const hits = (A.week || {});
-  const mine = [];
-  [c.away, c.home].forEach(t => (hits[t] || []).forEach(
-    id => mine.push([t, id])));
+  const mine = (A.week || {})[c.game_id] || [];
   if (!mine.length || !(A.rows || []).length) return '';
+  const be = has(A.break_even) ? A.break_even : 0.5238;
+  const from = v3AngleYears().from;
   const by = {};
   (A.rows || []).forEach(r => { by[r.id] = r; });
-  const be = has(A.break_even) ? A.break_even : 0.5238;
-  const rec = d => d ? d.w + '-' + d.l : null;
-  const rows = mine.map(pair => {
-    const r = by[pair[0] && pair[1] ? pair[1] : ''];
-    if (!r) return '';
-    const a = r.all;
-    // COLOR TRACKS THE LONG RUN ONLY, and only once the interval clears.
-    // Tinting a hot season would put green on eight games, which is the exact
-    // reading the card exists to prevent.
-    const good = a && a.lo > be;
-    // THIS YEAR LEADS, WITH ITS RECORD UNDER IT. The season number is the one
-    // that gets quoted, so hiding it in a footnote just means it gets read
-    // somewhere else without the denominator. "12.5%" persuades; "12.5%" over
-    // "1-7" cannot, because the sample is sitting under the claim.
-    // "48.9%" ON ITS OWN IS A PERCENTAGE OF NOTHING. Every one of these is a
-    // cover rate against the closing spread, and a reader who assumes it is a
-    // win rate is reading a different and much more flattering number.
-    const cell = (eyebrow, d, tone) => '<div class="cell">'
-      + '<span class="eyebrow">' + eyebrow + ' ATS</span>'
-      + '<b class="num' + (tone ? ' good' : '') + '">'
-      + (d && d.n ? (d.pct * 100).toFixed(1) + '%' : '\u2014') + '</b>'
-      + '<span class="sub num">' + (d && d.n ? d.w + '-' + d.l : 'no games')
-      + '</span></div>';
-    return '<div class="angle">'
-      + '<div class="angle__t"><b>' + esc(pair[0]) + ' \u00b7 '
-      + esc(r.label) + '</b></div>'
-      + '<div class="angle__s">'
-      + cell('This year', r.season, false)
-      + cell('Since 2015', a, good)
-      // Only where it has run long enough to say anything. An angle added
-      // this week has nothing here yet, and an empty column reads as a
-      // missing number rather than as a test that has not started.
-      + (r.since && r.since.n ? cell('Since added', r.since, false) : '')
-      + '</div>'
-      + '<div class="angle__f num">' + (a
-        ? (a.lo * 100).toFixed(0) + '\u2013' + (a.hi * 100).toFixed(0)
-          + '% either way on ' + a.n + ' games'
-        : '') + '</div></div>';
-  }).filter(Boolean).join('');
-  if (!rows) return '';
+
+  const team = (V.gaTeam === c.away || V.gaTeam === c.home) ? V.gaTeam : 'all';
+  const rows = mine
+    .filter(pair => by[pair[1]] && (team === 'all' || pair[0] === team))
+    .map(pair => ({ team: pair[0], r: by[pair[1]],
+                    run: v3AngleSince(by[pair[1]], from, be) }));
+  if (!rows.length && team === 'all') return '';
+
+  const pct = d => (d && d.n) ? d.pct : -1;
+  const SORTS = {
+    season: o => pct(o.r.season),
+    all: o => pct(o.run),
+    name: o => o.team + ' ' + o.r.label,
+  };
+  const key = SORTS[V.gaSort] ? V.gaSort : 'season';
+  const dir = V.gaDesc ? -1 : 1;
+  rows.sort((a, b) => {
+    const x = SORTS[key](a), y = SORTS[key](b);
+    if (x < y) return -dir;
+    if (x > y) return dir;
+    return (a.team + a.r.label) < (b.team + b.r.label) ? -1 : 1;
+  });
+
+  const arrow = k => (key === k ? (V.gaDesc ? ' \u2193' : ' \u2191') : '');
+  const head = (k, label) => '<button class="ahead" data-v3gasort="'
+    + k + '" aria-pressed="' + (key === k) + '">' + label + arrow(k)
+    + '</button>';
+  const games = A.games || {};
+
   return '<h2 class="h1" style="font-size:19px;line-height:24px;'
     + 'margin-top:20px">Angles on this game</h2>'
     + '<p class="help">How often teams in each of these situations have '
-    + 'COVERED THE CLOSING SPREAD \u2014 not how often they won.</p>'
-    + '<div class="card">' + rows
+    + 'COVERED THE CLOSING SPREAD \u2014 not how often they won. Tap one for '
+    + 'this season\u2019s games.</p>'
+    // WHOSE ANGLES. Both sides' splits in one list read as one team's until
+    // you notice the prefix, and on a median seventeen rows that is a lot of
+    // noticing. Three buttons answer it once.
+    + '<div class="seg seg--3" style="margin-top:10px">'
+    + v3Seg('v3gateam', [['all', 'Both'], [c.away, c.away], [c.home, c.home]],
+            team)
+    + '</div>'
+    + '<div class="card" style="margin-top:10px">'
+    + '<div class="arow arow--h">'
+    + head('name', 'Pattern')
+    + head('season', 'Yr ATS')
+    + head('all', '\u2019' + String(from).slice(2) + '+ ATS')
+    + '</div>'
+    + (rows.length ? '' : '<p class="help" style="padding:12px 0">'
+       + esc(team) + ' carries none of these.</p>')
+    + rows.map(o => {
+        const r = o.r, a = o.run;
+        // COLOR TRACKS THE LONG RUN ONLY, and only once the interval clears.
+        // Tinting a hot season would put green on eight games, which is the
+        // exact reading the card exists to prevent.
+        const good = a && a.clears;
+        const id = o.team + ':' + r.id;
+        const open = V.gaOpen === id;
+        return '<button class="arow' + (open ? ' arow--on' : '')
+          + '" data-v3gangle="' + esc(id) + '" aria-expanded="' + open + '">'
+          + '<span class="arow__l"><b>' + esc(o.team) + '</b> '
+          + esc(r.label) + '</span>'
+          + '<span class="num"><b>' + v3AnglePct(r.season) + '</b>'
+          + '<i>' + v3AngleRec(r.season) + '</i></span>'
+          + '<span class="num' + (good ? ' good' : '') + '"><b>'
+          + v3AnglePct(a) + '</b><i>' + v3AngleRec(a) + '</i></span>'
+          + '</button>'
+          + (open ? v3AngleGames(r, games) : '');
+      }).join('')
     // THE DENOMINATOR IS THE FINDING, so it is on the card rather than in a
-    // footnote. Without it a reader sees four splits and no idea that sixteen
-    // others were measured at the same time and said nothing.
+    // footnote. Without it a reader sees four splits and no idea that
+    // forty-five others were measured at the same time and said nothing.
     + '<p class="help" style="margin-top:10px">Break-even at \u2212110 is '
-    + (be * 100).toFixed(1) + '%. Of the ' + (A.rows || []).length
+    + (be * 100).toFixed(2) + '%. Of the ' + (A.rows || []).length
     + ' angles measured together, <b style="color:var(--ink)">'
     + (A.rows || []).filter(r => r.all && r.all.lo > be).length
     + '</b> clear it once the interval is taken into account. A season\u2019s '
@@ -3472,6 +3502,114 @@ function v3AngleBoard(g) {
   return null;
 }
 
+// THE SHARED PARTS OF AN ANGLE, so the board and the game card cannot drift.
+//
+// Both draw the same rows from the same payload, and the first version of the
+// game card had its own copy of the percentage, the record and the long run —
+// three formatters that were already right twenty lines away, and the card
+// quoted "since 2015" whatever the board's slider said.
+
+//: TWO DECIMALS. Break-even is 52.38% and a column rounded to whole points
+//: cannot show a row sitting either side of it.
+const v3AnglePct = d => (d && d.n) ? (d.pct * 100).toFixed(2) + '%' : '\u2014';
+const v3AngleRec = d => (d && d.n) ? d.w + '-' + d.l : '';
+
+// Every season any angle has a record in, and the one the reader chose to
+// count from. The range spans the archive rather than a year typed in here.
+function v3AngleYears() {
+  const splits = (DATA.angles || {}).splits || {};
+  const yrs = {};
+  Object.keys(splits).forEach(id => Object.keys(splits[id]).forEach(
+    y => { yrs[y] = 1; }));
+  const years = Object.keys(yrs).map(Number).sort((a, b) => a - b);
+  const first = years.length ? years[0] : 2015;
+  const last = years.length ? years[years.length - 1] : first;
+  const from = (V.angleFrom && V.angleFrom >= first && V.angleFrom <= last)
+    ? V.angleFrom : first;
+  return { first: first, last: last, from: from };
+}
+
+// The long-run record, recomputed from the season-by-season splits for
+// whatever start year is chosen.
+function v3AngleSince(r, from, be) {
+  const by = ((DATA.angles || {}).splits || {})[r.id] || {};
+  let w = 0, l = 0;
+  Object.keys(by).forEach(y => {
+    if (Number(y) >= from) { w += by[y][0]; l += by[y][1]; }
+  });
+  const n = w + l;
+  if (!n) return null;
+  const iv = v3Wilson(w, n);
+  return { n: n, w: w, l: l, pct: w / n, lo: iv[0], hi: iv[1],
+           clears: iv[0] > be };
+}
+
+function v3AngleGames(r, games) {
+  const gs = games[r.id] || [];
+  const plain = r.plain
+    ? '<p class="adet__p">' + esc(r.plain) + '</p>' : '';
+  if (!gs.length) {
+    return '<div class="adet">' + plain
+      + '<p class="help" style="margin:0 0 8px">No games this season yet.'
+      + '</p></div>';
+  }
+  const w = gs.filter(g => g.covered === true).length;
+  const l = gs.filter(g => g.covered === false).length;
+  // THREE STATES, NOT TWO. A game that landed exactly on the number is a
+  // push: played, returns the stake, and counted in neither column. It
+  // used to be lumped in with the fixtures still to come.
+  const push = gs.filter(g => g.played && g.covered == null).length;
+  const rest = gs.filter(g => !g.played).length;
+  return '<div class="adet">' + plain
+    // A HEADER STRIP, so this reads as a nested table rather than a panel
+    // that appeared. It borrows the board's own column labels; the record
+    // sits in the right-hand one because that is the column it grades.
+    + '<div class="adet__h"><span>This season</span>'
+    + '<span>' + w + '\u2013' + l
+    + (push ? ' \u00b7 ' + push + ' push' : '')
+    + (rest ? ' \u00b7 ' + rest + ' to play' : '') + '</span></div>'
+    + gs.map(g => {
+        const done = g.covered !== null && g.covered !== undefined;
+        const pushed = !done && g.played;
+        const tone = !done ? '' : (g.covered ? ' agame--won' : ' agame--lost');
+        // ONLY LINKED WHERE THERE IS SOMETHING TO OPEN. A fixture whose
+        // week has no board — next week's games, which are scheduled but
+        // not yet priced — used to be a button that landed on "that game
+        // is not on this week's board".
+        const on = v3AngleBoard(g);
+        // WHICH TEAM THE PATTERN IS ABOUT. Both sides were named the same
+        // way, so "ATL at GB · cover +4.5" left the reader to work out
+        // whose cover it was. The carrying team keeps the ink and the
+        // weight; the fixture around it steps back.
+        const line = '<span class="agame__t">'
+          + '<b><span class="agame__me">' + esc(g.team) + '</span> '
+          + (g.home ? 'vs' : 'at') + ' ' + esc(g.opp) + '</b>'
+          + '<i>Wk ' + g.week
+          + (has(g.spread) ? ' \u00b7 ' + (g.spread > 0 ? '\u2212' : '+')
+             + Math.abs(g.spread) : '')
+          + (has(g.pf) && has(g.pa) ? ' \u00b7 ' + g.pf + '\u2013' + g.pa
+             : '') + '</i></span>'
+          // A GAME NOT YET PLAYED NAMES ITS SIDE. "to play" said only that
+          // nothing had happened, on the rows where knowing which team the
+          // split points at is the whole use of the list. A push says so
+          // in neutral: it is settled, and it is neither a cover nor a loss.
+          + '<span class="tag ' + (pushed ? ''
+             : !done ? 'tag--ours'
+             : (g.covered ? 'tag--good' : 'tag--bad')) + '">'
+          + (pushed ? 'push'
+             : !done ? esc(g.team) + ' to play'
+             : (g.covered ? 'cover ' : 'no ')
+               + (g.by > 0 ? '+' : '') + g.by) + '</span>';
+        if (!on) return '<div class="agame agame--flat' + tone + '">'
+          + line + '<i class="agame__go"></i></div>';
+        return '<button class="agame' + tone + '" data-v3anglegame="'
+          + esc(g.gid || '') + '|' + (on.past ? g.week : '') + '|'
+          + esc(r.id) + '">' + line
+          + '<i class="agame__go">\u203a</i></button>';
+      }).join('')
+    + '</div>';
+}
+
 function v3AnglesPage() {
   const A = DATA.angles || {};
   const all = (A.rows || []).slice();
@@ -3481,32 +3619,9 @@ function v3AnglesPage() {
       + '<div class="card"><p class="lede" style="font-size:15px">Nothing '
       + 'measured yet. This needs a graded schedule on disk.</p></div></div>';
   }
-  const splits = A.splits || {};
-  // Every season any angle has a record in, so the slider spans the archive
-  // rather than a range typed in here.
-  const yrs = {};
-  Object.keys(splits).forEach(id => Object.keys(splits[id]).forEach(
-    y => { yrs[y] = 1; }));
-  const years = Object.keys(yrs).map(Number).sort((a, b) => a - b);
-  const first = years.length ? years[0] : 2015;
-  const last = years.length ? years[years.length - 1] : first;
-  const from = (V.angleFrom && V.angleFrom >= first && V.angleFrom <= last)
-    ? V.angleFrom : first;
-
-  // The long-run record, recomputed from the season-by-season splits for
-  // whatever start year is chosen.
-  const since = (r) => {
-    const by = splits[r.id] || {};
-    let w = 0, l = 0;
-    Object.keys(by).forEach(y => {
-      if (Number(y) >= from) { w += by[y][0]; l += by[y][1]; }
-    });
-    const n = w + l;
-    if (!n) return null;
-    const iv = v3Wilson(w, n);
-    return { n: n, w: w, l: l, pct: w / n, lo: iv[0], hi: iv[1],
-             clears: iv[0] > be };
-  };
+  const yr = v3AngleYears();
+  const first = yr.first, last = yr.last, from = yr.from;
+  const since = r => v3AngleSince(r, from, be);
 
   const cats = [];
   all.forEach(r => { if (r.cat && cats.indexOf(r.cat) < 0) cats.push(r.cat); });
@@ -3541,80 +3656,12 @@ function v3AnglesPage() {
   });
 
   const games = A.games || {};
-  // TWO DECIMALS. Break-even is 52.38% and a column rounded to whole points
-  // cannot show a row sitting either side of it.
-  const cellv = d => (d && d.n) ? (d.pct * 100).toFixed(2) + '%' : '\u2014';
-  const rec = d => (d && d.n) ? d.w + '-' + d.l : '';
   const arrow = k => (key === k ? (V.angleDesc ? ' \u2193' : ' \u2191') : '');
   const head = (k, label) => '<button class="ahead" data-v3anglesort="'
     + k + '" aria-pressed="' + (key === k) + '">' + label + arrow(k)
     + '</button>';
 
-  const detail = (r) => {
-    const gs = games[r.id] || [];
-    const plain = r.plain
-      ? '<p class="adet__p">' + esc(r.plain) + '</p>' : '';
-    if (!gs.length) {
-      return '<div class="adet">' + plain
-        + '<p class="help" style="margin:0 0 8px">No games this season yet.'
-        + '</p></div>';
-    }
-    const w = gs.filter(g => g.covered === true).length;
-    const l = gs.filter(g => g.covered === false).length;
-    // THREE STATES, NOT TWO. A game that landed exactly on the number is a
-    // push: played, returns the stake, and counted in neither column. It
-    // used to be lumped in with the fixtures still to come.
-    const push = gs.filter(g => g.played && g.covered == null).length;
-    const rest = gs.filter(g => !g.played).length;
-    return '<div class="adet">' + plain
-      // A HEADER STRIP, so this reads as a nested table rather than a panel
-      // that appeared. It borrows the board's own column labels; the record
-      // sits in the right-hand one because that is the column it grades.
-      + '<div class="adet__h"><span>This season</span>'
-      + '<span>' + w + '\u2013' + l
-      + (push ? ' \u00b7 ' + push + ' push' : '')
-      + (rest ? ' \u00b7 ' + rest + ' to play' : '') + '</span></div>'
-      + gs.map(g => {
-          const done = g.covered !== null && g.covered !== undefined;
-          const pushed = !done && g.played;
-          const tone = !done ? '' : (g.covered ? ' agame--won' : ' agame--lost');
-          // ONLY LINKED WHERE THERE IS SOMETHING TO OPEN. A fixture whose
-          // week has no board — next week's games, which are scheduled but
-          // not yet priced — used to be a button that landed on "that game
-          // is not on this week's board".
-          const on = v3AngleBoard(g);
-          // WHICH TEAM THE PATTERN IS ABOUT. Both sides were named the same
-          // way, so "ATL at GB · cover +4.5" left the reader to work out
-          // whose cover it was. The carrying team keeps the ink and the
-          // weight; the fixture around it steps back.
-          const line = '<span class="agame__t">'
-            + '<b><span class="agame__me">' + esc(g.team) + '</span> '
-            + (g.home ? 'vs' : 'at') + ' ' + esc(g.opp) + '</b>'
-            + '<i>Wk ' + g.week
-            + (has(g.spread) ? ' \u00b7 ' + (g.spread > 0 ? '\u2212' : '+')
-               + Math.abs(g.spread) : '')
-            + (has(g.pf) && has(g.pa) ? ' \u00b7 ' + g.pf + '\u2013' + g.pa
-               : '') + '</i></span>'
-            // A GAME NOT YET PLAYED NAMES ITS SIDE. "to play" said only that
-            // nothing had happened, on the rows where knowing which team the
-            // split points at is the whole use of the list. A push says so
-            // in neutral: it is settled, and it is neither a cover nor a loss.
-            + '<span class="tag ' + (pushed ? ''
-               : !done ? 'tag--ours'
-               : (g.covered ? 'tag--good' : 'tag--bad')) + '">'
-            + (pushed ? 'push'
-               : !done ? esc(g.team) + ' to play'
-               : (g.covered ? 'cover ' : 'no ')
-                 + (g.by > 0 ? '+' : '') + g.by) + '</span>';
-          if (!on) return '<div class="agame agame--flat' + tone + '">'
-            + line + '<i class="agame__go"></i></div>';
-          return '<button class="agame' + tone + '" data-v3anglegame="'
-            + esc(g.gid || '') + '|' + (on.past ? g.week : '') + '|'
-            + esc(r.id) + '">' + line
-            + '<i class="agame__go">\u203a</i></button>';
-        }).join('')
-      + '</div>';
-  };
+  const detail = r => v3AngleGames(r, games);
 
   return '<div class="wrap">'
     + '<h1 class="h1">Angles</h1>'
@@ -3664,14 +3711,14 @@ function v3AnglesPage() {
           + '" data-v3angle="' + esc(r.id) + '" aria-expanded="' + open + '">'
           + '<span class="arow__l">' + esc(r.label)
           + (r.mined ? ' <i class="tag tag--warn">added</i>' : '') + '</span>'
-          + '<span class="num"><b>' + cellv(r.season) + '</b>'
-          + '<i>' + rec(r.season) + '</i></span>'
+          + '<span class="num"><b>' + v3AnglePct(r.season) + '</b>'
+          + '<i>' + v3AngleRec(r.season) + '</i></span>'
           // THE RECORD UNDER THE PERCENTAGE, the same as the column beside
           // it. This used to carry the interval instead, which meant the two
           // number columns read differently and the games count needed a
           // third column to say what "1250-1180" already says.
           + '<span class="num' + (good ? ' good' : '') + '"><b>'
-          + cellv(a) + '</b><i>' + rec(a) + '</i></span>'
+          + v3AnglePct(a) + '</b><i>' + v3AngleRec(a) + '</i></span>'
           + '</button>'
           + (open ? detail(r) : '');
       }).join('')
@@ -4007,6 +4054,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
                   'v3half', 'v3boardgame', 'v3anglesort', 'v3angle',
                   'v3anglegame', 'v3angleclear',
+                  'v3gasort', 'v3gateam', 'v3gangle',
                   'v3sortpick'];
 
 document.addEventListener('click', ev => {
@@ -4182,6 +4230,12 @@ function v3Do(kind, v) {
       else { V.angleSort = v; V.angleDesc = (v !== 'name'); }
       break;
     case 'v3angleclear': V.angleQ = ''; break;
+    case 'v3gasort':
+      if (V.gaSort === v) V.gaDesc = !V.gaDesc;
+      else { V.gaSort = v; V.gaDesc = (v !== 'name'); }
+      break;
+    case 'v3gateam': V.gaTeam = v; V.gaOpen = null; break;
+    case 'v3gangle': V.gaOpen = (V.gaOpen === v) ? null : v; break;
     case 'v3anglegame': {
       const bits = String(v).split('|');
       V.tab = 'games'; V.game = bits[0]; V.gameTab = 'odds';

@@ -131,6 +131,71 @@ if (cards.length) {
        app().indexOf('Context, not an edge') >= 0);
   }
 
+  // ── The angles on THIS game ──────────────────────────────────────────
+  //
+  // Keyed by team and measured for one week, the card printed a week-3
+  // answer under a week-4 fixture: ARI came off a 24-point loss in week 3
+  // and its week-4 card said "ARI · Off a 20+ loss" when ARI's last result
+  // was a six-point loss.
+  {
+    const gid = cards[0].game_id;
+    const wk = (DATA.angles || {}).week || {};
+    const mine = wk[gid] || [];
+    V.game = gid; V.gameTab = 'odds'; V.gaTeam = 'all'; V.gaOpen = null;
+    V.gaSort = 'season'; V.gaDesc = true;
+    render();
+    const h = app();
+    ok('the game card lists its angles', h.indexOf('Angles on this game') >= 0);
+    ok('one row per angle this game carries',
+       (h.match(/data-v3gangle="/g) || []).length === mine.length,
+       (h.match(/data-v3gangle="/g) || []).length + ' drawn, '
+       + mine.length + ' carried');
+    // ANOTHER GAME'S ENTRIES MUST NOT REACH THIS CARD.
+    const others = {};
+    Object.keys(wk).forEach(k => {
+      if (k !== gid) (wk[k] || []).forEach(pr => { others[pr[0]] = 1; });
+    });
+    const sides = {}; sides[cards[0].away] = 1; sides[cards[0].home] = 1;
+    const strays = Object.keys(others).filter(
+      t => !sides[t] && h.indexOf('<b>' + t + '</b>') >= 0);
+    ok('and no other game\u2019s angles leak in', strays.length === 0,
+       strays.join(','));
+    // The same table as the board: sortable by its columns.
+    ok('the columns sort it', h.indexOf('data-v3gasort=') >= 0);
+    const order = () => (app().match(/data-v3gangle="([^"]+)"/g) || []).join('|');
+    const byYear = order();
+    v3Do('v3gasort', 'name'); render();
+    ok('sorting the card reorders it', order() !== byYear, 'order unchanged');
+    const az = order();
+    v3Do('v3gasort', 'name'); render();
+    ok('and tapping the same column flips it',
+       order().split('|').reverse().join('|') === az);
+    // ...and it does not reorder the Angles page behind it.
+    ok('without touching the board\u2019s own sort', V.angleSort === 'season');
+    v3Do('v3gasort', 'season'); render();
+    // Whose angles: both sides in one list read as one team's.
+    ok('the card can be narrowed to one side',
+       app().indexOf('data-v3gateam=') >= 0);
+    v3Do('v3gateam', cards[0].away); render();
+    const only = (app().match(/data-v3gangle="([^":]+):/g) || [])
+      .map(m => m.slice('data-v3gangle="'.length, -1));
+    ok('and narrowing leaves only that side',
+       only.length > 0 && only.every(t => t === cards[0].away),
+       only.join(','));
+    v3Do('v3gateam', 'all'); render();
+    // Tapping a row opens the same fixture list the board opens.
+    const first = /data-v3gangle="([^"]+)"/.exec(app());
+    if (first) {
+      ok('nothing is open to begin with', app().indexOf('class="adet"') < 0);
+      v3Do('v3gangle', first[1]); render();
+      ok('tapping a row opens its games', app().indexOf('class="adet"') >= 0);
+      ok('and only one at a time',
+         (app().match(/class="adet"/g) || []).length === 1);
+      v3Do('v3gangle', first[1]); render();
+      ok('tapping it again closes it', app().indexOf('class="adet"') < 0);
+    }
+  }
+
   // A game that is not on the board must say so rather than throwing.
   V.game = 'NOT_AGAME';
   let e = null;
@@ -722,8 +787,14 @@ ok('and explains why half is not enough',
    L().indexOf('bookmaker keeps a cut') >= 0);
 // Tapping a row opens this season's games.
 {
-  const first = /data-v3angle="([^"]+)"/.exec(L());
-  ok('a row can be opened', !!first);
+  // The row that HAS fixtures, not whichever sorts first: opening an angle
+  // with no games this season exercises the empty branch and every assertion
+  // below it goes quiet while the file still reports all passed.
+  const withGames = Object.keys((DATA.angles || {}).games || {})[0];
+  const first = withGames ? [null, withGames]
+    : /data-v3angle="([^"]+)"/.exec(L());
+  ok('a row can be opened',
+     !!first && L().indexOf('data-v3angle="' + first[1] + '"') >= 0);
   if (first) {
     ok('and nothing is open to begin with', L().indexOf('class="adet"') < 0);
     v3Do('v3angle', first[1]);

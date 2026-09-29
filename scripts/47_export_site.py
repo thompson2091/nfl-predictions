@@ -456,8 +456,10 @@ def _angles_block(payload: dict, season: int | None, week: int | None) -> None:
         payload["angles"] = {
             "break_even": A.BREAK_EVEN,
             "rows": A.measure(sched, season),
-            "week": (A.qualifying(sched, season, week)
-                     if season and week else {}),
+            # KEYED BY GAME, and over the whole season rather than one
+            # week: the board carries whatever the books have posted, which
+            # is regularly more than one week of fixtures.
+            "week": A.qualifying(sched, season) if season else {},
             # The games behind each season record, so "0-5" can be opened.
             # Five losses is an anecdote until you can see which five.
             "games": A.season_games(sched, season) if season else {},

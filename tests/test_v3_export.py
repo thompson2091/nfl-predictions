@@ -295,10 +295,29 @@ def payload_v3():
              "all": {"n": 301, "w": 141, "l": 160, "pct": 0.468,
                      "lo": 0.413, "hi": 0.525, "clears": False},
              "since": None,
-             "season": {"n": 5, "w": 3, "l": 2, "pct": 0.60,
-                        "lo": 0.231, "hi": 0.882, "clears": False}},
+             # DELIBERATELY THE BEST SEASON AND THE WORST LONG RUN. With
+             # three rows whose season order, long-run order and alphabetical
+             # order all coincided, every sort assertion passed without the
+             # sort doing anything.
+             "season": {"n": 5, "w": 5, "l": 0, "pct": 1.0,
+                        "lo": 0.566, "hi": 1.0, "clears": True}},
         ],
-        "week": {"ATL": ["blowout_loss"], "GB": ["div_dog", "off_ot"]},
+        # KEYED BY GAME, not by team. Keyed by team, a week-3 answer was
+        # printed under a week-4 fixture, because the board carries whatever
+        # the books have posted and that is regularly more than one week.
+        # `DET_BUF` is a DIFFERENT game and its entries must not reach the
+        # ATL at GB card.
+        # KEYED BY GAME, not by team. Keyed by team, a week-3 answer was
+        # printed under a week-4 fixture, because the board carries whatever
+        # the books have posted and that is regularly more than one week.
+        #
+        # ATL APPEARS IN TWO GAMES ON PURPOSE. That is the shape of the bug:
+        # a team-keyed lookup pulls `CAR_ATL`'s entry onto the `ATL_GB` card,
+        # and a fixture where each team appears once cannot tell the two
+        # lookups apart.
+        "week": {"ATL_GB": [["ATL", "blowout_loss"], ["GB", "div_dog"],
+                            ["GB", "off_ot"]],
+                 "CAR_ATL": [["ATL", "off_ot"], ["CAR", "div_dog"]]},
         # Per-season records, which is what lets the page answer "since 2020"
         # without another measurement. Without these the slider has no range
         # and silently clamps to a single year.
@@ -576,7 +595,19 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a thin game says so",
                  "and still draws the margin bands",
                  "and does not refuse",
-                 "a full sample shows no banner"):
+                 "a full sample shows no banner",
+                 # The angles on one game: its own, sortable, filterable.
+                 "the game card lists its angles",
+                 "one row per angle this game carries",
+                 "and no other game\u2019s angles leak in",
+                 "the columns sort it",
+                 "sorting the card reorders it",
+                 "and tapping the same column flips it",
+                 "without touching the board\u2019s own sort",
+                 "the card can be narrowed to one side",
+                 "and narrowing leaves only that side",
+                 "tapping a row opens its games",
+                 "and only one at a time"):
         assert path in r.stdout, f"{path!r} never ran:\n{r.stdout}"
 
 

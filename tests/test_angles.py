@@ -89,26 +89,57 @@ def test_a_mined_angle_is_labeled_as_one():
                 f"{a.id} was added after registration but is not marked mined")
 
 
-def test_qualifying_teams_match_the_splits(sched):
-    """The card claims a team carries an angle; that has to be the same
-    predicate the record was measured on."""
+def test_qualifying_entries_match_the_splits_in_their_own_game(sched):
+    """The card claims a team carries an angle IN THIS GAME.
+
+    Keyed by team and measured for one week, it could not: the board carries
+    whatever the books have posted, and in week 3 of 2026 that was thirty
+    fixtures spanning two weeks, so week-3 angles printed under week-4 games.
+    ARI came off a 24-point loss in week 3 and the card for its week-4 game
+    said "ARI - Off a 20+ loss" when ARI's last result was a six-point loss.
+
+    Every entry is checked against the team-week of THAT GAME, so an entry
+    filed under the wrong fixture fails here whatever week it came from.
+    """
     tg = A.team_weeks(sched)
-    seasons = sorted(sched["season"].unique().to_list())
-    season = seasons[-1]
-    weeks = sorted(tg.filter(pl.col("season") == season)["week"].unique()
-                   .to_list())
-    if not weeks:
-        pytest.skip("no weeks")
-    week = weeks[len(weeks) // 2]
-    q = A.qualifying(sched, season, week)
+    season = sorted(sched["season"].unique().to_list())[-1]
+    q = A.qualifying(sched, season)
+    assert q, "no games qualified at all"
     by_id = {a.id: a for a in A.ANGLES}
-    for team, ids in list(q.items())[:5]:
-        for aid in ids:
-            hit = tg.filter((pl.col("season") == season)
-                            & (pl.col("week") == week)
-                            & (pl.col("team") == team)
-                            & by_id[aid].predicate)
-            assert hit.height, f"{team} listed for {aid} but does not match it"
+    rows = tg.filter(pl.col("season") == season).with_columns(
+        pl.col("game_id").str.splitn("_", 3).struct.field("field_2").alias("gid"))
+    checked = 0
+    for gid, pairs in q.items():
+        for team, aid in pairs:
+            hit = rows.filter((pl.col("gid") == gid)
+                              & (pl.col("team") == team)
+                              & by_id[aid].predicate)
+            assert hit.height, (
+                f"{team} is listed for {aid} in {gid}, but that team-week "
+                "does not match the predicate the record was measured on")
+            checked += 1
+    assert checked > 100, f"only {checked} entries checked; the fixture is thin"
+
+
+def test_an_angle_is_filed_under_the_game_it_happened_in(sched):
+    """A game carries only its own two teams.
+
+    The team-keyed version had nothing to check this against: the card looked
+    up a team and printed whatever came back, whichever week it was measured
+    in and whichever fixture was on screen.
+    """
+    tg = A.team_weeks(sched)
+    season = sorted(sched["season"].unique().to_list())[-1]
+    q = A.qualifying(sched, season)
+    sides: dict[str, set] = {}
+    for r in tg.filter(pl.col("season") == season).iter_rows(named=True):
+        gid = "_".join(str(r["game_id"]).split("_")[2:])
+        sides.setdefault(gid, set()).add(r["team"])
+    for gid, pairs in q.items():
+        assert gid in sides, f"{gid} is not a fixture this season"
+        for team, _aid in pairs:
+            assert team in sides[gid], (
+                f"{team} is listed under {gid}, which it does not play in")
 
 
 def test_the_season_number_never_appears_without_its_record():
@@ -118,18 +149,30 @@ def test_the_season_number_never_appears_without_its_record():
     the claim. Hiding the season number instead just means it gets read
     somewhere else without the denominator.
     """
+    import re
+
     from src.export import v3js
     src = v3js.js()
-    i = src.index("function v3Angles")
-    body = src[i:i + 3500]
-    # One helper renders every column, so a percentage cannot be drawn
-    # without the record: they are the same expression.
-    assert "const cell = (eyebrow, d, tone)" in body, (
-        "the columns are no longer built by one helper, so a percentage can "
-        "now be shown without its win-loss")
-    assert "d.w + '-' + d.l" in body, "the record is not printed"
-    for col in ("This year", "Since 2015"):
-        assert col in body, f"the {col!r} column is gone"
+
+    def body_of(name: str) -> str:
+        i = src.index(name)
+        j = src.index("\nfunction ", i + 1)
+        return src[i:j if j > 0 else len(src)]
+
+    # EVERY PERCENTAGE IS PAIRED WITH THE RECORD FOR THE SAME FIGURE. Both
+    # screens draw the columns through `v3AnglePct` and `v3AngleRec`, and the
+    # pairing is what this checks — the same argument, in that order, with
+    # nothing but markup between them.
+    pair = re.compile(r"v3AnglePct\((?P<a>[\w.]+)\)[^;]*?v3AngleRec\((?P=a)\)")
+    for fn in ("function v3Angles(", "function v3AnglesPage("):
+        body = body_of(fn)
+        n_pct = body.count("v3AnglePct(")
+        assert n_pct >= 2, f"{fn} draws no percentages at all"
+        assert len(pair.findall(body)) == n_pct, (
+            f"{fn} draws a percentage that is not followed by the record for "
+            "the same figure")
+    body = body_of("function v3Angles(")
+    assert "Yr ATS" in body and "+ ATS'" in body, "a column is gone"
     assert "Break-even" in body, "the card does not say what clears"
 
 
@@ -145,32 +188,44 @@ def test_every_percentage_says_it_is_against_the_spread():
         j = src.index("\nfunction ", i + 1)
         return src[i:j if j > 0 else len(src)]
 
-    # The game card builds every column through one helper, so the unit is
-    # appended once and cannot be forgotten on a single figure.
-    card = body_of("function v3Angles(")
-    assert "' ATS</span>'" in card, (
-        "the game card draws a percentage with no unit on it")
-    assert "COVERED THE CLOSING SPREAD" in card, (
+    # BOTH ARE TABLES, so the unit rides on the column headings. The long-run
+    # heading carries the chosen start year, so it is built rather than
+    # literal — "’23+ ATS". Both still have to say ATS.
+    for fn in ("function v3Angles(", "function v3AnglesPage("):
+        body = body_of(fn)
+        assert "Yr ATS" in body and "+ ATS'" in body, (
+            f"{fn} has an unlabelled percentage column")
+    assert "COVERED THE CLOSING SPREAD" in body_of("function v3Angles("), (
         "the card never says in full what the number measures")
-
-    # The board is a table, so the unit rides on the column headings instead.
-    page = body_of("function v3AnglesPage(")
-    # The long-run heading carries the chosen start year, so it is built
-    # rather than literal — "'23+ ATS". Both still have to say ATS.
-    assert "Yr ATS" in page and "'+ ATS'" in page, (
-        "the board's percentage columns are unlabelled")
 
 
 def test_only_the_long_run_can_be_tinted():
     """Green on a hot season is the exact reading this card exists to stop:
     eight games at 88% would go green and look like a finding."""
+    import re
+
     from src.export import v3js
     src = v3js.js()
-    i = src.index("function v3Angles")
-    body = src[i:i + 3500]
-    assert "cell('This year', r.season, false)" in body, (
-        "the season column can be tinted; it must never be")
-    assert "a.lo > be" in body, (
+
+    def body_of(name: str) -> str:
+        i = src.index(name)
+        j = src.index("\nfunction ", i + 1)
+        return src[i:j if j > 0 else len(src)]
+
+    for fn in ("function v3Angles(", "function v3AnglesPage("):
+        body = body_of(fn)
+        # The tint rides on `good`, and `good` is read off the LONG-RUN
+        # record clearing break-even at its lower bound.
+        assert re.search(r"const good = a && a\.clears", body), (
+            f"{fn} no longer ties the tint to the interval clearing")
+        # And the season column is drawn on a span that cannot carry it.
+        season = re.search(
+            r"<span class=\"num\"><b>' \+ v3AnglePct\(r\.season\)", body)
+        assert season, (
+            f"{fn} draws the season percentage on a span that could be tinted")
+    # `clears` is the lower bound clearing break-even, computed in one place.
+    since = body_of("function v3AngleSince(")
+    assert "clears: iv[0] > be" in since, (
         "the tint is no longer tied to the interval clearing break-even")
 
 

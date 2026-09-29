@@ -520,12 +520,25 @@ def season_games(schedules: pl.DataFrame, season: int) -> dict:
     return out
 
 
-def qualifying(schedules: pl.DataFrame, season: int, week: int) -> dict:
-    """Which angles each team carries into this week's game."""
-    tg = team_weeks(schedules)
-    wk = tg.filter((pl.col("season") == season) & (pl.col("week") == week))
+def qualifying(schedules: pl.DataFrame, season: int) -> dict:
+    """Which angles each side carries, KEYED BY GAME.
+
+    Keyed by team and computed for one week, this was wrong twice over. The
+    board carries whatever the books have posted, which in week 3 of 2026 was
+    thirty fixtures spanning two weeks, so a week-3 answer was printed under
+    week-4 games: ARI came off a 24-point loss in week 3 and the card for ARI
+    at NYG, a week-4 game, said "ARI · Off a 20+ loss" when ARI's last result
+    was a six-point loss. And keying by team alone left nothing to check it
+    against — the card looked up the team and printed whatever came back.
+
+    So every week of the season is measured, and each entry is filed under the
+    game it belongs to. A card can then ask only for its own game, and a week
+    that has not been measured yields nothing rather than the wrong thing.
+    """
+    tg = team_weeks(schedules).filter(pl.col("season") == season)
     hits: dict = {}
     for a in ANGLES:
-        for r in wk.filter(a.predicate).iter_rows(named=True):
-            hits.setdefault(r["team"], []).append(a.id)
+        for r in tg.filter(a.predicate).iter_rows(named=True):
+            gid = "_".join(str(r["game_id"]).split("_")[2:])
+            hits.setdefault(gid, []).append([r["team"], a.id])
     return hits
