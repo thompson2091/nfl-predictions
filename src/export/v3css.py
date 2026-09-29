@@ -178,6 +178,14 @@ button{cursor:pointer}
    answered — is there anyone in here — still gets an answer. */
 .pbar .seg button.mkt--none{opacity:.45}
 .pbar .seg{margin-top:0}
+/* A game's angle filters and the table they filter, so the bar lets go at the
+   end of the list instead of riding over the cards below it. */
+.gasec{position:relative}
+.gasec .pbar{margin-top:10px;gap:4px}
+/* The slider carried its own 6px on top of the bar's own gap, which stacked
+   into twelve between the search and the control under it. The gap is the
+   one that should decide. */
+.pbar .yrs{margin-top:0}
 /* Standing on its own rather than tucked under another pinned bar, so it
    needs air above the control. PADDING, not margin: a sticky element's margin
    sits outside the box its `top` offset positions, so a margin here would

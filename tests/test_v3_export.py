@@ -673,7 +673,6 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "and the caret with it",
                  "but a redraw with nothing focused focuses nothing",
                  "typing narrows the board",
-                 "and a search that matches nothing says so",
                  "and clearing it restores the board",
                  "sorted by the long run rather than by this season",
                  "losing angles are on the board too",
@@ -697,11 +696,10 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "and writes it into the label",
                  "without redrawing the board under the finger",
                  "and letting go redraws it",
-                 "the card can be searched",
-                 "typing narrows it",
-                 "and a team name matches its own rows",
-                 "and a search that matches nothing says so",
-                 "and clearing it restores the card",
+                 "the angle filters are in a pinned bar",
+                 "inside a section that also holds the table",
+                 "and no search box, which the team control already does",
+                 "with both segments and the year slider in it",
                  "the columns sort it",
                  "sorting the card reorders it",
                  "and tapping the same column flips it",
@@ -1238,3 +1236,38 @@ def test_the_ask_prompt_answers_rather_than_declines():
     # The blanket rule is what caused it; it must not come back.
     assert "no betting advice" not in body, (
         "the bare rule is back, and it is what produced the refusal")
+
+
+def test_a_games_angle_filters_pin_under_the_section_bar():
+    """Pinned to the tab they would ride over the cards below the table.
+
+    A sticky element stays stuck for as long as its PARENT is on screen, so
+    the bar and the table it filters share a wrapper: the bar lets go where
+    the list ends. And it pins at `--gtabs-h`, which `render` writes from the
+    measured height of the section bar, rather than at the top of the pane
+    where it would sit on top of it.
+
+    Falsified by unwrapping them, or by pinning the bar at zero.
+    """
+    from src.export import v3css, v3js
+
+    src, css = v3js.js(), v3css.css()
+    i = src.index("function v3Angles(c) {")
+    body = src[i:src.index("\nfunction ", i + 1)]
+    assert "'<div class=\"gasec\">'" in body, (
+        "the filters and their table are no longer wrapped together")
+    bar = body.index("class=\\\"pbar\\\"") if "class=\\\"pbar\\\"" in body \
+        else body.index("'<div class=\"pbar\">'")
+    sec = body.index("'<div class=\"gasec\">'")
+    assert sec < bar, "the wrapper opens after the bar it is meant to scope"
+    # The wrapper has to close AFTER the table, or it scopes nothing.
+    rows = body.index("data-v3gangle=")
+    close = body.index("'</div></div>';")
+    assert bar < rows < close, (
+        "the section does not close around the table it is meant to scope "
+        f"(bar={bar}, rows={rows}, close={close})")
+    # PINNED UNDER THE SECTION BAR. `.pbar` is the shared pinned-filter bar
+    # and is offset by the height the game's own bar publishes.
+    assert ".pbar{position:sticky;top:var(--gtabs-h,0px)" in css, (
+        "the pinned bar no longer offsets itself by the section bar")
+    assert ".gasec" in css, "the wrapper has no rule, so it scopes nothing"

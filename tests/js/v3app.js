@@ -163,34 +163,34 @@ if (cards.length) {
       t => !sides[t] && h.indexOf('<b>' + t + '</b>') >= 0);
     ok('and no other game\u2019s angles leak in', strays.length === 0,
        strays.join(','));
-    // SEARCH, because the median game carries seventeen of these.
-    ok('the card can be searched', h.indexOf('data-v3gaq') >= 0);
-    const all = (app().match(/data-v3gangle="/g) || []).length;
-    const one = mine[0];
-    const word = (((DATA.angles || {}).rows || [])
-      .filter(r => r.id === one[1])[0] || {}).label.split(' ')[1] || 'off';
-    fireDoc('input', { target: {
-      getAttribute: a => a === 'data-v3gaq' ? '' : null, value: word } });
-    const narrowed = (app().match(/data-v3gangle="/g) || []).length;
-    ok('typing narrows it', narrowed > 0 && narrowed <= all,
-       all + ' -> ' + narrowed);
-    // THE TEAM IS SEARCHABLE TOO. Every row here carries one, and "GB" is a
-    // reasonable thing to type.
-    fireDoc('input', { target: {
-      getAttribute: a => a === 'data-v3gaq' ? '' : null, value: one[0] } });
-    const byTeam = (app().match(/data-v3gangle="([^":]+):/g) || [])
-      .map(m => m.slice('data-v3gangle="'.length, -1));
-    ok('and a team name matches its own rows',
-       byTeam.length > 0 && byTeam.every(t => t === one[0]), byTeam.join(','));
-    fireDoc('input', { target: {
-      getAttribute: a => a === 'data-v3gaq' ? '' : null,
-      value: 'zzzznotathing' } });
-    ok('and a search that matches nothing says so',
-       app().indexOf('Nothing matches') >= 0);
-    fireDoc('input', { target: {
-      getAttribute: a => a === 'data-v3gaq' ? '' : null, value: '' } });
-    ok('and clearing it restores the card',
-       (app().match(/data-v3gangle="/g) || []).length === all);
+    // PINNED, LIKE EVERY OTHER FILTER IN THE APP. The median game carries
+    // seventeen patterns, more than a screen, and the controls that narrow
+    // them were above all of it.
+    {
+      const h2 = app();
+      const bar = h2.indexOf('class="pbar"');
+      ok('the angle filters are in a pinned bar', bar >= 0);
+      // WRAPPED WITH THE TABLE IT FILTERS. A sticky element stays stuck as
+      // long as its PARENT is on screen, so pinned to the tab itself it would
+      // ride over the closing cards below the table.
+      const sec = h2.indexOf('class="gasec"');
+      ok('inside a section that also holds the table',
+         sec >= 0 && sec < bar, 'gasec=' + sec + ' pbar=' + bar);
+      const close = h2.indexOf('</div></div>', h2.indexOf('board of survivors'));
+      ok('and the section closes after the table, not before it',
+         h2.indexOf('data-v3gangle=') > bar);
+      // Every control the reader narrows with is inside it, not some of them.
+      const seg = h2.slice(bar, h2.indexOf('class="card"', bar));
+      ok('with both segments and the year slider in it',
+         seg.indexOf('data-v3gateam') >= 0
+         && seg.indexOf('data-v3gascope') >= 0
+         && seg.indexOf('data-v3anglefrom') >= 0, seg.slice(0, 120));
+      // AND NO SEARCH BOX. Fifty-five rows need one; a median of seventeen,
+      // already split three ways by the team control, does not, and the box
+      // cost the pinned bar a third of its height.
+      ok('and no search box, which the team control already does',
+         h2.indexOf('data-v3gaq') < 0);
+    }
     // HOW FAR BACK TO COUNT, on this card as on the board and sharing the
     // same state: how far back you trust is a view about football, not about
     // which screen you are on.

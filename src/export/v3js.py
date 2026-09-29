@@ -149,7 +149,7 @@ const V = Object.assign({
   gaSort: 'season', gaDesc: true, gaOpen: null, gaTeam: 'all',
   //: Whose record the two columns show. League-wide by default: it is the
   //: bigger sample, and the median team-and-angle pair is 25 graded games.
-  gaScope: 'league', gaQ: '',
+  gaScope: 'league',
   //: One club's own games on the board, or every club's.
   angleTeam: '',
   ask: '', answer: '',
@@ -2242,18 +2242,12 @@ function v3Angles(c) {
   // record. That is the only reading under which a whole-game condition says
   // anything — `On grass` is 1605-1605 for the league and 67-72 for SF.
   const own = V.gaScope === 'team';
-  // MATCHED ON THE NAME, THE DESCRIPTION AND THE TEAM, the same three the
-  // board matches on, plus the team because on this card every row carries
-  // one and "GB" is a reasonable thing to type.
-  const q = (V.gaQ || '').trim().toLowerCase();
-  const hit = pair => !q
-    || (by[pair[1]].label || '').toLowerCase().indexOf(q) >= 0
-    || (by[pair[1]].plain || '').toLowerCase().indexOf(q) >= 0
-    || (by[pair[1]].cat || '').toLowerCase().indexOf(q) >= 0
-    || (pair[0] || '').toLowerCase().indexOf(q) >= 0;
+  // NO SEARCH HERE, unlike the board. Fifty-five rows need one; a median of
+  // seventeen, already split three ways by the team control, does not -- and
+  // the box cost the pinned bar a third of its height for a filter nobody
+  // reached for.
   const rows = mine
-    .filter(pair => by[pair[1]] && hit(pair)
-                    && (team === 'all' || pair[0] === team))
+    .filter(pair => by[pair[1]] && (team === 'all' || pair[0] === team))
     .map(pair => ({
       team: pair[0], r: by[pair[1]],
       run: v3AngleSince(by[pair[1]], from, be, own ? pair[0] : ''),
@@ -2265,7 +2259,7 @@ function v3Angles(c) {
   // Returning nothing here took the search box with it, so a typo emptied the
   // section and there was no way left to clear it. The card is only absent
   // when the GAME carries no patterns, which is checked above.
-  if (!rows.length && team === 'all' && !q) return '';
+  if (!rows.length && team === 'all') return '';
 
   const pct = d => (d && d.n) ? d.pct : -1;
   const SORTS = {
@@ -2296,15 +2290,19 @@ function v3Angles(c) {
     // WHOSE ANGLES. Both sides' splits in one list read as one team's until
     // you notice the prefix, and on a median seventeen rows that is a lot of
     // noticing. Three buttons answer it once.
-    // SEARCH FIRST, because the median game carries seventeen of these and
-    // knowing the name is the fastest way to one of them.
-    + '<div class="search" style="margin-top:10px">'
-    + '<input type="search" data-v3gaq placeholder="Search these patterns" '
-    + 'value="' + esc(V.gaQ || '') + '" aria-label="Search these patterns">'
-    + (V.gaQ ? '<button class="searchx" data-v3gaclear="1" '
-        + 'aria-label="Clear search">\u2715</button>' : '')
-    + '</div>'
-    + '<div class="pbar__row" style="margin-top:8px">'
+    // PINNED, LIKE EVERY OTHER FILTER IN THE APP, and scoped so it lets go.
+    //
+    // The median game carries seventeen patterns, which is more than a screen,
+    // so the controls that narrow them were above all of it. `.pbar` already
+    // sticks at `--gtabs-h`, under the section bar rather than over it.
+    //
+    // WRAPPED WITH THE TABLE IT FILTERS. A sticky element stays stuck for as
+    // long as its PARENT is on screen, so pinned to the tab itself this bar
+    // would ride over the closing cards below the table, still offering to
+    // filter a list that had scrolled away.
+    + '<div class="gasec">'
+    + '<div class="pbar">'
+    + '<div class="pbar__row">'
     + '<div class="seg seg--3" style="flex:1">'
     + v3Seg('v3gateam', [['all', 'Both'], [c.away, c.away], [c.home, c.home]],
             team)
@@ -2320,16 +2318,15 @@ function v3Angles(c) {
     // run and the expectation beside it both move with it, on the league
     // reading and the team reading alike.
     + v3YearSlider(yr.first, yr.last, from)
+    + '</div>'
     + '<div class="card" style="margin-top:10px">'
     + '<div class="arow arow--h">'
     + head('name', 'Pattern')
     + head('season', 'Yr ATS')
     + head('all', '\u2019' + String(from).slice(2) + '+ ATS')
     + '</div>'
-    + (rows.length ? '' : '<p class="help" style="padding:12px 0">Nothing '
-       + (q ? 'matches \u201c' + esc(V.gaQ) + '\u201d'
-            : esc(team) + ' carries none of these')
-       + '.</p>')
+    + (rows.length ? '' : '<p class="help" style="padding:12px 0">'
+       + esc(team) + ' carries none of these.</p>')
     + rows.map(o => {
         const r = o.r, a = o.run;
         // COLOR TRACKS THE LONG RUN ONLY, and only once the interval clears.
@@ -2360,7 +2357,7 @@ function v3Angles(c) {
     + (A.rows || []).filter(r => r.all && r.all.lo > be).length
     + '</b> clear it once the interval is taken into account. A season\u2019s '
     + 'worth of any one of these is a handful of games.</p>'
-    + v3BaseNote() + '</div>';
+    + v3BaseNote() + '</div></div>';
 }
 
 // WHO IS ON THE FIELD, THEN HOW THE UNITS COMPARE.
@@ -4328,7 +4325,6 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3half', 'v3metric', 'v3boardgame', 'v3anglesort', 'v3angle',
                   'v3anglegame', 'v3angleclear',
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
-                  'v3gaclear',
                   'v3sortpick'];
 
 document.addEventListener('click', ev => {
@@ -4399,14 +4395,6 @@ document.addEventListener('input', ev => {
     const labs = document.querySelectorAll
       ? document.querySelectorAll('[data-v3yrlab]') : [];
     for (let i = 0; i < labs.length; i++) labs[i].textContent = V.angleFrom;
-    return;
-  }
-  if (t.getAttribute('data-v3gaq') != null) {
-    // A SEARCH BOX FIRES `input`, NOT `change`. Wired to change it does
-    // nothing until the field loses focus, which on a phone is never.
-    V.gaQ = t.value || '';
-    V.gaOpen = null;
-    render();
     return;
   }
   if (t.getAttribute('data-v3angleq') != null) {
@@ -4535,7 +4523,6 @@ function v3Do(kind, v) {
       else { V.gaSort = v; V.gaDesc = (v !== 'name'); }
       break;
     case 'v3gateam': V.gaTeam = v; V.gaOpen = null; break;
-    case 'v3gaclear': V.gaQ = ''; break;
     case 'v3gascope': V.gaScope = v; V.gaOpen = null; break;
     case 'v3gangle': V.gaOpen = (V.gaOpen === v) ? null : v; break;
     case 'v3anglegame': {
