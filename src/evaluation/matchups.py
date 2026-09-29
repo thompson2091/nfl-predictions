@@ -49,6 +49,40 @@ def _load(season: int, week: int, snapshot: str | None = None) -> pl.DataFrame:
     return d
 
 
+def _this_week_only(d: pl.DataFrame, season: int, week: int) -> pl.DataFrame:
+    """Drop games the archive filed here that are played in another week.
+
+    THE CAPTURE FILES BY WHEN IT RAN, NOT BY WHEN THE GAME IS PLAYED. Books
+    post the next week's lines days early, so week 3 of 2026 was archived with
+    thirty games in it: its own sixteen and fourteen belonging to week 4. The
+    board read the file as one week and showed all thirty under "This week" —
+    sixteen finished games beside fourteen that had not kicked off — and week
+    3's archived page would have kept the fourteen after the rollover.
+
+    Corrected on the way out rather than in the archive, so it applies to every
+    week already captured. The SCHEDULE decides which week a game is in, which
+    is the one place that cannot be wrong about it.
+    """
+    try:
+        from src.utils.paths import get_path
+
+        sched = (pl.read_parquet(get_path("raw") / "schedules.parquet")
+                 .filter((pl.col("season") == season)
+                         & (pl.col("game_type") == "REG"))
+                 .select([(pl.col("away_team") + "_" + pl.col("home_team"))
+                          .alias("game_id"), pl.col("week").alias("_wk")]))
+    except Exception:                                            # noqa: BLE001
+        # A missing schedule must not empty the board: showing a week with an
+        # extra game in it beats showing no week at all.
+        return d
+    out = d.join(sched, on="game_id", how="left")
+    # Left alone where the schedule has never heard of the id. That is a
+    # different fault from a game filed under the wrong week, and dropping it
+    # here would hide it.
+    return (out.filter(pl.col("_wk").is_null() | (pl.col("_wk") == week))
+               .drop("_wk"))
+
+
 def board(season: int, week: int, snapshot: str = "close") -> pl.DataFrame:
     """Per game, market and outcome: the consensus, the best price, and who has it.
 
@@ -60,6 +94,9 @@ def board(season: int, week: int, snapshot: str = "close") -> pl.DataFrame:
     prices one line once rather than pooling a Tuesday quote with a Sunday one.
     """
     d = _load(season, week, snapshot)
+    if d.is_empty():
+        return pl.DataFrame()
+    d = _this_week_only(d, season, week)
     if d.is_empty():
         return pl.DataFrame()
 

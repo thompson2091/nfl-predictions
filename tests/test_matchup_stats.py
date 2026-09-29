@@ -127,3 +127,46 @@ def test_overtime_is_in_neither_half():
     folding it into the second half would make that split mean something
     slightly different for the handful of teams who played one."""
     assert [h[2] for h in ms.HALVES] == [None, "Half1", "Half2"]
+
+
+def test_a_board_holds_only_the_games_that_week_is_played_in():
+    """THE ODDS CAPTURE FILES BY WHEN IT RAN, NOT BY WHEN THE GAME IS PLAYED.
+
+    Books post the next week's lines days early, so 2026 week 3 was archived
+    with thirty games in it: its own sixteen and fourteen belonging to week 4.
+    The board read the file as one week and showed all thirty under "This
+    week" — sixteen finished games beside fourteen that had not kicked off —
+    and week 3's archived page would have kept the fourteen after the
+    rollover.
+
+    The SCHEDULE decides, which is the one source that cannot be wrong about
+    which week a game is in.
+    """
+    import polars as pl
+    import pytest
+
+    from src.evaluation.matchups import board
+    from src.utils.paths import get_path
+
+    p = get_path("raw") / "schedules.parquet"
+    if not p.exists():
+        pytest.skip("no schedules on disk")
+    sched = pl.read_parquet(p).filter(pl.col("game_type") == "REG")
+    season = int(sched["season"].max())
+    real = {f'{r["away_team"]}_{r["home_team"]}': r["week"]
+            for r in sched.filter(pl.col("season") == season)
+                          .iter_rows(named=True)}
+
+    checked = 0
+    for week in sorted(sched.filter(pl.col("season") == season)["week"]
+                       .unique().to_list()):
+        b = board(season, int(week))
+        if b.is_empty():
+            continue
+        checked += 1
+        stray = sorted({g for g in b["game_id"].unique().to_list()
+                        if real.get(g) is not None and real[g] != week})
+        assert not stray, (
+            f"the week {week} board carries {len(stray)} games played in "
+            f"another week: {', '.join(stray[:6])}")
+    assert checked >= 2, f"only {checked} weeks had a board; nothing was tested"
