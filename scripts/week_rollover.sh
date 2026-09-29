@@ -167,9 +167,18 @@ for TT in anytime_td first_td; do
         --season "$SEASON" --week "$WEEK" --target "$TT" || exit 1
 done
 
-# The board is built; the market is not archived yet. The shortlist and lay
-# sheet need prices, so they are expected to fail here and are re-run by
-# `weekly_odds.sh open` once the opening snapshot lands. Not fatal.
+# EITHER JOB MAY GET HERE FIRST, AND BETWEEN THEM THE PICKS GET RECORDED.
+#
+# The shortlist needs prices. When this runs before the open capture there are
+# none, it fails here, and `weekly_odds.sh open` records them when the snapshot
+# lands. When the capture runs first — which is what happens whenever
+# nflverse publishes the week's rosters late — that job finds no board and
+# says "picks not recorded", and this step records them instead, off the open
+# snapshot already in the cache.
+#
+# 2026 week 4 went the second way: rosters landed between 10:00 and 13:00, the
+# 12:00 capture recorded nothing, and the 13:00 rollover wrote all 42. Not
+# fatal in either order, which is the point of having it in both places.
 for TT in anytime_td first_td; do
     run "shortlist_${TT}" "$PY" scripts/39_shortlist.py \
         --week "$WEEK" --target "$TT" \
