@@ -352,6 +352,14 @@ button{cursor:pointer}
 .cell b.bad{color:var(--bad)}
 .cell i{font-style:normal;font-size:11px;line-height:14px;font-weight:600;
   letter-spacing:.06em;text-transform:uppercase;color:var(--mut2)}
+/* WHICH OF THE THREE THE CARD IS ABOUT. Book, model and adjusted sit side by
+   side and the green or red below them grades exactly one of the three, so
+   the one being graded is tinted. EVERY cell in the strip carries the same
+   padding, and only one carries the tint: the numbers must not move when the
+   control above them changes, or switching basis reads as a redraw. */
+.strip--basis .cell{padding:4px 8px;border-radius:8px}
+.strip--basis .cell--on{background:var(--oursbg)}
+.strip--basis .cell--on i{color:var(--ours)}
 .row--open{background:var(--inset)}
 
 /* ---- the full-stat panel behind a row ---- */

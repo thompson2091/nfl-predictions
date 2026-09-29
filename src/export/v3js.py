@@ -762,8 +762,9 @@ function v3Star(row) {
     + (on ? '\u2605' : '\u2606') + '</button>';
 }
 
-function v3Cell(label, value, tone) {
-  return '<span class="cell"><b' + (tone ? ' class="' + tone + '"' : '')
+function v3Cell(label, value, tone, cls) {
+  return '<span class="cell' + (cls ? ' ' + cls : '') + '"><b'
+    + (tone ? ' class="' + tone + '"' : '')
     + '>' + value + '</b><i>' + esc(label) + '</i></span>';
 }
 
@@ -956,10 +957,16 @@ function v3GBasis(c) {
   const book = has(c.win_home) ? c.win_home : null;
   const model = has(c.model_win_home) ? c.model_win_home : null;
   const adj = v3AdjWin(c);
-  const want = V.gbasis === 'book' ? book
-             : V.gbasis === 'adj' ? adj : model;
-  const v = want != null ? want : (model != null ? model : book);
-  return v == null ? 0 : v;
+  const want = V.gbasis === 'book' ? 'book'
+             : V.gbasis === 'adj' ? 'adjusted' : 'model';
+  const by = { book: book, model: model, adjusted: adj };
+  // WHICH NUMBER WAS USED, not only its value. The card marks that cell, and
+  // marking the one that was asked for rather than the one that answered
+  // would point at a blank cell on any game missing it.
+  const used = by[want] != null ? want
+             : (model != null ? 'model' : 'book');
+  const v = by[used];
+  return { home: v == null ? 0 : v, used: used };
 }
 
 function v3Kick(c) {
@@ -1061,8 +1068,8 @@ function v3Games() {
     // red are grading. Falls back through the other two rather than dropping
     // the row: a game with no model number still has a book number, and a
     // blank row would be the basis quietly failing.
-    const basisHome = v3GBasis(c);
-    const side = basisHome >= 0.5 ? c.home : c.away;
+    const basis = v3GBasis(c);
+    const side = basis.home >= 0.5 ? c.home : c.away;
     const forSide = v => v == null ? null
       : (side === c.home ? v : 1 - v);
     const bookPct = forSide(has(c.win_home) ? c.win_home : null);
@@ -1071,7 +1078,8 @@ function v3Games() {
     const gap = (bookPct == null || modelPct == null) ? null
       : (modelPct - bookPct) * 100;
     const cell = (label, v) => v == null ? ''
-      : v3Cell(label, esc(side) + ' ' + v3Pct(v, 1));
+      : v3Cell(label, esc(side) + ' ' + v3Pct(v, 1), '',
+               label === basis.used ? 'cell--on' : '');
     // THE RESULT, where the week has been played. Green when the side the
     // book favored won, red when it did not — the same three-valued mark
     // the props board uses, because a game with no final is not a loss.
@@ -1086,8 +1094,9 @@ function v3Games() {
         + '<span class="sub">' + (won ? esc(side) + ' won' : esc(side)
             + ' lost') + '</span></span>';
     const strip = bookPct == null ? ''
-      : '<span class="strip num" style="grid-template-columns:repeat(4,auto);'
-        + 'justify-content:start;gap:16px">'
+      : '<span class="strip strip--basis num" '
+        + 'style="grid-template-columns:repeat(4,auto);'
+        + 'justify-content:start;gap:4px">'
         + cell('book', bookPct)
         + cell('model', modelPct)
         + cell('adjusted', adjPct)

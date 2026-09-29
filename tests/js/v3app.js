@@ -2049,6 +2049,22 @@ if (cards.length) {
        byBook !== byModel);
     v3Do('v3gbasis', 'adj'); render();
     ok('and so can the blend of the two', app().indexOf('BUF won') >= 0);
+    // WHICH OF THE THREE THE CARD IS ABOUT. Book, model and adjusted sit
+    // side by side and the green or red grades exactly one of them.
+    const marked = h2 => {
+      const m = /<span class="cell cell--on">.*?<i>([a-z]+)<\/i>/.exec(h2);
+      return m ? m[1] : null;
+    };
+    ok('the graded number is marked on the card', marked(app()) === 'adjusted',
+       String(marked(app())));
+    v3Do('v3gbasis', 'book'); render();
+    ok('and the mark follows the control', marked(app()) === 'book',
+       String(marked(app())));
+    ok('with exactly one number marked per card',
+       (app().match(/cell--on/g) || []).length
+       === (app().match(/data-v3game=/g) || []).length,
+       (app().match(/cell--on/g) || []).length + ' marks, '
+       + (app().match(/data-v3game=/g) || []).length + ' cards');
     // The control sits in the pinned bar with the filter, not above it.
     const h = app();
     ok('the basis control is pinned with the filter',
