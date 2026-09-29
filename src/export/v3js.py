@@ -1462,75 +1462,6 @@ function v3Injuries(c, full) {
 // The open is the GAME WEEK's, not the lookahead line posted in May. A
 // three-point move since May is a season of news; a three-point move since
 // Tuesday is this week's money.
-function v3Moved(gid) {
-  const L = ((DATA.games || {}).lines || {})[gid];
-  if (!L) return '';
-  const c = (v3GameSet().cards || []).filter(x => x.game_id === gid)[0] || {};
-  const bits = [];
-  const sp = L.spreads, to = L.totals;
-  if (sp && has(sp.open) && has(sp.now)) {
-    // Signed toward the HOME side, as the cards are. A move toward the home
-    // team is the number getting more negative.
-    const toward = sp.move < 0 ? c.home : c.away;
-    bits.push(['Spread',
-      (sp.open < 0 ? c.home + ' ' + sp.open : c.away + ' -' + sp.open),
-      (sp.now < 0 ? c.home + ' ' + sp.now : c.away + ' -' + sp.now),
-      Math.abs(sp.move) < 0.25 ? 'unmoved'
-        : Math.abs(sp.move) + ' toward ' + toward]);
-  }
-  if (to && has(to.open) && has(to.now)) {
-    bits.push(['Total', String(to.open), String(to.now),
-      Math.abs(to.move) < 0.25 ? 'unmoved'
-        : Math.abs(to.move) + ' ' + (to.move > 0 ? 'up' : 'down')]);
-  }
-  // THE MONEYLINE MOVES TOO, and it was the one market this block left out.
-  //
-  // `open`/`now`/`move` are null on a moneyline because it has no point, so
-  // the block that reads those skipped it. The PRICES are there, and the
-  // price is the whole market: a side going +120 -> +110 has shortened, and
-  // shortening is money arriving.
-  //
-  // Read as implied chance rather than as the raw number, because -142 to
-  // -130 and +120 to +110 are moves of different sizes in the same direction
-  // and only the probability says which is bigger. `amToDec` is the one
-  // conversion in this codebase; 1/decimal is its implied chance.
-  const ml = L.h2h, oo = ml && ml.open_odds, no = ml && ml.now_odds;
-  if (oo && no && has(oo[0]) && has(oo[1]) && has(no[0]) && has(no[1])) {
-    // Stored [away, home], as the archive stores them.
-    const shift = i => 1 / amToDec(no[i]) - 1 / amToDec(oo[i]);
-    const sides = [[c.away, 0], [c.home, 1]];
-    for (const [team, i] of sides) {
-      const d = shift(i) * 100;
-      bits.push([team + ' to win', v3Dash(oo[i]), v3Dash(no[i]),
-                 Math.abs(d) < 0.25 ? 'unmoved'
-                   : d > 0 ? 'shortened ' + d.toFixed(1) + 'pp'
-                           : 'drifted ' + Math.abs(d).toFixed(1) + 'pp']);
-    }
-  }
-  if (!bits.length) return '';
-  return '<div class="moved">'
-    + '<div class="eyebrow">Since this week\u2019s line went up'
-    + (sp && sp.open_at ? ' (' + esc(sp.open_at) + ')' : '') + '</div>'
-    + bits.map(b => '<div class="moved__r"><span>' + esc(b[0]) + '</span>'
-        + '<span class="num">' + esc(b[1]) + ' \u2192 <b>' + esc(b[2])
-        + '</b></span>'
-        + '<span class="sub">' + esc(b[3]) + '</span></div>').join('')
-    + '</div>';
-}
-
-// TICKETS COUNT BETS; MONEY COUNTS DOLLARS. THE GAP IS THE SIGNAL.
-//
-// Sportsbook Review publishes tickets only, and nothing at all on the
-// moneyline. Action Network publishes both, on all three markets, so this is
-// the moneyline block the section never had — and the one number on this
-// page that says something a crowd size cannot: a side taking 11% of the
-// tickets and 46% of the money is a few large bets, not a public opinion.
-// Atlanta at Green Bay read exactly that in week 3.
-//
-// A gap needs to be worth a sentence before it gets one. Under
-// `V3GAP_SMALL` the two shares are the same bet, rounded differently.
-const V3GAP_SMALL = 8;
-
 function v3Splits(gid) {
   const all = (DATA.games || {}).splits || {};
   let blk = all[gid];
@@ -1542,146 +1473,205 @@ function v3Splits(gid) {
   return blk || null;
 }
 
-function v3SplitRow(label, m) {
-  if (!m || !m.sides || !m.sides.length) return '';
-  const top = m.sides[0];
-  if (top.tickets == null || top.money == null) return '';
-  const w = Math.round(top.tickets);
-  const gap = top.gap;
-  const big = has(gap) && Math.abs(gap) >= V3GAP_SMALL;
-  return '<div class="pub">'
-    + '<div class="pub__h"><span class="eyebrow">' + esc(label) + '</span> '
-    + '<span class="sub num">' + esc(top.side) + ' \u00b7 '
-    + top.tickets.toFixed(0) + '% of bets, ' + top.money.toFixed(0)
-    + '% of the money</span></div>'
-    + '<div class="bar" role="img" aria-label="' + esc(top.side) + ' '
-    + w + ' percent of bets">'
-    + '<span class="h num" style="width:' + w + '%;justify-content:flex-start">'
-    + esc(top.side) + ' ' + top.tickets.toFixed(0) + '%</span>'
-    + '<span class="a num" style="width:' + (100 - w)
-    + '%;justify-content:flex-end">'
-    + (w >= 97 ? '' : (m.sides[1] ? esc(m.sides[1].side) + ' '
-        + (m.sides[1].tickets == null ? '' : m.sides[1].tickets.toFixed(0) + '%')
-        : '')) + '</span></div>'
-    + (big
-       ? '<p class="help" style="margin-top:6px">'
-         + (gap > 0
-            ? esc(top.side) + ' has ' + Math.abs(gap).toFixed(0) + ' points '
-              + 'more of the MONEY than of the bets \u2014 fewer, larger '
-              + 'wagers than the ticket count suggests.'
-            : esc(top.side) + ' has ' + Math.abs(gap).toFixed(0) + ' points '
-              + 'less of the money than of the bets \u2014 a lot of small '
-              + 'tickets without the money behind them.')
-         + '</p>'
-       : '')
-    + '</div>';
-}
-
-function v3PublicMoney(gid) {
-  const pub = ((DATA.games || {}).public || {})[gid];
-  if (!pub) {
-    return '<div class="card"><div class="eyebrow">Share of bets</div>'
-      + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:6px">'
-      + 'Not captured for this week. Run the public-money script and it will '
-      + 'appear here.</p></div>';
-  }
-  const rows = ((DATA.games || {}).rows || []).filter(
-    r => v3Same(r.game_id, gid));
-  const label = { spreads: 'Against the spread', totals: 'Total points',
-                  h2h: 'To win' };
-  const blocks = ['spreads', 'totals', 'h2h'].map(mk => {
-    const m = pub[mk];
-    if (!m || !m.sides || m.sides.length < 2) return '';
-    const top = m.sides[0], bot = m.sides[1];
-    const w = Math.round(top.pct);
-    // The line move on the SAME side the tickets are on, so the two can
-    // disagree visibly rather than sitting in separate paragraphs.
-    // AGAINST THE CROWD, measured on the real opening line where we have
-    // one. The archived open/close pair is two captures minutes apart on some
-    // weeks; the feed's history is the line as it actually moved.
-    const L = ((DATA.games || {}).lines || {})[gid] || {};
-    const card = (v3GameSet().cards || []).filter(x => x.game_id === gid)[0] || {};
-    let mv = null;
-    if (mk === 'totals' && L.totals && has(L.totals.move)) {
-      mv = top.side === 'Over' ? L.totals.move : -L.totals.move;
-    } else if (mk === 'spreads' && L.spreads && has(L.spreads.move)) {
-      mv = top.side === card.home ? -L.spreads.move : L.spreads.move;
-    }
-    if (mv == null) {
-      mv = rows.filter(r => r.market === mk && r.outcome === top.side)
-        .map(r => r.move_pp).filter(has)[0];
-    }
-    const against = has(mv) && mv < -0.25;
-    return '<div class="pub">'
-      + '<div class="pub__h"><span class="eyebrow">' + esc(label[mk] || mk)
-      + '</span> '
-      + (has(top.drift)
-         ? '<span class="sub num">' + (top.drift > 0 ? '+' : '\u2212')
-           + Math.abs(top.drift).toFixed(1) + 'pp on ' + esc(top.side)
-           + ' this week</span>'
-         : '<span class="sub">one capture so far</span>')
-      + '</div>'
-      + '<div class="bar" role="img" aria-label="' + esc(top.side) + ' '
-      + w + ' percent of bets">'
-      + '<span class="h num" style="width:' + w + '%;justify-content:'
-      + 'flex-start">' + esc(top.side) + ' ' + top.pct.toFixed(0) + '%</span>'
-      + '<span class="a num" style="width:' + (100 - w)
-      + '%;justify-content:flex-end">'
-      + (w >= 97 ? '' : esc(bot.side) + ' ' + bot.pct.toFixed(0) + '%')
-      + '</span>'
-      + '</div>'
-      + (against
-         ? '<p class="help" style="margin-top:6px">Most tickets are on '
-           + esc(top.side) + ' and the price has moved AWAY from it '
-           + '(' + Math.abs(mv).toFixed(1) + ' against it). That is money '
-           + 'disagreeing with the crowd.</p>' : '')
-      + '</div>';
-  }).join('');
-  const mv = v3Moved(gid);
-  const sp = v3Splits(gid);
-  const ml = sp ? v3SplitRow('To win (moneyline)', sp.moneyline) : '';
-  if (!blocks && !mv && !ml) return '';
-  return '<div class="card"><div class="name">Where the public is</div>'
-    + mv
-    + ml
-    + blocks
-    + '<p class="help">Share of bets placed, from Sportsbook Review. A crowd '
-    + 'being on one side is not evidence it is wrong \u2014 this project has '
-    + 'not measured that. It is worth seeing next to which way the price '
-    + 'moved.</p>'
-    // THE MONEYLINE SPLIT IS ABSENT, NOT ZERO, and the difference matters.
-    // The feed returns 0% on every moneyline on every game, which is it
-    // declining to publish rather than a market nobody bet. Drawing a 0% bar
-    // would be stating a number nobody stated; saying nothing would read as
-    // an oversight. The price move above is what there is.
-    + (ml
-       ? '<p class="help">The moneyline split is Action Network\u2019s, which '
-         + 'publishes money as well as tickets. The spread and total bars are '
-         + 'Sportsbook Review\u2019s, which publishes neither the moneyline '
-         + 'nor the money \u2014 two books, two customer bases, kept '
-         + 'apart rather than averaged into a crowd that does not exist.</p>'
-       : '<p class="help">No ticket split for the moneyline: Sportsbook '
-         + 'Review publishes none, on any game. Its price move is '
-         + 'above.</p>')
-    + '</div>';
-}
-
-// WHERE THE BIG MONEY IS, ACROSS ALL THREE MARKETS.
+// TICKETS COUNT BETS; MONEY COUNTS DOLLARS.
 //
-// The bars above are ticket shares. This is the other half of the same feed:
-// the share of the DOLLARS, which only Action Network publishes, on the
-// moneyline, the spread and the total alike.
+// Sportsbook Review publishes tickets only, and nothing at all on the
+// moneyline. Action Network publishes both, on all three markets, which is
+// why the whole section is drawn from it: one feed, one customer base, the
+// same two bars on every market. The other book is kept for the one thing it
+// can say that this cannot — two customer bases disagreeing — and is printed
+// only when they do.
 //
+// A gap needs to be worth a sentence before it gets one. Under
+// `V3GAP_SMALL` the two shares are the same bet, rounded differently.
+const V3GAP_SMALL = 8;
+
 // **Ranked on the ratio, not the gap.** Money share minus ticket share is
 // capped by the ticket share — a side already holding 89% of the tickets can
 // gain at most 11 points however large its bets are — so the gap sorts by how
 // unpopular a side is. Carolina at 89% of tickets and 96% of the money is the
-// case that exposes it: a 7-point gap, which is under the threshold that earns
-// a sentence anywhere else on this card, and three times the average bet.
-//
-// Nothing here is a claim that the big money is right. That is precisely what
-// has not been measured yet, and the note says so.
+// case that exposes it: a 7-point gap, under the threshold that earns a
+// sentence anywhere else, and three times the average bet.
 const V3RATIO_SMALL = 1.5;
+
+// A MARKET, IN BETS AND IN DOLLARS, ON TWO BARS THAT LINE UP.
+//
+// One bar said "84% on SF" and left the reader to decide whether that was a
+// lot of people or a lot of money. Those are different facts and they are
+// often different numbers: SF took 84% of the bets on its spread and 79% of
+// the dollars, which is a crowd of small tickets with the bigger wagers on
+// the other side. Stacked, the two bars answer it at a glance.
+function v3MoneyBlock(label, note, m, move) {
+  if (!m || !m.sides || m.sides.length < 2) return '';
+  const a = m.sides[0], b = m.sides[1];
+  if (a.tickets == null && a.money == null) return '';
+  const bar = (cap, x, y) => {
+    if (x == null || y == null) return '';
+    const w = Math.max(0, Math.min(100, Math.round(x)));
+    return '<div class="pubrow"><span class="eyebrow">' + cap + '</span>'
+      + '<div class="bar" role="img" aria-label="' + cap + ': ' + esc(a.side)
+      + ' ' + w + ' percent">'
+      + '<span class="h num" style="width:' + w + '%;justify-content:'
+      + 'flex-start">' + esc(a.side) + ' ' + x.toFixed(0) + '%</span>'
+      + '<span class="a num" style="width:' + (100 - w)
+      + '%;justify-content:flex-end">'
+      + (w >= 88 ? '' : esc(b.side) + ' ' + y.toFixed(0) + '%')
+      + '</span></div></div>';
+  };
+  // WHICH SIDE IS CARRYING THE BIGGER BETS, said as a comparison rather than
+  // as a gap in percentage points. "5pp" is a unit a reader has to be taught;
+  // "bigger bets are landing on ARI" is a sentence they already have.
+  const cands = [a, b].filter(x => x.tickets != null && x.money != null);
+  const bigger = cands.filter(x => has(x.ratio) && x.ratio >= V3RATIO_SMALL)
+                      .sort((x, y) => y.ratio - x.ratio)[0];
+  const who = bigger || cands.filter(
+    x => has(x.gap) && x.gap >= V3GAP_SMALL)[0];
+  return '<div class="pub">'
+    + '<div class="pub__h"><span class="eyebrow">' + esc(label) + '</span>'
+    + (note ? '<span class="sub">' + esc(note) + '</span>' : '') + '</div>'
+    + bar('Bets', a.tickets, b.tickets)
+    + bar('Money', a.money, b.money)
+    + (who
+       ? '<p class="help" style="margin-top:6px">Bigger bets are landing on '
+         + '<b style="color:var(--ink)">' + esc(who.side) + '</b>: '
+         + who.tickets.toFixed(0) + '% of the bets but '
+         + who.money.toFixed(0) + '% of the money'
+         + (has(who.ratio) && who.ratio >= V3RATIO_SMALL
+            ? ', which is about ' + who.ratio.toFixed(1)
+              + ' times the average bet on the other side.' : '.')
+         + '</p>'
+       : '')
+    + (move ? '<p class="help" style="margin-top:4px">' + move + '</p>' : '')
+    + '</div>';
+}
+
+//: Half a point and a point read as words; anything else is a number.
+function v3Pts(n) {
+  const a = Math.abs(n);
+  return a === 0.5 ? 'half a point' : a === 1 ? 'a point' : a + ' points';
+}
+
+//: A home-signed spread as a sentence. `-8.5` is the HOME team laying 8.5.
+function v3SpreadTxt(v, c) {
+  if (!has(v)) return '';
+  if (v === 0) return 'pick ’em';
+  return (v < 0 ? c.home : c.away) + ' by ' + Math.abs(v);
+}
+
+function v3PublicMoney(gid) {
+  const sp = v3Splits(gid);
+  const pub = ((DATA.games || {}).public || {})[gid];
+  const L = ((DATA.games || {}).lines || {})[gid] || {};
+  const c = (v3GameSet().cards || []).filter(x => x.game_id === gid)[0] || {};
+  if (!sp && !pub) {
+    // NOTHING AT ALL FOR AN ID THAT NAMES NO GAME. "Not captured for this
+    // week" is an answer about a real fixture; on an unknown id it reads as
+    // a feed being down.
+    if (!c.home) return '';
+    return '<div class="card"><div class="eyebrow">Where the money is</div>'
+      + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:6px">'
+      + 'Not captured for this week. Run the public-money script and it will '
+      + 'appear here.</p></div>';
+  }
+
+  // WHAT THE NUMBER MOVED TO, AND WHICH WAY. Said as the two numbers and a
+  // direction, because "+1.0pp" is a unit a reader has to be taught and
+  // "opened at SF by 8.5, now SF by 7.5" is one they already have.
+  const moveSpread = () => {
+    const x = L.spreads;
+    if (!x || !has(x.open) || !has(x.now)) return '';
+    if (!has(x.move) || Math.abs(x.move) < 0.25)
+      return 'It opened at ' + esc(v3SpreadTxt(x.open, c))
+        + ' and has not moved.';
+    return 'Opened at ' + esc(v3SpreadTxt(x.open, c)) + ', now '
+      + esc(v3SpreadTxt(x.now, c)) + ' — ' + v3Pts(x.move)
+      + ' toward ' + esc(x.move < 0 ? c.home : c.away) + '.';
+  };
+  const moveTotal = () => {
+    const x = L.totals;
+    if (!x || !has(x.open) || !has(x.now)) return '';
+    if (!has(x.move) || Math.abs(x.move) < 0.25)
+      return 'It opened at ' + x.open + ' and has not moved.';
+    return 'Opened at ' + x.open + ', now ' + x.now + ' — '
+      + v3Pts(x.move) + ' ' + (x.move > 0 ? 'higher, toward the Over.'
+                                          : 'lower, toward the Under.');
+  };
+  // THE MONEYLINE HAS NO NUMBER TO MOVE, only a price, so it is read as the
+  // chance that price implies. A side going -142 to -130 and one going +120
+  // to +110 have moved by different amounts in the same direction, and only
+  // the probability says which is bigger.
+  const moveWin = () => {
+    const x = L.h2h, oo = x && x.open_odds, no = x && x.now_odds;
+    if (!oo || !no || !has(oo[0]) || !has(no[0]) || !has(oo[1]) || !has(no[1]))
+      return '';
+    const d = (1 / amToDec(no[1]) - 1 / amToDec(oo[1])) * 100;
+    const i = d > 0 ? 1 : 0;
+    const team = d > 0 ? c.home : c.away;
+    if (Math.abs(d) < 1)
+      return 'The price opened at ' + esc(v3Dash(oo[1])) + ' on '
+        + esc(c.home) + ' and has barely moved.';
+    return esc(team) + ' opened at ' + esc(v3Dash(oo[i])) + ' and is now '
+      + esc(v3Dash(no[i])) + ' \u2014 more expensive to back than it was.';
+  };
+
+  const blocks = sp
+    ? [v3MoneyBlock('Who wins', 'straight up, no points', sp.moneyline,
+                    moveWin()),
+       v3MoneyBlock('The spread',
+                    has(c.spread) ? v3SpreadTxt(c.spread, c) : '',
+                    sp.spread, moveSpread()),
+       v3MoneyBlock('Total points',
+                    has(c.total) ? 'over or under ' + c.total : '',
+                    sp.total, moveTotal())].join('')
+    : '';
+  if (!blocks) return '';
+
+  // THE OTHER BOOK, ONLY WHERE IT DISAGREES. Two ticket counts for the same
+  // market, drawn as two sets of bars, is a reader asking which one is right.
+  // A different customer base leaning the other way is worth a line; the same
+  // number twice is not.
+  const other = [];
+  if (pub) {
+    [['spread', 'spreads', 'the spread'],
+     ['total', 'totals', 'the total']].forEach(k => {
+      const mine = ((sp[k[0]] || {}).sides || [])[0];
+      const them = ((pub[k[1]] || {}).sides || []).filter(
+        x => mine && x.side === mine.side)[0];
+      if (mine && them && has(mine.tickets) && has(them.pct)
+          && Math.abs(mine.tickets - them.pct) >= 10) {
+        other.push(esc(mine.side) + ' on ' + k[2] + ' ('
+                   + them.pct.toFixed(0) + '% against '
+                   + mine.tickets.toFixed(0) + '%)');
+      }
+    });
+  }
+
+  return '<div class="card"><div class="name">Where the money is</div>'
+    + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:6px">'
+    + 'How many <b style="color:var(--ink)">bets</b> are on each side, and how '
+    + 'much of the <b style="color:var(--ink)">money</b>. They are different '
+    + 'things: a side can be the popular pick and still hold less of the cash.'
+    + '</p>'
+    + blocks
+    + '<div class="pub"><div class="pub__h">'
+    + '<span class="eyebrow">What a move means</span></div>'
+    + '<p class="help" style="margin-top:2px">A sportsbook nudges these '
+    + 'numbers to keep the amount bet on each side roughly even. When the '
+    + 'number moves toward a team, backing that team has got more expensive '
+    + '— usually because bets have been arriving on it. A number that '
+    + 'has not moved means the two sides are close to balanced.</p></div>'
+    + '<p class="help" style="margin-top:12px">Shares are Action '
+    + 'Network’s, which publishes bets and money on all three markets.'
+    + (other.length
+       ? ' Sportsbook Review’s customers lean the other way on '
+         + other.join(' and ') + '.'
+       : '')
+    + ' <b style="color:var(--ink)">None of this is a tip.</b> A crowd being '
+    + 'on one side is not evidence it is wrong, and whether the bigger money '
+    + 'is the smarter money is exactly what this project has not measured '
+    + '— the split archive began on 25 September.</p>'
+    + '</div>';
+}
 
 const V3SHARPMKT = [['moneyline', 'To win'], ['spread', 'Spread'],
                     ['total', 'Total']];
@@ -1702,48 +1692,6 @@ function v3SharpSides(gid) {
   return out.sort((a, b) => b.ratio - a.ratio);
 }
 
-function v3Sharp(gid) {
-  const rows = v3SharpSides(gid);
-  if (!rows.length) return '';
-  return '<div class="card"><div class="name">Where the bigger bets are</div>'
-    + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:6px">'
-    + 'Tickets count bets; money counts dollars. These sides are carrying a '
-    + 'bigger average bet than the other side of the same market.</p>'
-    + '<div class="list" style="margin-top:10px">'
-    + rows.map(r => '<div class="row"><div class="row__m">'
-        + '<div class="row__t"><div style="min-width:0">'
-        + '<div class="name">' + esc(r.side) + '</div>'
-        + '<div class="sub">' + esc(r.market) + ' · '
-        + r.tickets.toFixed(0) + '% of bets, ' + r.money.toFixed(0)
-        + '% of the money</div>'
-        + '</div><div class="chance"><b class="num">' + r.ratio.toFixed(1)
-        + '×</b><span class="eyebrow">the bet</span></div>'
-        + '</div></div></div>').join('')
-    + '</div>'
-    + '<p class="help">A side at 2× is backed by bets twice the size of '
-    + 'the ones on the other side. <b style="color:var(--ink)">This is not a '
-    + 'tip.</b> Whether the bigger money is the smarter money is exactly what '
-    + 'this project has not measured — the split archive began on '
-    + '25 September and the first week whose opening line, splits and close '
-    + 'all land in order is the first one that can answer it.</p>'
-    + '</div>';
-}
-
-// THE MONEY IN A PLAYER'S GAME, WHICH IS NOT A SPLIT ON THE PLAYER.
-//
-// **There is no ticket/money split on any player prop, from this feed or any
-// free one.** Action Network publishes the moneyline, the spread and the
-// total, and nothing else — checked against the live page, whose market keys
-// are exactly `moneyline`, `spread`, `total` and a team-score ladder. So a
-// "sharp money" figure beside a touchdown price would have to be invented,
-// and this does not invent one.
-//
-// What is true, and worth a line, is the money on the GAME the prop sits in.
-// Big money on Atlanta is a fact about Atlanta scoring points, and a Falcon's
-// touchdown price lives inside that. It is stated as what it is — the game,
-// not the player — and marked as unmeasured, because whether the bigger money
-// is the smarter money is exactly the thing the split archive is too young to
-// answer.
 function v3GameMoney(row) {
   const sides = v3SharpSides(row && row.gameId);
   if (!sides.length) return null;
@@ -2223,7 +2171,6 @@ function v3GameOdds(c, gid) {
     + v3PublicMoney(gid)
     // Directly under it, because it is the other half of the same feed: the
     // bars above are the ticket share and this is the dollar share.
-    + v3Sharp(gid)
     + v3Angles(c);
 }
 

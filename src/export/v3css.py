@@ -616,12 +616,14 @@ button{cursor:pointer}
   border:1px solid var(--btnline);text-align:left}
 .choose b{font-size:17px;font-weight:700}
 
-/* ---- how the line has moved ---- */
-.moved{margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
-.moved__r{display:grid;grid-template-columns:62px 1fr auto;align-items:baseline;
-  gap:10px;padding:4px 0;font-size:14px}
-.moved__r b{font-weight:700}
-.moved__r .sub{font-size:12px;text-align:right}
+/* ---- bets over money, on two bars that line up ----
+   The caption is fixed-width so both bars start at the same x and can be
+   read against each other; a table of moves used to sit here instead, which
+   put the three markets' movement in one place and their shares in another. */
+.pubrow{display:grid;grid-template-columns:46px minmax(0,1fr);gap:8px;
+  align-items:center;margin-top:6px}
+.pubrow .bar{height:28px}
+.pubrow>.eyebrow{text-align:right}
 
 /* ---- where the public is ---- */
 .pub{margin-top:12px}

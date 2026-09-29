@@ -405,12 +405,16 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "an over/under row prints the stat it settled on",
                  "the normalizer carries the count through",
                  "a settled row shows what they actually had",
-                 "the sharp block reads all three markets, not just the moneyline",
+                 "the split feed carries all three markets, not just the moneyline",
+                 "every market is drawn with a bets bar and a money bar",
+                 "and all three are named",
+                 "no percentage-point jargon anywhere on the card",
+                 "the card explains what a line move means",
+                 "with no second card repeating it",
                  "and ranks them by ratio, biggest bet first",
                  "a side backed by ordinary-sized bets is left out",
                  "a heavily backed side with the money behind it still surfaces",
                  "the card refuses to call itself a tip",
-                 "the sharp block is on the game screen",
                  "the current price is read raw, margin and all",
                  "a market that came toward the pick is counted as toward",
                  "a market that drifted away is not counted as toward",
@@ -889,30 +893,36 @@ def test_the_app_bar_is_not_shorter_than_the_header_inside_it():
         ".appbar must carry the notch inset; nothing above it does")
 
 
-def test_the_moneyline_move_is_shown_even_though_its_split_is_not():
-    """THE PRICE IS THERE; THE TICKET SPLIT IS NOT, AND THEY ARE DIFFERENT.
+def test_the_moneyline_move_is_read_as_a_price_not_a_point():
+    """A MONEYLINE HAS NO NUMBER TO MOVE, ONLY A PRICE.
 
     `lines[gid].h2h` carries `open_odds` and `now_odds`, but `open`, `now`
-    and `move` are null because a moneyline has no point — so the block that
-    reads those skipped the market entirely. Sportsbook Review returns 0% on
-    every moneyline on every game, which is the feed declining to publish
-    rather than a market nobody bet, so no bar is drawn and the page says why.
+    and `move` are null because a moneyline has no point — so a block that
+    reads those skips the market entirely, which is how it was left out once
+    already.
 
-    Falsified by drawing a 0% moneyline bar, or by dropping the move again.
+    Falsified by reading the raw odds instead of the chance they imply, or by
+    dropping the market again.
     """
     from src.export import v3js
 
     src = v3js.js()
-    i = src.index("function v3Moved")
-    body = src[i:i + 3000]
+    i = src.index("function v3PublicMoney")
+    body = src[i:src.index("\nfunction ", i + 1)]
     assert "L.h2h" in body, "the moneyline move is not read"
     assert "amToDec" in body, (
         "the move must be read as implied chance; -142 to -130 and +120 to "
         "+110 are different sizes in the same direction")
-    assert "to win" in body, "the moneyline rows are not labeled"
-    # And the absent split is stated rather than drawn as zero.
-    assert "publishes none" in src, "the missing split is unexplained"
-
+    # ALL THREE MARKETS CARRY BOTH SHARES. The moneyline had bets and money
+    # side by side and the other two had bets only, from a different feed.
+    for mkt in ("sp.moneyline", "sp.spread", "sp.total"):
+        assert mkt in body, f"{mkt} is not drawn"
+    assert body.count("v3MoneyBlock(") == 3, (
+        "the three markets are not drawn by one block renderer")
+    block = src[src.index("function v3MoneyBlock"):]
+    block = block[:block.index("\nfunction ")]
+    assert "bar('Bets'" in block and "bar('Money'" in block, (
+        "a market is drawn without one of its two bars")
 
 def test_a_played_week_marks_which_lines_cleared():
     """ONCE THE GAME IS IN, EVERY LADDER ROW HAS AN ANSWER.

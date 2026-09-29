@@ -20,7 +20,8 @@ const x = loadPage(process.argv[2], process.argv[3],
    'V3BETTYPES',
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
-   'v3Sharp', 'v3SharpSides', 'V3RATIO_SMALL', 'v3GTab', 'v3MktLabel',
+   'v3PublicMoney', 'v3MoneyBlock', 'v3SharpSides', 'V3RATIO_SMALL',
+   'v3GTab', 'v3MktLabel',
    'v3Clv',
    'v3NowImplied', 'v3Clv', 'v3ClvNote', 'v3GameMoney']);
 const { V, render, v3Screen, v3Games, v3Game, v3Picks, v3Ladder, v3Nav,
@@ -1438,15 +1439,16 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
 }
 
 
-// ── Where the bigger bets are ───────────────────────────────────────────
+// ── Where the money is ─────────────────────────────────────────────────
 //
-// The dollar share, across all three markets. Every check here is a way the
-// gap-based version got it wrong.
+// Bets and money, on all three markets, from one feed. The moneyline had
+// both shares side by side and the other two had bets only, from a different
+// book, with the dollars in a separate card further down the page.
 {
-  const { v3Sharp, v3SharpSides, V3RATIO_SMALL } = x;
+  const { v3PublicMoney, v3SharpSides, V3RATIO_SMALL } = x;
 
   const sides = v3SharpSides('ATL_GB');
-  ok('the sharp block reads all three markets, not just the moneyline',
+  ok('the split feed carries all three markets, not just the moneyline',
      sides.length >= 2 && sides.some(s => s.market === 'Spread'),
      JSON.stringify(sides));
   ok('and ranks them by ratio, biggest bet first',
@@ -1456,6 +1458,18 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      sides.every(s => s.ratio >= V3RATIO_SMALL),
      JSON.stringify(sides));
 
+  V.tab = 'games'; V.game = 'ATL_GB'; V.gameTab = 'odds'; render();
+  const html = v3PublicMoney('ATL_GB');
+  // EVERY MARKET GETS BOTH BARS. One bar said "84% on SF" and left the
+  // reader to work out whether that was a lot of people or a lot of money.
+  ok('every market is drawn with a bets bar and a money bar',
+     (html.match(/aria-label="Bets:/g) || []).length === 3
+     && (html.match(/aria-label="Money:/g) || []).length === 3,
+     (html.match(/aria-label="Bets:/g) || []).length + ' bets, '
+     + (html.match(/aria-label="Money:/g) || []).length + ' money');
+  ok('and all three are named',
+     html.indexOf('Who wins') >= 0 && html.indexOf('The spread') >= 0
+     && html.indexOf('Total points') >= 0);
   // THE CASE A GAP RANKING DROPS. Carolina is 89% of the tickets AND 96% of
   // the money: a 7-point gap, under every threshold on this card, and three
   // times the average bet.
@@ -1463,26 +1477,31 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('a heavily backed side with the money behind it still surfaces',
      car.length === 1 && car[0].side === 'CAR', JSON.stringify(car));
   ok('and is named by its ratio rather than its gap',
-     v3Sharp('CAR_CLE').indexOf('3.0\u00d7') >= 0
-       || v3Sharp('CAR_CLE').indexOf('3.0×') >= 0, v3Sharp('CAR_CLE'));
-
-  const html = v3Sharp('ATL_GB');
-  ok('the card names the side and both shares',
-     html.indexOf('ATL') >= 0 && html.indexOf('% of bets') >= 0
-       && html.indexOf('% of the money') >= 0);
+     v3PublicMoney('CAR_CLE').indexOf('3.0 times') >= 0,
+     v3PublicMoney('CAR_CLE'));
+  // LAYMAN TERMS. "pp" is a unit a reader has to be taught.
+  ok('no percentage-point jargon anywhere on the card',
+     html.indexOf('pp') < 0, html.slice(html.indexOf('pp') - 60, 60));
+  // WHAT A MOVE MEANS, said once, in words.
+  ok('the card explains what a line move means',
+     html.indexOf('What a move means') >= 0
+     && html.indexOf('keep the amount bet on each side roughly even') >= 0);
+  ok('and gives the two numbers for the markets that have them',
+     html.indexOf('Opened at') >= 0 || html.indexOf('has not moved') >= 0,
+     html);
   // NOT A TIP. Whether the bigger money is the smarter money is exactly what
   // has not been measured, and the card has to say so on its face.
   ok('the card refuses to call itself a tip',
-     html.indexOf('not a') >= 0 && html.indexOf('not measured') >= 0, html);
+     html.indexOf('None of this is a tip') >= 0
+     && html.indexOf('not measured') >= 0);
   ok('a game with no split shows no card',
-     v3Sharp('NOPE_NOPE') === '', v3Sharp('NOPE_NOPE'));
-
-  // And it reaches the actual game screen rather than only the function.
-  // On Odds, with the public split it is the other half of: the bars there
-  // are the ticket share and this is the dollar share.
-  V.tab = 'games'; V.game = 'ATL_GB'; V.gameTab = 'odds'; render();
-  ok('the sharp block is on the game screen',
-     app().indexOf('Where the bigger bets are') >= 0);
+     v3PublicMoney('NOPE_NOPE') === '', v3PublicMoney('NOPE_NOPE'));
+  ok('and it is on the game screen',
+     app().indexOf('Where the money is') >= 0);
+  // ONE SECTION, NOT TWO. The dollar share used to be a second card saying
+  // the same thing about the same three markets.
+  ok('with no second card repeating it',
+     app().indexOf('Where the bigger bets are') < 0);
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 
