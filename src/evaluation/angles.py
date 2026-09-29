@@ -483,6 +483,13 @@ def season_games(schedules: pl.DataFrame, season: int) -> dict:
             rows.append({
                 "week": r["week"], "team": r["team"], "opp": r["opp"],
                 "game_id": r["game_id"],
+                # THE BOARD KEYS GAMES BY `AWAY_HOME`, which is the odds
+                # archive's id; the schedule's is `SEASON_WEEK_AWAY_HOME`.
+                # Shipping only the long one is why every fixture on this
+                # list linked to "that game is not on this week's board" —
+                # the two ids never matched. Carry both rather than have
+                # the page parse an id format it does not own.
+                "gid": "_".join(str(r["game_id"]).split("_")[2:]),
                 "home": bool(r["at_home"]), "spread": r["my_spread"],
                 "pf": r["pf"], "pa": r["pa"],
                 "covered": bool(r["covered"]) if graded else None,

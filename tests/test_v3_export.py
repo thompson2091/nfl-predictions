@@ -159,10 +159,17 @@ def payload_v3():
         ],
         # A past week of game lines, so the selector has somewhere to go on
         # the screen that is now the landing page.
+        # THE THREE BASES DISAGREE ON THIS GAME, on purpose. The book and
+        # the blend favor BUF, who won; the model favors DET, who lost. A
+        # fixture where all three pick the same side cannot tell whether the
+        # board grades the one it says it grades.
         "past": {"2": {"cards": [
             {"game_id": "DET_BUF", "home": "BUF", "away": "DET",
              "total": 54.5, "spread": -5.5, "win_home": 0.681,
              "win_away": 0.319, "final_home": 41, "final_away": 31,
+             "model_spread": 1.5, "model_total": 50.0,
+             "model_win_home": 0.42, "model_win_n": 300,
+             "blend": {"spread": -2.0, "total": 52.0},
              "kick_day": "Sunday", "kick_et": "1:00 PM ET"}],
             "rows": []}},
         "public": {"ATL_GB": {
@@ -303,13 +310,22 @@ def payload_v3():
             "off_ot": {"2015": [11, 14], "2020": [12, 13],
                        "2023": [10, 15], "2026": [3, 2]},
         },
+        # ONE FIXTURE PER BOARD, so the link out is exercised on each.
+        # `DET_BUF` is in the archive for week 2; `ATL_GB` is on the live
+        # board for week 3, which is the Monday case — played, but its week
+        # is still open, so it is NOT in `past`; `MIA_NYJ` is week 4, on the
+        # schedule and on no board at all.
         "games": {"blowout_loss": [
-            {"week": 2, "team": "ATL", "opp": "GB", "home": False,
-             "game_id": "2026_02_ATL_GB",
-             "spread": -3.5, "pf": 14, "pa": 35, "covered": False,
+            {"week": 2, "team": "DET", "opp": "BUF", "home": False,
+             "game_id": "2026_02_DET_BUF", "gid": "DET_BUF",
+             "spread": -3.5, "pf": 31, "pa": 41, "covered": False,
              "by": -17.5},
-            {"week": 3, "team": "NE", "opp": "PIT", "home": True,
-             "game_id": "2026_03_PIT_NE",
+            {"week": 3, "team": "ATL", "opp": "GB", "home": False,
+             "game_id": "2026_03_ATL_GB", "gid": "ATL_GB",
+             "spread": -6.5, "pf": 20, "pa": 24, "covered": True,
+             "by": 2.5},
+            {"week": 4, "team": "MIA", "opp": "NYJ", "home": False,
+             "game_id": "2026_04_MIA_NYJ", "gid": "MIA_NYJ",
              "spread": 2.5, "pf": None, "pa": None, "covered": None,
              "by": None}]},
     }
@@ -445,6 +461,12 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "the counts are above it rather than pinned with it",
                  "and the cards it filters below it",
                  "the pinned filter still filters",
+                 # The green and red grade OUR pick, not the book's.
+                 "the board grades our model by default",
+                 "and a game our model called wrong is marked lost",
+                 "the book can still be graded instead",
+                 "and the two disagree, which is why the control exists",
+                 "and so can the blend of the two",
                  "the pills use the short label",
                  "and not the long one",
                  "every market carries a short label",
@@ -491,7 +513,8 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  # The angles board: sortable, filterable, and openable.
                  "nor the angles board",
                  "the angles board lists every angle tracked",
-                 "and says how many clear the vig",
+                 "and says how many patterns were measured",
+                 "and that some of them look good on luck alone",
                  "and what clearing means",
                  "and says it without jargon",
                  "and explains why half is not enough",
@@ -510,9 +533,18 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "percentages carry two decimals",
                  "there is a control for how far back to count",
                  "moving it recounts the long run",
+                 "the long-run column carries its record",
+                 "and the games column is gone",
                  "and each game links to its own page",
+                 "every linked fixture names a game the board holds",
+                 "and a fixture with no board is not a link",
+                 "a closed week opens the archive",
+                 "and a game in the current week opens the live board",
                  "tapping one opens that game",
                  "on the week it was played",
+                 "and that game is actually on the board it was sent to",
+                 "and Back returns to the angles board",
+                 "with the angle still open",
                  "the board can be searched",
                  "typing narrows the board",
                  "and a search that matches nothing says so",

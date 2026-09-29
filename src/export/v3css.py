@@ -201,7 +201,7 @@ button{cursor:pointer}
 /* ---- the angles table ----
    A grid rather than stacked cards: forty-six rows is a table, and the whole
    reason to read it is comparing one column down the page. */
-.arow{display:grid;grid-template-columns:minmax(0,1fr) 58px 58px 34px;
+.arow{display:grid;grid-template-columns:minmax(0,1fr) 62px 70px;
   align-items:center;gap:6px;width:100%;padding:10px 0;text-align:left;
   border:0;border-top:1px solid var(--line3);background:transparent;
   color:var(--ink)}
@@ -213,7 +213,18 @@ button{cursor:pointer}
   text-transform:uppercase;color:var(--mut2);text-align:right;white-space:nowrap}
 .ahead[aria-pressed=true]{color:var(--ours)}
 .arow--h .ahead:first-child{text-align:left}
-.arow--on{background:var(--inset)}
+/* The open row and its fixtures read as one block: the row is tinted in the
+   app's own selection color and the list under it is indented against a rule
+   in the same family. The first version tinted BOTH in `--inset`, which put
+   a dull beige slab across a white card and read as a panel that had
+   appeared rather than as rows belonging to the row above. */
+.arow--on{background:var(--oursbg);border-top-color:var(--oursfaint);
+  border-radius:8px 8px 0 0;
+  /* Bleeds 8px into the card's 16px padding, so the tint clears the text
+     rather than starting on it; the text itself does not move, because the
+     padding added here is exactly the margin taken away. */
+  margin-left:-8px;margin-right:-8px;padding-left:8px;padding-right:8px}
+.arow--on .arow__l{color:var(--ours)}
 .arow__l{font-size:14px;line-height:18px;font-weight:600;min-width:0}
 .arow__l .tag{font-size:10px;padding:1px 6px;margin-left:4px;
   font-style:normal;vertical-align:middle}
@@ -225,26 +236,34 @@ button{cursor:pointer}
   color:var(--mut2)}
 .arow>span.good b{color:var(--good)}
 
-/* The games behind a season record, opened in place. */
-.adet{padding:2px 0 10px;background:var(--inset);border-radius:10px;
-  margin:0 -8px 4px;padding-left:8px;padding-right:8px}
+/* The games behind a season record, opened in place. No tinted panel: an
+   indent and one accent rule say "these belong to the row above", which is
+   the whole of what the container has to communicate. */
+.adet{background:transparent;padding:0 0 10px 12px;margin:0 0 4px;
+  border-left:2px solid var(--oursfaint)}
+/* Column labels, in the board's own header style, so the fixtures read as a
+   nested table rather than as a list that appeared under a row. */
+.adet__h{display:flex;align-items:baseline;justify-content:space-between;
+  gap:8px;padding:8px 0 4px;font-size:11px;line-height:14px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--mut2)}
 .agame{display:grid;grid-template-columns:minmax(0,1fr) auto 10px;gap:8px;
   align-items:center;padding:8px 0;width:100%;border:0;
   border-top:1px solid var(--line3);background:transparent;color:var(--ink);
-  text-align:left}
+  text-align:left;font:inherit}
 .agame__t{display:flex;flex-direction:column;min-width:0}
 .agame__t b{font-size:14px;line-height:18px;font-weight:600}
 .agame__t i{font-style:normal;font-size:12px;line-height:16px;
   color:var(--mut2)}
-.agame__v{display:flex;flex-direction:column;align-items:flex-end;
-  font-size:13px;line-height:17px;font-weight:600;white-space:nowrap}
-.agame__v i{font-style:normal;font-size:12px;font-weight:400;
-  color:var(--mut2)}
-.agame--won .agame__v{color:var(--good)}
-.agame--lost .agame__v{color:var(--bad)}
-.agame__go{font-style:normal;color:var(--mut2);text-align:right}
-.agame--won>span:last-child{color:var(--good);font-weight:600}
-.agame--lost>span:last-child{color:var(--bad);font-weight:600}
+/* The verdict is a chip, not colored text. Colored text down a list of
+   fixtures reads as ten warnings; a chip reads as a result, and it is the
+   same `.tag` the rest of the app grades things with. */
+.agame>.tag{justify-self:end;white-space:nowrap;font-size:12px;height:22px}
+.tag--soon{background:var(--inset);color:var(--mut2)}
+/* Not every fixture has a board to open. One that does not is not a button,
+   so it gets no chevron and no press state. */
+.agame--flat{cursor:default}
+.agame__go{font-style:normal;color:var(--mut3);text-align:right;
+  font-size:16px;line-height:1}
 /* The plain-language line above the fixtures, for a reader who has not met
    the term. "Off a 20+ loss" is jargon the first time you see it. */
 .adet__p{font-size:13px;line-height:18px;color:var(--mut);padding:8px 0 2px}
@@ -283,6 +302,13 @@ button{cursor:pointer}
 .seg--2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .seg--3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .seg--4{grid-template-columns:repeat(4,minmax(0,1fr))}
+/* Whose pick the board is grading, under the filter that narrows it. The
+   label carries the meaning, so the segment beside it stays three words
+   wide and the pinned bar keeps to two rows on a phone. */
+.gbasis{display:flex;align-items:center;gap:10px;margin-top:6px}
+.gbasis .eyebrow{flex:0 0 auto}
+.gbasis .seg{flex:1;min-width:0}
+.gbasis .seg button{height:32px;font-size:13px}
 .seg--4 button{font-size:13px}
 .rowacts{display:flex;flex-direction:column;align-items:center;gap:2px;
   flex-shrink:0}

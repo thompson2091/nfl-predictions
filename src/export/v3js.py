@@ -130,6 +130,11 @@ const V3SHOW = 25;
 const V = Object.assign({
   tab: 'games', market: 'any', sort: 'model', desc: true, filter: 'all',
   gfilter: 'all',
+  //: WHOSE PICK THE GREEN AND RED GRADE. The board used to grade the book's
+  //: favorite and nothing said so, which made a played week a scorecard for
+  //: the sportsbook on a page whose whole point is the second opinion. Our
+  //: model is the default; book and adjusted are one tap away.
+  gbasis: 'model',
   week: null, game: null, gameTab: 'odds', cat: 'all',
   picks: {}, betType: 'twos', stake: 10, shown: V3SHOW,
   lodds: 100, rungs: 6, q: '', half: 'full', metric: 'all',
@@ -157,7 +162,7 @@ function v3Save() {
     localStorage.setItem(V3KEY, JSON.stringify({
       market: V.market, sort: V.sort, filter: V.filter, picks: V.picks,
       betType: V.betType, stake: V.stake, game: V.game,
-      desc: V.desc, gfilter: V.gfilter,
+      desc: V.desc, gfilter: V.gfilter, gbasis: V.gbasis,
       // The saved picks themselves, not a flag. `V.saved` used to be a
       // boolean that nothing read and nothing kept.
       saved: V.saved, savedFilter: V.savedFilter,
@@ -942,6 +947,21 @@ function v3AdjWin(c) {
   return c.win_home + w * (c.model_win_home - c.win_home);
 }
 
+// THE HOME SIDE'S CHANCE UNDER THE CHOSEN BASIS.
+//
+// Book, model or the blend of the two, in that order of fallback, so a card
+// missing one number is still graded rather than dropped. Returns the HOME
+// probability; the caller turns it into a side.
+function v3GBasis(c) {
+  const book = has(c.win_home) ? c.win_home : null;
+  const model = has(c.model_win_home) ? c.model_win_home : null;
+  const adj = v3AdjWin(c);
+  const want = V.gbasis === 'book' ? book
+             : V.gbasis === 'adj' ? adj : model;
+  const v = want != null ? want : (model != null ? model : book);
+  return v == null ? 0 : v;
+}
+
 function v3Kick(c) {
   const when = [c.kick_day, c.kick_et].filter(Boolean).join(' ');
   return when + (c.prime ? ' · prime time' : '');
@@ -1037,7 +1057,12 @@ function v3Games() {
     // assumes otherwise gets the direction backwards.
     const mw = has(c.model_win_home) ? c.model_win_home : null;
     const aw = v3AdjWin(c);
-    const side = has(c.win_home) && c.win_home >= 0.5 ? c.home : c.away;
+    // WHOSE FAVORITE THE ROW IS ABOUT, and therefore what the green and the
+    // red are grading. Falls back through the other two rather than dropping
+    // the row: a game with no model number still has a book number, and a
+    // blank row would be the basis quietly failing.
+    const basisHome = v3GBasis(c);
+    const side = basisHome >= 0.5 ? c.home : c.away;
     const forSide = v => v == null ? null
       : (side === c.home ? v : 1 - v);
     const bookPct = forSide(has(c.win_home) ? c.win_home : null);
@@ -1122,7 +1147,16 @@ function v3Games() {
     + v3Seg('v3gfilter', [['all', 'All'], ['flip', 'Upsets'],
                           ['agree', 'Agrees'], ['diff', 'Disagrees']],
             V.gfilter)
-    + '</div></div>'
+    + '</div>'
+    // WHOSE PICK IS BEING GRADED, on its own line under the filter. Three
+    // words rather than a sentence: the row underneath already labels every
+    // percentage, so this only has to say which of them the row is about.
+    + '<div class="gbasis"><span class="eyebrow">'
+    + (V.week == null ? 'Side shown' : 'Graded on') + '</span>'
+    + '<div class="seg seg--3">'
+    + v3Seg('v3gbasis', [['book', 'Book'], ['model', 'Model'],
+                         ['adj', 'Adj']], V.gbasis)
+    + '</div></div></div>'
     + '<div class="list">' + (rows || '<div class="empty">'
       + (V.gfilter === 'flip'
          ? 'Our model picks the same winner as the book in every game this week.'
@@ -1151,7 +1185,8 @@ function v3Games() {
 function v3Game(gid) {
   const c = (v3GameSet().cards || []).filter(x => x.game_id === gid)[0];
   if (!c) return '<div class="wrap"><a class="back" data-v3back="1">'
-    + '‹ Games</a><div class="card">That game is not on this week’s '
+    + '‹ ' + (V.backTab === 'angles' ? 'Angles' : 'Games')
+    + '</a><div class="card">That game is not on this week’s '
     + 'board.</div></div>';
   const notes = (DATA.notes || {})[gid] || [];
   const cats = ['all'].concat(notes.map(n => n.cat).filter(
@@ -1204,8 +1239,9 @@ function v3Game(gid) {
     // part of the stepper — plain, muted, outside the bordered group — which
     // is the same distinction the rest of the app draws between leaving a
     // screen and changing what is on it.
-    + '<button class="gback" data-v3back="1" aria-label="Back to all games">'
-    + '\u2039</button>'
+    + '<button class="gback" data-v3back="1" aria-label="'
+    + (V.backTab === 'angles' ? 'Back to the angles board' : 'Back to all games')
+    + '">\u2039</button>'
     + v3GameSwitch(gid)
     + '<button class="askbtn askbtn--mini" data-v3sheet="ask"'
     + ' aria-label="Ask about this game">'
@@ -3403,6 +3439,30 @@ function v3Wilson(k, n) {
   return [Math.max(0, c - h), Math.min(1, c + h)];
 }
 
+// WHICH BOARD HOLDS A FIXTURE, and whether it is the archived one.
+//
+// Decided by LOOKING FOR THE GAME, not by comparing week numbers. Two cases
+// broke the arithmetic version. On a Monday, Sunday’s games belong to the
+// week still in progress, so sending the reader to the archive found nothing
+// — `games.past` does not hold the current week and will not until it
+// closes. And next week’s fixtures are on the schedule but on no board at
+// all, because their prices have not been captured, so a link to them landed
+// on "that game is not on this week’s board".
+//
+// Returns null where nothing holds it, which is how the list knows not to
+// make that row a button.
+function v3AngleBoard(g) {
+  const G = DATA.games || {};
+  const id = g && g.gid;
+  if (!id) return null;
+  // The ARCHIVE IS ASKED FIRST, because it is keyed by this fixture's own
+  // week and so cannot answer for a different game.
+  const p = (G.past || {})[String(g && g.week)];
+  if (p && (p.cards || []).some(c => c.game_id === id)) return { past: true };
+  if ((G.cards || []).some(c => c.game_id === id)) return { past: false };
+  return null;
+}
+
 function v3AnglesPage() {
   const A = DATA.angles || {};
   const all = (A.rows || []).slice();
@@ -3459,7 +3519,6 @@ function v3AnglesPage() {
   const SORTS = {
     season: o => pct(o.r.season),
     all: o => pct(o.run),
-    games: o => (o.run ? o.run.n : 0),
     name: o => o.r.label,
   };
   const key = SORTS[V.angleSort] ? V.angleSort : 'season';
@@ -3472,7 +3531,6 @@ function v3AnglesPage() {
     return a.r.label < b.r.label ? -1 : 1;
   });
 
-  const clears = shown.filter(o => o.run && o.run.clears).length;
   const games = A.games || {};
   // TWO DECIMALS. Break-even is 52.38% and a column rounded to whole points
   // cannot show a row sitting either side of it.
@@ -3492,29 +3550,42 @@ function v3AnglesPage() {
         + '<p class="help" style="margin:0 0 8px">No games this season yet.'
         + '</p></div>';
     }
+    const w = gs.filter(g => g.covered === true).length;
+    const l = gs.filter(g => g.covered === false).length;
+    const rest = gs.length - w - l;
     return '<div class="adet">' + plain
+      // A HEADER STRIP, so this reads as a nested table rather than a panel
+      // that appeared. It borrows the board's own column labels; the record
+      // sits in the right-hand one because that is the column it grades.
+      + '<div class="adet__h"><span>This season</span>'
+      + '<span>' + w + '\u2013' + l
+      + (rest ? ' \u00b7 ' + rest + ' to play' : '') + ' ATS</span></div>'
       + gs.map(g => {
           const done = g.covered !== null && g.covered !== undefined;
           const tone = !done ? '' : (g.covered ? ' agame--won' : ' agame--lost');
-          // Straight to that week's game page, which is where the reader is
-          // already heading once a fixture catches their eye.
-          // TWO LINES ON A PHONE, not six columns. Week, teams and the
-          // verdict are what a reader scans; the line and the score are the
-          // detail under it. Six columns in 327px left "ATL at GB" in 90px
-          // and the verdict truncated.
-          return '<button class="agame' + tone + '" data-v3anglegame="'
-            + esc(g.game_id || '') + '|' + (done ? g.week : '') + '">'
-            + '<span class="agame__t">'
+          // ONLY LINKED WHERE THERE IS SOMETHING TO OPEN. A fixture whose
+          // week has no board — next week's games, which are scheduled but
+          // not yet priced — used to be a button that landed on "that game
+          // is not on this week's board".
+          const on = v3AngleBoard(g);
+          const line = '<span class="agame__t">'
             + '<b>' + esc(g.team) + ' ' + (g.home ? 'vs' : 'at') + ' '
             + esc(g.opp) + '</b>'
-            + '<i>wk' + g.week
+            + '<i>Wk ' + g.week
             + (has(g.spread) ? ' \u00b7 ' + (g.spread > 0 ? '\u2212' : '+')
                + Math.abs(g.spread) : '')
             + (has(g.pf) && has(g.pa) ? ' \u00b7 ' + g.pf + '\u2013' + g.pa
                : '') + '</i></span>'
-            + '<span class="agame__v num">' + (!done ? 'to play'
-               : (g.covered ? 'cover' : 'no') + '<i>'
-                 + (g.by > 0 ? '+' : '') + g.by + '</i>') + '</span>'
+            + '<span class="tag ' + (!done ? 'tag--soon'
+               : (g.covered ? 'tag--good' : 'tag--bad')) + '">'
+            + (!done ? 'to play'
+               : (g.covered ? 'cover ' : 'no ')
+                 + (g.by > 0 ? '+' : '') + g.by) + '</span>';
+          if (!on) return '<div class="agame agame--flat' + tone + '">'
+            + line + '<i class="agame__go"></i></div>';
+          return '<button class="agame' + tone + '" data-v3anglegame="'
+            + esc(g.gid || '') + '|' + (on.past ? g.week : '') + '|'
+            + esc(r.id) + '">' + line
             + '<i class="agame__go">\u203a</i></button>';
         }).join('')
       + '</div>';
@@ -3526,25 +3597,6 @@ function v3AnglesPage() {
     + 'bounce back after a beating\u201d, that sort of thing. Each row is how '
     + 'often that pattern actually beat the point spread. Tap one to see this '
     + 'season\u2019s games.</p>'
-    + '<div class="card"><div class="stats">'
-    + '<div class="stat"><span class="eyebrow">Patterns</span>'
-    + '<b class="num">' + shown.length + '</b></div>'
-    + '<div class="stat"><span class="eyebrow">That make money</span>'
-    + '<b class="num' + (clears ? ' good' : '') + '">' + clears + '</b></div>'
-    + '<div class="stat"><span class="eyebrow">Needed to</span>'
-    + '<b class="num">' + (be * 100).toFixed(2) + '%</b></div>'
-    + '</div>'
-    + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:12px">'
-    + 'Winning half your bets loses money, because the bookmaker keeps a cut. '
-    + 'You need <b style="color:var(--ink)">' + (be * 100).toFixed(2)
-    + '%</b> just to break even. '
-    + (clears
-       ? 'Of these ' + shown.length + ' patterns, ' + clears + ' beat that.'
-       : 'Not one of these ' + shown.length + ' patterns beats that.')
-    + '</p>'
-    + '<p class="help">And that is with ' + shown.length + ' patterns on the '
-    + 'board. Try that many and two or three will look good on luck alone, so '
-    + 'even a couple of winners here would not mean much.</p></div>'
     + '<div class="pbar pbar--free">'
     // Search and kind share a line; the years get their own, because a range
     // needs the width to be worth dragging. Two rows rather than three keeps
@@ -3575,7 +3627,6 @@ function v3AnglesPage() {
     + head('name', 'Pattern')
     + head('season', 'Yr ATS')
     + head('all', '\u2019' + String(from).slice(2) + '+ ATS')
-    + head('games', 'Games')
     + '</div>'
     + (rows.length ? '' : '<p class="help" style="padding:12px 0">Nothing '
        + 'matches ' + (q ? '\u201c' + esc(V.angleQ) + '\u201d' : 'that')
@@ -3590,23 +3641,32 @@ function v3AnglesPage() {
           + (r.mined ? ' <i class="tag tag--warn">added</i>' : '') + '</span>'
           + '<span class="num"><b>' + cellv(r.season) + '</b>'
           + '<i>' + rec(r.season) + '</i></span>'
+          // THE RECORD UNDER THE PERCENTAGE, the same as the column beside
+          // it. This used to carry the interval instead, which meant the two
+          // number columns read differently and the games count needed a
+          // third column to say what "1250-1180" already says.
           + '<span class="num' + (good ? ' good' : '') + '"><b>'
-          + cellv(a) + '</b><i>' + (a ? (a.lo * 100).toFixed(0) + '\u2013'
-            + (a.hi * 100).toFixed(0) + '%' : '') + '</i></span>'
-          + '<span class="num"><b>' + (a ? a.n : '') + '</b></span>'
+          + cellv(a) + '</b><i>' + rec(a) + '</i></span>'
           + '</button>'
           + (open ? detail(r) : '');
       }).join('')
     + '</div>'
     + '<div class="card" style="margin-top:12px">'
     + '<div class="name">Why none of them is a system</div>'
-    + '<p class="lede" style="font-size:15px;line-height:20px">A split has to '
-    + 'clear ' + (be * 100).toFixed(2) + '% to pay for the vig, and at three '
-    + 'to five hundred games an interval runs eight points wide \u2014 wide '
-    + 'enough to contain both \u201cno edge\u201d and \u201ca good edge\u201d. '
-    + 'Every angle here has been public for decades, which is the other half '
-    + 'of it: the price already knows.</p>'
-    + '<p class="help">Nothing is dropped for going cold. A split that '
+    + '<p class="lede" style="font-size:15px;line-height:20px">Winning half '
+    + 'your bets loses money, because the bookmaker keeps a cut: a split has '
+    + 'to clear <b style="color:var(--ink)">' + (be * 100).toFixed(2)
+    + '%</b> just to break even. At three to five hundred games an interval '
+    + 'runs eight points wide \u2014 wide enough to contain both \u201cno '
+    + 'edge\u201d and \u201ca good edge\u201d. Every angle here has been '
+    + 'public for decades, which is the other half of it: the price already '
+    + 'knows.</p>'
+    // THE DENOMINATOR IS THE FINDING. The headline card that carried this
+    // came off the top of the page for space; the count of patterns measured
+    // has to survive somewhere, or a winner reads as a system.
+    + '<p class="help">With ' + all.length + ' patterns measured, two or '
+    + 'three will look good on luck alone, so even a winner here would not '
+    + 'mean much. Nothing is dropped for going cold either: a split that '
     + 'reverted is the most useful row on this page, and a board with the '
     + 'losers removed is a board of survivors.</p></div>'
     + '</div>';
@@ -3766,7 +3826,14 @@ const v3Surname = n => {
 // history step, and twelve taps of Back would be twelve sort orders.
 function v3Where() {
   return { tab: V.tab, game: V.game, gameTab: V.gameTab, week: V.week,
-           market: V.market };
+           market: V.market,
+           // WHICH ANGLE IS OPEN IS PART OF THE SCREEN. The browser's own
+           // back gesture used to land on the angles board with everything
+           // closed, so the row you had been reading was gone. `backTab`
+           // rides along for the same reason: Back has to mean the same
+           // thing whether you press the app's chevron or the phone's.
+           angleOpen: V.angleOpen, backTab: V.backTab,
+           backAngle: V.backAngle };
 }
 
 let v3Booted = false;
@@ -3908,7 +3975,7 @@ function render(fromHistory) {
 // One delegated listener. Every control is a `data-v3*` attribute, so a
 // control that is added and never wired here does nothing at all rather than
 // throwing — which is why `test_every_v3_control_is_handled` exists.
-const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3pick', 'v3more',
+const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis', 'v3pick', 'v3more',
                   'v3keep', 'v3unkeep', 'v3savedfilter', 'v3pickopen',
                   'v3game', 'v3gamestep', 'v3back', 'v3gtab', 'v3cat', 'v3type',
                   'v3stake', 'v3ask', 'v3open', 'v3dir',
@@ -4048,6 +4115,7 @@ function v3Do(kind, v) {
   switch (kind) {
     case 'v3tab': {
       V.tab = v; V.game = null; V.shown = V3SHOW;
+      V.backTab = null; V.backAngle = null;
       // A week the destination cannot show is dropped rather than carried
       // into a screen that would render it empty.
       if (V.week != null && v3Weeks().indexOf(V.week) < 0) V.week = null;
@@ -4070,6 +4138,7 @@ function v3Do(kind, v) {
     case 'v3sort': V.sort = v; break;
     case 'v3filter': V.filter = v; V.shown = V3SHOW; V.top = 'section'; break;
     case 'v3gfilter': V.gfilter = v; V.top = 'section'; break;
+    case 'v3gbasis': V.gbasis = v; V.top = 'section'; break;
     case 'v3more': V.shown = 1e9; break;
     // Tapping the open row closes it: one open at a time, so the board does
     // not turn into a wall of detail panels you have to close individually.
@@ -4091,9 +4160,16 @@ function v3Do(kind, v) {
     case 'v3anglegame': {
       const bits = String(v).split('|');
       V.tab = 'games'; V.game = bits[0]; V.gameTab = 'odds';
-      // A played week is reached through the week picker; the current one is
-      // `null`, which is what "This week" means everywhere else in the app.
+      // A game the ARCHIVE holds is reached through the week picker; one on
+      // the live board is `null`, which is what "This week" means everywhere
+      // else. `v3AngleBoard` decides which, by looking for the game rather
+      // than by comparing week numbers — on a Monday, Sunday's games are
+      // still this week's and are not in the archive yet.
       V.week = bits[1] === '' ? null : Number(bits[1]);
+      // WHERE BACK LEADS. Arriving from a fixture, "back" means the angles
+      // board with that angle still open, not the games list — a screen this
+      // reader has not been on and did not ask for.
+      V.backTab = 'angles'; V.backAngle = bits[2] || null;
       V.top = true;
       break;
     }
@@ -4116,6 +4192,7 @@ function v3Do(kind, v) {
       if (V.picks[v]) delete V.picks[v]; else V.picks[v] = true; break;
     case 'v3game': V.tab = 'games'; V.game = v; V.gameTab = 'odds';
       V.cat = 'all'; V.answer = ''; V.answerErr = ''; V.q2 = '';
+      V.backTab = null; V.backAngle = null;
       V.answerLive = false; break;
     // STEPPING between games is not leaving the page the way tapping a game
     // in the list is: you are mid-read, and the arrow is beside the section
@@ -4124,7 +4201,16 @@ function v3Do(kind, v) {
     case 'v3gamestep': V.tab = 'games'; V.game = v; V.open = null;
       V.cat = 'all'; V.answer = ''; V.answerErr = ''; V.q2 = '';
       V.answerLive = false; V.top = 'section'; break;
-    case 'v3back': V.game = null; V.answer = ''; break;
+    case 'v3back':
+      V.game = null; V.answer = '';
+      if (V.backTab) {
+        V.tab = V.backTab; V.angleOpen = V.backAngle;
+        V.backTab = null; V.backAngle = null;
+        // The angles board offers no weeks, so a week carried in from the
+        // game would render nothing and could not be cleared.
+        if (v3Weeks().indexOf(V.week) < 0) V.week = null;
+      }
+      break;
     case 'v3gtab':
       V.gameTab = v3GTab(v);
       // Start at the top of what you asked for. Keeping the offset left you

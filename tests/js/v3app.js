@@ -704,9 +704,14 @@ ok('the angles board lists every angle tracked',
    (L().match(/data-v3angle="/g) || []).length + ' drawn, '
    + (((DATA.angles || {}).rows || []).length) + ' measured');
 // THE DENOMINATOR IS THE FINDING. A board showing only what currently clears
-// is a board of survivors, so the count of both has to be on the page.
-ok('and says how many clear the vig', L().indexOf('That make money') >= 0);
+// is a board of survivors, so the count measured has to be on the page. The
+// headline card that used to carry it came off for space; these moved into
+// the closing card and must still be somewhere.
+ok('and says how many patterns were measured',
+   /With \d+ patterns measured/.test(L()));
 ok('and what clearing means', L().indexOf('just to break even') >= 0);
+ok('and that some of them look good on luck alone',
+   L().indexOf('on luck alone') >= 0);
 // PLAIN WORDS. The first version said "splits graded against the closing
 // spread" over a stat called "chance alone" — three pieces of jargon before
 // the reader reaches a number.
@@ -727,7 +732,7 @@ ok('and explains why half is not enough',
     // A fixture goes straight to that week's game page.
     ok('and each game links to its own page',
        o.indexOf('data-v3anglegame="') >= 0);
-    const link = /data-v3anglegame="([^"|]*)\|([^"]*)"/.exec(o);
+    const link = /data-v3anglegame="([^"|]*)\|([^"|]*)\|([^"]*)"/.exec(o);
     ok('with a plain-language description above them',
        o.indexOf('class="adet__p"') >= 0);
     // One at a time, or the board becomes a wall of fixture lists.
@@ -736,14 +741,55 @@ ok('and explains why half is not enough',
     ok('tapping it again closes it', L().indexOf('class="adet"') < 0);
     // And a fixture goes straight to that week's game page. Done last,
     // because it navigates away.
+    // THE ID HAS TO BE THE BOARD'S. The fixtures carried the schedule's
+    // `2026_02_DET_BUF` while every card on the board is keyed `DET_BUF`, so
+    // each of these links landed on "that game is not on this week's board".
+    const ids = {};
+    ((DATA.games || {}).cards || []).forEach(c => { ids[c.game_id] = 1; });
+    Object.keys((DATA.games || {}).past || {}).forEach(w => {
+      (((DATA.games || {}).past || {})[w].cards || [])
+        .forEach(c => { ids[c.game_id] = 1; });
+    });
+    const linked = (o.match(/data-v3anglegame="([^"|]*)\|/g) || [])
+      .map(m => m.slice('data-v3anglegame="'.length, -1));
+    ok('every linked fixture names a game the board holds',
+       linked.length > 0 && linked.every(g => ids[g]), linked.join(','));
+    // A fixture with no board is not a button. Next week's games are on the
+    // schedule and on nobody's board, so a link to one went nowhere.
+    ok('and a fixture with no board is not a link',
+       o.indexOf('agame--flat') >= 0
+       && linked.length < (o.match(/class="agame/g) || []).length,
+       linked.length + ' linked of '
+       + (o.match(/class="agame/g) || []).length);
+    // BOTH BOARDS ARE REACHED. A game in a closed week opens the archive;
+    // one in the week still in progress opens the live board, which is the
+    // Monday case — Sunday's games are played but their week is not over,
+    // so the archive does not have them yet.
+    const wks = (o.match(/data-v3anglegame="[^"|]*\|([^"|]*)\|/g) || [])
+      .map(m => m.split('|')[1]);
+    ok('a closed week opens the archive', wks.some(w => w !== ''),
+       wks.join(','));
+    ok('and a game in the current week opens the live board',
+       wks.some(w => w === ''), wks.join(','));
+    // Done last, because it navigates away.
     if (link && link[1]) {
-      v3Do('v3anglegame', link[1] + '|' + link[2]);
+      v3Do('v3anglegame', link[1] + '|' + link[2] + '|' + link[3]);
       ok('tapping one opens that game',
          V.tab === 'games' && V.game === link[1], V.tab + '/' + V.game);
       ok('on the week it was played',
          link[2] === '' ? V.week === null : V.week === Number(link[2]),
          String(V.week));
-      V.tab = 'angles'; V.game = null; V.week = null; render();
+      ok('and that game is actually on the board it was sent to',
+         L().indexOf('is not on this week') < 0);
+      // BACK MEANS WHERE YOU CAME FROM. It used to mean the games list,
+      // which is a screen this reader had not been on.
+      v3Do('v3back');
+      ok('and Back returns to the angles board', V.tab === 'angles', V.tab);
+      ok('with the angle still open', V.angleOpen === link[3],
+         String(V.angleOpen));
+      ok('and no week carried in from the game', V.week === null,
+         String(V.week));
+      V.angleOpen = null; render();
     }
   }
 }
@@ -785,6 +831,19 @@ ok('and explains why half is not enough',
 // TWO DECIMALS, because break-even is 52.38% and whole points cannot show a
 // row sitting either side of it.
 ok('percentages carry two decimals', /\d+\.\d\d%/.test(L()));
+// BOTH NUMBER COLUMNS READ THE SAME WAY: a percentage with the record under
+// it. The long-run column used to carry an interval instead, which needed a
+// third column to say the sample size that "1250-1180" already says.
+{
+  const sp = (DATA.angles || {}).splits || {};
+  const id = Object.keys(sp)[0];
+  let w = 0, l = 0;
+  Object.keys(sp[id] || {}).forEach(y => { w += sp[id][y][0]; l += sp[id][y][1]; });
+  ok('the long-run column carries its record', L().indexOf(w + '-' + l) >= 0,
+     'expected ' + w + '-' + l);
+  ok('and the games column is gone',
+     L().indexOf('data-v3anglesort="games"') < 0);
+}
 // The long-run column can start later than 2015.
 {
   ok('there is a control for how far back to count',
@@ -1965,6 +2024,40 @@ if (cards.length) {
   ok('the pinned filter still filters', V.gfilter === 'flip');
   v3Do('v3gfilter', 'all');
   V.tab = 'props';
+}
+
+// ── Whose pick the green and red grade ─────────────────────────────────
+//
+// The board graded the BOOK'S favorite and nothing said so, which made a
+// played week a scorecard for the sportsbook on a page whose whole reason to
+// exist is the second opinion. The fixture's week 2 disagrees on purpose:
+// book and blend favor BUF, who won; the model favors DET, who lost.
+{
+  const pw = Object.keys(((DATA.games || {}).past || {}))[0];
+  if (pw) {
+    V.tab = 'games'; V.game = null; V.week = Number(pw); V.gfilter = 'all';
+    ok('the board grades our model by default', V.gbasis === 'model');
+    render();
+    const byModel = app();
+    ok('and a game our model called wrong is marked lost',
+       byModel.indexOf('DET lost') >= 0 && byModel.indexOf('BUF won') < 0);
+    v3Do('v3gbasis', 'book'); render();
+    const byBook = app();
+    ok('the book can still be graded instead',
+       byBook.indexOf('BUF won') >= 0 && byBook.indexOf('DET lost') < 0);
+    ok('and the two disagree, which is why the control exists',
+       byBook !== byModel);
+    v3Do('v3gbasis', 'adj'); render();
+    ok('and so can the blend of the two', app().indexOf('BUF won') >= 0);
+    // The control sits in the pinned bar with the filter, not above it.
+    const h = app();
+    ok('the basis control is pinned with the filter',
+       h.indexOf('data-v3gbasis=') > h.indexOf('class="pbar pbar--free"'));
+    v3Do('v3gbasis', 'model');
+    V.week = null; V.tab = 'props'; render();
+  } else {
+    ok('no archived week in the fixture; grading basis not exercised', true);
+  }
 }
 
 // ── Changing the list starts you at the top of it ──────────────────────
