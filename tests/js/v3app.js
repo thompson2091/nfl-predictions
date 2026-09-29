@@ -21,7 +21,8 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
    'v3PublicMoney', 'v3MoneyBlock', 'v3SharpSides', 'V3RATIO_SMALL',
-   'v3Ask', 'V3ASK_DEFAULT', 'v3AngleBase',
+   'v3Ask', 'V3ASK_DEFAULT', 'v3AngleBase', 'v3Surprise', 'V3SURPRISE',
+   'v3AngleSince', 'v3AngleYears',
    'v3GTab', 'v3MktLabel',
    'v3Clv',
    'v3NowImplied', 'v3Clv', 'v3ClvNote', 'v3GameMoney']);
@@ -1003,6 +1004,60 @@ ok('and explains why half is not enough',
      === ((DATA.angles || {}).rows || []).length);
 }
 
+// ── Is this season unusual for this pattern? ───────────────────────────
+//
+// "Teams off a 20+ loss are 7-1 against the spread this year" is the line
+// that started this board, and the board could not answer it: 87.50% sat
+// beside a long run of 53.13% and the reader had to judge whether eight games
+// meant anything. At 53.13%, 7-1 or better turns up about one season in ten.
+{
+  const { v3Surprise, V3SURPRISE } = x;
+  // The case itself. Eight games at 53% is not a finding.
+  const p = v3Surprise({ n: 8, w: 7, l: 1, pct: 0.875 },
+                       { n: 495, w: 263, l: 232, pct: 0.5313 });
+  ok('seven-and-one on eight games is not unusual', p > V3SURPRISE,
+     'p=' + p);
+  // The same rate over a season's worth of games is a different claim.
+  const q = v3Surprise({ n: 80, w: 70, l: 10, pct: 0.875 },
+                       { n: 495, w: 263, l: 232, pct: 0.5313 });
+  ok('the same rate over eighty games is', q < V3SURPRISE, 'p=' + q);
+  // A record ON the long-run rate is the least surprising thing there is.
+  const r = v3Surprise({ n: 100, w: 53, l: 47, pct: 0.53 },
+                       { n: 495, w: 263, l: 232, pct: 0.5313 });
+  ok('and a season that matches the long run is not', r > 0.9, 'p=' + r);
+  // BOTH DIRECTIONS. A cold season is as much a finding as a hot one.
+  const cold = v3Surprise({ n: 80, w: 10, l: 70, pct: 0.125 },
+                          { n: 495, w: 263, l: 232, pct: 0.5313 });
+  ok('and it reads cold seasons too', cold < V3SURPRISE, 'p=' + cold);
+  // It must not throw or invent a number where there is nothing to compare.
+  ok('no season, no answer', v3Surprise(null, { n: 9, pct: 0.5 }) === null);
+  ok('no long run, no answer', v3Surprise({ n: 9, w: 5, pct: 0.5 }, null) === null);
+  ok('and a long run of all wins says nothing rather than dividing by zero',
+     v3Surprise({ n: 9, w: 5, pct: 0.5 }, { n: 9, w: 9, pct: 1 }) === null);
+  // ON THE NAME, NOT ON THE NUMBER. Coloring the season cell is forbidden:
+  // green on eight games is the exact misreading this board prevents.
+  V.tab = 'angles'; V.angleTeam = ''; V.angleQ = ''; render();
+  // COUNTED ON THE TITLE, because the closing card prints an example tag to
+  // explain itself and `>unusual<` matches that too.
+  const tagged = (L().match(/title="This season/g) || []).length;
+  // AGAINST THE LONG RUN THE PAGE IS SHOWING, not the shipped `all` block:
+  // the year slider recomputes the long run, and the comparison has to move
+  // with it or the mark would answer for a span nobody is looking at.
+  const yr = x.v3AngleYears();
+  const due = ((DATA.angles || {}).rows || []).filter(a => {
+    const run = x.v3AngleSince(a, yr.from, 0.5238, '');
+    const p = v3Surprise(a.season, run);
+    return p != null && p < V3SURPRISE;
+  }).length;
+  ok('the board marks exactly the unusual ones', tagged === due,
+     tagged + ' marked, ' + due + ' qualify');
+  ok('and the mark is a tag, not a tint on the number',
+     tagged === 0 || L().indexOf('tag tag--flat" title="This season') >= 0);
+  ok('and the card says what it means',
+     L().indexOf('one time in twenty') >= 0);
+}
+
+
 // ── What the split's own composition already predicts ──────────────────
 //
 // Side and role are worth four points between them: road underdogs cover
@@ -1014,7 +1069,8 @@ ok('and explains why half is not enough',
   const { v3AngleBase } = x;
   V.tab = 'angles'; V.angleQ = ''; V.angleCat = 'all'; V.angleTeam = '';
   V.angleFrom = 0; V.angleOpen = null; V.angleSort = 'season'; render();
-  ok('the board carries an expected column', L().indexOf('>Expected<') >= 0);
+  ok('the board explains what the composition costs',
+     L().indexOf('Side and role are worth four points') >= 0);
   // `blowout_loss` is entirely road underdogs, a cell that covers 60% in the
   // fixture. Its expectation is 60%, NOT the 50% a flat baseline would use.
   const b = v3AngleBase({ id: 'blowout_loss' }, 2015, '');
@@ -1039,12 +1095,19 @@ ok('and explains why half is not enough',
   // An angle with no mix shows nothing rather than a made-up number.
   ok('an angle with no baseline shows none',
      v3AngleBase({ id: 'nosuchangle' }, 2015, '') === null);
-  // AND IT IS NOT TINTED. Nothing measured is two standard errors from its
-  // baseline, so a color would point at noise.
-  const row = /class="num"><b>60\.00%<\/b>/.test(L());
-  ok('the expected rate is drawn on the row', row, 'no 60.00% cell');
-  ok('and the board says what expected means',
-     L().indexOf('on side and role alone') >= 0);
+  // IN THE PANEL, NOT IN A COLUMN. Across fifty-five rows the expected rate
+  // ran 47.93% to 52.07% with a median of exactly 50.00%, and fifty of them
+  // sat within two points of it — a near-constant column costing width on a
+  // phone. It still matters for the splits made almost entirely of one cell,
+  // and those are the rows someone opens.
+  ok('the board is back to three columns',
+     L().indexOf('data-v3anglesort="base"') < 0);
+  const first = Object.keys((DATA.angles || {}).games || {})[0];
+  v3Do('v3angle', first); render();
+  ok('and the expected rate is in the panel that opens',
+     L().indexOf('on side and role alone') >= 0
+     && /covers <b[^>]*>60\.00%/.test(L()), 'no 60.00% in the panel');
+  V.angleOpen = null; render();
 }
 
 

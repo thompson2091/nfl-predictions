@@ -2242,7 +2242,6 @@ function v3Angles(c) {
   const SORTS = {
     season: o => pct(o.season),
     all: o => pct(o.run),
-    base: o => (o.run && o.run.n && o.base) ? o.run.pct - o.base.pct : -9,
     name: o => o.team + ' ' + o.r.label,
   };
   const key = SORTS[V.gaSort] ? V.gaSort : 'season';
@@ -2285,7 +2284,6 @@ function v3Angles(c) {
     + head('name', 'Pattern')
     + head('season', 'Yr ATS')
     + head('all', '\u2019' + String(from).slice(2) + '+ ATS')
-    + head('base', 'Expected')
     + '</div>'
     + (rows.length ? '' : '<p class="help" style="padding:12px 0">'
        + esc(team) + ' carries none of these.</p>')
@@ -2300,14 +2298,15 @@ function v3Angles(c) {
         return '<button class="arow' + (open ? ' arow--on' : '')
           + '" data-v3gangle="' + esc(id) + '" aria-expanded="' + open + '">'
           + '<span class="arow__l"><b>' + esc(o.team) + '</b> '
-          + esc(r.label) + (own ? '' : v3WholeTag(r)) + '</span>'
+          + esc(r.label) + (own ? '' : v3WholeTag(r))
+          + v3SurpriseTag(o.season, a) + '</span>'
           + '<span class="num"><b>' + v3AnglePct(o.season) + '</b>'
           + '<i>' + v3AngleRec(o.season) + '</i></span>'
           + '<span class="num' + (good ? ' good' : '') + '"><b>'
           + v3AnglePct(a) + '</b><i>' + v3AngleRec(a) + '</i></span>'
-          + v3BaseCell(a, o.base)
           + '</button>'
-          + (open ? v3AngleGames(r, games, own ? o.team : '') : '');
+          + (open ? v3AngleGames(r, games, own ? o.team : '',
+                                 v3BaseLine(a, o.base)) : '');
       }).join('')
     // THE DENOMINATOR IS THE FINDING, so it is on the card rather than in a
     // footnote. Without it a reader sees four splits and no idea that
@@ -3563,30 +3562,84 @@ const V3CELLS = ['AD', 'AF', 'HD', 'HF'];
 
 // WHAT "EXPECTED" MEANS, said once and in the same words on both screens.
 function v3BaseNote() {
-  return '<p class="help" style="margin-top:8px"><b style="color:var(--ink)">'
-    + 'Expected</b> is what a split of these particular games covers on side '
-    + 'and role alone, before the pattern is considered. Road underdogs cover '
-    + '52.07% and home favorites 47.93% \u2014 four points apart \u2014 so a '
+  return '<p class="help" style="margin-top:8px">Side and role are worth four '
+    + 'points between them: road underdogs cover '
+    + '<b style="color:var(--ink)">52.07%</b> and home favorites '
+    + '<b style="color:var(--ink)">47.93%</b>, over 1,763 games each. So a '
     + 'pattern made mostly of favorites looks bad without saying anything. '
-    + 'The small number under it is the difference. Not one pattern here is '
-    + 'far enough from its own expectation to be worth calling a finding.</p>';
+    + 'Open any row and it says what a split of those particular games covers '
+    + 'on side and role alone, before the pattern is considered.</p>'
+    + '<p class="help" style="margin-top:8px">A row marked '
+    + '<i class="tag tag--flat">unusual</i> is one whose record this season '
+    + 'would turn up less than one time in twenty for that pattern. That is a '
+    + 'remark about a small sample, not a signal \u2014 with '
+    + ((DATA.angles || {}).rows || []).length + ' patterns on the board, two '
+    + 'or three are marked by chance in a normal season.</p>';
 }
 
-// THE EXPECTED RATE, AND HOW FAR THE SPLIT IS FROM IT.
+// IS THIS SEASON UNUSUAL FOR THIS PATTERN?
 //
-// The rate leads because it is the thing being compared to the column beside
-// it; the signed gap under it saves the reader doing the subtraction. Read
-// together they answer the only question that matters here: is this split
-// saying anything its own composition does not already say?
+// "Teams off a 20+ loss are 7-1 against the spread this year" is the line that
+// started this board, and the board could not answer it: the season column
+// printed 87.50% beside a long run of 53.13% and left the reader to judge
+// whether eight games meant anything. They do not. At 53.13%, a record of 7-1
+// or better turns up about one season in ten.
 //
-// NOT TINTED. Nothing measured is two standard errors from its baseline, so a
-// color would be pointing at noise -- which is the exact reading the board
-// exists to prevent.
-function v3BaseCell(run, base) {
-  if (!base || !run || !run.n) return '<span class="num"><b>\u2014</b></span>';
+// So the two-sided binomial tail of this season's record against the
+// pattern's OWN long-run rate, which is the one comparison a reader cannot do
+// in their head. Computed iteratively rather than through factorials: n runs
+// to ninety by January and `comb(90, 45)` is 10^26.
+function v3Surprise(season, all) {
+  if (!season || !season.n || !all || !all.n) return null;
+  const p = all.pct, n = season.n, k = season.w;
+  if (!(p > 0 && p < 1)) return null;
+  const pmf = [];
+  let v = Math.pow(1 - p, n);
+  for (let i = 0; i <= n; i++) {
+    pmf.push(v);
+    v = v * ((n - i) / (i + 1)) * (p / (1 - p));
+  }
+  let lo = 0, hi = 0;
+  for (let i = 0; i <= k; i++) lo += pmf[i];
+  for (let i = k; i <= n; i++) hi += pmf[i];
+  return Math.min(1, 2 * Math.min(lo, hi));
+}
+
+//: One season in twenty. With fifty-five patterns two or three are marked by
+//: chance in a normal season, which the closing card says in the same breath.
+const V3SURPRISE = 0.05;
+
+// A NOTE, NOT A VERDICT. Beside the name rather than on the number, because
+// `test_only_the_long_run_can_be_tinted` forbids coloring the season cell and
+// is right to: green on eight games is the exact misreading this board exists
+// to prevent. No color, no emphasis, and the word is "unusual" rather than
+// "hot" -- "hot" reads as a tip.
+function v3SurpriseTag(season, all) {
+  const p = v3Surprise(season, all);
+  return (p != null && p < V3SURPRISE)
+    ? ' <i class="tag tag--flat" title="This season\u2019s record would turn '
+      + 'up less than one time in twenty for this pattern. That is a remark '
+      + 'about a small sample, not a signal.">unusual</i>' : '';
+}
+
+// THE EXPECTED RATE, IN THE PANEL RATHER THAN IN A COLUMN.
+//
+// It was a column beside the long run, and across fifty-five rows it printed
+// between 47.93% and 52.07% with a median of exactly 50.00% — fifty of them
+// within two points of their own expectation. A near-constant column costs
+// width on a phone and teaches nothing after the first glance.
+//
+// It still matters for the handful of splits made almost entirely of one
+// cell: `road_dog` expects 52.07% and `home_fav` 47.93%, so reading either
+// against a flat 50% credits it with four points it has not earned. Those are
+// the rows someone opens, and this is where they land.
+function v3BaseLine(run, base) {
+  if (!base || !run || !run.n) return '';
   const d = (run.pct - base.pct) * 100;
-  return '<span class="num"><b>' + (base.pct * 100).toFixed(2) + '%</b>'
-    + '<i>' + (d > 0 ? '+' : '\u2212') + Math.abs(d).toFixed(1) + '</i></span>';
+  return '<p class="adet__p">On side and role alone a split of these games '
+    + 'covers <b style="color:var(--ink)">' + (base.pct * 100).toFixed(2)
+    + '%</b>. This one is ' + (d > 0 ? '+' : '\u2212')
+    + Math.abs(d).toFixed(2) + ' from that.</p>';
 }
 
 
@@ -3626,10 +3679,10 @@ function v3AngleSince(r, from, be, team) {
            clears: iv[0] > be };
 }
 
-function v3AngleGames(r, games, team) {
+function v3AngleGames(r, games, team, note) {
   const gs = (games[r.id] || []).filter(g => !team || g.team === team);
-  const plain = r.plain
-    ? '<p class="adet__p">' + esc(r.plain) + '</p>' : '';
+  const plain = (r.plain ? '<p class="adet__p">' + esc(r.plain) + '</p>' : '')
+    + (note || '');
   if (!gs.length) {
     return '<div class="adet">' + plain
       + '<p class="help" style="margin:0 0 8px">No games this season yet.'
@@ -3754,9 +3807,6 @@ function v3AnglesPage() {
   const SORTS = {
     season: o => pct(seasonOf(o.r)),
     all: o => pct(o.run),
-    // THE GAP, which is the column worth sorting by: how far a split is from
-    // what its own composition already predicts.
-    base: o => (o.run && o.run.n && o.base) ? o.run.pct - o.base.pct : -9,
     name: o => o.r.label,
   };
   const key = SORTS[V.angleSort] ? V.angleSort : 'season';
@@ -3775,7 +3825,8 @@ function v3AnglesPage() {
     + k + '" aria-pressed="' + (key === k) + '">' + label + arrow(k)
     + '</button>';
 
-  const detail = r => v3AngleGames(r, games, team);
+  const detail = r => v3AngleGames(r, games, team,
+    v3BaseLine(since(r), baseOf(r)));
 
   return '<div class="wrap">'
     + '<h1 class="h1">Angles</h1>'
@@ -3820,7 +3871,6 @@ function v3AnglesPage() {
     + head('name', 'Pattern')
     + head('season', 'Yr ATS')
     + head('all', '\u2019' + String(from).slice(2) + '+ ATS')
-    + head('base', 'Expected')
     + '</div>'
     + (rows.length ? '' : '<p class="help" style="padding:12px 0">Nothing '
        + 'matches ' + (q ? '\u201c' + esc(V.angleQ) + '\u201d' : 'that')
@@ -3833,7 +3883,8 @@ function v3AnglesPage() {
           + '" data-v3angle="' + esc(r.id) + '" aria-expanded="' + open + '">'
           + '<span class="arow__l">' + esc(r.label)
           + (r.mined ? ' <i class="tag tag--warn">added</i>' : '')
-          + (team ? '' : v3WholeTag(r)) + '</span>'
+          + (team ? '' : v3WholeTag(r))
+          + v3SurpriseTag(seasonOf(r), a) + '</span>'
           + '<span class="num"><b>' + v3AnglePct(seasonOf(r)) + '</b>'
           + '<i>' + v3AngleRec(seasonOf(r)) + '</i></span>'
           // THE RECORD UNDER THE PERCENTAGE, the same as the column beside
@@ -3842,7 +3893,6 @@ function v3AnglesPage() {
           // third column to say what "1250-1180" already says.
           + '<span class="num' + (good ? ' good' : '') + '"><b>'
           + v3AnglePct(a) + '</b><i>' + v3AngleRec(a) + '</i></span>'
-          + v3BaseCell(a, o.base)
           + '</button>'
           + (open ? detail(r) : '');
       }).join('')
