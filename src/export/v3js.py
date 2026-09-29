@@ -3561,16 +3561,22 @@ function v3AnglesPage() {
     }
     const w = gs.filter(g => g.covered === true).length;
     const l = gs.filter(g => g.covered === false).length;
-    const rest = gs.length - w - l;
+    // THREE STATES, NOT TWO. A game that landed exactly on the number is a
+    // push: played, returns the stake, and counted in neither column. It
+    // used to be lumped in with the fixtures still to come.
+    const push = gs.filter(g => g.played && g.covered == null).length;
+    const rest = gs.filter(g => !g.played).length;
     return '<div class="adet">' + plain
       // A HEADER STRIP, so this reads as a nested table rather than a panel
       // that appeared. It borrows the board's own column labels; the record
       // sits in the right-hand one because that is the column it grades.
       + '<div class="adet__h"><span>This season</span>'
       + '<span>' + w + '\u2013' + l
-      + (rest ? ' \u00b7 ' + rest + ' to play' : '') + ' ATS</span></div>'
+      + (push ? ' \u00b7 ' + push + ' push' : '')
+      + (rest ? ' \u00b7 ' + rest + ' to play' : '') + '</span></div>'
       + gs.map(g => {
           const done = g.covered !== null && g.covered !== undefined;
+          const pushed = !done && g.played;
           const tone = !done ? '' : (g.covered ? ' agame--won' : ' agame--lost');
           // ONLY LINKED WHERE THERE IS SOMETHING TO OPEN. A fixture whose
           // week has no board — next week's games, which are scheduled but
@@ -3591,10 +3597,13 @@ function v3AnglesPage() {
                : '') + '</i></span>'
             // A GAME NOT YET PLAYED NAMES ITS SIDE. "to play" said only that
             // nothing had happened, on the rows where knowing which team the
-            // split points at is the whole use of the list.
-            + '<span class="tag ' + (!done ? 'tag--ours'
+            // split points at is the whole use of the list. A push says so
+            // in neutral: it is settled, and it is neither a cover nor a loss.
+            + '<span class="tag ' + (pushed ? ''
+               : !done ? 'tag--ours'
                : (g.covered ? 'tag--good' : 'tag--bad')) + '">'
-            + (!done ? esc(g.team) + ' to play'
+            + (pushed ? 'push'
+               : !done ? esc(g.team) + ' to play'
                : (g.covered ? 'cover ' : 'no ')
                  + (g.by > 0 ? '+' : '') + g.by) + '</span>';
           if (!on) return '<div class="agame agame--flat' + tone + '">'

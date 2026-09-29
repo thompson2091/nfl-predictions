@@ -80,8 +80,18 @@ ANGLES: tuple[Angle, ...] = (
     Angle("two_wins", "Off two straight wins",
           "{team} has won two in a row.", _REG,
           (pl.col("prev_margin") > 0) & (pl.col("prev2_margin") > 0)),
+    # THIRTEEN DAYS, NOT TEN. Ten caught every team coming off a Thursday
+    # game as well, and there are more of those than there are byes: over
+    # 2015-2026, `rest >= 10` was 352 real byes and 378 team-weeks that were
+    # nothing of the kind, so most of "Off a bye" was not off a bye. Thirteen
+    # separates them exactly -- every bye in the archive is 13 days or more
+    # and no mini-bye reaches it -- and the Thursday cases have their own row
+    # below, which is the angle that was accidentally being measured here.
     Angle("off_bye", "Off a bye",
-          "{team} is off a bye.", _REG, pl.col("rest") >= 10),
+          "{team} is off a bye.", _REG, pl.col("rest") >= 13),
+    Angle("mini_bye", "Off a Thursday game",
+          "{team} played last Thursday, so it has ten days.", _REG,
+          (pl.col("rest") >= 10) & (pl.col("rest") < 13)),
     Angle("short_week", "On a short week",
           "{team} is on a short week.", _REG, pl.col("rest") <= 4),
     Angle("rest_edge", "Rest edge of 3+ days",
@@ -212,6 +222,8 @@ PLAIN: dict[str, str] = {
     "two_losses": "Has lost its last two games.",
     "two_wins": "Has won its last two games.",
     "off_bye": "Had a week off, so extra rest and time to prepare.",
+    "mini_bye": "Played on Thursday and so has ten days, not seven — a "
+                "mini-bye, without the week off.",
     "short_week": "Playing again on four days or fewer, usually a Thursday.",
     "rest_edge": "Has at least three more days off than the opponent.",
     "rest_deficit": "Has at least three fewer days off than the opponent.",
@@ -277,7 +289,8 @@ CATEGORY: dict[str, str] = {
     "close_win": "Form", "scored_30": "Form", "scored_under_14": "Form",
     "allowed_30": "Form", "allowed_under_14": "Form", "off_ot": "Form",
     # Time off.
-    "off_bye": "Rest", "short_week": "Rest", "rest_edge": "Rest",
+    "off_bye": "Rest", "mini_bye": "Rest", "short_week": "Rest",
+    "rest_edge": "Rest",
     "rest_deficit": "Rest",
     # What the price says about them.
     "home_dog": "The line", "road_fav": "The line", "big_fav": "The line",
@@ -493,6 +506,12 @@ def season_games(schedules: pl.DataFrame, season: int) -> dict:
                 "home": bool(r["at_home"]), "spread": r["my_spread"],
                 "pf": r["pf"], "pa": r["pa"],
                 "covered": bool(r["covered"]) if graded else None,
+                # PLAYED AND UNGRADED IS A PUSH, NOT A FIXTURE. Both arrive
+                # as `covered: None` — one because the game landed exactly on
+                # the number, the other because it has not kicked off — and
+                # the list showed both as "to play". SEA laid 3 in week 1 and
+                # won by 3; the row said SEA had yet to play.
+                "played": r["pf"] is not None,
                 "by": round(float(r["cover_by"]), 1)
                       if r["cover_by"] is not None else None,
             })

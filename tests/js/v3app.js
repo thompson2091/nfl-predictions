@@ -745,13 +745,24 @@ ok('and explains why half is not enough',
          me ? me[1] : 'none');
       // And a fixture not yet played names it in the pill, where "to play"
       // said only that nothing had happened.
-      const soon = gs.filter(g => g.covered === null
-                                  || g.covered === undefined)[0];
+      const soon = gs.filter(g => !g.played)[0];
       ok('and an unplayed game names its side',
          !soon || o.indexOf(soon.team + ' to play') >= 0,
          soon ? soon.team : 'none unplayed');
       ok('and a played one still says how it went',
          /class="tag tag--(good|bad)">(cover|no) /.test(o));
+      // A PUSH IS NOT A FIXTURE. Both reach the page as `covered: null`,
+      // and the list showed both as "to play" — SEA laid 3 in week 1 and
+      // won by 3, and the row said SEA had yet to play.
+      const pushed = gs.filter(g => g.played
+                                    && (g.covered === null
+                                        || g.covered === undefined))[0];
+      ok('and a push is marked as one',
+         !pushed || o.indexOf('>push<') >= 0, pushed ? pushed.team : 'none');
+      ok('and is not counted as still to play',
+         !pushed || o.indexOf(pushed.team + ' to play') < 0);
+      ok('and the season line separates the three',
+         !pushed || /1 push/.test(o), 'push not counted in the header');
     }
     // One at a time, or the board becomes a wall of fixture lists.
     ok('and only one is open', (o.match(/class="adet"/g) || []).length === 1);

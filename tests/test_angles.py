@@ -217,3 +217,66 @@ def test_the_board_states_its_own_false_positive_budget(sched):
         "the board does not say that some of these would look good by luck")
     assert "bookmaker keeps a cut" in page, (
         "the board does not explain why winning half is not enough")
+
+
+def test_off_a_bye_means_the_team_had_a_week_off(sched):
+    """`rest >= 10` was 352 real byes and 378 team-weeks that were not one.
+
+    Ten days is what a team has after playing on Thursday, so most of "Off a
+    bye" was a mini-bye — an angle worth measuring, but not that one, and not
+    under that name. Caught when the board showed the split 5-0 in week 3 of
+    a season where no bye had been played yet.
+
+    The two are separated by looking for the WEEK OFF rather than by the day
+    count they are defined with, so a threshold that drifts back fails here.
+    """
+    tg = A.team_weeks(sched)
+    played = set(
+        tg.select(["season", "team", "week"]).unique().iter_rows())
+
+    def by_id(angle_id):
+        a = [x for x in A.ANGLES if x.id == angle_id][0]
+        return tg.filter(a.predicate)
+
+    def week_off(rows):
+        """Rows whose team did not play the week before, and rows that did."""
+        off, on = 0, 0
+        for r in rows.iter_rows(named=True):
+            if r["week"] <= 1:
+                on += 1
+                continue
+            prev = (r["season"], r["team"], r["week"] - 1)
+            if prev in played:
+                on += 1
+            else:
+                off += 1
+        return off, on
+
+    byes = by_id("off_bye")
+    off, on = week_off(byes)
+    assert byes.height > 100, "no byes matched at all; the predicate is dead"
+    assert on == 0, (
+        f"{on} of {byes.height} team-weeks called 'off a bye' played the "
+        "week before, so they are not off a bye")
+
+    mini = by_id("mini_bye")
+    off2, on2 = week_off(mini)
+    assert mini.height > 100, "no mini-byes matched; the predicate is dead"
+    assert off2 == 0, (
+        f"{off2} of {mini.height} team-weeks called 'off a Thursday game' "
+        "had the whole week off, which is a bye")
+
+
+def test_no_angle_is_measured_twice_under_two_names(sched):
+    """Two ids selecting the same team-weeks are one angle counted twice, and
+    the board's false-positive budget is a count of independent tries."""
+    tg = A.team_weeks(sched)
+    seen: dict[frozenset, str] = {}
+    for a in A.ANGLES:
+        rows = tg.filter(a.predicate).select("game_id", "team")
+        key = frozenset(rows.iter_rows())
+        if not key:
+            continue
+        assert key not in seen, (
+            f"{a.id} selects exactly the same games as {seen[key]}")
+        seen[key] = a.id

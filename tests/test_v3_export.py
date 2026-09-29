@@ -319,15 +319,23 @@ def payload_v3():
             {"week": 2, "team": "DET", "opp": "BUF", "home": False,
              "game_id": "2026_02_DET_BUF", "gid": "DET_BUF",
              "spread": -3.5, "pf": 31, "pa": 41, "covered": False,
-             "by": -17.5},
+             "by": -17.5, "played": True},
             {"week": 3, "team": "ATL", "opp": "GB", "home": False,
              "game_id": "2026_03_ATL_GB", "gid": "ATL_GB",
              "spread": -6.5, "pf": 20, "pa": 24, "covered": True,
-             "by": 2.5},
+             "by": 2.5, "played": True},
+            # A PUSH: played, landed exactly on the number, graded as
+            # neither. It reaches the page as `covered: None`, the same as a
+            # fixture that has not kicked off, and the two must not render
+            # the same way.
+            {"week": 1, "team": "SEA", "opp": "NE", "home": True,
+             "game_id": "2026_01_NE_SEA", "gid": "NE_SEA",
+             "spread": 3.0, "pf": 13, "pa": 10, "covered": None,
+             "by": 0.0, "played": True},
             {"week": 4, "team": "MIA", "opp": "NYJ", "home": False,
              "game_id": "2026_04_MIA_NYJ", "gid": "MIA_NYJ",
              "spread": 2.5, "pf": None, "pa": None, "covered": None,
-             "by": None}]},
+             "by": None, "played": False}]},
     }
     return p
 
@@ -542,6 +550,9 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "the team the pattern is about is marked",
                  "and an unplayed game names its side",
                  "and a played one still says how it went",
+                 "and a push is marked as one",
+                 "and is not counted as still to play",
+                 "and the season line separates the three",
                  "every linked fixture names a game the board holds",
                  "and a fixture with no board is not a link",
                  "a closed week opens the archive",
