@@ -163,6 +163,34 @@ if (cards.length) {
       t => !sides[t] && h.indexOf('<b>' + t + '</b>') >= 0);
     ok('and no other game\u2019s angles leak in', strays.length === 0,
        strays.join(','));
+    // SEARCH, because the median game carries seventeen of these.
+    ok('the card can be searched', h.indexOf('data-v3gaq') >= 0);
+    const all = (app().match(/data-v3gangle="/g) || []).length;
+    const one = mine[0];
+    const word = (((DATA.angles || {}).rows || [])
+      .filter(r => r.id === one[1])[0] || {}).label.split(' ')[1] || 'off';
+    fireDoc('input', { target: {
+      getAttribute: a => a === 'data-v3gaq' ? '' : null, value: word } });
+    const narrowed = (app().match(/data-v3gangle="/g) || []).length;
+    ok('typing narrows it', narrowed > 0 && narrowed <= all,
+       all + ' -> ' + narrowed);
+    // THE TEAM IS SEARCHABLE TOO. Every row here carries one, and "GB" is a
+    // reasonable thing to type.
+    fireDoc('input', { target: {
+      getAttribute: a => a === 'data-v3gaq' ? '' : null, value: one[0] } });
+    const byTeam = (app().match(/data-v3gangle="([^":]+):/g) || [])
+      .map(m => m.slice('data-v3gangle="'.length, -1));
+    ok('and a team name matches its own rows',
+       byTeam.length > 0 && byTeam.every(t => t === one[0]), byTeam.join(','));
+    fireDoc('input', { target: {
+      getAttribute: a => a === 'data-v3gaq' ? '' : null,
+      value: 'zzzznotathing' } });
+    ok('and a search that matches nothing says so',
+       app().indexOf('Nothing matches') >= 0);
+    fireDoc('input', { target: {
+      getAttribute: a => a === 'data-v3gaq' ? '' : null, value: '' } });
+    ok('and clearing it restores the card',
+       (app().match(/data-v3gangle="/g) || []).length === all);
     // The same table as the board: sortable by its columns.
     ok('the columns sort it', h.indexOf('data-v3gasort=') >= 0);
     const order = () => (app().match(/data-v3gangle="([^"]+)"/g) || []).join('|');
@@ -1070,7 +1098,7 @@ ok('and explains why half is not enough',
   V.tab = 'angles'; V.angleQ = ''; V.angleCat = 'all'; V.angleTeam = '';
   V.angleFrom = 0; V.angleOpen = null; V.angleSort = 'season'; render();
   ok('the board explains what the composition costs',
-     L().indexOf('Side and role are worth four points') >= 0);
+     L().indexOf('already decide a lot') >= 0);
   // `blowout_loss` is entirely road underdogs, a cell that covers 60% in the
   // fixture. Its expectation is 60%, NOT the 50% a flat baseline would use.
   const b = v3AngleBase({ id: 'blowout_loss' }, 2015, '');
@@ -1105,8 +1133,8 @@ ok('and explains why half is not enough',
   const first = Object.keys((DATA.angles || {}).games || {})[0];
   v3Do('v3angle', first); render();
   ok('and the expected rate is in the panel that opens',
-     L().indexOf('on side and role alone') >= 0
-     && /covers <b[^>]*>60\.00%/.test(L()), 'no 60.00% in the panel');
+     /already likely to cover about <b[^>]*>60\.00%/.test(L()),
+     'no 60.00% in the panel');
   V.angleOpen = null; render();
 }
 
@@ -1262,30 +1290,44 @@ if (cards.length) {
     ok('and no list of what was left out below them',
        h.indexOf('Not shown, and why') < 0);
 
-    // ONE METRIC AT A TIME, CHOSEN FROM A DROPDOWN. Eleven metrics with names
-    // like "Late-half scoring drives" wrapped to six rows of pills — a chooser
-    // taller than the thing it chooses, and far too tall to pin.
-    if (h.indexOf('data-v3metricsel') >= 0) {
-      ok('the metrics can be filtered to one', h.indexOf('All metrics') >= 0);
+    // FOUR AT A TIME, CHOSEN FROM A SEGMENT. One metric at a time meant
+    // twelve taps to read a matchup and no way to hold two side by side; all
+    // twelve meant scrolling past eleven to re-read the one being weighed.
+    if (h.indexOf('data-v3metric=') >= 0) {
+      ok('the metrics can be filtered by what they measure',
+         h.indexOf('data-v3metric="all"') >= 0);
       const barAt = h.indexOf('class="mxbar"');
       ok('and the chooser rides in the pinned bar, not under it',
-         h.indexOf('data-v3metricsel') > barAt
-         && h.indexOf('data-v3metricsel') < h.indexOf('</div>', barAt + 400));
-      ok('it is one control, not a pill per metric',
-         h.indexOf('mxpills') < 0 && h.indexOf('data-v3metric=') < 0);
-      const k = /<option value="((?!all)[^"]+)"/.exec(
-        h.slice(h.indexOf('data-v3metricsel')));
-      ok('an option names a real metric', !!k);
-      // ALPHABETICAL, with "All metrics" pinned on top. A dropdown is scanned
-      // for a name you already have in mind.
-      const opts = h.slice(h.indexOf('data-v3metricsel'))
-        .split('<option').slice(1)
-        .map(o => o.slice(o.indexOf('>') + 1, o.indexOf('</option>')));
-      ok('All metrics leads the list', opts[0] === 'All metrics', opts[0]);
-      const names = opts.slice(1);
-      ok('and the rest are alphabetical',
-         names.join('|') === names.slice().sort((a, b) =>
-           a.localeCompare(b)).join('|'), names.join(' | '));
+         h.indexOf('data-v3metric=') > barAt
+         && h.indexOf('data-v3metric=') < h.indexOf('</div>', barAt + 400));
+      // NOT A PILL PER METRIC. That is what the dropdown replaced, and it
+      // wrapped to six rows.
+      const btns = (h.match(/data-v3metric="/g) || []).length;
+      ok('it is a handful of groups, not one control per metric',
+         btns > 1 && btns <= 6, btns + ' buttons');
+      // EVERY GROUP OFFERED HAS ROWS IN IT, or it filters to an empty screen.
+      const offered = (h.match(/data-v3metric="([^"]+)"/g) || [])
+        .map(m => m.slice('data-v3metric="'.length, -1))
+        .filter(g => g !== 'all');
+      const live = {};
+      ((cards[0].matchup.splits || {}).full || cards[0].matchup.rows || [])
+        .forEach(r => { if (r.group) live[r.group] = 1; });
+      ok('and every group offered has metrics in it',
+         offered.every(g => live[g]), offered.join(','));
+      if (offered.length) {
+        v3Do('v3metric', offered[0]); render();
+        const one = app();
+        const nOne = (one.match(/class="mx"/g) || []).length;
+        const nAll = (h.match(/class="mx"/g) || []).length;
+        ok('picking a group shows fewer rows than all of them',
+           nOne > 0 && nOne < nAll, 'group=' + nOne + ' all=' + nAll);
+        ok('and the chooser is still there to change it',
+           one.indexOf('data-v3metric="all"') >= 0);
+        ok('with that group pressed',
+           one.indexOf('data-v3metric="' + offered[0] + '" aria-pressed="true"')
+           >= 0);
+        v3Do('v3metric', 'all'); render();
+      }
       // The SECTIONS are not resorted: their order is roughly how much each
       // metric explains, which is a ranking rather than a list.
       const heads = (h.match(/font-size:17px[^>]*>([^<]+)/g) || [])
@@ -1293,30 +1335,13 @@ if (cards.length) {
       if (heads.length > 1) {
         ok('while the sections keep the order the pipeline sent',
            heads.join('|') !== heads.slice().sort((a, b) =>
-             a.localeCompare(b)).join('|')
-           || heads.length < 2, heads.join(' | '));
-      }
-      if (k) {
-        fireDoc('change', { target: {
-          getAttribute: a => a === 'data-v3metricsel' ? '' : null,
-          value: k[1] } });
-        const one = app();
-        ok('picking one shows fewer headings than all of them',
-           (one.match(/class="mx"/g) || []).length
-           < (h.match(/class="mx"/g) || []).length,
-           'one=' + (one.match(/class="mx"/g) || []).length
-           + ' all=' + (h.match(/class="mx"/g) || []).length);
-        ok('and the chooser is still there to change it',
-           one.indexOf('All metrics') >= 0);
-        fireDoc('change', { target: {
-          getAttribute: a => a === 'data-v3metricsel' ? '' : null,
-          value: 'all' } });
+             a.localeCompare(b)).join('|'), heads.join(' | '));
       }
       // The injury view has no metrics, so the chooser is absent rather than
       // present and inert.
       V.half = 'inj'; render();
       ok('and is absent on the injury view',
-         app().indexOf('data-v3metricsel') < 0);
+         app().indexOf('data-v3metric=') < 0);
       ok('while the view control stays', app().indexOf('data-v3half=') >= 0);
       V.half = 'full'; render();
     }

@@ -71,6 +71,30 @@ METRICS = [
      "Thinner still, and stated as a count rather than leant on."),
 ]
 
+#: WHAT EACH METRIC IS ABOUT, so twelve rows can be read four at a time.
+#:
+#: Not offense against defense: every row already carries both directions, so
+#: splitting that way would halve nothing. These group by the QUESTION a
+#: reader has — can they move it, do they finish, do they get to the
+#: quarterback, how fast does the game go — which is what turns one scroll of
+#: twelve into a choice between four short lists.
+#:
+#: Every metric must appear here, and `test_every_matchup_metric_has_a_group`
+#: fails if one is added without a home. A metric quietly falling into "other"
+#: is a metric nobody finds.
+GROUPS = [
+    ("move", "Moving", ("epa_play", "early_down_success", "first_down_4plus",
+                        "second_down_conv", "explosive_rate")),
+    ("score", "Scoring", ("rz_td_pct", "late_half_score_rate")),
+    ("rush", "Pressure", ("sack_rate", "qb_hit_rate")),
+    ("tempo", "Tempo", ("plays_per_game", "two_min_success", "two_min_epa",
+                        "sudden_change_success")),
+]
+
+#: `{metric key: group key}`, built from the list above so the two cannot drift.
+GROUP_OF = {k: g for g, _lab, keys in GROUPS for k in keys}
+
+
 #: Asked for and NOT built, with the reason. Shown on the page so a gap reads
 #: as a gap rather than as an oversight.
 MISSING = [
@@ -286,6 +310,11 @@ def matchup(card: dict, stats: dict, split: str = "full") -> list[dict] | None:
         if pair:
             out.append({"key": key, "label": label, "note": note,
                         "higher_is_better": higher,
+                        # What the metric is about, so twelve rows can be read
+                        # four at a time. Shipped rather than guessed on the
+                        # page: a metric added upstream with no group is a
+                        # metric that quietly stops being findable.
+                        "group": GROUP_OF.get(key, "other"),
                         "proxy": "PROXY" in note or "proxy" in note,
                         "sides": pair})
     return out or None

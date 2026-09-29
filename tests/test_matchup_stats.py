@@ -170,3 +170,27 @@ def test_a_board_holds_only_the_games_that_week_is_played_in():
             f"the week {week} board carries {len(stray)} games played in "
             f"another week: {', '.join(stray[:6])}")
     assert checked >= 2, f"only {checked} weeks had a board; nothing was tested"
+
+
+def test_every_matchup_metric_has_a_group():
+    """Twelve rows read four at a time, or not at all.
+
+    The groups are what turn one scroll of twelve into a choice between four
+    short lists. A metric added upstream with no home would fall into "other",
+    which on the page is a group nobody opens — so it is findable only by
+    scrolling the whole list, which is the thing the groups exist to stop.
+    """
+    from src.models.matchup_stats import GROUP_OF, GROUPS, METRICS
+
+    keys = [m[0] for m in METRICS]
+    missing = [k for k in keys if k not in GROUP_OF]
+    assert not missing, f"no group for {missing}"
+    stale = [k for k in GROUP_OF if k not in keys]
+    assert not stale, f"{stale} are grouped but are not metrics"
+    # And no group is empty, which would draw a button that filters to nothing.
+    for g, label, members in GROUPS:
+        live = [k for k in members if k in keys]
+        assert live, f"the {label!r} group has no metrics left in it"
+    # The labels are what fit on a phone: five buttons across, so short.
+    for _g, label, _m in GROUPS:
+        assert len(label) <= 9, f"{label!r} is too long for a five-way segment"

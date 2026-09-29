@@ -149,7 +149,7 @@ const V = Object.assign({
   gaSort: 'season', gaDesc: true, gaOpen: null, gaTeam: 'all',
   //: Whose record the two columns show. League-wide by default: it is the
   //: bigger sample, and the median team-and-angle pair is 25 graded games.
-  gaScope: 'league',
+  gaScope: 'league', gaQ: '',
   //: One club's own games on the board, or every club's.
   angleTeam: '',
   ask: '', answer: '',
@@ -1329,6 +1329,12 @@ function v3Game(gid) {
 // one side's offense with the other's defense and leads with the gap, which
 // is the number a reader can act on — and shows BOTH halves, because a
 // matchup has two and showing one is showing half a game.
+//: The metric groups, in the order the page offers them. Keys match
+//: `matchup_stats.GROUPS`, which is where a metric is assigned to one and
+//: where a test fails if a new metric arrives without a home.
+const V3MXGROUPS = [['move', 'Moving'], ['score', 'Scoring'],
+                    ['rush', 'Pressure'], ['tempo', 'Tempo']];
+
 function v3Matchup(c) {
   const m = c && c.matchup;
   if (!m || !m.rows) {
@@ -1354,11 +1360,20 @@ function v3Matchup(c) {
   // written by `render` from the real measured bar, because that bar's height
   // depends on how the matchup name wraps — hard-coding it left this one
   // either overlapping the bar or floating below it.
-  // ONE METRIC AT A TIME, or all of them. Eight stacked headings meant
-  // scrolling past seven to re-read the one you were weighing.
-  const keys = rows.map(r => r.key);
-  const pick = keys.indexOf(V.metric) >= 0 ? V.metric : 'all';
-  const shownRows = pick === 'all' ? rows : rows.filter(r => r.key === pick);
+  // FOUR AT A TIME, or all of them. One metric at a time meant twelve taps to
+  // read a matchup and no way to hold two side by side; all twelve meant
+  // scrolling past eleven to re-read the one you were weighing. The groups
+  // are the question a reader actually has — can they move it, do they
+  // finish, do they get to the quarterback, how fast does the game go — and
+  // each is two to five rows, which is a screen.
+  //
+  // NOT OFFENSE AGAINST DEFENSE, which is the obvious split and halves
+  // nothing: every row already carries both directions.
+  const seen = {};
+  rows.forEach(r => { if (r.group) seen[r.group] = 1; });
+  const groups = V3MXGROUPS.filter(g => seen[g[0]]);
+  const pick = groups.some(g => g[0] === V.metric) ? V.metric : 'all';
+  const shownRows = pick === 'all' ? rows : rows.filter(r => r.group === pick);
   // A DROPDOWN, NOT PILLS. There are eleven metrics with names like "Late-half
   // scoring drives", so as pills they wrapped to six rows — a chooser taller
   // than the thing it chooses, and far too tall to pin. One full-width select
@@ -1370,17 +1385,16 @@ function v3Matchup(c) {
   // pipeline sends, which is roughly how much each metric explains — that is
   // a ranking, and sorting it by first letter would throw it away.
   //
-  // Tied on the label, the key decides. Labels are unique today; a sort that
-  // silently depends on that is how a list starts coming back in two orders.
-  const byName = rows.slice().sort((a, b) =>
-    a.label.localeCompare(b.label) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  const sel = rows.length < 2 ? '' : '<div class="picker mxsel">'
-    + '<select data-v3metricsel aria-label="Filter to one metric">'
-    + [['all', 'All metrics']].concat(byName.map(r => [r.key, r.label]))
-        .map(k => '<option value="' + esc(k[0]) + '"'
-          + (k[0] === pick ? ' selected' : '') + '>' + esc(k[1])
-          + '</option>').join('')
-    + '</select></div>';
+  // A SEGMENT NOW, NOT A DROPDOWN. The dropdown was right when the choice was
+  // one of twelve names: as pills those wrapped to six rows, a chooser taller
+  // than the thing it chose. Five short group names fit one row, so the
+  // choice can be read at a glance instead of opened to be seen.
+  const sel = groups.length < 2 ? '' : '<div class="seg seg--'
+    + (groups.length + 1) + '" style="margin-top:6px">'
+    + [['all', 'All']].concat(groups)
+        .map(k => '<button data-v3metric="' + esc(k[0]) + '" aria-pressed="'
+          + (k[0] === pick) + '">' + esc(k[1]) + '</button>').join('')
+    + '</div>';
   const seg = '<div class="mxbar"><div class="seg seg--' + views.length + '">'
     + views.map(h => '<button data-v3half="' + esc(h[0]) + '" aria-pressed="'
         + (h[0] === on) + '">' + esc(h[1]) + '</button>').join('')
@@ -2227,8 +2241,18 @@ function v3Angles(c) {
   // record. That is the only reading under which a whole-game condition says
   // anything — `On grass` is 1605-1605 for the league and 67-72 for SF.
   const own = V.gaScope === 'team';
+  // MATCHED ON THE NAME, THE DESCRIPTION AND THE TEAM, the same three the
+  // board matches on, plus the team because on this card every row carries
+  // one and "GB" is a reasonable thing to type.
+  const q = (V.gaQ || '').trim().toLowerCase();
+  const hit = pair => !q
+    || (by[pair[1]].label || '').toLowerCase().indexOf(q) >= 0
+    || (by[pair[1]].plain || '').toLowerCase().indexOf(q) >= 0
+    || (by[pair[1]].cat || '').toLowerCase().indexOf(q) >= 0
+    || (pair[0] || '').toLowerCase().indexOf(q) >= 0;
   const rows = mine
-    .filter(pair => by[pair[1]] && (team === 'all' || pair[0] === team))
+    .filter(pair => by[pair[1]] && hit(pair)
+                    && (team === 'all' || pair[0] === team))
     .map(pair => ({
       team: pair[0], r: by[pair[1]],
       run: v3AngleSince(by[pair[1]], from, be, own ? pair[0] : ''),
@@ -2236,7 +2260,11 @@ function v3Angles(c) {
       season: own ? v3AngleTeamYear(by[pair[1]], pair[0], DATA.season)
                   : by[pair[1]].season,
     }));
-  if (!rows.length && team === 'all') return '';
+  // A FILTER THAT MATCHES NOTHING STILL LEAVES ITS CONTROLS ON SCREEN.
+  // Returning nothing here took the search box with it, so a typo emptied the
+  // section and there was no way left to clear it. The card is only absent
+  // when the GAME carries no patterns, which is checked above.
+  if (!rows.length && team === 'all' && !q) return '';
 
   const pct = d => (d && d.n) ? d.pct : -1;
   const SORTS = {
@@ -2267,7 +2295,15 @@ function v3Angles(c) {
     // WHOSE ANGLES. Both sides' splits in one list read as one team's until
     // you notice the prefix, and on a median seventeen rows that is a lot of
     // noticing. Three buttons answer it once.
-    + '<div class="pbar__row" style="margin-top:10px">'
+    // SEARCH FIRST, because the median game carries seventeen of these and
+    // knowing the name is the fastest way to one of them.
+    + '<div class="search" style="margin-top:10px">'
+    + '<input type="search" data-v3gaq placeholder="Search these patterns" '
+    + 'value="' + esc(V.gaQ || '') + '" aria-label="Search these patterns">'
+    + (V.gaQ ? '<button class="searchx" data-v3gaclear="1" '
+        + 'aria-label="Clear search">\u2715</button>' : '')
+    + '</div>'
+    + '<div class="pbar__row" style="margin-top:8px">'
     + '<div class="seg seg--3" style="flex:1">'
     + v3Seg('v3gateam', [['all', 'Both'], [c.away, c.away], [c.home, c.home]],
             team)
@@ -2285,8 +2321,10 @@ function v3Angles(c) {
     + head('season', 'Yr ATS')
     + head('all', '\u2019' + String(from).slice(2) + '+ ATS')
     + '</div>'
-    + (rows.length ? '' : '<p class="help" style="padding:12px 0">'
-       + esc(team) + ' carries none of these.</p>')
+    + (rows.length ? '' : '<p class="help" style="padding:12px 0">Nothing '
+       + (q ? 'matches \u201c' + esc(V.gaQ) + '\u201d'
+            : esc(team) + ' carries none of these')
+       + '.</p>')
     + rows.map(o => {
         const r = o.r, a = o.run;
         // COLOR TRACKS THE LONG RUN ONLY, and only once the interval clears.
@@ -3562,13 +3600,13 @@ const V3CELLS = ['AD', 'AF', 'HD', 'HF'];
 
 // WHAT "EXPECTED" MEANS, said once and in the same words on both screens.
 function v3BaseNote() {
-  return '<p class="help" style="margin-top:8px">Side and role are worth four '
-    + 'points between them: road underdogs cover '
-    + '<b style="color:var(--ink)">52.07%</b> and home favorites '
-    + '<b style="color:var(--ink)">47.93%</b>, over 1,763 games each. So a '
-    + 'pattern made mostly of favorites looks bad without saying anything. '
-    + 'Open any row and it says what a split of those particular games covers '
-    + 'on side and role alone, before the pattern is considered.</p>'
+  return '<p class="help" style="margin-top:8px">Where a team plays and '
+    + 'whether it is favored already decide a lot: a road underdog covers '
+    + '<b style="color:var(--ink)">52.07%</b> of the time and a home favorite '
+    + '<b style="color:var(--ink)">47.93%</b>, over 1,763 games each, whatever '
+    + 'else is true of them. So a pattern made mostly of favorites looks bad '
+    + 'without having done anything wrong. Open any row and it says what '
+    + 'those particular games were going to do anyway.</p>'
     + '<p class="help" style="margin-top:8px">A row marked '
     + '<i class="tag tag--flat">unusual</i> is one whose record this season '
     + 'would turn up less than one time in twenty for that pattern. That is a '
@@ -3636,10 +3674,17 @@ function v3SurpriseTag(season, all) {
 function v3BaseLine(run, base) {
   if (!base || !run || !run.n) return '';
   const d = (run.pct - base.pct) * 100;
-  return '<p class="adet__p">On side and role alone a split of these games '
-    + 'covers <b style="color:var(--ink)">' + (base.pct * 100).toFixed(2)
-    + '%</b>. This one is ' + (d > 0 ? '+' : '\u2212')
-    + Math.abs(d).toFixed(2) + ' from that.</p>';
+  // SAID WITHOUT THE WORDS "SIDE", "ROLE" OR "SPLIT", none of which a reader
+  // who does not bet has met. The first version read "On side and role alone
+  // a split of these games covers 51.53%. This one is +0.78 from that", and
+  // never said 0.78 of what.
+  return '<p class="adet__p">These games were already likely to cover about '
+    + '<b style="color:var(--ink)">' + (base.pct * 100).toFixed(2) + '%</b> '
+    + '\u2014 before the pattern, just from where each team played and '
+    + 'whether it was favored. This pattern\u2019s record is '
+    + (run.pct * 100).toFixed(2) + '%, so the pattern itself is worth '
+    + '<b style="color:var(--ink)">' + (d > 0 ? '+' : '\u2212')
+    + Math.abs(d).toFixed(2) + ' points</b>.</p>';
 }
 
 
@@ -4265,9 +4310,10 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3game', 'v3gamestep', 'v3back', 'v3gtab', 'v3cat', 'v3type',
                   'v3stake', 'v3ask', 'v3askdefault', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
-                  'v3half', 'v3boardgame', 'v3anglesort', 'v3angle',
+                  'v3half', 'v3metric', 'v3boardgame', 'v3anglesort', 'v3angle',
                   'v3anglegame', 'v3angleclear',
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
+                  'v3gaclear',
                   'v3sortpick'];
 
 document.addEventListener('click', ev => {
@@ -4329,6 +4375,14 @@ document.addEventListener('input', ev => {
     V.q2 = t.value;
     return;
   }
+  if (t.getAttribute('data-v3gaq') != null) {
+    // A SEARCH BOX FIRES `input`, NOT `change`. Wired to change it does
+    // nothing until the field loses focus, which on a phone is never.
+    V.gaQ = t.value || '';
+    V.gaOpen = null;
+    render();
+    return;
+  }
   if (t.getAttribute('data-v3angleq') != null) {
     // A SEARCH BOX FIRES `input`, NOT `change`. Wired into the change
     // listener it did nothing until the field lost focus, which on a phone is
@@ -4375,8 +4429,6 @@ document.addEventListener('change', ev => {
     // A `<select>` fires `change`, not `click`. Wired only into the click
     // table it drew correctly, highlighted correctly and filtered nothing.
     V.angleCat = t.value; V.angleOpen = null; V.top = 'section'; render();
-  } else if (t.getAttribute('data-v3metricsel') != null) {
-    V.metric = t.value; render();
   } else if (t.getAttribute('data-v3sortsel') != null) {
     V.sort = t.value; render();
   } else if (t.getAttribute('data-v3gameto') != null) {
@@ -4438,6 +4490,9 @@ function v3Do(kind, v) {
     case 'v3dir': V.desc = !V.desc; break;
     case 'v3clearq': V.q = ''; V.shown = V3SHOW; break;
     case 'v3half': V.half = v; break;
+    // The group filter changes the list under a pinned bar, so it
+    // starts at the top of what it just built, like every other one.
+    case 'v3metric': V.metric = v; V.top = 'section'; break;
     // The board's steppers CHANGE THE FILTER; they do not open the game. An
     // empty value is "all games", which is what back means here.
     case 'v3boardgame': V.game = v || null; V.shown = V3SHOW; V.open = null;
@@ -4454,6 +4509,7 @@ function v3Do(kind, v) {
       else { V.gaSort = v; V.gaDesc = (v !== 'name'); }
       break;
     case 'v3gateam': V.gaTeam = v; V.gaOpen = null; break;
+    case 'v3gaclear': V.gaQ = ''; break;
     case 'v3gascope': V.gaScope = v; V.gaOpen = null; break;
     case 'v3gangle': V.gaOpen = (V.gaOpen === v) ? null : v; break;
     case 'v3anglegame': {
