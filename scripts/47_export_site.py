@@ -850,6 +850,10 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     _attach_injuries(cards, season, week)
     script_fits = _attach_script_risk(cards)
     _attach_blend(cards)
+    # AFTER THE BLEND, because the blend is derived from the model spread and
+    # freezing one without the other would leave a card whose adjusted number
+    # disagrees with the model number it was adjusted from.
+    _freeze_projections(cards, season, week)
     _attach_matchup(cards, season, week)
     # Sorted by kickoff where it is known, so the list reads as a weekend
     # rather than as an alphabet. Games with no time sort last rather than
@@ -858,6 +862,39 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     return rows, sorted(cards.values(),
                         key=lambda c: (c.get("kick_sort") or "9",
                                        c["game_id"])), script_fits
+
+
+def _freeze_projections(cards: dict, season: int | None,
+                        week: int | None) -> None:
+    """Our number on a played game is the one it kicked off with.
+
+    `predict_week` runs here, so an archived week used to be scored by
+    whatever the model and the feature matrix were on the day somebody
+    rebuilt the site. See `src.export.projection_freeze` for how far that
+    moved and why it is not leakage.
+    """
+    try:
+        from src.export import projection_freeze as PF
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  projection freeze unavailable ({e})", file=sys.stderr)
+        return
+    served, recorded = PF.settle(cards, season, week)
+    PF.flush()
+    # SAID OUT LOUD, because the fallback is invisible on the page: a played
+    # game with nothing recorded shows a number computed today, which is the
+    # exact thing this exists to stop.
+    late = PF.missing(cards, season, week)
+    if late:
+        print(f"  week {week}: {len(late)} played games have no frozen "
+              f"projection and are showing a recomputed one "
+              f"({', '.join(late[:4])}{'...' if len(late) > 4 else ''})",
+              file=sys.stderr)
+    if served or recorded:
+        # STDERR, like the warning above it. This script redirects stdout to
+        # a sink unless `--verbose`, so a status line printed the ordinary way
+        # is written and never seen.
+        print(f"  week {week}: {served} projections served frozen, "
+              f"{recorded} recorded", file=sys.stderr)
 
 
 def _attach_scores(cards: dict) -> None:
