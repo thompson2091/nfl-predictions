@@ -289,7 +289,7 @@ def payload_v3():
                         "lo": 0.355, "hi": 0.823, "clears": False}},
             {"id": "off_ot", "label": "Off an overtime game",
              "blurb": "{team} went to overtime last week.",
-             "added": "2026-09-28", "mined": False,
+             "added": "2026-09-28", "mined": False, "whole_game": True,
              "plain": "Played overtime last week.",
              "cat": "Form",
              "all": {"n": 301, "w": 141, "l": 160, "pct": 0.468,
@@ -318,6 +318,18 @@ def payload_v3():
         "week": {"ATL_GB": [["ATL", "blowout_loss"], ["GB", "div_dog"],
                             ["GB", "off_ot"]],
                  "CAR_ATL": [["ATL", "off_ot"], ["CAR", "div_dog"]]},
+        # PER TEAM PER SEASON, which is the only reading under which a
+        # whole-game condition says anything: `off_ot` is flagged
+        # `whole_game`, so league-wide it is 50.00% by arithmetic, and ATL's
+        # own record in it is 1-4. The two must not be the same number, or
+        # the test cannot tell which one the page drew.
+        "team_splits": {
+            "ATL": {"blowout_loss": {"2015": [3, 1], "2026": [1, 0]},
+                    "off_ot": {"2015": [1, 4], "2026": [0, 1]},
+                    "div_dog": {"2015": [2, 2]}},
+            "GB": {"div_dog": {"2015": [6, 1], "2026": [1, 1]},
+                   "off_ot": {"2015": [4, 1], "2026": [1, 0]}},
+        },
         # Per-season records, which is what lets the page answer "since 2020"
         # without another measurement. Without these the slider has no range
         # and silently clamps to a single year.
@@ -567,6 +579,19 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "percentages carry two decimals",
                  "there is a control for how far back to count",
                  "moving it recounts the long run",
+                 "a whole-game condition is tagged on the board",
+                 "and exactly the flagged ones are",
+                 "and the row is kept rather than hidden",
+                 "the board offers a team picker",
+                 "picking one narrows the numbers to that team",
+                 "and the record shown is that team\u2019s",
+                 "not the league\u2019s",
+                 "the both-sides tag is gone once a team is chosen",
+                 "and the fixtures under it are that team\u2019s",
+                 "and clearing it restores the league board",
+                 "the card can switch to the team\u2019s own record",
+                 "to that team\u2019s record",
+                 "and the both-sides tag comes off with it",
                  "the long-run column carries its record",
                  "and the games column is gone",
                  "and each game links to its own page",

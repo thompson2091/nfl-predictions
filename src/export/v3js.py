@@ -147,6 +147,11 @@ const V = Object.assign({
   //: The same table on a game card, with its own sort and filter so ordering
   //: one does not reorder the other.
   gaSort: 'season', gaDesc: true, gaOpen: null, gaTeam: 'all',
+  //: Whose record the two columns show. League-wide by default: it is the
+  //: bigger sample, and the median team-and-angle pair is 25 graded games.
+  gaScope: 'league',
+  //: One club's own games on the board, or every club's.
+  angleTeam: '',
   ask: '', answer: '',
   // The saved picks, and which of them the Picks tab is showing. `saved` was
   // a boolean nothing read; the slip and the saved copy are different things
@@ -2202,15 +2207,24 @@ function v3Angles(c) {
   (A.rows || []).forEach(r => { by[r.id] = r; });
 
   const team = (V.gaTeam === c.away || V.gaTeam === c.home) ? V.gaTeam : 'all';
+  // LEAGUE-WIDE, OR THIS ROW'S OWN TEAM. Every row already names a team, so
+  // the scope needs no second picker: on `team` each row reads its own club's
+  // record. That is the only reading under which a whole-game condition says
+  // anything — `On grass` is 1605-1605 for the league and 67-72 for SF.
+  const own = V.gaScope === 'team';
   const rows = mine
     .filter(pair => by[pair[1]] && (team === 'all' || pair[0] === team))
-    .map(pair => ({ team: pair[0], r: by[pair[1]],
-                    run: v3AngleSince(by[pair[1]], from, be) }));
+    .map(pair => ({
+      team: pair[0], r: by[pair[1]],
+      run: v3AngleSince(by[pair[1]], from, be, own ? pair[0] : ''),
+      season: own ? v3AngleTeamYear(by[pair[1]], pair[0], DATA.season)
+                  : by[pair[1]].season,
+    }));
   if (!rows.length && team === 'all') return '';
 
   const pct = d => (d && d.n) ? d.pct : -1;
   const SORTS = {
-    season: o => pct(o.r.season),
+    season: o => pct(o.season),
     all: o => pct(o.run),
     name: o => o.team + ' ' + o.r.label,
   };
@@ -2237,10 +2251,18 @@ function v3Angles(c) {
     // WHOSE ANGLES. Both sides' splits in one list read as one team's until
     // you notice the prefix, and on a median seventeen rows that is a lot of
     // noticing. Three buttons answer it once.
-    + '<div class="seg seg--3" style="margin-top:10px">'
+    + '<div class="pbar__row" style="margin-top:10px">'
+    + '<div class="seg seg--3" style="flex:1">'
     + v3Seg('v3gateam', [['all', 'Both'], [c.away, c.away], [c.home, c.home]],
             team)
     + '</div>'
+    // WHOSE RECORD THE TWO COLUMNS ARE. League-wide is the bigger sample and
+    // the default; one team's own games is the only reading under which a
+    // whole-game condition can say anything, and it is one tap away.
+    + '<div class="seg seg--2" style="flex:1">'
+    + v3Seg('v3gascope', [['league', 'League'], ['team', 'Team']],
+            own ? 'team' : 'league')
+    + '</div></div>'
     + '<div class="card" style="margin-top:10px">'
     + '<div class="arow arow--h">'
     + head('name', 'Pattern')
@@ -2260,13 +2282,13 @@ function v3Angles(c) {
         return '<button class="arow' + (open ? ' arow--on' : '')
           + '" data-v3gangle="' + esc(id) + '" aria-expanded="' + open + '">'
           + '<span class="arow__l"><b>' + esc(o.team) + '</b> '
-          + esc(r.label) + '</span>'
-          + '<span class="num"><b>' + v3AnglePct(r.season) + '</b>'
-          + '<i>' + v3AngleRec(r.season) + '</i></span>'
+          + esc(r.label) + (own ? '' : v3WholeTag(r)) + '</span>'
+          + '<span class="num"><b>' + v3AnglePct(o.season) + '</b>'
+          + '<i>' + v3AngleRec(o.season) + '</i></span>'
           + '<span class="num' + (good ? ' good' : '') + '"><b>'
           + v3AnglePct(a) + '</b><i>' + v3AngleRec(a) + '</i></span>'
           + '</button>'
-          + (open ? v3AngleGames(r, games) : '');
+          + (open ? v3AngleGames(r, games, own ? o.team : '') : '');
       }).join('')
     // THE DENOMINATOR IS THE FINDING, so it is on the card rather than in a
     // footnote. Without it a reader sees four splits and no idea that
@@ -3476,10 +3498,31 @@ function v3AngleYears() {
   return { first: first, last: last, from: from };
 }
 
+//: One team's record in one season, shaped like the league `season` block.
+function v3AngleTeamYear(r, team, year) {
+  const by = (((DATA.angles || {}).team_splits || {})[team] || {})[r.id] || {};
+  const v = by[String(year)];
+  if (!v) return null;
+  const n = v[0] + v[1];
+  return n ? { n: n, w: v[0], l: v[1], pct: v[0] / n } : null;
+}
+
+//: Every team the split archive knows, for the picker.
+function v3AngleTeams() {
+  return Object.keys((DATA.angles || {}).team_splits || {}).sort();
+}
+
 // The long-run record, recomputed from the season-by-season splits for
 // whatever start year is chosen.
-function v3AngleSince(r, from, be) {
-  const by = ((DATA.angles || {}).splits || {})[r.id] || {};
+//
+// `team` narrows it to one club's own games. League-wide a whole-game
+// condition is 50.00% by arithmetic — both sides of every grass game are on
+// grass — and per team it is one side of each game and can be anything.
+function v3AngleSince(r, from, be, team) {
+  const A = DATA.angles || {};
+  const by = team
+    ? (((A.team_splits || {})[team] || {})[r.id] || {})
+    : ((A.splits || {})[r.id] || {});
   let w = 0, l = 0;
   Object.keys(by).forEach(y => {
     if (Number(y) >= from) { w += by[y][0]; l += by[y][1]; }
@@ -3491,8 +3534,8 @@ function v3AngleSince(r, from, be) {
            clears: iv[0] > be };
 }
 
-function v3AngleGames(r, games) {
-  const gs = games[r.id] || [];
+function v3AngleGames(r, games, team) {
+  const gs = (games[r.id] || []).filter(g => !team || g.team === team);
   const plain = r.plain
     ? '<p class="adet__p">' + esc(r.plain) + '</p>' : '';
   if (!gs.length) {
@@ -3557,6 +3600,26 @@ function v3AngleGames(r, games) {
     + '</div>';
 }
 
+// A CONDITION THE WHOLE GAME IS IN, WHICH CANNOT HAVE A RECORD.
+//
+// Both sides of every prime-time game are in prime time, so one covers and
+// the other does not and the split is exactly 50.00% — 570-570 on prime time,
+// 1605-1605 on grass, 822-822 indoors. That is arithmetic, not measurement,
+// and another ten seasons would not move it.
+//
+// The row stays, because dropping it would leave a reader wondering why the
+// board does not track prime time. What it gets is the one piece of context
+// no reader can supply for themselves: that this number was never able to
+// say anything. Every OTHER row near 50% is a real measurement, and a split
+// at 20% is as useful as one at 80% — which is why nothing here is filtered
+// on the number.
+function v3WholeTag(r) {
+  return r && r.whole_game
+    ? ' <i class="tag tag--flat" title="Both teams are in this situation, '
+      + 'so one covers and the other does not. The record is 50% by '
+      + 'arithmetic.">both sides</i>' : '';
+}
+
 function v3AnglesPage() {
   const A = DATA.angles || {};
   const all = (A.rows || []).slice();
@@ -3568,7 +3631,15 @@ function v3AnglesPage() {
   }
   const yr = v3AngleYears();
   const first = yr.first, last = yr.last, from = yr.from;
-  const since = r => v3AngleSince(r, from, be);
+  // ONE CLUB'S OWN GAMES, where a team is chosen. A whole-game condition is
+  // 50.00% league-wide by arithmetic and a real record for one team: `On
+  // grass` is 1605-1605 for the league and 67-72 for San Francisco.
+  const teams = v3AngleTeams();
+  const team = (V.angleTeam && teams.indexOf(V.angleTeam) >= 0)
+    ? V.angleTeam : '';
+  const since = r => v3AngleSince(r, from, be, team);
+  const seasonOf = r => team
+    ? v3AngleTeamYear(r, team, DATA.season) : r.season;
 
   const cats = [];
   all.forEach(r => { if (r.cat && cats.indexOf(r.cat) < 0) cats.push(r.cat); });
@@ -3588,7 +3659,7 @@ function v3AnglesPage() {
 
   const pct = d => (d && d.n) ? d.pct : -1;
   const SORTS = {
-    season: o => pct(o.r.season),
+    season: o => pct(seasonOf(o.r)),
     all: o => pct(o.run),
     name: o => o.r.label,
   };
@@ -3608,7 +3679,7 @@ function v3AnglesPage() {
     + k + '" aria-pressed="' + (key === k) + '">' + label + arrow(k)
     + '</button>';
 
-  const detail = r => v3AngleGames(r, games);
+  const detail = r => v3AngleGames(r, games, team);
 
   return '<div class="wrap">'
     + '<h1 class="h1">Angles</h1>'
@@ -3627,6 +3698,13 @@ function v3AnglesPage() {
     + (V.angleQ ? '<button class="searchx" data-v3angleclear="1" '
         + 'aria-label="Clear search">\u2715</button>' : '')
     + '</div>'
+    + '<div class="picker mxsel"><select data-v3angleteam '
+    + 'aria-label="Show one team\u2019s record">'
+    + ['<option value=""' + (team ? '' : ' selected') + '>All teams</option>']
+        .concat(teams.map(t => '<option value="' + esc(t) + '"'
+          + (t === team ? ' selected' : '') + '>' + esc(t) + '</option>'))
+        .join('')
+    + '</select></div>'
     + '<div class="picker mxsel"><select data-v3anglecat '
     + 'aria-label="Filter by kind">'
     + ['all'].concat(cats).map(c => '<option value="' + esc(c) + '"'
@@ -3657,9 +3735,10 @@ function v3AnglesPage() {
         return '<button class="arow' + (open ? ' arow--on' : '')
           + '" data-v3angle="' + esc(r.id) + '" aria-expanded="' + open + '">'
           + '<span class="arow__l">' + esc(r.label)
-          + (r.mined ? ' <i class="tag tag--warn">added</i>' : '') + '</span>'
-          + '<span class="num"><b>' + v3AnglePct(r.season) + '</b>'
-          + '<i>' + v3AngleRec(r.season) + '</i></span>'
+          + (r.mined ? ' <i class="tag tag--warn">added</i>' : '')
+          + (team ? '' : v3WholeTag(r)) + '</span>'
+          + '<span class="num"><b>' + v3AnglePct(seasonOf(r)) + '</b>'
+          + '<i>' + v3AngleRec(seasonOf(r)) + '</i></span>'
           // THE RECORD UNDER THE PERCENTAGE, the same as the column beside
           // it. This used to carry the interval instead, which meant the two
           // number columns read differently and the games count needed a
@@ -4039,7 +4118,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
                   'v3half', 'v3boardgame', 'v3anglesort', 'v3angle',
                   'v3anglegame', 'v3angleclear',
-                  'v3gasort', 'v3gateam', 'v3gangle',
+                  'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
                   'v3sortpick'];
 
 document.addEventListener('click', ev => {
@@ -4138,6 +4217,11 @@ document.addEventListener('change', ev => {
     V.shown = V3SHOW; V.open = null; render();
   } else if (t.getAttribute('data-v3anglefrom') != null) {
     V.angleFrom = Number(t.value) || 0; render();
+  } else if (t.getAttribute('data-v3angleteam') != null) {
+    // A SELECT FIRES `change`, NOT `click`. Wired to the click listener it
+    // drew and highlighted correctly and filtered nothing.
+    V.angleTeam = t.value || ''; V.angleOpen = null; V.top = 'section';
+    render();
   } else if (t.getAttribute('data-v3anglecat') != null) {
     // A `<select>` fires `change`, not `click`. Wired only into the click
     // table it drew correctly, highlighted correctly and filtered nothing.
@@ -4221,6 +4305,7 @@ function v3Do(kind, v) {
       else { V.gaSort = v; V.gaDesc = (v !== 'name'); }
       break;
     case 'v3gateam': V.gaTeam = v; V.gaOpen = null; break;
+    case 'v3gascope': V.gaScope = v; V.gaOpen = null; break;
     case 'v3gangle': V.gaOpen = (V.gaOpen === v) ? null : v; break;
     case 'v3anglegame': {
       const bits = String(v).split('|');

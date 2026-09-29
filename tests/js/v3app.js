@@ -194,6 +194,25 @@ if (cards.length) {
          (app().match(/class="adet"/g) || []).length === 1);
       v3Do('v3gangle', first[1]); render();
       ok('tapping it again closes it', app().indexOf('class="adet"') < 0);
+      // LEAGUE OR THIS ROW'S OWN TEAM. Every row already names a team, so
+      // the scope needs no second picker. Over the archive GB is 5-1 in
+      // `off_ot` and the league is 36-44 — recomputed from the per-season
+      // splits, which is why neither is the `all` block's 141-160.
+      const asLeague = app();
+      ok('the card can switch to the team\u2019s own record',
+         asLeague.indexOf('data-v3gascope=') >= 0);
+      v3Do('v3gascope', 'team'); render();
+      const asTeam = app();
+      ok('and switching changes the numbers', asTeam !== asLeague);
+      ok('to that team\u2019s record', asTeam.indexOf('5-1') >= 0,
+         'GB 5-1 not drawn');
+      ok('rather than the league\u2019s',
+         asTeam.indexOf('36-44') < 0 && asLeague.indexOf('36-44') >= 0);
+      // THE TAG COMES OFF, because per team the number is no longer fixed.
+      ok('and the both-sides tag comes off with it',
+         asTeam.indexOf('>both sides<') < 0
+         && asLeague.indexOf('>both sides<') >= 0);
+      v3Do('v3gascope', 'league'); render();
     }
   }
 
@@ -960,6 +979,77 @@ ok('and explains why half is not enough',
   v3Do('v3anglesort', 'season');
   fireDoc('input', { target: {
     getAttribute: a => a === 'data-v3angleq' ? '' : null, value: '' } });
+}
+
+// A CONDITION THE WHOLE GAME IS IN CANNOT HAVE A RECORD, and says so.
+//
+// Both sides of every prime-time game are in prime time, so one covers and
+// the other does not: 570-570, and another ten seasons would not move it.
+// The row stays; what it gets is the context no reader can supply.
+{
+  V.tab = 'angles'; V.angleQ = ''; V.angleCat = 'all'; render();
+  const flagged = ((DATA.angles || {}).rows || []).filter(r => r.whole_game);
+  ok('a whole-game condition is tagged on the board',
+     !flagged.length || L().indexOf('both sides') >= 0, 'no tag drawn');
+  ok('and exactly the flagged ones are',
+     (L().match(/>both sides</g) || []).length === flagged.length,
+     (L().match(/>both sides</g) || []).length + ' tags, '
+     + flagged.length + ' flagged');
+  // IT IS NOT A FILTER. A split at 20% is as useful as one at 80%, so
+  // nothing on this board is hidden for the number it shows.
+  ok('and the row is kept rather than hidden',
+     (L().match(/data-v3angle="/g) || []).length
+     === ((DATA.angles || {}).rows || []).length);
+}
+
+// ── One team's own record ──────────────────────────────────────────────
+//
+// League-wide a whole-game condition is 50.00% by arithmetic: both sides of
+// every grass game are on grass, so one covers and the other does not. Per
+// team it is one side of each game and can be anything, which is the whole
+// reason those rows are worth keeping.
+{
+  V.tab = 'angles'; V.angleQ = ''; V.angleCat = 'all'; V.angleTeam = '';
+  V.angleFrom = 0; V.angleOpen = null; render();
+  const teams = Object.keys((DATA.angles || {}).team_splits || {});
+  ok('the board offers a team picker', L().indexOf('data-v3angleteam') >= 0);
+  ok('and every team in the archive is in it',
+     teams.every(t => L().indexOf('>' + t + '</option>') >= 0),
+     teams.join(','));
+  const league = L();
+  fireDoc('change', { target: {
+    getAttribute: a => a === 'data-v3angleteam' ? '' : null, value: 'ATL' } });
+  ok('picking one narrows the numbers to that team',
+     V.angleTeam === 'ATL' && L() !== league, V.angleTeam);
+  // ATL is 1-5 in `off_ot` across the archive and the league row is 141-160.
+  // The two must not be the same number, or the page is still drawing the
+  // league's.
+  const own = L();
+  ok('and the record shown is that team\u2019s',
+     own.indexOf('1-5') >= 0, 'ATL 1-5 not drawn');
+  ok('not the league\u2019s', own.indexOf('141-160') < 0,
+     'the league record is still on the page');
+  // THE TAG COMES OFF, because per team the number is no longer fixed.
+  ok('the both-sides tag is gone once a team is chosen',
+     own.indexOf('>both sides<') < 0);
+  // And the fixtures behind a row are that team's games only.
+  const first = /data-v3angle="([^"]+)"/.exec(own);
+  if (first) {
+    v3Do('v3angle', first[1]); render();
+    const gs = ((DATA.angles || {}).games || {})[first[1]] || [];
+    const mine = gs.filter(g => g.team === 'ATL');
+    // COUNTED ON `agame__t`, which is one per fixture. `class="agame` also
+    // matches `agame__t` and `agame__go`, which is how this said four rows
+    // for one game.
+    const drawn = () => (app().match(/class="agame__t"/g) || []).length;
+    ok('and the fixtures under it are that team\u2019s',
+       drawn() === mine.length, drawn() + ' drawn, ' + mine.length
+       + ' for ATL');
+    V.angleOpen = null;
+  }
+  fireDoc('change', { target: {
+    getAttribute: a => a === 'data-v3angleteam' ? '' : null, value: '' } });
+  ok('and clearing it restores the league board', L() === league);
 }
 
 // TWO DECIMALS, because break-even is 52.38% and whole points cannot show a

@@ -56,6 +56,14 @@ class Angle:
     predicate: object
     #: True where it joined because it was hot rather than at registration.
     mined: bool = False
+    #: THE CONDITION IS THE GAME'S, NOT A TEAM'S, so both sides of every
+    #: fixture qualify. One of them covers and the other does not, which
+    #: makes the record exactly 50.00% by arithmetic rather than by
+    #: measurement: prime time is 570-570, on grass 1605-1605, indoors
+    #: 822-822, and another ten seasons would not move any of them. The board
+    #: keeps them and says so, because a reader who does not know that reads
+    #: twelve measured nulls.
+    whole_game: bool = False
 
 
 #: THE FOUNDING TWENTY, all registered the same day, none chosen for being hot.
@@ -114,19 +122,23 @@ ANGLES: tuple[Angle, ...] = (
           "{team} is a divisional underdog.", _REG,
           pl.col("div_game") & (pl.col("my_spread") < 0)),
     Angle("prime", "In prime time",
-          "{team} plays in prime time.", _REG, pl.col("prime")),
+          "{team} plays in prime time.", _REG, pl.col("prime"),
+          whole_game=True),
     Angle("prime_dog", "Prime-time underdog",
           "{team} is a prime-time underdog.", _REG,
           pl.col("prime") & (pl.col("my_spread") < 0)),
     Angle("high_total", "Total of 50+",
-          "The total is {detail}.", _REG, pl.col("total_line") >= 50),
+          "The total is {detail}.", _REG, pl.col("total_line") >= 50,
+          whole_game=True),
     Angle("low_total", "Total of 40 or under",
-          "The total is {detail}.", _REG, pl.col("total_line") <= 40),
+          "The total is {detail}.", _REG, pl.col("total_line") <= 40,
+          whole_game=True),
     Angle("off_ot", "Off an overtime game",
           "{team} went to overtime last week.", _REG, pl.col("prev_ot")),
     Angle("indoors", "Indoors",
           "The game is indoors.", _REG,
-          pl.col("roof").is_in(["dome", "closed"])),
+          pl.col("roof").is_in(["dome", "closed"]),
+          whole_game=True),
 
     # ---- THE SECOND THIRTY, registered together on the same day -----------
     #
@@ -182,11 +194,14 @@ ANGLES: tuple[Angle, ...] = (
           "{team} has a different starter under center.", _REG2,
           pl.col("qb_change") & pl.col("prev_qb").is_not_null()),
     Angle("spread_3", "Line of exactly 3",
-          "The line is 3.", _REG2, pl.col("my_spread").abs() == 3),
+          "The line is 3.", _REG2, pl.col("my_spread").abs() == 3,
+          whole_game=True),
     Angle("spread_7", "Line of exactly 7",
-          "The line is 7.", _REG2, pl.col("my_spread").abs() == 7),
+          "The line is 7.", _REG2, pl.col("my_spread").abs() == 7,
+          whole_game=True),
     Angle("pickem", "Pick'em or within a point",
-          "The line is a pick'em.", _REG2, pl.col("my_spread").abs() <= 1),
+          "The line is a pick'em.", _REG2, pl.col("my_spread").abs() <= 1,
+          whole_game=True),
     Angle("dog_3_or_less", "Underdog of 3 or less",
           "{team} is getting {detail}.", _REG2,
           (pl.col("my_spread") < 0) & (pl.col("my_spread") >= -3)),
@@ -194,16 +209,21 @@ ANGLES: tuple[Angle, ...] = (
           "{team} is laying {detail}.", _REG2,
           (pl.col("my_spread") > 0) & (pl.col("my_spread") <= 3)),
     Angle("thursday", "On Thursday",
-          "{team} plays Thursday.", _REG2, pl.col("weekday") == "Thursday"),
+          "{team} plays Thursday.", _REG2, pl.col("weekday") == "Thursday",
+          whole_game=True),
     Angle("monday", "On Monday",
-          "{team} plays Monday.", _REG2, pl.col("weekday") == "Monday"),
+          "{team} plays Monday.", _REG2, pl.col("weekday") == "Monday",
+          whole_game=True),
     Angle("early_season", "Weeks 1-4",
-          "It is early in the season.", _REG2, pl.col("week") <= 4),
+          "It is early in the season.", _REG2, pl.col("week") <= 4,
+          whole_game=True),
     Angle("late_season", "Week 15 onward",
-          "It is late in the season.", _REG2, pl.col("week") >= 15),
+          "It is late in the season.", _REG2, pl.col("week") >= 15,
+          whole_game=True),
     Angle("on_grass", "On grass",
           "The game is on grass.", _REG2,
-          pl.col("surface").str.contains("grass")),
+          pl.col("surface").str.contains("grass"),
+          whole_game=True),
     Angle("div_fav", "Divisional favorite",
           "{team} is favored in a divisional game.", _REG2,
           pl.col("div_game") & (pl.col("my_spread") > 0)),
@@ -442,6 +462,7 @@ def measure(schedules: pl.DataFrame, season: int | None = None) -> list[dict]:
             "plain": PLAIN.get(a.id, ""),
             "cat": CATEGORY.get(a.id, "Other"),
             "added": a.added.isoformat(), "mined": a.mined,
+            "whole_game": a.whole_game,
             "all": allt, "since": _record(added), "season": _record(cur),
         })
     out.sort(key=lambda r: -r["all"]["pct"])
@@ -517,6 +538,38 @@ def season_games(schedules: pl.DataFrame, season: int) -> dict:
             })
         if rows:
             out[a.id] = rows
+    return out
+
+
+def team_splits(schedules: pl.DataFrame) -> dict:
+    """Wins and losses per angle PER TEAM PER SEASON.
+
+    **THIS IS WHAT MAKES A WHOLE-GAME CONDITION WORTH KEEPING.** League-wide,
+    `on_grass` is 1605-1605 and always will be: both teams in a grass game are
+    on grass, so one covers and the other does not. Per team it is one side of
+    each game and can be anything — San Francisco is 67-72 on grass, which is
+    a record rather than an identity.
+
+    Shipped per season rather than as a total, for the same reason the league
+    splits are: the page recomputes any start year from these without another
+    measurement. 14,436 leaf records, about 205 KB.
+
+    THE SAMPLES ARE SMALL and nothing here pretends otherwise — the median
+    team-and-angle pair is 25 graded games, where the interval runs about
+    forty points wide. The page prints the record and the interval beside
+    every rate, and the tint still only fires when the lower bound clears.
+    """
+    tg = team_weeks(schedules)
+    out: dict = {}
+    for a in ANGLES:
+        f = (tg.filter(a.predicate)
+               .filter(pl.col("cover_by").is_not_null()
+                       & (pl.col("cover_by") != 0))
+               .group_by(["team", "season"])
+               .agg([pl.col("covered").sum().alias("w"), pl.len().alias("n")]))
+        for r in f.iter_rows(named=True):
+            (out.setdefault(r["team"], {}).setdefault(a.id, {})
+                [str(r["season"])]) = [int(r["w"]), int(r["n"] - r["w"])]
     return out
 
 

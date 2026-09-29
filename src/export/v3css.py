@@ -403,6 +403,10 @@ button{cursor:pointer}
 .tag--bad{background:var(--badbg);color:var(--bad)}
 .tag--warn{background:var(--warnbg);color:var(--warn)}
 .tag--ours{background:var(--oursbg);color:var(--ours)}
+/* Context, not a verdict: the quietest tag on the page, for a row whose
+   number is fixed by how the question is asked rather than by football. */
+.tag--flat{background:transparent;color:var(--mut3);
+  border:1px solid var(--line);font-weight:500}
 .add{flex-shrink:0;width:44px;height:44px;border-radius:12px;display:flex;
   align-items:center;justify-content:center;background:var(--card);
   color:var(--ink);border:1px solid var(--mut3)}

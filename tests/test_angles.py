@@ -163,7 +163,12 @@ def test_the_season_number_never_appears_without_its_record():
     # screens draw the columns through `v3AnglePct` and `v3AngleRec`, and the
     # pairing is what this checks — the same argument, in that order, with
     # nothing but markup between them.
-    pair = re.compile(r"v3AnglePct\((?P<a>[\w.]+)\)[^;]*?v3AngleRec\((?P=a)\)")
+    # The argument is an expression now, not always a bare name: the season
+    # column reads `seasonOf(r)` on the board and `o.season` on the card,
+    # because either can be one team's record instead of the league's.
+    pair = re.compile(
+        r"v3AnglePct\((?P<a>[\w.]+(?:\([\w.]+\))?)\)[^;]*?"
+        r"v3AngleRec\((?P=a)\)")
     for fn in ("function v3Angles(", "function v3AnglesPage("):
         body = body_of(fn)
         n_pct = body.count("v3AnglePct(")
@@ -220,7 +225,8 @@ def test_only_the_long_run_can_be_tinted():
             f"{fn} no longer ties the tint to the interval clearing")
         # And the season column is drawn on a span that cannot carry it.
         season = re.search(
-            r"<span class=\"num\"><b>' \+ v3AnglePct\(r\.season\)", body)
+            r"<span class=\"num\"><b>' \+ v3AnglePct\((seasonOf\(r\)|"
+            r"o\.season)\)", body)
         assert season, (
             f"{fn} draws the season percentage on a span that could be tinted")
     # `clears` is the lower bound clearing break-even, computed in one place.
@@ -335,3 +341,41 @@ def test_no_angle_is_measured_twice_under_two_names(sched):
         assert key not in seen, (
             f"{a.id} selects exactly the same games as {seen[key]}")
         seen[key] = a.id
+
+
+def test_a_whole_game_condition_is_flagged_as_one(sched):
+    """Both sides of every prime-time game are in prime time.
+
+    So one covers and the other does not, and the record is exactly 50.00% by
+    arithmetic: prime time 570-570, on grass 1605-1605, indoors 822-822. Ten
+    more seasons would not move any of them. The flag is what lets the board
+    say so instead of printing twelve measured nulls.
+
+    The DATA decides, not the list: an angle that turns out to select both
+    sides has to carry the flag, and one that selects a side must not.
+    """
+    tg = A.team_weeks(sched)
+    for a in A.ANGLES:
+        hit = tg.filter(a.predicate)
+        if hit.is_empty():
+            continue
+        per_game = hit.group_by("game_id").len()["len"]
+        both_only = bool((per_game == 2).all())
+        which = "both sides of every" if both_only else "one side of some"
+        assert a.whole_game == both_only, (
+            f"{a.id} selects {which} game, and its `whole_game` flag says "
+            f"{a.whole_game}")
+
+
+def test_a_flagged_condition_really_cannot_move(sched):
+    """The claim the tag makes, checked against the arithmetic it rests on."""
+    tg = A.team_weeks(sched)
+    for a in A.ANGLES:
+        if not a.whole_game:
+            continue
+        r = A._record(tg.filter(a.predicate))
+        if r is None:
+            continue
+        assert r["w"] == r["l"], (
+            f"{a.id} is flagged as a whole-game condition but is {r['w']}-"
+            f"{r['l']}; one of the two is wrong")
