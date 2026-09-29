@@ -94,6 +94,10 @@ _REG4 = date(2026, 9, 30)
 _REG5 = date(2026, 9, 30)
 #: What survived of a claim that did not check out.
 _REG6 = date(2026, 9, 30)
+#: The cell the divisional rows were averaging over.
+_REG7 = date(2026, 9, 30)
+#: Three mirrors the board was missing, found by auditing it for inverses.
+_REG8 = date(2026, 9, 30)
 
 ANGLES: tuple[Angle, ...] = (
     Angle("blowout_loss", "Off a 20+ loss",
@@ -291,6 +295,35 @@ ANGLES: tuple[Angle, ...] = (
           pl.col("div_game") & (pl.col("my_spread") < 0)
           & (pl.col("weekday") == "Thursday"), mined=True),
 
+    # ---- THE CELL THE OTHER DIVISIONAL ROWS WERE AVERAGING OVER -----------
+    #
+    # Split divisional games four ways and the result sits in exactly one box:
+    #
+    #     home dog   416   208-208   50.00%
+    #     home fav   630   290-340   46.03%
+    #     road dog   630   340-290   53.97%
+    #     road fav   416   208-208   50.00%
+    #
+    # BOTH FLAT CELLS ARE EXACTLY EVEN, on the same 416 games. That is why
+    # "divisional underdog" (home dog + road dog) and "divisional road team"
+    # (road dog + road fav) both print 548-498: each is this cell plus a cell
+    # that contributes nothing. The label on the board was never what was
+    # being measured.
+    #
+    # Nor is Thursday: the divisional tilt is 46.97/53.03 on Thursday against
+    # 46.03/53.97 on every other day, and Thursday on its own is 97-95. See
+    # `div_dog_thu` above -- Thursday slices this cell to a tenth and adds no
+    # information.
+    #
+    # IT STILL DOES NOT CLEAR. The lower bound is 50.06% against a 52.38%
+    # break-even, so this row prints as a near miss, which is the point of
+    # having it: `div_dog` and `div_home_dog` cannot show where their own
+    # numbers come from, and this one can.
+    Angle("div_road_dog", "Divisional road underdog",
+          "{team} is a road underdog against a divisional rival.", _REG7,
+          pl.col("div_game") & (~pl.col("at_home"))
+          & (pl.col("my_spread") < 0), mined=True),
+
     # ---- TEN MEASURED, NINE ADDED -----------------------------------------
     #
     # THE FIRST THREE ARE ABOUT THE OPPONENT, which is a dimension none of the
@@ -384,6 +417,42 @@ ANGLES: tuple[Angle, ...] = (
           "{team} was favored last week and is an underdog now.", _REG3,
           (pl.col("my_spread") < 0) & (pl.col("prev_spread") > 0), mined=True),
 
+    # ---- THE THREE MIRRORS THE BOARD WAS ACTUALLY MISSING ----------------
+    #
+    # An audit for angles with no inverse turns up two kinds, and only one of
+    # them is worth a row.
+    #
+    # MOST MISSING INVERSES ARE THE SAME GAMES FLIPPED. "Divisional home
+    # favorite" is `div_road_dog` scored from the other sideline -- the same
+    # 630 games, 290-340 instead of 340-290 -- and so are prime-time favorite,
+    # outdoors, on turf, and facing a team before its bye. The board already
+    # prints four such pairs (`home_dog`/`road_fav`, `home_fav`/`road_dog`,
+    # `div_dog`/`div_fav`, `off_bye`/`opp_off_bye`), which is a presentation
+    # choice; repeating it would grow the count of angles without growing the
+    # number of things measured.
+    #
+    # THESE THREE ARE NOT THAT. Each covers games the angle it mirrors does
+    # not, so each can disagree with it, and two of them do.
+    #
+    # `good_win` closes a tier that was asymmetric: losses were tracked at
+    # both 14+ and 20+, wins only at 20+, so the board could say a bad loss
+    # was priced wrong without being able to say the same of a good win.
+    #
+    # `second_home` and `third_home` are not the arithmetic complements of
+    # `second_road` and `third_road` -- 811 games against 814, and both under
+    # 50%. Two straight home games and two straight road games BOTH cover less
+    # than half the time, which is only visible with both tracked, and which
+    # no single "travel hurts" story explains.
+    Angle("good_win", "Off a 14+ win",
+          "{team} won by {detail} last week.", _REG8,
+          pl.col("prev_margin") >= 14, mined=True),
+    Angle("second_home", "Second straight home game",
+          "{team} is home again.", _REG8,
+          pl.col("at_home") & pl.col("prev_home"), mined=True),
+    Angle("third_home", "Third straight home game",
+          "{team} is home a third straight week.", _REG8,
+          pl.col("at_home") & pl.col("prev_home") & pl.col("prev2_home"),
+          mined=True),
 )
 
 #: PLAIN ENGLISH FOR EACH, because the label is jargon the first time you meet
@@ -394,6 +463,7 @@ PLAIN: dict[str, str] = {
     "blowout_loss": "Beaten by three touchdowns or more last week. The theory "
                     "is that the line overcorrects after an embarrassment.",
     "bad_loss": "Beaten by two touchdowns or more last week.",
+    "good_win": "Won by two touchdowns or more last week.",
     "blowout_win": "Won by three touchdowns or more last week. The theory is "
                    "that the line chases a statement win too far.",
     "two_losses": "Has lost its last two games.",
@@ -434,6 +504,8 @@ PLAIN: dict[str, str] = {
     "allowed_under_14": "Held the opponent under 14 last week.",
     "third_road": "Away from home a third straight week.",
     "second_road": "Away from home a second straight week.",
+    "second_home": "At home a second straight week.",
+    "third_home": "At home a third straight week.",
     "home_after_road": "Home at last after two straight on the road.",
     "rematch": "Playing the same opponent it played last week.",
     "qb_change": "A different quarterback is starting than last week.",
@@ -451,6 +523,7 @@ PLAIN: dict[str, str] = {
     "on_grass": "Played on natural grass rather than turf.",
     "div_fav": "Favoured against a team it plays twice a year.",
     "div_dog_thu": "A divisional underdog in a Thursday night game.",
+    "div_road_dog": "An underdog on the road against a team it plays twice a year.",
     "opp_off_bye": "Their opponent had a week off; they did not.",
     "opp_short_week": "Their opponent is playing on four days\u2019 rest or "
                       "fewer.",
@@ -488,6 +561,7 @@ PLAIN: dict[str, str] = {
 CATEGORY: dict[str, str] = {
     # How the team has been playing.
     "blowout_loss": "Form", "bad_loss": "Form", "blowout_win": "Form",
+    "good_win": "Form",
     "two_losses": "Form", "two_wins": "Form", "three_losses": "Form",
     "three_wins": "Form", "off_cover": "Form", "off_ats_loss": "Form",
     "two_covers": "Form", "two_non_covers": "Form", "close_loss": "Form",
@@ -507,12 +581,13 @@ CATEGORY: dict[str, str] = {
     "fav_after_dog": "The line", "dog_after_fav": "The line",
     # Where they are in the season and who they just saw.
     "third_road": "Spot", "second_road": "Spot", "home_after_road": "Spot",
+    "second_home": "Spot", "third_home": "Spot",
     # THE OPPONENT is its own kind: every other angle here asks what shape the
     # team is in, and these three ask about the team across from it.
     "opp_off_bye": "Opponent", "opp_short_week": "Opponent",
     "opp_blowout_loss": "Opponent",
     "div_home_dog": "The line", "bad_team_favored": "The line",
-    "div_dog_thu": "The line",
+    "div_dog_thu": "The line", "div_road_dog": "The line",
     "good_team_dog": "The line",
     "close_loss_3": "Form", "close_win_3": "Form",
     "div_back_to_back": "Spot",
