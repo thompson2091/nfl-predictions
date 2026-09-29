@@ -724,21 +724,79 @@ ok('and explains why half is not enough',
     v3Do('v3angle', first[1]);
     const o = L();
     ok('opening one shows its games', o.indexOf('class="agame') >= 0);
+    // A fixture goes straight to that week's game page.
+    ok('and each game links to its own page',
+       o.indexOf('data-v3anglegame="') >= 0);
+    const link = /data-v3anglegame="([^"|]*)\|([^"]*)"/.exec(o);
     ok('with a plain-language description above them',
        o.indexOf('class="adet__p"') >= 0);
     // One at a time, or the board becomes a wall of fixture lists.
     ok('and only one is open', (o.match(/class="adet"/g) || []).length === 1);
     v3Do('v3angle', first[1]);
     ok('tapping it again closes it', L().indexOf('class="adet"') < 0);
+    // And a fixture goes straight to that week's game page. Done last,
+    // because it navigates away.
+    if (link && link[1]) {
+      v3Do('v3anglegame', link[1] + '|' + link[2]);
+      ok('tapping one opens that game',
+         V.tab === 'games' && V.game === link[1], V.tab + '/' + V.game);
+      ok('on the week it was played',
+         link[2] === '' ? V.week === null : V.week === Number(link[2]),
+         String(V.week));
+      V.tab = 'angles'; V.game = null; V.week = null; render();
+    }
   }
 }
-// Sorting is offered and actually reorders.
+// COLUMN HEADERS ARE THE SORT. Tapping the active one flips it, which is
+// what a table does and saves a row of chrome.
 {
-  const byLong = (L().match(/data-v3angle="([^"]+)"/g) || []).join('|');
+  const order = () => (L().match(/data-v3angle="([^"]+)"/g) || []).join('|');
+  ok('the columns are the sort control', L().indexOf('class="ahead"') >= 0);
+  const byYear = order();
   v3Do('v3anglesort', 'name');
-  const byName = (L().match(/data-v3angle="([^"]+)"/g) || []).join('|');
-  ok('the board can be sorted', byLong !== byName, 'order did not change');
-  v3Do('v3anglesort', 'all');
+  ok('the board can be sorted', byYear !== order(), 'order did not change');
+  const az = order();
+  v3Do('v3anglesort', 'name');
+  ok('and tapping the same column flips it',
+     order() !== az && order().split('|').reverse().join('|') === az);
+  v3Do('v3anglesort', 'season');
+}
+// SEARCH, for when you know what you are looking for.
+{
+  ok('the board can be searched', L().indexOf('data-v3angleq') >= 0);
+  const before = (L().match(/data-v3angle="/g) || []).length;
+  // Matched against the label, the description and the kind — "overtime" is
+  // in a description, not in any label.
+  fireDoc('input', { target: {
+    getAttribute: a => a === 'data-v3angleq' ? '' : null, value: 'overtime' } });
+  const after = (L().match(/data-v3angle="/g) || []).length;
+  ok('typing narrows the board', after > 0 && after < before,
+     before + ' -> ' + after);
+  fireDoc('input', { target: {
+    getAttribute: a => a === 'data-v3angleq' ? '' : null,
+    value: 'zzzznotathing' } });
+  ok('and a search that matches nothing says so',
+     L().indexOf('Nothing matches') >= 0);
+  fireDoc('input', { target: {
+    getAttribute: a => a === 'data-v3angleq' ? '' : null, value: '' } });
+  ok('and clearing it restores the board',
+     (L().match(/data-v3angle="/g) || []).length === before);
+}
+// TWO DECIMALS, because break-even is 52.38% and whole points cannot show a
+// row sitting either side of it.
+ok('percentages carry two decimals', /\d+\.\d\d%/.test(L()));
+// The long-run column can start later than 2015.
+{
+  ok('there is a control for how far back to count',
+     L().indexOf('data-v3anglefrom') >= 0);
+  const wide = (L().match(/<b>(\d+)<\/b><\/span>\s*<\/button>/g) || []).length;
+  fireDoc('change', { target: {
+    getAttribute: a => a === 'data-v3anglefrom' ? '' : null, value: '2023' } });
+  ok('moving it recounts the long run',
+     L().indexOf('\u201923+ ATS') >= 0, 'header did not follow the slider');
+  fireDoc('change', { target: {
+    getAttribute: a => a === 'data-v3anglefrom' ? '' : null, value: '2015' } });
+  ok('and back again', L().indexOf('\u201915+ ATS') >= 0);
 }
 // Categories, so forty-six rows can be read as five lists.
 {

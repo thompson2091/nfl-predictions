@@ -461,6 +461,9 @@ def _angles_block(payload: dict, season: int | None, week: int | None) -> None:
             # The games behind each season record, so "0-5" can be opened.
             # Five losses is an anecdote until you can see which five.
             "games": A.season_games(sched, season) if season else {},
+            # Per-season wins and losses, so the page can answer "since 2020"
+            # without shipping eleven copies of every record.
+            "splits": A.season_splits(sched),
         }
     except Exception as e:                                       # noqa: BLE001
         # Never fatal: the board is the product and this is context on it.

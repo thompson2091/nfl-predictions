@@ -317,6 +317,7 @@ def team_weeks(schedules: pl.DataFrame) -> pl.DataFrame:
         sign = 1 if is_home else -1
         return s.select([
             pl.col("season"), pl.col("week"), pl.col("gameday"),
+            pl.col("game_id"),
             pl.col(f"{t}_team").alias("team"),
             pl.col(f"{o}_team").alias("opp"),
             pl.lit(is_home).alias("at_home"),
@@ -434,6 +435,34 @@ def measure(schedules: pl.DataFrame, season: int | None = None) -> list[dict]:
     return out
 
 
+def season_splits(schedules: pl.DataFrame) -> dict:
+    """Wins and losses per angle PER SEASON, so any start year can be asked.
+
+    The page lets a reader say "since 2020" rather than taking 2015 on trust,
+    and the honest way to serve that is to ship the seasons and add them up
+    where the question is asked. Re-measuring per start year on this side
+    would mean eleven copies of every record, and computing it from a single
+    total is not possible at all — you cannot subtract seasons you did not
+    keep.
+
+    Tiny on the wire: a couple of integers per angle per season.
+    """
+    tg = team_weeks(schedules).filter(
+        pl.col("cover_by").is_not_null() & (pl.col("cover_by") != 0))
+    out: dict = {}
+    for a in ANGLES:
+        g = (tg.filter(a.predicate)
+             .group_by("season")
+             .agg([pl.col("covered").sum().alias("w"), pl.len().alias("n")])
+             .sort("season"))
+        rows = {}
+        for r in g.iter_rows(named=True):
+            rows[str(r["season"])] = [int(r["w"]), int(r["n"]) - int(r["w"])]
+        if rows:
+            out[a.id] = rows
+    return out
+
+
 def season_games(schedules: pl.DataFrame, season: int) -> dict:
     """The games behind each angle's season record, so "0-5" can be opened.
 
@@ -453,6 +482,7 @@ def season_games(schedules: pl.DataFrame, season: int) -> dict:
             graded = r["cover_by"] is not None and r["cover_by"] != 0
             rows.append({
                 "week": r["week"], "team": r["team"], "opp": r["opp"],
+                "game_id": r["game_id"],
                 "home": bool(r["at_home"]), "spread": r["my_spread"],
                 "pf": r["pf"], "pa": r["pa"],
                 "covered": bool(r["covered"]) if graded else None,

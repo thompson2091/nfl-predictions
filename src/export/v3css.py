@@ -201,20 +201,26 @@ button{cursor:pointer}
 /* ---- the angles table ----
    A grid rather than stacked cards: forty-six rows is a table, and the whole
    reason to read it is comparing one column down the page. */
-.arow{display:grid;grid-template-columns:minmax(0,1fr) 62px 62px 46px;
+.arow{display:grid;grid-template-columns:minmax(0,1fr) 58px 58px 34px;
   align-items:center;gap:6px;width:100%;padding:10px 0;text-align:left;
   border:0;border-top:1px solid var(--line3);background:transparent;
   color:var(--ink)}
 .arow--h{padding:0 0 6px;border-top:0}
-.arow--h span{text-align:right}
-.arow--h span:first-child{text-align:left}
+/* Headers are the sort control: tap one to sort by it, tap it again to flip.
+   A table already implies this, and it saves a second row of chrome. */
+.ahead{border:0;background:transparent;padding:4px 0;font-size:11px;
+  line-height:14px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--mut2);text-align:right;white-space:nowrap}
+.ahead[aria-pressed=true]{color:var(--ours)}
+.arow--h .ahead:first-child{text-align:left}
 .arow--on{background:var(--inset)}
 .arow__l{font-size:14px;line-height:18px;font-weight:600;min-width:0}
 .arow__l .tag{font-size:10px;padding:1px 6px;margin-left:4px;
   font-style:normal;vertical-align:middle}
 .arow>span:nth-child(n+2){display:flex;flex-direction:column;
   align-items:flex-end}
-.arow>span b{font-size:15px;font-weight:700;line-height:18px}
+.arow>span b{font-size:14px;font-weight:700;line-height:18px;
+  white-space:nowrap}
 .arow>span i{font-style:normal;font-size:11px;line-height:14px;
   color:var(--mut2)}
 .arow>span.good b{color:var(--good)}
@@ -222,18 +228,34 @@ button{cursor:pointer}
 /* The games behind a season record, opened in place. */
 .adet{padding:2px 0 10px;background:var(--inset);border-radius:10px;
   margin:0 -8px 4px;padding-left:8px;padding-right:8px}
-.agame{display:grid;grid-template-columns:24px minmax(0,1fr) 46px 58px 68px;
-  gap:6px;align-items:center;padding:5px 0;font-size:13px;
-  border-top:1px solid var(--line3)}
-.agame--h{border-top:0;padding-top:8px}
-.agame--h span{text-align:right}
-.agame--h span:nth-child(2){text-align:left}
-.agame>span:nth-child(n+3){text-align:right}
+.agame{display:grid;grid-template-columns:minmax(0,1fr) auto 10px;gap:8px;
+  align-items:center;padding:8px 0;width:100%;border:0;
+  border-top:1px solid var(--line3);background:transparent;color:var(--ink);
+  text-align:left}
+.agame__t{display:flex;flex-direction:column;min-width:0}
+.agame__t b{font-size:14px;line-height:18px;font-weight:600}
+.agame__t i{font-style:normal;font-size:12px;line-height:16px;
+  color:var(--mut2)}
+.agame__v{display:flex;flex-direction:column;align-items:flex-end;
+  font-size:13px;line-height:17px;font-weight:600;white-space:nowrap}
+.agame__v i{font-style:normal;font-size:12px;font-weight:400;
+  color:var(--mut2)}
+.agame--won .agame__v{color:var(--good)}
+.agame--lost .agame__v{color:var(--bad)}
+.agame__go{font-style:normal;color:var(--mut2);text-align:right}
 .agame--won>span:last-child{color:var(--good);font-weight:600}
 .agame--lost>span:last-child{color:var(--bad);font-weight:600}
 /* The plain-language line above the fixtures, for a reader who has not met
    the term. "Off a 20+ loss" is jargon the first time you see it. */
 .adet__p{font-size:13px;line-height:18px;color:var(--mut);padding:8px 0 2px}
+
+/* How far back the long-run column counts. A range rather than a menu: the
+   question is "a bit more history or a bit less", which is a position on a
+   line, not a list of options. */
+.yrs{display:flex;align-items:center;gap:10px;margin-top:6px}
+.pbar .search input{height:34px}
+.yrs input[type=range]{flex:1;min-width:0;accent-color:var(--ours);height:28px}
+.yrs b{min-width:3.2em;text-align:right;font-size:15px;font-weight:700}
 .pbar .seg button{height:32px;font-size:13px}
 .pbar__row{display:flex;align-items:center;gap:6px}
 .pbar .search{flex:1;min-width:0;margin-top:0}

@@ -155,7 +155,9 @@ def test_every_percentage_says_it_is_against_the_spread():
 
     # The board is a table, so the unit rides on the column headings instead.
     page = body_of("function v3AnglesPage(")
-    assert "Yr ATS" in page and "All ATS" in page, (
+    # The long-run heading carries the chosen start year, so it is built
+    # rather than literal — "'23+ ATS". Both still have to say ATS.
+    assert "Yr ATS" in page and "'+ ATS'" in page, (
         "the board's percentage columns are unlabelled")
 
 

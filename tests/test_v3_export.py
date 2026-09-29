@@ -292,11 +292,24 @@ def payload_v3():
                         "lo": 0.231, "hi": 0.882, "clears": False}},
         ],
         "week": {"ATL": ["blowout_loss"], "GB": ["div_dog", "off_ot"]},
+        # Per-season records, which is what lets the page answer "since 2020"
+        # without another measurement. Without these the slider has no range
+        # and silently clamps to a single year.
+        "splits": {
+            "blowout_loss": {"2015": [20, 21], "2020": [24, 18],
+                             "2023": [22, 26], "2026": [7, 1]},
+            "div_dog": {"2015": [48, 44], "2020": [50, 46],
+                        "2023": [45, 47], "2026": [8, 5]},
+            "off_ot": {"2015": [11, 14], "2020": [12, 13],
+                       "2023": [10, 15], "2026": [3, 2]},
+        },
         "games": {"blowout_loss": [
             {"week": 2, "team": "ATL", "opp": "GB", "home": False,
+             "game_id": "2026_02_ATL_GB",
              "spread": -3.5, "pf": 14, "pa": 35, "covered": False,
              "by": -17.5},
             {"week": 3, "team": "NE", "opp": "PIT", "home": True,
+             "game_id": "2026_03_PIT_NE",
              "spread": 2.5, "pf": None, "pa": None, "covered": None,
              "by": None}]},
     }
@@ -492,6 +505,18 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "filtering to one kind shows fewer rows",
                  "and only that kind",
                  "and clears back to all",
+                 "the columns are the sort control",
+                 "and tapping the same column flips it",
+                 "percentages carry two decimals",
+                 "there is a control for how far back to count",
+                 "moving it recounts the long run",
+                 "and each game links to its own page",
+                 "tapping one opens that game",
+                 "on the week it was played",
+                 "the board can be searched",
+                 "typing narrows the board",
+                 "and a search that matches nothing says so",
+                 "and clearing it restores the board",
                  "sorted by the long run rather than by this season",
                  "losing angles are on the board too",
                  # The pinned bar carries the switcher and Ask, and a thin
