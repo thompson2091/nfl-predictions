@@ -735,6 +735,24 @@ ok('and explains why half is not enough',
     const link = /data-v3anglegame="([^"|]*)\|([^"|]*)\|([^"]*)"/.exec(o);
     ok('with a plain-language description above them',
        o.indexOf('class="adet__p"') >= 0);
+    // WHICH TEAM THE PATTERN IS ABOUT. Both sides were named the same way,
+    // so "ATL at GB \u00b7 cover +4.5" left the reader to work out whose
+    // cover it was.
+    {
+      const gs = ((DATA.angles || {}).games || {})[first[1]] || [];
+      const me = /<span class="agame__me">([A-Z]+)<\/span>/.exec(o);
+      ok('the team the pattern is about is marked', !!me && me[1] === gs[0].team,
+         me ? me[1] : 'none');
+      // And a fixture not yet played names it in the pill, where "to play"
+      // said only that nothing had happened.
+      const soon = gs.filter(g => g.covered === null
+                                  || g.covered === undefined)[0];
+      ok('and an unplayed game names its side',
+         !soon || o.indexOf(soon.team + ' to play') >= 0,
+         soon ? soon.team : 'none unplayed');
+      ok('and a played one still says how it went',
+         /class="tag tag--(good|bad)">(cover|no) /.test(o));
+    }
     // One at a time, or the board becomes a wall of fixture lists.
     ok('and only one is open', (o.match(/class="adet"/g) || []).length === 1);
     v3Do('v3angle', first[1]);

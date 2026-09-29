@@ -251,14 +251,16 @@ button{cursor:pointer}
   border-top:1px solid var(--line3);background:transparent;color:var(--ink);
   text-align:left;font:inherit}
 .agame__t{display:flex;flex-direction:column;min-width:0}
-.agame__t b{font-size:14px;line-height:18px;font-weight:600}
+/* The carrying team leads: full ink and weight, with the rest of the fixture
+   stepped back, so "cover +4.5" beside it is unambiguous about whose. */
+.agame__t b{font-size:14px;line-height:18px;font-weight:400;color:var(--mut)}
+.agame__me{font-weight:700;color:var(--ink)}
 .agame__t i{font-style:normal;font-size:12px;line-height:16px;
   color:var(--mut2)}
 /* The verdict is a chip, not colored text. Colored text down a list of
    fixtures reads as ten warnings; a chip reads as a result, and it is the
    same `.tag` the rest of the app grades things with. */
 .agame>.tag{justify-self:end;white-space:nowrap;font-size:12px;height:22px}
-.tag--soon{background:var(--inset);color:var(--mut2)}
 /* Not every fixture has a board to open. One that does not is not a button,
    so it gets no chevron and no press state. */
 .agame--flat{cursor:default}

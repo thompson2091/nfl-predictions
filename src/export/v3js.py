@@ -3577,17 +3577,24 @@ function v3AnglesPage() {
           // not yet priced — used to be a button that landed on "that game
           // is not on this week's board".
           const on = v3AngleBoard(g);
+          // WHICH TEAM THE PATTERN IS ABOUT. Both sides were named the same
+          // way, so "ATL at GB · cover +4.5" left the reader to work out
+          // whose cover it was. The carrying team keeps the ink and the
+          // weight; the fixture around it steps back.
           const line = '<span class="agame__t">'
-            + '<b>' + esc(g.team) + ' ' + (g.home ? 'vs' : 'at') + ' '
-            + esc(g.opp) + '</b>'
+            + '<b><span class="agame__me">' + esc(g.team) + '</span> '
+            + (g.home ? 'vs' : 'at') + ' ' + esc(g.opp) + '</b>'
             + '<i>Wk ' + g.week
             + (has(g.spread) ? ' \u00b7 ' + (g.spread > 0 ? '\u2212' : '+')
                + Math.abs(g.spread) : '')
             + (has(g.pf) && has(g.pa) ? ' \u00b7 ' + g.pf + '\u2013' + g.pa
                : '') + '</i></span>'
-            + '<span class="tag ' + (!done ? 'tag--soon'
+            // A GAME NOT YET PLAYED NAMES ITS SIDE. "to play" said only that
+            // nothing had happened, on the rows where knowing which team the
+            // split points at is the whole use of the list.
+            + '<span class="tag ' + (!done ? 'tag--ours'
                : (g.covered ? 'tag--good' : 'tag--bad')) + '">'
-            + (!done ? 'to play'
+            + (!done ? esc(g.team) + ' to play'
                : (g.covered ? 'cover ' : 'no ')
                  + (g.by > 0 ? '+' : '') + g.by) + '</span>';
           if (!on) return '<div class="agame agame--flat' + tone + '">'
