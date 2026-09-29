@@ -407,6 +407,11 @@ button{cursor:pointer}
    number is fixed by how the question is asked rather than by football. */
 .tag--flat{background:transparent;color:var(--mut3);
   border:1px solid var(--line);font-weight:500}
+/* The one chip that asks the model rather than answering from the page. It
+   costs a round trip, so it says so by looking like the primary action. */
+.q--ask{background:var(--oursbg);border-color:var(--oursfaint);
+  color:var(--ours);font-weight:600}
+.q--ask[disabled]{opacity:.55}
 .add{flex-shrink:0;width:44px;height:44px;border-radius:12px;display:flex;
   align-items:center;justify-content:center;background:var(--card);
   color:var(--ink);border:1px solid var(--mut3)}

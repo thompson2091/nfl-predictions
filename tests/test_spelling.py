@@ -113,5 +113,9 @@ def test_the_prompts_ask_for_american_spelling():
     php = _p.Path("deploy/ask.php").read_text()
     assert "AMERICAN spelling" in php
     # And the rule must not sit inside another sentence: an earlier edit
-    # spliced it between "Explain what the" and "numbers mean".
-    assert 'Plain English; spell out any jargon you use.\\n\\n"\n  . "Use AMERICAN' in php
+    # spliced it between "Explain what the" and "numbers mean". Checked on
+    # the SHAPE rather than on the sentence before it, which is prose and has
+    # been rewritten since.
+    assert '\\n\\n"\n  . "Use AMERICAN spelling' in php, (
+        "the American-spelling rule is spliced into another instruction "
+        "instead of standing as its own")

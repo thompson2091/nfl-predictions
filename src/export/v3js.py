@@ -1935,9 +1935,18 @@ function v3Ask(gid, bare) {
           : '<div class="card"><div class="name">Ask about this game</div>')
     + '<p class="help">Quick answers below are computed from this page. The '
     + 'box asks our model, which can also look up news.</p>'
-    + (qs.length ? '<div class="qs">' + qs.map((q, i) =>
+    // THE QUESTION MOST PEOPLE CAME TO ASK, one tap and answered by the
+    // model rather than from the page: the three markets read together, with
+    // our number against the market's on each. The canned chips beside it
+    // are instant and free; this one costs a round trip, so it is marked as
+    // the one that thinks.
+    + '<div class="qs"><button class="q q--ask" data-v3askdefault="'
+    + esc(gid) + '"' + (V.asking ? ' disabled' : '') + '>'
+    + esc(V3ASK_DEFAULT) + '</button>'
+    + (qs.length ? qs.map((q, i) =>
         '<button class="q" data-v3ask="' + i + '">' + esc(q.q) + '</button>')
-      .join('') + '</div>' : '')
+      .join('') : '')
+    + '</div>'
     + '<form class="ask" data-v3askform="' + esc(gid) + '">'
     + '<input type="text" data-v3q2 maxlength="400" '
     + 'placeholder="Ask anything about this game" value="' + esc(V.q2 || '')
@@ -1959,6 +1968,12 @@ function v3Ask(gid, bare) {
 
 //: Where the proxy lives, relative to the page.
 const V3ASK_URL = 'ask.php';
+
+//: THE DEFAULT QUESTION. Phrased as the reader would ask it and as the thing
+//: the page is for: the spread, the moneyline and the total, read together,
+//: with our model's number against the market's on each.
+const V3ASK_DEFAULT = 'Read the spread, moneyline and total for me \u2014 '
+  + 'what does the data say, and where does our model disagree?';
 
 function v3AskSend(gid, q) {
   V.asking = true; V.answer = ''; V.answerErr = ''; V.answerLive = false;
@@ -4114,7 +4129,7 @@ function v3Refocus(t) {
 const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis', 'v3pick', 'v3more',
                   'v3keep', 'v3unkeep', 'v3savedfilter', 'v3pickopen',
                   'v3game', 'v3gamestep', 'v3back', 'v3gtab', 'v3cat', 'v3type',
-                  'v3stake', 'v3ask', 'v3open', 'v3dir',
+                  'v3stake', 'v3ask', 'v3askdefault', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
                   'v3half', 'v3boardgame', 'v3anglesort', 'v3angle',
                   'v3anglegame', 'v3angleclear',
@@ -4389,6 +4404,12 @@ function v3Do(kind, v) {
       V.answerLive = false; V.answerErr = ''; V.searched = false;
       break;
     }
+    // THE DEFAULT QUESTION goes to the model, unlike the chips beside it.
+    // `v3AskSend` renders on its own when the answer lands, and again here
+    // so the box shows it is thinking in the meantime.
+    case 'v3askdefault':
+      if (!V.asking) v3AskSend(v, V3ASK_DEFAULT);
+      break;
   }
   render();
 }

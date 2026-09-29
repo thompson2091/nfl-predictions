@@ -36,7 +36,9 @@ $KEY_FILE   = '/etc/picksix/anthropic.key';   // outside the web root
 $CTX_DIR    = __DIR__ . '/data/ask';          // one brief per game
 $STATE_DIR  = '/var/lib/picksix';             // counters; not web readable
 $MODEL      = 'claude-sonnet-4-5-20250929';
-$MAX_TOKENS = 900;
+// Three markets, one paragraph each, plus the caveats that have to travel
+// with them. At 900 the third market came back truncated mid-sentence.
+$MAX_TOKENS = 1400;
 $MAX_Q      = 400;        // characters; a question, not a document
 $PER_IP_HR  = 15;
 $PER_DAY    = 300;        // the cap that actually protects the bill
@@ -118,9 +120,26 @@ $system = "You answer questions about one NFL game for a betting site read by "
   . "forecast, a coaching change. Everything numeric must come from the data.\n\n"
   . "If the data does not answer the question, say so plainly and say what "
   . "would answer it. Never invent a number, a price or a player.\n\n"
-  . "Rules: no betting advice, no 'lock' or 'guaranteed'. Explain what the "
-  . "numbers mean and let the reader decide. Two short paragraphs at most. "
-  . "Plain English; spell out any jargon you use.\n\n"
+  // ANSWER THE QUESTION. The rule used to read "no betting advice", and on
+  // "read me the spread, the moneyline and the total" the model spent its
+  // first paragraph announcing what it would not do and then answered
+  // anyway. Describing what the site's own numbers say is the product, not
+  // advice: every figure it is being asked about is already printed on the
+  // card above the box.
+  . "WHAT THE NUMBERS SAY IS THE ANSWER. Asked to read the spread, the "
+  . "moneyline or the total, give each one: what the market's number "
+  . "implies, what our model makes it, where the two disagree and what in "
+  . "the data explains the gap. Say which side our model leans and by how "
+  . "much — that is a description of the model, not a recommendation.\n\n"
+  . "Never open with a disclaimer or a statement of what you will not do. "
+  . "Answer first. Do not refuse a question the data can answer.\n\n"
+  . "What you do NOT do: tell the reader what to bet, how much to stake, or "
+  . "that anything is a lock, a guarantee, free money or a sure thing. No "
+  . "confidence you cannot source. Where a number rests on a small sample "
+  . "or a wide interval, say so in the same breath as the number.\n\n"
+  . "Four short paragraphs at most, one per market when several are asked "
+  . "about. Plain English; spell out any jargon you use — say what a "
+  . "moneyline is the first time you use the word.\n\n"
   . "Use AMERICAN spelling: favorite, defense, offense, color. This is "
   . "American football read by Americans.\n\n"
   . "A negative spread means the HOME team is favored.\n\n"

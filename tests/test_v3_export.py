@@ -417,6 +417,11 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "an over/under row prints the stat it settled on",
                  "the normalizer carries the count through",
                  "a settled row shows what they actually had",
+                 "the panel offers a default question",
+                 "and it names all three markets",
+                 "it is not one of the canned chips",
+                 "and it is marked as the one that thinks",
+                 "the handler is registered",
                  "the split feed carries all three markets, not just the moneyline",
                  "every market is drawn with a bets bar and a money bar",
                  "and all three are named",
@@ -1128,3 +1133,43 @@ def test_switching_game_section_scrolls_to_the_bar_not_the_page_top():
         "the bar is measured while stuck, so the offset is whatever you had")
     assert branch.index("scroll.scrollTop = 0;") < branch.index(".gtabs"), (
         "the bar is measured before the pane is rested, so it reads as pinned")
+
+
+def test_the_ask_prompt_answers_rather_than_declines():
+    """Asked to read the spread, the moneyline and the total, the model spent
+    its first paragraph announcing that it does not give betting advice and
+    then answered anyway.
+
+    Describing the site's own numbers is the product: every figure the
+    question touches is printed on the card above the box. The rule that
+    produced the refusal was a bare "no betting advice", which the model read
+    as covering its own data.
+
+    Falsified by putting the blanket rule back, or by dropping the guardrails
+    that replaced it.
+    """
+    php = (REPO / "deploy" / "ask.php").read_text()
+    i = php.index("$system =")
+    # THE PROMPT, NOT THE COMMENTARY AROUND IT. The comment explaining why
+    # the blanket rule went away quotes the blanket rule, and a naive slice
+    # reads that quotation as the rule still being in force.
+    body = "\n".join(ln for ln in php[i:php.index("$body =", i)].split("\n")
+                     if not ln.lstrip().startswith("//"))
+
+    # THE INSTRUCTION TO ANSWER, and the ban on leading with a disclaimer.
+    assert "Never open with a disclaimer" in body, (
+        "nothing stops the answer opening with what it will not do")
+    assert "Do not refuse a question the data can answer" in body
+    for market in ("spread", "moneyline", "total"):
+        assert market in body, f"the prompt never names the {market}"
+
+    # AND THE GUARDRAILS THAT REPLACED THE BLANKET RULE. Describing the model
+    # is not recommending a bet, and the difference has to be written down.
+    assert "what to bet" in body, "nothing rules out telling the reader to bet"
+    for word in ("lock", "guarantee", "sure thing"):
+        assert word in body, f"{word!r} is no longer ruled out"
+    assert "small sample" in body and "wide interval" in body, (
+        "the prompt no longer requires the caveat to travel with the number")
+    # The blanket rule is what caused it; it must not come back.
+    assert "no betting advice" not in body, (
+        "the bare rule is back, and it is what produced the refusal")

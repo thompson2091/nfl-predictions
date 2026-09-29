@@ -21,6 +21,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
    'v3PublicMoney', 'v3MoneyBlock', 'v3SharpSides', 'V3RATIO_SMALL',
+   'v3Ask', 'V3ASK_DEFAULT',
    'v3GTab', 'v3MktLabel',
    'v3Clv',
    'v3NowImplied', 'v3Clv', 'v3ClvNote', 'v3GameMoney']);
@@ -1526,6 +1527,34 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('a first-TD row names the ordinal, not the count',
      v3Had(gf[0]) === '3rd TD of the game', v3Had(gf[0]));
   V.market = 'any';
+}
+
+
+// ── The default question goes to the model ─────────────────────────────
+//
+// Asked to read the spread, the moneyline and the total, the model used to
+// spend its first paragraph announcing that it does not give betting advice
+// and then answer anyway. Describing the site's own numbers is the product:
+// every figure it is asked about is printed on the card above the box.
+{
+  const { v3Ask, V3ASK_DEFAULT } = x;
+  const gid = ((DATA.games || {}).cards || [])[0].game_id;
+  const html = v3Ask(gid);
+  ok('the panel offers a default question',
+     html.indexOf('data-v3askdefault="' + gid + '"') >= 0);
+  ok('and it names all three markets',
+     /spread/i.test(V3ASK_DEFAULT) && /moneyline/i.test(V3ASK_DEFAULT)
+     && /total/i.test(V3ASK_DEFAULT), V3ASK_DEFAULT);
+  // IT ASKS THE MODEL, unlike the chips beside it, which are answered from
+  // the page. `data-v3ask` is an index into the canned list; this carries a
+  // game id because it is a round trip.
+  ok('it is not one of the canned chips',
+     html.indexOf('data-v3ask="' + V3ASK_DEFAULT + '"') < 0);
+  ok('and it is marked as the one that thinks',
+     html.indexOf('q q--ask') >= 0);
+  // And the control is wired, or it would do nothing at all.
+  ok('the handler is registered', x.V3CLICKS.indexOf('v3askdefault') >= 0,
+     x.V3CLICKS.join(','));
 }
 
 
