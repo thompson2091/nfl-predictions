@@ -92,6 +92,8 @@ _REG3 = date(2026, 9, 29)
 _REG4 = date(2026, 9, 30)
 #: The ninth batch: the opponent's situation, and the rest of a list of ten.
 _REG5 = date(2026, 9, 30)
+#: What survived of a claim that did not check out.
+_REG6 = date(2026, 9, 30)
 
 ANGLES: tuple[Angle, ...] = (
     Angle("blowout_loss", "Off a 20+ loss",
@@ -270,6 +272,25 @@ ANGLES: tuple[Angle, ...] = (
     # why the composition effect was invisible: a board that tracks the two
     # flat cells and omits the two steep ones cannot show that side and role
     # are worth four points between them.
+    # ---- ONE OF TWO ASKED FOR -----------------------------------------
+    #
+    # The other was "divisional dog, any day", which is `div_dog` above:
+    # 548-498 over 1,046 games, the same split under the name it already had.
+    #
+    # This one is what is left of a claim that did not survive checking.
+    # "Divisional underdogs on Thursday in weeks 4, 5 and 6 since 2016 are
+    # 26-16" needs forty-two games, and there are twenty-nine Thursday games
+    # of ANY kind in that window -- fourteen of them divisional, going 5-9.
+    # Widened to every week the split is real and says nothing much, which is
+    # the version worth tracking.
+    #
+    # A HUNDRED AND TWO GAMES CANNOT GO GREEN, by `TINT_MIN_GAMES`, and should
+    # not: an interval on a sample this size runs twenty points wide.
+    Angle("div_dog_thu", "Divisional underdog on Thursday",
+          "{team} is a divisional underdog on a Thursday.", _REG6,
+          pl.col("div_game") & (pl.col("my_spread") < 0)
+          & (pl.col("weekday") == "Thursday"), mined=True),
+
     # ---- TEN MEASURED, NINE ADDED -----------------------------------------
     #
     # THE FIRST THREE ARE ABOUT THE OPPONENT, which is a dimension none of the
@@ -429,6 +450,7 @@ PLAIN: dict[str, str] = {
                    "for.",
     "on_grass": "Played on natural grass rather than turf.",
     "div_fav": "Favoured against a team it plays twice a year.",
+    "div_dog_thu": "A divisional underdog in a Thursday night game.",
     "opp_off_bye": "Their opponent had a week off; they did not.",
     "opp_short_week": "Their opponent is playing on four days\u2019 rest or "
                       "fewer.",
@@ -490,6 +512,7 @@ CATEGORY: dict[str, str] = {
     "opp_off_bye": "Opponent", "opp_short_week": "Opponent",
     "opp_blowout_loss": "Opponent",
     "div_home_dog": "The line", "bad_team_favored": "The line",
+    "div_dog_thu": "The line",
     "good_team_dog": "The line",
     "close_loss_3": "Form", "close_win_3": "Form",
     "div_back_to_back": "Spot",
