@@ -98,6 +98,9 @@ _REG6 = date(2026, 9, 30)
 _REG7 = date(2026, 9, 30)
 #: Three mirrors the board was missing, found by auditing it for inverses.
 _REG8 = date(2026, 9, 30)
+#: The complementary seven, added so a game card reads the same from either
+#: sideline. See the block above `div_home_fav`.
+_REG9 = date(2026, 9, 30)
 
 ANGLES: tuple[Angle, ...] = (
     Angle("blowout_loss", "Off a 20+ loss",
@@ -453,6 +456,68 @@ ANGLES: tuple[Angle, ...] = (
           "{team} is home a third straight week.", _REG8,
           pl.col("at_home") & pl.col("prev_home") & pl.col("prev2_home"),
           mined=True),
+
+    # ---- THE COMPLEMENTARY SEVEN ------------------------------------------
+    #
+    # ADDED FOR THE GAME CARD, NOT FOR THE BOARD. Each one below is an angle
+    # already here, scored from the other sideline: the same games, the same
+    # grading, the record subtracted from 100%. On the board that is a second
+    # row saying what the first row said. On a game's Odds tab it is not, and
+    # the Odds tab is the reason they are here.
+    #
+    # THE CASE, from the card that prompted it -- NE at BUF, week 4 of 2026.
+    # NE carried `Divisional road underdog 53.97%`. BUF carried `Divisional
+    # favorite 47.61%` and `Home favorite 47.93%` and nothing else, because the
+    # cell it was actually in -- divisional home favorite, 46.03% -- had no
+    # row. The underdog got the sharp number and the favorite got two blends.
+    # A card is read one game at a time, and on one game the complement is not
+    # a restatement, it is the other half of the fixture.
+    #
+    # THE COST IS PAID IN CARD LENGTH, and it is not small: `outdoors` fires on
+    # 70.3% of sides and `on_turf` on 40.6%, both of them 50.00% by arithmetic,
+    # so most cards grow by two rows that cannot say anything. A side already
+    # carries eleven angles at the median and seventeen at the worst. That
+    # trade was put to the reader who asked for these and taken deliberately:
+    # symmetry everywhere beats precision in three places and a gap elsewhere.
+    #
+    # NOTHING HERE IS EVIDENCE OF ANYTHING. Seven rows that are arithmetic
+    # complements of seven existing rows add seven to the board's count and
+    # zero to the number of independent splits it tracks. Do not read the
+    # board's length as a count of findings; `EXPECTED_FALSE_POSITIVES` is
+    # computed from the splits, and these are not new ones.
+    Angle("div_home_fav", "Divisional home favorite",
+          "{team} is favored at home against a divisional rival.", _REG9,
+          pl.col("div_game") & pl.col("at_home") & (pl.col("my_spread") > 0),
+          mined=True),
+    Angle("div_road_fav", "Divisional road favorite",
+          "{team} is favored on the road against a divisional rival.", _REG9,
+          pl.col("div_game") & (~pl.col("at_home"))
+          & (pl.col("my_spread") > 0), mined=True),
+    Angle("prime_fav", "Prime-time favorite",
+          "{team} is favored in prime time.", _REG9,
+          pl.col("prime") & (pl.col("my_spread") > 0), mined=True),
+    Angle("beat_them", "Beat them earlier this season",
+          "{team} beat this opponent earlier this season.", _REG9,
+          pl.col("beat_them"), mined=True),
+    Angle("opp_pre_bye", "Facing a team before its bye",
+          "{team} plays an opponent in its last game before a bye.", _REG9,
+          pl.col("opp_pre_bye"), mined=True),
+    # THE LAST TWO ARE WHOLE-GAME CONDITIONS and are flagged as such: both
+    # sides play outdoors, both sides play on turf, so one covers and the other
+    # does not and the record is 2045-2045 and 1261-1261 for as long as the
+    # sport is played. `indoors` and `on_grass` have carried the flag from the
+    # start for the same reason.
+    Angle("outdoors", "Outdoors",
+          "The game is outdoors.", _REG9,
+          # The positive list, not the negation of `indoors`: a roof value
+          # nobody has seen yet should fall through both rows visibly rather
+          # than be swept into this one.
+          pl.col("roof").is_in(["outdoors", "open"]),
+          whole_game=True, mined=True),
+    Angle("on_turf", "On turf",
+          "The game is on turf.", _REG9,
+          ~pl.col("surface").str.contains("grass"),
+          whole_game=True, mined=True),
 )
 
 #: PLAIN ENGLISH FOR EACH, because the label is jargon the first time you meet
@@ -524,6 +589,13 @@ PLAIN: dict[str, str] = {
     "div_fav": "Favoured against a team it plays twice a year.",
     "div_dog_thu": "A divisional underdog in a Thursday night game.",
     "div_road_dog": "An underdog on the road against a team it plays twice a year.",
+    "div_home_fav": "Favoured at home against a team it plays twice a year.",
+    "div_road_fav": "Favoured on the road against a team it plays twice a year.",
+    "prime_fav": "Favoured in a night game the whole country is watching.",
+    "beat_them": "Already beat this opponent once this season.",
+    "opp_pre_bye": "Their opponent plays its last game before a week off.",
+    "outdoors": "Played in the open air rather than under a roof.",
+    "on_turf": "Played on artificial turf rather than natural grass.",
     "opp_off_bye": "Their opponent had a week off; they did not.",
     "opp_short_week": "Their opponent is playing on four days\u2019 rest or "
                       "fewer.",
@@ -588,6 +660,9 @@ CATEGORY: dict[str, str] = {
     "opp_blowout_loss": "Opponent",
     "div_home_dog": "The line", "bad_team_favored": "The line",
     "div_dog_thu": "The line", "div_road_dog": "The line",
+    "div_home_fav": "The line", "div_road_fav": "The line",
+    "prime_fav": "Setting", "outdoors": "Setting", "on_turf": "Setting",
+    "beat_them": "Spot", "opp_pre_bye": "Opponent",
     "good_team_dog": "The line",
     "close_loss_3": "Form", "close_win_3": "Form",
     "div_back_to_back": "Spot",
@@ -716,6 +791,19 @@ def team_weeks(schedules: pl.DataFrame) -> pl.DataFrame:
         (pl.col("_lost_wk").is_not_null()
          & (pl.col("_lost_wk") < pl.col("week"))).fill_null(False)
         .alias("revenge"))
+    # AND BEAT THEM EARLIER THIS SEASON, which is the same rematch seen from
+    # the other sideline. Only one side of a rematch can hold it -- two teams
+    # meet at most twice in a regular season, so there is one prior meeting and
+    # somebody won it -- and a tie leaves it False on both.
+    won = (tg.filter(pl.col("margin") > 0)
+             .select(["season", "team", "opp",
+                      pl.col("week").alias("_won_wk")])
+             .unique(subset=["season", "team", "opp"], keep="first"))
+    tg = tg.join(won, on=["season", "team", "opp"], how="left")
+    tg = tg.with_columns(
+        (pl.col("_won_wk").is_not_null()
+         & (pl.col("_won_wk") < pl.col("week"))).fill_null(False)
+        .alias("beat_them"))
     # THE WEEK BEFORE A BYE, and it is not a look-ahead.
     #
     # Byes are on the schedule when it is published in the spring, so a team
@@ -748,8 +836,12 @@ def team_weeks(schedules: pl.DataFrame) -> pl.DataFrame:
     # is the whole of it.
     tg = tg.join(
         tg.select(["game_id", pl.col("team").alias("opp"),
-                   pl.col("prev_margin").alias("opp_prev_margin")]),
+                   pl.col("prev_margin").alias("opp_prev_margin"),
+                   # The opponent's bye is on the same join, and `pre_bye` is
+                   # already computed above, so it costs nothing.
+                   pl.col("pre_bye").alias("opp_pre_bye")]),
         on=["game_id", "opp"], how="left")
+    tg = tg.with_columns(pl.col("opp_pre_bye").fill_null(False))
     # RECORD SO FAR, counted BEFORE this week's game. `cum_sum` includes the
     # current row, so each is subtracted back out — without that a team is
     # credited with the result it has not played yet.
