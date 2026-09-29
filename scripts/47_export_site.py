@@ -455,6 +455,9 @@ def _angles_block(payload: dict, season: int | None, week: int | None) -> None:
         sched = pl.read_parquet(get_path("raw") / "schedules.parquet")
         payload["angles"] = {
             "break_even": A.BREAK_EVEN,
+            # A row is tinted only when it clears AND has enough games to
+            # mean it. See `angles.TINT_MIN_GAMES`.
+            "tint_min": A.TINT_MIN_GAMES,
             "rows": A.measure(sched, season),
             # KEYED BY GAME, and over the whole season rather than one
             # week: the board carries whatever the books have posted, which

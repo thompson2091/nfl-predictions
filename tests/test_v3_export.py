@@ -279,6 +279,10 @@ def payload_v3():
     # dropped for going cold" assertion passes by having nothing to drop.
     p["angles"] = {
         "break_even": 0.5238,
+        # A row is tinted only when it clears AND has the games to mean it.
+        # The fixture's floor is low so a fixture row can still go green;
+        # production uses 300.
+        "tint_min": 200,
         "rows": [
             {"id": "blowout_loss", "label": "Off a 20+ loss",
              "blurb": "{team} lost by {detail} last week.",
@@ -624,6 +628,11 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a whole-game condition is tagged on the board",
                  "and exactly the flagged ones are",
                  "and the row is kept rather than hidden",
+                 "a clearing interval on a thin sample is not green",
+                 "the same interval with the games behind it is",
+                 "and a big sample that does not clear is not",
+                 "the card counts the rows it colors",
+                 "and the card says the rule has two halves",
                  "seven-and-one on eight games is not unusual",
                  "the same rate over eighty games is",
                  "and a season that matches the long run is not",

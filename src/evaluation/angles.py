@@ -40,6 +40,21 @@ BREAK_EVEN = 0.5238
 #: Below this a split cannot say anything and is not reported.
 MIN_GAMES = 50
 
+#: AND BELOW THIS IT IS NOT TINTED, however good it looks.
+#:
+#: Clearing break-even at the bottom of the interval is the board's strongest
+#: statement and for fifty-eight angles nothing had ever earned it. The first
+#: row that did was `pre_bye_div` at 58-28 — eighty-six games, and a subset
+#: picked after seeing its parent, which is a fork that could as easily have
+#: been home/away or favorite/underdog. Tinting that green would have been the
+#: board making its loudest claim on its thinnest evidence, which is the
+#: opposite of what every other guard here does.
+#:
+#: Three hundred is where the interval comes in around five points wide rather
+#: than twenty. The row still shows its rate, its record and its range; it
+#: just does not get the color.
+TINT_MIN_GAMES = 300
+
 
 @dataclass(frozen=True)
 class Angle:
@@ -73,6 +88,8 @@ _REG = date(2026, 9, 28)
 _REG2 = date(2026, 9, 28)
 #: The third, measured before being added rather than after.
 _REG3 = date(2026, 9, 29)
+#: The bye pair, asked for and measured the same day.
+_REG4 = date(2026, 9, 30)
 
 ANGLES: tuple[Angle, ...] = (
     Angle("blowout_loss", "Off a 20+ loss",
@@ -251,6 +268,26 @@ ANGLES: tuple[Angle, ...] = (
     # why the composition effect was invisible: a board that tracks the two
     # flat cells and omits the two steep ones cannot show that side and role
     # are worth four points between them.
+    # ---- THE BYE PAIR, added on request and measured before adding ---------
+    #
+    # `off_bye` was already here; these are the three it did not cover. Marked
+    # mined for the same reason as the batch above: the records were seen
+    # before the choice was made.
+    #
+    # `pre_bye_div` IS THE FIRST ROW EVER TO CLEAR BREAK-EVEN at the bottom of
+    # its interval, at 58-28 over eleven seasons. It is also 86 games, and a
+    # subset picked after seeing its parent at 55.65% — a fork that could as
+    # easily have been home/away or favorite/underdog. See `TINT_MIN_GAMES`
+    # for what the board does about that.
+    Angle("bye_div", "Off a bye, divisional",
+          "{team} is off a bye against a divisional rival.", _REG4,
+          (pl.col("rest") >= 13) & pl.col("div_game"), mined=True),
+    Angle("pre_bye", "The week before a bye",
+          "{team} plays its last game before a bye.", _REG4,
+          pl.col("pre_bye"), mined=True),
+    Angle("pre_bye_div", "Before a bye, divisional",
+          "{team} plays a divisional rival in its last game before a bye.",
+          _REG4, pl.col("pre_bye") & pl.col("div_game"), mined=True),
     Angle("road_dog", "Road underdog",
           "{team} is an underdog on the road.", _REG3,
           (~pl.col("at_home")) & (pl.col("my_spread") < 0), mined=True),
@@ -342,6 +379,10 @@ PLAIN: dict[str, str] = {
                    "for.",
     "on_grass": "Played on natural grass rather than turf.",
     "div_fav": "Favoured against a team it plays twice a year.",
+    "bye_div": "Off a bye, against a team it plays twice a year.",
+    "pre_bye": "Their last game before a week off.",
+    "pre_bye_div": "Their last game before a week off, against a divisional "
+                   "rival.",
     "road_dog": "An underdog playing away from home \u2014 the most common "
                 "spot there is, and the one furthest from even.",
     "home_fav": "Favored at home, which is the other side of the same coin.",
@@ -370,6 +411,7 @@ CATEGORY: dict[str, str] = {
     "allowed_30": "Form", "allowed_under_14": "Form", "off_ot": "Form",
     # Time off.
     "off_bye": "Rest", "mini_bye": "Rest", "short_week": "Rest",
+    "bye_div": "Rest", "pre_bye": "Rest", "pre_bye_div": "Rest",
     "rest_edge": "Rest",
     "rest_deficit": "Rest",
     # What the price says about them.
@@ -502,10 +544,36 @@ def team_weeks(schedules: pl.DataFrame) -> pl.DataFrame:
                        pl.col("week").alias("_lost_wk")])
               .unique(subset=["season", "team", "opp"], keep="first"))
     tg = tg.join(lost, on=["season", "team", "opp"], how="left")
-    return tg.with_columns(
+    tg = tg.with_columns(
         (pl.col("_lost_wk").is_not_null()
          & (pl.col("_lost_wk") < pl.col("week"))).fill_null(False)
         .alias("revenge"))
+    # THE WEEK BEFORE A BYE, and it is not a look-ahead.
+    #
+    # Byes are on the schedule when it is published in the spring, so a team
+    # playing its last game before one is a fact available months in advance —
+    # unlike a closing line, which is set after the previous week is played and
+    # is what got the look-ahead angles removed.
+    #
+    # COMPUTED FROM THE FULL SCHEDULE, not from the frame above. That one drops
+    # games with no closing spread, and a dropped row leaves a gap in the week
+    # numbers that looks exactly like a bye: 352 of the real 384 were found
+    # that way, and the 32 it missed were missing for a reason unrelated to
+    # byes.
+    full = (schedules.filter(pl.col("game_type") == "REG")
+            .select(["season", "week", "home_team", "away_team"]))
+    long = pl.concat([
+        full.select(["season", "week", pl.col(t).alias("team")])
+        for t in ("home_team", "away_team")]).unique()
+    pre = (long.sort(["season", "team", "week"])
+           .with_columns(pl.col("week").shift(-1).over(["season", "team"])
+                         .alias("_nxt"))
+           .filter(pl.col("_nxt").is_not_null()
+                   & (pl.col("_nxt") > pl.col("week") + 1))
+           .select(["season", "team", "week"])
+           .with_columns(pl.lit(True).alias("pre_bye")))
+    return (tg.join(pre, on=["season", "team", "week"], how="left")
+              .with_columns(pl.col("pre_bye").fill_null(False)))
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -527,7 +595,10 @@ def _record(f: pl.DataFrame) -> dict | None:
     k = int(graded["covered"].sum())
     lo, hi = wilson(k, n)
     return {"n": n, "w": k, "l": n - k, "pct": k / n, "lo": lo, "hi": hi,
-            "clears": lo > BREAK_EVEN}
+            # BOTH CONDITIONS. See `TINT_MIN_GAMES`: an eighty-six-game row
+            # clearing at the lower bound is a wide interval that happens to
+            # start high, not a finding.
+            "clears": lo > BREAK_EVEN and n >= TINT_MIN_GAMES}
 
 
 def measure(schedules: pl.DataFrame, season: int | None = None) -> list[dict]:

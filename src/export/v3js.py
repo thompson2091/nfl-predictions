@@ -2354,7 +2354,8 @@ function v3Angles(c) {
     + '<p class="help" style="margin-top:10px">Break-even at \u2212110 is '
     + (be * 100).toFixed(2) + '%. Of the ' + (A.rows || []).length
     + ' angles measured together, <b style="color:var(--ink)">'
-    + (A.rows || []).filter(r => r.all && r.all.lo > be).length
+    + (A.rows || []).filter(
+        r => r.all && v3Clears(r.all.lo, r.all.n, be)).length
     + '</b> clear it once the interval is taken into account. A season\u2019s '
     + 'worth of any one of these is a handful of games.</p>'
     + v3BaseNote() + '</div></div>';
@@ -3630,7 +3631,14 @@ function v3BaseNote() {
     + 'would turn up less than one time in twenty for that pattern. That is a '
     + 'remark about a small sample, not a signal \u2014 with '
     + ((DATA.angles || {}).rows || []).length + ' patterns on the board, two '
-    + 'or three are marked by chance in a normal season.</p>';
+    + 'or three are marked by chance in a normal season.</p>'
+    + '<p class="help" style="margin-top:8px">A rate turns '
+    + '<b style="color:var(--good)">green</b> only when the bottom of its '
+    + 'range clears ' + (((DATA.angles || {}).break_even || 0.5238) * 100)
+      .toFixed(2) + '% <b style="color:var(--ink)">and</b> it has '
+    + (((DATA.angles || {}).tint_min) || 300) + ' games or more behind it. '
+    + 'On a hundred games a range runs twenty points wide, so one that starts '
+    + 'high is a wide range rather than a finding.</p>';
 }
 
 // IS THIS SEASON UNUSUAL FOR THIS PATTERN?
@@ -3720,6 +3728,17 @@ function v3AngleTeams() {
   return Object.keys((DATA.angles || {}).team_splits || {}).sort();
 }
 
+// GREEN NEEDS BOTH: an interval that clears break-even AND enough games to
+// mean it. `pre_bye_div` was the first row in fifty-eight to clear, at 58-28
+// over eleven seasons — eighty-six games, and a subset picked after seeing
+// its parent. Tinting that would have been the board's loudest claim on its
+// thinnest evidence. The row still shows its rate, its record and its range.
+function v3Clears(lo, n, be) {
+  const A = DATA.angles || {};
+  const floor = has(A.tint_min) ? A.tint_min : 300;
+  return lo > be && n >= floor;
+}
+
 // The long-run record, recomputed from the season-by-season splits for
 // whatever start year is chosen.
 //
@@ -3739,7 +3758,7 @@ function v3AngleSince(r, from, be, team) {
   if (!n) return null;
   const iv = v3Wilson(w, n);
   return { n: n, w: w, l: l, pct: w / n, lo: iv[0], hi: iv[1],
-           clears: iv[0] > be };
+           clears: v3Clears(iv[0], n, be) };
 }
 
 function v3AngleGames(r, games, team, note) {

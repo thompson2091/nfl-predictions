@@ -229,10 +229,16 @@ def test_only_the_long_run_can_be_tinted():
             r"o\.season)\)", body)
         assert season, (
             f"{fn} draws the season percentage on a span that could be tinted")
-    # `clears` is the lower bound clearing break-even, computed in one place.
+    # `clears` is computed in one place, and it is BOTH conditions: the lower
+    # bound clearing break-even and enough games to mean it. `pre_bye_div` was
+    # the first row in fifty-eight to clear, at 58-28 — eighty-six games, and
+    # a subset picked after seeing its parent.
     since = body_of("function v3AngleSince(")
-    assert "clears: iv[0] > be" in since, (
+    assert "clears: v3Clears(iv[0], n, be)" in since, (
         "the tint is no longer tied to the interval clearing break-even")
+    clears = body_of("function v3Clears(")
+    assert "lo > be" in clears and "n >= floor" in clears, (
+        "the tint no longer requires both a clearing interval and a sample")
 
 
 def test_no_angle_reads_the_future(sched):
@@ -425,3 +431,31 @@ def test_the_baseline_is_the_split_s_own_mix_not_a_flat_fifty(sched):
         n = tg.filter(a.predicate).filter(pl.col("my_spread") != 0).height
         got = sum(sum(v) for v in b["mix"][a.id].values())
         assert got == n, f"{a.id}: mix totals {got}, the split has {n}"
+
+
+def test_a_thin_row_does_not_go_green_however_good_it_looks(sched):
+    """`pre_bye_div` is 58-28 over eleven seasons and clears break-even at the
+    bottom of its interval — the first row in fifty-eight to do so.
+
+    It is also eighty-six games, and a subset picked after seeing its parent
+    at 55.65%, which is a fork that could as easily have been home/away or
+    favorite/underdog. Tinting it green would be the board making its loudest
+    claim on its thinnest evidence.
+    """
+    rows = {r["id"]: r for r in A.measure(sched)}
+    thin = rows.get("pre_bye_div")
+    assert thin, "the angle is gone; this test guards nothing"
+    a = thin["all"]
+    # The finding itself, which must not be hidden: it does clear.
+    assert a["lo"] > A.BREAK_EVEN, (
+        "pre_bye_div no longer clears; the guard has nothing to hold back")
+    assert a["n"] < A.TINT_MIN_GAMES, f"n is now {a['n']}; pick a new example"
+    # And it is not tinted.
+    assert not a["clears"], (
+        f"a {a['n']}-game row is tinted green on a {(a['hi']-a['lo'])*100:.0f}"
+        "-point interval")
+    # A row with the sample AND the interval still would.
+    fat = {"n": A.TINT_MIN_GAMES, "lo": A.BREAK_EVEN + 0.01}
+    assert fat["lo"] > A.BREAK_EVEN and fat["n"] >= A.TINT_MIN_GAMES
+    # The floor has to be well above the reporting minimum, or it is no floor.
+    assert A.TINT_MIN_GAMES >= 5 * A.MIN_GAMES

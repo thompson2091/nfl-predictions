@@ -21,7 +21,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
    'v3PublicMoney', 'v3MoneyBlock', 'v3SharpSides', 'V3RATIO_SMALL',
-   'v3Ask', 'V3ASK_DEFAULT', 'v3AngleBase', 'v3Surprise', 'V3SURPRISE',
+   'v3Ask', 'V3ASK_DEFAULT', 'v3AngleBase', 'v3Surprise', 'V3SURPRISE', 'v3Clears',
    'v3AngleSince', 'v3AngleYears',
    'v3GTab', 'v3MktLabel',
    'v3Clv',
@@ -1052,6 +1052,35 @@ ok('and explains why half is not enough',
      (L().match(/data-v3angle="/g) || []).length
      === ((DATA.angles || {}).rows || []).length);
 }
+
+// ── Green needs a sample, not just a clearing interval ─────────────────
+//
+// `pre_bye_div` was the first row in fifty-eight to clear break-even at the
+// bottom of its range, at 58-28 over eleven seasons — and eighty-six games,
+// and a subset picked after seeing its parent. Tinting that would be the
+// board's loudest claim on its thinnest evidence.
+{
+  const { v3Clears } = x;
+  const be = ((DATA.angles || {}).break_even) || 0.5238;
+  const floor = ((DATA.angles || {}).tint_min) || 300;
+  ok('a clearing interval on a thin sample is not green',
+     v3Clears(be + 0.05, floor - 1, be) === false);
+  ok('the same interval with the games behind it is',
+     v3Clears(be + 0.05, floor, be) === true);
+  ok('and a big sample that does not clear is not',
+     v3Clears(be - 0.01, floor * 10, be) === false);
+  // AND THE FOOTER COUNTS WHAT IT TINTS. Two different rules would have the
+  // card saying one row clears while none is colored.
+  V.tab = 'angles'; V.angleFrom = 0; render();
+  const greens = (L().match(/class="num good"/g) || []).length;
+  const claimed = /<b style="color:var\(--ink\)">(\d+)<\/b> clear it/.exec(L());
+  ok('the card counts the rows it colors',
+     !claimed || Number(claimed[1]) === greens,
+     (claimed ? claimed[1] : '?') + ' claimed, ' + greens + ' colored');
+  ok('and the card says the rule has two halves',
+     L().indexOf('games or more behind it') >= 0);
+}
+
 
 // ── Is this season unusual for this pattern? ───────────────────────────
 //
