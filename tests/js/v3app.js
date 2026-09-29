@@ -21,7 +21,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
    'v3PublicMoney', 'v3MoneyBlock', 'v3SharpSides', 'V3RATIO_SMALL',
-   'v3Ask', 'V3ASK_DEFAULT',
+   'v3Ask', 'V3ASK_DEFAULT', 'v3AngleBase',
    'v3GTab', 'v3MktLabel',
    'v3Clv',
    'v3NowImplied', 'v3Clv', 'v3ClvNote', 'v3GameMoney']);
@@ -1002,6 +1002,51 @@ ok('and explains why half is not enough',
      (L().match(/data-v3angle="/g) || []).length
      === ((DATA.angles || {}).rows || []).length);
 }
+
+// ── What the split's own composition already predicts ──────────────────
+//
+// Side and role are worth four points between them: road underdogs cover
+// 52.07% and home favorites 47.93%. So a split made mostly of favorites looks
+// bad without saying anything, and one made of road dogs looks good for the
+// same non-reason. Against a flat 50% the board credits every angle with a
+// fact about favorites.
+{
+  const { v3AngleBase } = x;
+  V.tab = 'angles'; V.angleQ = ''; V.angleCat = 'all'; V.angleTeam = '';
+  V.angleFrom = 0; V.angleOpen = null; V.angleSort = 'season'; render();
+  ok('the board carries an expected column', L().indexOf('>Expected<') >= 0);
+  // `blowout_loss` is entirely road underdogs, a cell that covers 60% in the
+  // fixture. Its expectation is 60%, NOT the 50% a flat baseline would use.
+  const b = v3AngleBase({ id: 'blowout_loss' }, 2015, '');
+  ok('and it is read off the cells the split actually sits in',
+     b && Math.abs(b.pct - 0.60) < 1e-9, JSON.stringify(b));
+  // `div_dog` is half home underdogs (50%) and half home favorites (40%).
+  const d = v3AngleBase({ id: 'div_dog' }, 2015, '');
+  ok('mixing two cells averages them by how many games are in each',
+     d && Math.abs(d.pct - 0.45) < 1e-9, JSON.stringify(d));
+  // THE SLIDER MOVES BOTH. Counting from 2026 uses 2026's cell rates and
+  // 2026's mix, or the record and the thing it is measured against would be
+  // computed over different spans.
+  const later = v3AngleBase({ id: 'blowout_loss' }, 2026, '');
+  ok('and the start year applies to the baseline too',
+     later && later.n === 10, JSON.stringify(later));
+  // A TEAM HAS ITS OWN MIX. ATL's `blowout_loss` games are home favorites
+  // (40%), not road underdogs, so the league expectation would be wrong by
+  // twenty points.
+  const atl = v3AngleBase({ id: 'blowout_loss' }, 2015, 'ATL');
+  ok('and a team is measured against its own mix, not the league\u2019s',
+     atl && Math.abs(atl.pct - 0.40) < 1e-9, JSON.stringify(atl));
+  // An angle with no mix shows nothing rather than a made-up number.
+  ok('an angle with no baseline shows none',
+     v3AngleBase({ id: 'nosuchangle' }, 2015, '') === null);
+  // AND IT IS NOT TINTED. Nothing measured is two standard errors from its
+  // baseline, so a color would point at noise.
+  const row = /class="num"><b>60\.00%<\/b>/.test(L());
+  ok('the expected rate is drawn on the row', row, 'no 60.00% cell');
+  ok('and the board says what expected means',
+     L().indexOf('on side and role alone') >= 0);
+}
+
 
 // ── One team's own record ──────────────────────────────────────────────
 //

@@ -379,3 +379,49 @@ def test_a_flagged_condition_really_cannot_move(sched):
         assert r["w"] == r["l"], (
             f"{a.id} is flagged as a whole-game condition but is {r['w']}-"
             f"{r['l']}; one of the two is wrong")
+
+
+def test_the_baseline_is_the_split_s_own_mix_not_a_flat_fifty(sched):
+    """Side and role are worth four points between them.
+
+    Road underdogs cover 52.07% over 1,763 team-games and home favorites
+    47.93% over the same number. So a split made mostly of favorites looks bad
+    without saying anything: "Favored after being an underdog" reads as a
+    five-point fade against 50% and is under two points against what its own
+    composition predicts.
+
+    The mix is shipped per season so the page can answer for any start year,
+    and per team because a club's games sit in different cells from the
+    league's.
+    """
+    b = A.baseline(sched)
+    assert set(b) == {"cells", "mix", "team_mix"}
+    # THE FOUR CELLS ARE REALLY DIFFERENT, or none of this would be worth
+    # shipping and the test would pass on a payload that says nothing.
+    tot = {c: [0, 0] for c in A.CELLS}
+    for season in b["cells"].values():
+        for c, (w, n) in season.items():
+            tot[c][0] += w
+            tot[c][1] += n
+    rates = {c: tot[c][0] / tot[c][1] for c in A.CELLS if tot[c][1]}
+    assert max(rates.values()) - min(rates.values()) > 0.03, (
+        f"the cells cover at nearly the same rate ({rates}); the correction "
+        "would not be worth making")
+    assert rates["AD"] > rates["HF"], (
+        "road underdogs no longer cover more often than home favorites")
+
+    # EVERY MEASURED ANGLE HAS ONE, or the column is blank where it matters.
+    measured = {r["id"] for r in A.measure(sched)}
+    missing = sorted(measured - set(b["mix"]))
+    assert not missing, f"no baseline mix for {missing}"
+
+    # AND THE MIX ADDS UP TO THE GAMES IT IS A MIX OF.
+    import polars as pl
+    tg = (A.team_weeks(sched)
+          .filter(pl.col("cover_by").is_not_null() & (pl.col("cover_by") != 0)))
+    for a in A.ANGLES:
+        if a.id not in b["mix"]:
+            continue
+        n = tg.filter(a.predicate).filter(pl.col("my_spread") != 0).height
+        got = sum(sum(v) for v in b["mix"][a.id].values())
+        assert got == n, f"{a.id}: mix totals {got}, the split has {n}"

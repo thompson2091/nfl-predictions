@@ -201,13 +201,21 @@ button{cursor:pointer}
 /* ---- the angles table ----
    A grid rather than stacked cards: forty-six rows is a table, and the whole
    reason to read it is comparing one column down the page. */
-.arow{display:grid;grid-template-columns:minmax(0,1fr) 62px 70px;
+.arow{display:grid;grid-template-columns:minmax(0,1fr) 56px 62px 58px;
   align-items:center;gap:6px;width:100%;padding:10px 0;text-align:left;
   border:0;border-top:1px solid var(--line3);background:transparent;
   color:var(--ink)}
 .arow--h{padding:0 0 6px;border-top:0}
 /* Headers are the sort control: tap one to sort by it, tap it again to flip.
    A table already implies this, and it saves a second row of chrome. */
+/* Four columns is tight on a phone, so the card gives back its side padding
+   below 400px rather than squeezing the pattern name to three words a line. */
+@media (max-width:400px){
+  .card:has(.arow){padding-left:10px;padding-right:10px}
+  .arow{grid-template-columns:minmax(0,1fr) 50px 56px 52px;gap:4px}
+  .arow--on{margin-left:-6px;margin-right:-6px;
+    padding-left:6px;padding-right:6px}
+}
 .ahead{border:0;background:transparent;padding:4px 0;font-size:11px;
   line-height:14px;font-weight:600;letter-spacing:.06em;
   text-transform:uppercase;color:var(--mut2);text-align:right;white-space:nowrap}

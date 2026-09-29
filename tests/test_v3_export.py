@@ -318,6 +318,29 @@ def payload_v3():
         "week": {"ATL_GB": [["ATL", "blowout_loss"], ["GB", "div_dog"],
                             ["GB", "off_ot"]],
                  "CAR_ATL": [["ATL", "off_ot"], ["CAR", "div_dog"]]},
+        # WHAT THE SPLIT'S OWN COMPOSITION PREDICTS. `blowout_loss` is put
+        # entirely in the road-underdog cell, which covers 60% here against
+        # 40% for home favorites, so its expectation is 60% and its long run
+        # of 52.6% is a FADE, not an edge. A fixture whose cells all cover at
+        # the same rate cannot tell whether the page used the mix at all.
+        "baseline": {
+            "cells": {
+                "2015": {"AD": [60, 100], "AF": [50, 100],
+                         "HD": [50, 100], "HF": [40, 100]},
+                "2026": {"AD": [6, 10], "AF": [5, 10],
+                         "HD": [5, 10], "HF": [4, 10]},
+            },
+            "mix": {"blowout_loss": {"2015": [100, 0, 0, 0],
+                                     "2026": [10, 0, 0, 0]},
+                    "div_dog": {"2015": [0, 0, 50, 50]},
+                    "off_ot": {"2015": [0, 0, 0, 40]}},
+            "team_mix": {
+                "ATL": {"blowout_loss": {"2015": [0, 0, 0, 4]},
+                        "off_ot": {"2015": [5, 0, 0, 0]}},
+                "GB": {"div_dog": {"2015": [0, 0, 7, 0]},
+                       "off_ot": {"2015": [0, 0, 0, 5]}},
+            },
+        },
         # PER TEAM PER SEASON, which is the only reading under which a
         # whole-game condition says anything: `off_ot` is flagged
         # `whole_game`, so league-wide it is 50.00% by arithmetic, and ATL's
@@ -587,6 +610,14 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a whole-game condition is tagged on the board",
                  "and exactly the flagged ones are",
                  "and the row is kept rather than hidden",
+                 "the board carries an expected column",
+                 "and it is read off the cells the split actually sits in",
+                 "mixing two cells averages them by how many games are in each",
+                 "and the start year applies to the baseline too",
+                 "and a team is measured against its own mix, not the league\u2019s",
+                 "an angle with no baseline shows none",
+                 "the expected rate is drawn on the row",
+                 "and the board says what expected means",
                  "the board offers a team picker",
                  "picking one narrows the numbers to that team",
                  "and the record shown is that team\u2019s",

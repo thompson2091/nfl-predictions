@@ -71,6 +71,8 @@ class Angle:
 _REG = date(2026, 9, 28)
 #: The second batch, registered together the same evening.
 _REG2 = date(2026, 9, 28)
+#: The third, measured before being added rather than after.
+_REG3 = date(2026, 9, 29)
 
 ANGLES: tuple[Angle, ...] = (
     Angle("blowout_loss", "Off a 20+ loss",
@@ -227,6 +229,53 @@ ANGLES: tuple[Angle, ...] = (
     Angle("div_fav", "Divisional favorite",
           "{team} is favored in a divisional game.", _REG2,
           pl.col("div_game") & (pl.col("my_spread") > 0)),
+    # ---- THE THIRD BATCH, AND ALL EIGHT ARE MARKED MINED ------------------
+    #
+    # Eight, chosen from twenty that were MEASURED FIRST. That is the whole
+    # reason for the flag. None was picked for being hot -- the twelve left
+    # out went for being duplicates of splits already here, samples too thin
+    # to say anything, or whole-game conditions with no side, and against the
+    # rate its own composition predicts not one of the twenty was two standard
+    # errors from expectation. But the records were seen before the choice was
+    # made, and this module's own rule is that a subset chosen after seeing
+    # the numbers does not get to be presented as pre-registered.
+    #
+    # So their all-time record is context and `since` is the evidence: it
+    # starts today, on games nobody has seen, and it is the column that
+    # settles whether any of these was real.
+    #
+    # THE FIRST TWO ARE THE CELLS THE BOARD WAS MISSING. `home_dog` and
+    # `road_fav` were here from the start; `road_dog` and `home_fav` were not,
+    # and they are the two biggest splits in the archive — 1,763 team-games
+    # each against 1,100 — and the two furthest from even. Their absence is
+    # why the composition effect was invisible: a board that tracks the two
+    # flat cells and omits the two steep ones cannot show that side and role
+    # are worth four points between them.
+    Angle("road_dog", "Road underdog",
+          "{team} is an underdog on the road.", _REG3,
+          (~pl.col("at_home")) & (pl.col("my_spread") < 0), mined=True),
+    Angle("home_fav", "Home favorite",
+          "{team} is favored at home.", _REG3,
+          pl.col("at_home") & (pl.col("my_spread") > 0), mined=True),
+    Angle("revenge", "Lost to them earlier this season",
+          "{team} lost to this opponent earlier this season.", _REG3,
+          pl.col("revenge"), mined=True),
+    Angle("qb_second", "Second start for a new quarterback",
+          "{team} starts the same new quarterback a second time.", _REG3,
+          pl.col("prev_qb_change") & (~pl.col("qb_change")), mined=True),
+    Angle("new_coach", "New head coach",
+          "{team} has a different head coach than last season.", _REG3,
+          pl.col("coach") != pl.col("_last_coach"), mined=True),
+    Angle("road_after_two_home", "First road game after two at home",
+          "{team} is on the road after two straight at home.", _REG3,
+          (~pl.col("at_home")) & pl.col("prev_home") & pl.col("prev2_home"), mined=True),
+    Angle("fav_after_dog", "Favored after being an underdog",
+          "{team} was an underdog last week and is favored now.", _REG3,
+          (pl.col("my_spread") > 0) & (pl.col("prev_spread") < 0), mined=True),
+    Angle("dog_after_fav", "Underdog after being favored",
+          "{team} was favored last week and is an underdog now.", _REG3,
+          (pl.col("my_spread") < 0) & (pl.col("prev_spread") > 0), mined=True),
+
 )
 
 #: PLAIN ENGLISH FOR EACH, because the label is jargon the first time you meet
@@ -293,6 +342,17 @@ PLAIN: dict[str, str] = {
                    "for.",
     "on_grass": "Played on natural grass rather than turf.",
     "div_fav": "Favoured against a team it plays twice a year.",
+    "road_dog": "An underdog playing away from home \u2014 the most common "
+                "spot there is, and the one furthest from even.",
+    "home_fav": "Favored at home, which is the other side of the same coin.",
+    "revenge": "Already lost to this opponent once this season.",
+    "qb_second": "The new quarterback\u2019s second start, rather than his "
+                 "first.",
+    "new_coach": "A different head coach than the one who finished last "
+                 "season.",
+    "road_after_two_home": "Away after two straight home games.",
+    "fav_after_dog": "Getting points last week, laying them this week.",
+    "dog_after_fav": "Laying points last week, getting them this week.",
 }
 
 
@@ -317,9 +377,13 @@ CATEGORY: dict[str, str] = {
     "big_dog": "The line", "div_dog": "The line", "div_fav": "The line",
     "spread_3": "The line", "spread_7": "The line", "pickem": "The line",
     "dog_3_or_less": "The line", "fav_3_or_less": "The line",
+    "road_dog": "The line", "home_fav": "The line",
+    "fav_after_dog": "The line", "dog_after_fav": "The line",
     # Where they are in the season and who they just saw.
     "third_road": "Spot", "second_road": "Spot", "home_after_road": "Spot",
-    "rematch": "Spot", "qb_change": "Spot",
+    "rematch": "Spot", "qb_change": "Spot", "revenge": "Spot",
+    "qb_second": "Spot", "new_coach": "Spot",
+    "road_after_two_home": "Spot",
     # Everything about the occasion rather than the team.
     "prime": "Setting", "prime_dog": "Setting", "high_total": "Setting",
     "low_total": "Setting", "indoors": "Setting", "thursday": "Setting",
@@ -411,11 +475,37 @@ def team_weeks(schedules: pl.DataFrame) -> pl.DataFrame:
         # there is. The symmetry is the tell: both sides point at the team
         # having already played the game.
     ])
-    return tg.with_columns([
+    tg = tg.with_columns([
         (pl.col("qb") != pl.col("prev_qb")).alias("qb_change"),
-        # Beat the same opponent already this season, or lost to them.
         pl.col("week").alias("_wk"),
     ])
+    # THE SECOND START, which is a different spot from the first. Lagged from
+    # `qb_change` rather than compared to the quarterback two weeks ago, so a
+    # team that changed twice running is not counted as settled.
+    tg = tg.with_columns(
+        pl.col("qb_change").shift(1).over(["season", "team"])
+          .alias("prev_qb_change"))
+    # A NEW HEAD COACH, against whoever finished the previous season. Compared
+    # to last season rather than to last week: a coach fired mid-season shows
+    # up in `coach` immediately, and calling that "new" every week until
+    # January would make the split a measure of how long ago the firing was.
+    last = (tg.group_by(["season", "team"]).agg(pl.col("coach").last())
+              .with_columns((pl.col("season") + 1).alias("season"))
+              .rename({"coach": "_last_coach"}))
+    tg = tg.join(last, on=["season", "team"], how="left")
+    # LOST TO THIS OPPONENT EARLIER THIS SEASON. Divisional sides meet twice
+    # and the second meeting is the one people call a revenge spot. Only
+    # EARLIER weeks count, which is what keeps it backward-looking: joining on
+    # the pair alone would mark the first meeting as revenge for the second.
+    lost = (tg.filter(pl.col("margin") < 0)
+              .select(["season", "team", "opp",
+                       pl.col("week").alias("_lost_wk")])
+              .unique(subset=["season", "team", "opp"], keep="first"))
+    tg = tg.join(lost, on=["season", "team", "opp"], how="left")
+    return tg.with_columns(
+        (pl.col("_lost_wk").is_not_null()
+         & (pl.col("_lost_wk") < pl.col("week"))).fill_null(False)
+        .alias("revenge"))
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -571,6 +661,81 @@ def team_splits(schedules: pl.DataFrame) -> dict:
             (out.setdefault(r["team"], {}).setdefault(a.id, {})
                 [str(r["season"])]) = [int(r["w"]), int(r["n"] - r["w"])]
     return out
+
+
+#: The four cells a team-game falls into: home or away, favored or not.
+#: A pick'em is neither, and there are four of them in eleven seasons.
+CELLS = ("AD", "AF", "HD", "HF")
+
+
+def _cell() -> pl.Expr:
+    side = pl.when(pl.col("at_home")).then(pl.lit("H")).otherwise(pl.lit("A"))
+    role = (pl.when(pl.col("my_spread") > 0).then(pl.lit("F"))
+              .when(pl.col("my_spread") < 0).then(pl.lit("D"))
+              .otherwise(pl.lit("P")))
+    return (side + role).alias("cell")
+
+
+def baseline(schedules: pl.DataFrame) -> dict:
+    """What each split's own composition already predicts, before the angle.
+
+    **SIDE AND ROLE ARE WORTH FOUR POINTS BETWEEN THEM.** Road underdogs cover
+    52.07% and home favorites 47.93%, over 1,763 team-games each. So a split
+    made mostly of favorites looks bad without saying anything, and one made
+    of road dogs looks good for the same non-reason. Measured against a flat
+    50%, "Favored after being an underdog" reads as a five-point fade on 1,108
+    games; measured against what its own mix predicts, it is under two points
+    and inside noise.
+
+    Returns `{"cells": {season: {cell: [w, n]}}, "mix": {angle: {season:
+    [n per cell]}}}`, both per season so the page can recompute the expectation
+    for whatever start year is chosen without another measurement. Four counts
+    an angle-season, which is a few kilobytes.
+
+    Not one of the fifty-five measured angles is two standard errors from its
+    own baseline. Chance alone would put two or three there.
+    """
+    g = (team_weeks(schedules)
+         .filter(pl.col("cover_by").is_not_null() & (pl.col("cover_by") != 0))
+         .with_columns(_cell()))
+    cells: dict = {}
+    for r in (g.group_by(["season", "cell"])
+               .agg([pl.col("covered").sum().alias("w"), pl.len().alias("n")])
+               .iter_rows(named=True)):
+        if r["cell"] in CELLS:
+            cells.setdefault(str(r["season"]), {})[r["cell"]] = [
+                int(r["w"]), int(r["n"])]
+    mix: dict = {}
+    for a in ANGLES:
+        f = g.filter(a.predicate)
+        if f.is_empty():
+            continue
+        by: dict = {}
+        for r in f.group_by(["season", "cell"]).len().iter_rows(named=True):
+            if r["cell"] not in CELLS:
+                continue
+            row = by.setdefault(str(r["season"]), [0, 0, 0, 0])
+            row[CELLS.index(r["cell"])] = int(r["len"])
+        if by:
+            mix[a.id] = by
+    # THE SAME MIX PER TEAM, so the column does not have to vanish when one is
+    # chosen. A club's own games sit in different cells from the league's --
+    # a perennial favorite is mostly HF and would be credited with a fade it
+    # has not earned -- and a baseline that disappears where it is needed is
+    # worse than none. 304 KB, against a payload near five megabytes.
+    team_mix: dict = {}
+    for a in ANGLES:
+        f = g.filter(a.predicate)
+        if f.is_empty():
+            continue
+        for r in (f.group_by(["team", "season", "cell"]).len()
+                   .iter_rows(named=True)):
+            if r["cell"] not in CELLS:
+                continue
+            row = (team_mix.setdefault(r["team"], {}).setdefault(a.id, {})
+                           .setdefault(str(r["season"]), [0, 0, 0, 0]))
+            row[CELLS.index(r["cell"])] = int(r["len"])
+    return {"cells": cells, "mix": mix, "team_mix": team_mix}
 
 
 def qualifying(schedules: pl.DataFrame, season: int) -> dict:

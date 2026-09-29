@@ -2232,6 +2232,7 @@ function v3Angles(c) {
     .map(pair => ({
       team: pair[0], r: by[pair[1]],
       run: v3AngleSince(by[pair[1]], from, be, own ? pair[0] : ''),
+      base: v3AngleBase(by[pair[1]], from, own ? pair[0] : ''),
       season: own ? v3AngleTeamYear(by[pair[1]], pair[0], DATA.season)
                   : by[pair[1]].season,
     }));
@@ -2241,6 +2242,7 @@ function v3Angles(c) {
   const SORTS = {
     season: o => pct(o.season),
     all: o => pct(o.run),
+    base: o => (o.run && o.run.n && o.base) ? o.run.pct - o.base.pct : -9,
     name: o => o.team + ' ' + o.r.label,
   };
   const key = SORTS[V.gaSort] ? V.gaSort : 'season';
@@ -2283,6 +2285,7 @@ function v3Angles(c) {
     + head('name', 'Pattern')
     + head('season', 'Yr ATS')
     + head('all', '\u2019' + String(from).slice(2) + '+ ATS')
+    + head('base', 'Expected')
     + '</div>'
     + (rows.length ? '' : '<p class="help" style="padding:12px 0">'
        + esc(team) + ' carries none of these.</p>')
@@ -2302,6 +2305,7 @@ function v3Angles(c) {
           + '<i>' + v3AngleRec(o.season) + '</i></span>'
           + '<span class="num' + (good ? ' good' : '') + '"><b>'
           + v3AnglePct(a) + '</b><i>' + v3AngleRec(a) + '</i></span>'
+          + v3BaseCell(a, o.base)
           + '</button>'
           + (open ? v3AngleGames(r, games, own ? o.team : '') : '');
       }).join('')
@@ -2313,7 +2317,8 @@ function v3Angles(c) {
     + ' angles measured together, <b style="color:var(--ink)">'
     + (A.rows || []).filter(r => r.all && r.all.lo > be).length
     + '</b> clear it once the interval is taken into account. A season\u2019s '
-    + 'worth of any one of these is a handful of games.</p></div>';
+    + 'worth of any one of these is a handful of games.</p>'
+    + v3BaseNote() + '</div>';
 }
 
 // WHO IS ON THE FIELD, THEN HOW THE UNITS COMPARE.
@@ -3513,6 +3518,78 @@ function v3AngleYears() {
   return { first: first, last: last, from: from };
 }
 
+// WHAT THE SPLIT'S OWN COMPOSITION ALREADY PREDICTS.
+//
+// Side and role are worth four points between them: road underdogs cover
+// 52.07% and home favorites 47.93%, over 1,763 team-games each. So a split
+// made mostly of favorites looks bad without saying anything, and one made of
+// road dogs looks good for the same non-reason. Against a flat 50%, "Favored
+// after being an underdog" reads as a five-point fade on a thousand games;
+// against its own mix it is under two points and inside noise.
+//
+// Recomputed here rather than shipped as one number, because the start year
+// and the team picker both change the population it has to answer for.
+function v3AngleBase(r, from, team) {
+  const B = (DATA.angles || {}).baseline || {};
+  const mix = team ? ((B.team_mix || {})[team] || {})[r.id]
+                   : (B.mix || {})[r.id];
+  if (!mix) return null;
+  const cells = B.cells || {};
+  // The cell rates over the SAME span, so moving the slider moves both the
+  // record and the thing it is being measured against.
+  const w = [0, 0, 0, 0], n = [0, 0, 0, 0];
+  Object.keys(cells).forEach(y => {
+    if (Number(y) < from) return;
+    V3CELLS.forEach((c, i) => {
+      const v = cells[y][c];
+      if (v) { w[i] += v[0]; n[i] += v[1]; }
+    });
+  });
+  let num = 0, den = 0;
+  Object.keys(mix).forEach(y => {
+    if (Number(y) < from) return;
+    V3CELLS.forEach((c, i) => {
+      const k = mix[y][i];
+      if (!k || !n[i]) return;
+      num += (w[i] / n[i]) * k;
+      den += k;
+    });
+  });
+  return den ? { pct: num / den, n: den } : null;
+}
+
+//: Home or away, favored or not, in the order the payload packs them.
+const V3CELLS = ['AD', 'AF', 'HD', 'HF'];
+
+// WHAT "EXPECTED" MEANS, said once and in the same words on both screens.
+function v3BaseNote() {
+  return '<p class="help" style="margin-top:8px"><b style="color:var(--ink)">'
+    + 'Expected</b> is what a split of these particular games covers on side '
+    + 'and role alone, before the pattern is considered. Road underdogs cover '
+    + '52.07% and home favorites 47.93% \u2014 four points apart \u2014 so a '
+    + 'pattern made mostly of favorites looks bad without saying anything. '
+    + 'The small number under it is the difference. Not one pattern here is '
+    + 'far enough from its own expectation to be worth calling a finding.</p>';
+}
+
+// THE EXPECTED RATE, AND HOW FAR THE SPLIT IS FROM IT.
+//
+// The rate leads because it is the thing being compared to the column beside
+// it; the signed gap under it saves the reader doing the subtraction. Read
+// together they answer the only question that matters here: is this split
+// saying anything its own composition does not already say?
+//
+// NOT TINTED. Nothing measured is two standard errors from its baseline, so a
+// color would be pointing at noise -- which is the exact reading the board
+// exists to prevent.
+function v3BaseCell(run, base) {
+  if (!base || !run || !run.n) return '<span class="num"><b>\u2014</b></span>';
+  const d = (run.pct - base.pct) * 100;
+  return '<span class="num"><b>' + (base.pct * 100).toFixed(2) + '%</b>'
+    + '<i>' + (d > 0 ? '+' : '\u2212') + Math.abs(d).toFixed(1) + '</i></span>';
+}
+
+
 //: One team's record in one season, shaped like the league `season` block.
 function v3AngleTeamYear(r, team, year) {
   const by = (((DATA.angles || {}).team_splits || {})[team] || {})[r.id] || {};
@@ -3655,6 +3732,7 @@ function v3AnglesPage() {
   const since = r => v3AngleSince(r, from, be, team);
   const seasonOf = r => team
     ? v3AngleTeamYear(r, team, DATA.season) : r.season;
+  const baseOf = r => v3AngleBase(r, from, team);
 
   const cats = [];
   all.forEach(r => { if (r.cat && cats.indexOf(r.cat) < 0) cats.push(r.cat); });
@@ -3670,12 +3748,15 @@ function v3AnglesPage() {
     || (r.cat || '').toLowerCase().indexOf(q) >= 0;
   const shown = (cat === 'all' ? all : all.filter(r => r.cat === cat))
     .filter(hit)
-    .map(r => ({ r: r, run: since(r) }));
+    .map(r => ({ r: r, run: since(r), base: baseOf(r) }));
 
   const pct = d => (d && d.n) ? d.pct : -1;
   const SORTS = {
     season: o => pct(seasonOf(o.r)),
     all: o => pct(o.run),
+    // THE GAP, which is the column worth sorting by: how far a split is from
+    // what its own composition already predicts.
+    base: o => (o.run && o.run.n && o.base) ? o.run.pct - o.base.pct : -9,
     name: o => o.r.label,
   };
   const key = SORTS[V.angleSort] ? V.angleSort : 'season';
@@ -3739,6 +3820,7 @@ function v3AnglesPage() {
     + head('name', 'Pattern')
     + head('season', 'Yr ATS')
     + head('all', '\u2019' + String(from).slice(2) + '+ ATS')
+    + head('base', 'Expected')
     + '</div>'
     + (rows.length ? '' : '<p class="help" style="padding:12px 0">Nothing '
        + 'matches ' + (q ? '\u201c' + esc(V.angleQ) + '\u201d' : 'that')
@@ -3760,6 +3842,7 @@ function v3AnglesPage() {
           // third column to say what "1250-1180" already says.
           + '<span class="num' + (good ? ' good' : '') + '"><b>'
           + v3AnglePct(a) + '</b><i>' + v3AngleRec(a) + '</i></span>'
+          + v3BaseCell(a, o.base)
           + '</button>'
           + (open ? detail(r) : '');
       }).join('')
@@ -3781,7 +3864,8 @@ function v3AnglesPage() {
     + 'three will look good on luck alone, so even a winner here would not '
     + 'mean much. Nothing is dropped for going cold either: a split that '
     + 'reverted is the most useful row on this page, and a board with the '
-    + 'losers removed is a board of survivors.</p></div>'
+    + 'losers removed is a board of survivors.</p>'
+    + v3BaseNote() + '</div>'
     + '</div>';
 }
 

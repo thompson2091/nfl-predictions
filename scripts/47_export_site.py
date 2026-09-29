@@ -469,6 +469,10 @@ def _angles_block(payload: dict, season: int | None, week: int | None) -> None:
             # The same, per team. A whole-game condition is 50% league-wide
             # by arithmetic and a real record for one team.
             "team_splits": A.team_splits(sched),
+            # What each split's own mix of home/away and favorite/underdog
+            # already predicts, so the board stops crediting an angle with a
+            # fact about favorites.
+            "baseline": A.baseline(sched),
         }
     except Exception as e:                                       # noqa: BLE001
         # Never fatal: the board is the product and this is context on it.
