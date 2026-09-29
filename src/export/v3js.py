@@ -3944,6 +3944,14 @@ function render(fromHistory) {
   if (!fromHistory) v3Push();
   const scroll = el('scroll');
   const y = scroll ? scroll.scrollTop : 0;
+  // WHAT WAS BEING TYPED INTO, so it can be typed into again.
+  //
+  // `innerHTML` destroys the element that has focus. A search box that
+  // re-renders the screen on every keystroke therefore loses the caret after
+  // each character — you type "bye" and get "b", because the second and third
+  // land nowhere. Recorded by the control's own `data-v3*` attribute, which
+  // is the one thing about it that survives the redraw.
+  const typing = v3Typing();
   if (el('appbar')) el('appbar').innerHTML = v3Header();
   app.innerHTML = v3Screen();
   if (el('slipbarHost')) el('slipbarHost').innerHTML = v3Slipbar();
@@ -4040,8 +4048,38 @@ function render(fromHistory) {
       scroll.scrollTop = V.top ? 0 : y;
     }
   }
+  // AFTER THE SCROLL, because focusing an element scrolls it into view and
+  // would otherwise undo the position just restored. `preventScroll` where
+  // the browser has it; the ordering is what makes it right where it does not.
+  v3Refocus(typing);
   V.top = false;
   v3Save();
+}
+
+// The focused control's `data-v3*` attribute and caret, or null.
+function v3Typing() {
+  const d = typeof document === 'undefined' ? null : document;
+  const a = d && d.activeElement;
+  if (!a || !a.attributes || a.selectionStart == null) return null;
+  for (let i = 0; i < a.attributes.length; i++) {
+    const n = a.attributes[i].name;
+    if (n.indexOf('data-v3') === 0) {
+      try {
+        return { attr: n, start: a.selectionStart, end: a.selectionEnd };
+      } catch (e) { return { attr: n, start: null, end: null }; }
+    }
+  }
+  return null;
+}
+
+function v3Refocus(t) {
+  if (!t || typeof document === 'undefined' || !document.querySelector) return;
+  const el = document.querySelector('[' + t.attr + ']');
+  if (!el || !el.focus) return;
+  try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
+  if (t.start != null && el.setSelectionRange) {
+    try { el.setSelectionRange(t.start, t.end); } catch (e) { /* not a text field */ }
+  }
 }
 
 // One delegated listener. Every control is a `data-v3*` attribute, so a
@@ -4122,8 +4160,9 @@ document.addEventListener('input', ev => {
     // never — you type and the board sits there.
     //
     // This one re-renders rather than patching a list in place: the angles
-    // board has no single rows container to swap, and the field is not
-    // replaced because the whole page is rebuilt from the same state.
+    // board has no single rows container to swap. That DOES replace the field
+    // being typed into, which cost the caret on every keystroke until
+    // `render` learned to put the focus back.
     V.angleQ = t.value || '';
     V.angleOpen = null;
     render();

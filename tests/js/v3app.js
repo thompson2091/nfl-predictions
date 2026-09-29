@@ -928,6 +928,39 @@ ok('and explains why half is not enough',
   ok('and clearing it restores the board',
      (L().match(/data-v3angle="/g) || []).length === before);
 }
+// ── Typing in the search box survives the redraw ───────────────────────
+//
+// The board has no single rows container to patch, so a keystroke re-renders
+// the screen — and `innerHTML` destroys the field being typed into. You typed
+// "bye" and got "b", because the second and third characters landed nowhere.
+{
+  V.tab = 'angles'; V.angleQ = ''; render();
+  const box = document.querySelector('[data-v3angleq]');
+  box.setAttribute('data-v3angleq', '');
+  box.value = 'by';
+  box.setSelectionRange(2, 2);
+  box.focus();
+  ok('the field starts focused', document.activeElement === box);
+  fireDoc('input', { target: box });
+  ok('the search box keeps focus while you type',
+     document.activeElement === document.querySelector('[data-v3angleq]'),
+     document.activeElement ? 'some other node' : 'focus was lost');
+  ok('and the caret with it',
+     document.activeElement && document.activeElement.selectionStart === 2,
+     String(document.activeElement && document.activeElement.selectionStart));
+  ok('and the search still ran', V.angleQ === 'by', V.angleQ);
+  // A REDRAW WITH NOTHING FOCUSED MUST NOT GRAB THE FIELD. Tapping a column
+  // header while the box is empty and unfocused would otherwise open the
+  // keyboard on a phone.
+  document.activeElement = null;
+  v3Do('v3anglesort', 'name'); render();
+  ok('but a redraw with nothing focused focuses nothing',
+     document.activeElement === null);
+  v3Do('v3anglesort', 'season');
+  fireDoc('input', { target: {
+    getAttribute: a => a === 'data-v3angleq' ? '' : null, value: '' } });
+}
+
 // TWO DECIMALS, because break-even is 52.38% and whole points cannot show a
 // row sitting either side of it.
 ok('percentages carry two decimals', /\d+\.\d\d%/.test(L()));

@@ -20,6 +20,20 @@ function mkNode(tag) {
     },
     setAttribute(k, v) { n.attrs[k] = v; },
     getAttribute(k) { return k in n.attrs ? n.attrs[k] : null; },
+    // THE FIELD BEING TYPED INTO, and where the caret is in it.
+    //
+    // `innerHTML` destroys the focused element, so a page that re-renders on
+    // every keystroke has to put the focus back. A stub with no caret and no
+    // focus cannot tell a restore from a no-op, which is how the angles
+    // search shipped losing a character at a time.
+    selectionStart: null, selectionEnd: null,
+    setSelectionRange(a, b) { n.selectionStart = a; n.selectionEnd = b; },
+    focus() { globalThis.document.activeElement = n; },
+    // Named attributes, which is how the page recognises the control it was
+    // in: the element does not survive the redraw but its `data-v3*` does.
+    get attributes() {
+      return Object.keys(n.attrs).map(k => ({ name: k, value: n.attrs[k] }));
+    },
     // A scroll pane's position, which the page both reads and writes. A plain
     // number is enough: nothing here lays anything out, so the only question
     // a harness can ask is whether the page put back what it took.
@@ -57,7 +71,14 @@ function mkNode(tag) {
     // Clearing a node's HTML clears its children, which is the whole reason
     // the page does it. A stub that kept them made `#root` accumulate every
     // render on top of the last one.
-    set innerHTML(v) { n._html = v; if (!v) n.children = []; },
+    set innerHTML(v) {
+      n._html = v;
+      if (!v) n.children = [];
+      // A REDRAW DROPS THE FOCUS, which is the browser's behavior and the
+      // whole reason the page records it first: the focused node is removed
+      // from the document and focus falls back to nothing.
+      if (globalThis.document) globalThis.document.activeElement = null;
+    },
   };
   return n;
 }
