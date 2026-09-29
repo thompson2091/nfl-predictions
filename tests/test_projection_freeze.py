@@ -153,3 +153,32 @@ def test_the_archive_is_in_git():
     r = subprocess.run(["git", "check-ignore", "-q", "archive/projections"],
                        cwd=repo)
     assert r.returncode != 0, "the projection archive is gitignored"
+
+
+def test_the_training_window_is_every_prior_season():
+    """Measured on 2026-09-29 and closed: recency loses.
+
+    Walk-forward from 2019 over 1,918 games, paired per game against every
+    prior season unweighted — the two most recent seasons alone were worse by
+    0.266 MAE on margin (t=+2.63) and 0.555 on total (t=+5.33), and every
+    exponential decay from a 1.5-season half-life to a 6-season one was
+    indistinguishable from no decay at all. Monotone in the wrong direction.
+
+    `scripts/63_recency_window.py` is the experiment. Re-run it before
+    narrowing the window or adding weights; this test is here so that
+    narrowing it quietly is not possible.
+    """
+    import inspect
+
+    from src.models import game_model as G
+
+    for fn in (G.walk_forward, G.predict_week):
+        src = inspect.getsource(fn)
+        assert 'pl.col("season") < season' in src, (
+            f"{fn.__name__} no longer trains on every prior season")
+        assert "sample_weight" not in src, (
+            f"{fn.__name__} weights its training rows; the experiment says "
+            "recency does not pay")
+    assert ">= season - 2" not in inspect.getsource(G), (
+        "a two-season window is back; it was measured worse on both margin "
+        "and total")
