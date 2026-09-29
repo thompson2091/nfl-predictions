@@ -2231,7 +2231,8 @@ function v3Angles(c) {
   const mine = (A.week || {})[c.game_id] || [];
   if (!mine.length || !(A.rows || []).length) return '';
   const be = has(A.break_even) ? A.break_even : 0.5238;
-  const from = v3AngleYears().from;
+  const yr = v3AngleYears();
+  const from = yr.from;
   const by = {};
   (A.rows || []).forEach(r => { by[r.id] = r; });
 
@@ -2315,6 +2316,10 @@ function v3Angles(c) {
     + v3Seg('v3gascope', [['league', 'League'], ['team', 'Team']],
             own ? 'team' : 'league')
     + '</div></div>'
+    // THE SAME SLIDER AS THE BOARD, and the same state behind it. The long
+    // run and the expectation beside it both move with it, on the league
+    // reading and the team reading alike.
+    + v3YearSlider(yr.first, yr.last, from)
     + '<div class="card" style="margin-top:10px">'
     + '<div class="arow arow--h">'
     + head('name', 'Pattern')
@@ -3595,6 +3600,22 @@ function v3AngleBase(r, from, team) {
   return den ? { pct: num / den, n: den } : null;
 }
 
+// HOW FAR BACK TO COUNT, on both screens from one definition.
+//
+// Eleven seasons is a lot of football and the game has changed inside it, so
+// a reader who only trusts the last five should be able to ask for the last
+// five rather than take 2015 on faith. The board and a game's own card share
+// `V.angleFrom`: how far back you trust is a view about football, not about
+// which screen you happen to be on, and the column header names the year so
+// the choice is never hidden.
+function v3YearSlider(first, last, from) {
+  if (!(last > first)) return '';
+  return '<div class="yrs"><span class="eyebrow">Since</span>'
+    + '<input type="range" data-v3anglefrom min="' + first + '" max="'
+    + last + '" step="1" value="' + from + '" aria-label="Earliest season">'
+    + '<b class="num" data-v3yrlab>' + from + '</b></div>';
+}
+
 //: Home or away, favored or not, in the order the payload packs them.
 const V3CELLS = ['AD', 'AF', 'HD', 'HF'];
 
@@ -3903,13 +3924,7 @@ function v3AnglesPage() {
         + (c === cat ? ' selected' : '') + '>'
         + (c === 'all' ? 'All kinds' : esc(c)) + '</option>').join('')
     + '</select></div></div>'
-    // HOW FAR BACK TO COUNT. Eleven seasons is a lot of football and the game
-    // has changed inside it, so a reader who only trusts the last five should
-    // be able to ask for the last five rather than take 2015 on faith.
-    + '<div class="yrs"><span class="eyebrow">Since</span>'
-    + '<input type="range" data-v3anglefrom min="' + first + '" max="'
-    + last + '" step="1" value="' + from + '" aria-label="Earliest season">'
-    + '<b class="num">' + from + '</b></div>'
+    + v3YearSlider(first, last, from)
     + '</div>'
     + '<div class="card" style="margin-top:0">'
     + '<div class="arow arow--h">'
@@ -4373,6 +4388,17 @@ document.addEventListener('input', ev => {
     // Held in state but NOT re-rendered: replacing the field being typed
     // into loses focus and the caret.
     V.q2 = t.value;
+    return;
+  }
+  if (t.getAttribute('data-v3anglefrom') != null) {
+    // A RANGE FIRES `input` ALL THE WAY THROUGH A DRAG and `change` on
+    // release. Wired to `change` alone the year sat still until you let go.
+    // Only the LABEL is rewritten here: a full render replaces the slider
+    // being dragged, and a pointer loses the element it was holding.
+    V.angleFrom = Number(t.value) || 0;
+    const labs = document.querySelectorAll
+      ? document.querySelectorAll('[data-v3yrlab]') : [];
+    for (let i = 0; i < labs.length; i++) labs[i].textContent = V.angleFrom;
     return;
   }
   if (t.getAttribute('data-v3gaq') != null) {

@@ -134,7 +134,19 @@ function install() {
     // Same memoisation, same reason: the page addresses `#scroll` and
     // `#tabbar` as places it clears and refills, not as new divs each call.
     getElementById: id => (nodes['#' + id] || (nodes['#' + id] = mkNode('div'))),
-    querySelectorAll: () => [],
+    // Only the attribute form, over every node the page has addressed. Enough
+    // for `[data-v3yrlab]`, which is what a slider drag rewrites in place
+    // rather than re-rendering the control being held.
+    querySelectorAll(sel) {
+      const m = /^\[([a-z0-9-]+)\]$/.exec(sel);
+      if (!m) return [];
+      const out = [];
+      Object.keys(nodes).forEach(k => {
+        const n = nodes[k];
+        if (n && n.attrs && n.attrs[m[1]] != null) out.push(n);
+      });
+      return out;
+    },
     activeElement: null,
   };
   globalThis.window = globalThis;

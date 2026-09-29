@@ -191,6 +191,27 @@ if (cards.length) {
       getAttribute: a => a === 'data-v3gaq' ? '' : null, value: '' } });
     ok('and clearing it restores the card',
        (app().match(/data-v3gangle="/g) || []).length === all);
+    // HOW FAR BACK TO COUNT, on this card as on the board and sharing the
+    // same state: how far back you trust is a view about football, not about
+    // which screen you are on.
+    ok('the card carries the year slider',
+       app().indexOf('data-v3anglefrom') >= 0);
+    // \u2019, NOT AN ASCII APOSTROPHE. The header is built with a
+    // typographic quote and a regex for the straight one matches nothing.
+    const hdr = () => (/\u2019(\d\d)\+ ATS/.exec(app()) || [])[1];
+    const was = hdr();
+    fireDoc('change', { target: {
+      getAttribute: a => a === 'data-v3anglefrom' ? '' : null, value: '2023' } });
+    ok('and moving it moves the long-run column',
+       V.angleFrom === 2023 && hdr() === '23', was + ' -> ' + hdr());
+    // AND THE TEAM READING TOO, which is the other half of the ask.
+    v3Do('v3gascope', 'team'); render();
+    ok('on the team reading as well as the league one',
+       app().indexOf("\u201923+ ATS") >= 0);
+    v3Do('v3gascope', 'league');
+    fireDoc('change', { target: {
+      getAttribute: a => a === 'data-v3anglefrom' ? '' : null, value: '2015' } });
+    render();
     // The same table as the board: sortable by its columns.
     ok('the columns sort it', h.indexOf('data-v3gasort=') >= 0);
     const order = () => (app().match(/data-v3gangle="([^"]+)"/g) || []).join('|');
@@ -1136,6 +1157,36 @@ ok('and explains why half is not enough',
      /already likely to cover about <b[^>]*>60\.00%/.test(L()),
      'no 60.00% in the panel');
   V.angleOpen = null; render();
+}
+
+
+// ── The year slider tracks the drag ────────────────────────────────────
+//
+// A range fires `input` all the way through a drag and `change` on release.
+// Wired to `change` alone the year sat still until you let go. The label is
+// rewritten in place rather than re-rendered, because a full render replaces
+// the slider being dragged and a pointer loses the element it was holding.
+{
+  V.tab = 'angles'; V.angleFrom = 0; render();
+  const lab = document.querySelector('[data-v3yrlab]');
+  lab.setAttribute('data-v3yrlab', '');
+  const drawn = (app().match(/\u2019\d\d\+ ATS/g) || []).length;
+  fireDoc('input', { target: {
+    getAttribute: a => a === 'data-v3anglefrom' ? '' : null, value: '2021' } });
+  ok('dragging updates the year as it moves', V.angleFrom === 2021,
+     String(V.angleFrom));
+  ok('and writes it into the label', lab.textContent === 2021
+     || String(lab.textContent) === '2021', String(lab.textContent));
+  // WITHOUT RE-RENDERING, or the control being dragged is replaced under the
+  // finger holding it.
+  ok('without redrawing the board under the finger',
+     (app().match(/\u2019\d\d\+ ATS/g) || []).length === drawn
+     && app().indexOf("\u201921+ ATS") < 0);
+  // Release commits it.
+  fireDoc('change', { target: {
+    getAttribute: a => a === 'data-v3anglefrom' ? '' : null, value: '2021' } });
+  ok('and letting go redraws it', app().indexOf("\u201921+ ATS") >= 0);
+  V.angleFrom = 0; render();
 }
 
 
