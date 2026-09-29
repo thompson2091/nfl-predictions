@@ -185,6 +185,10 @@ if (cards.length) {
          seg.indexOf('data-v3gateam') >= 0
          && seg.indexOf('data-v3gascope') >= 0
          && seg.indexOf('data-v3anglefrom') >= 0, seg.slice(0, 120));
+      // AND THE KIND, which is what a median of thirteen rows needs and what
+      // replaced the search box: a search wants you to know the word already.
+      ok('and the kind chooser rides in the bar, not under it',
+         seg.indexOf('data-v3gacat') >= 0, seg.slice(0, 200));
       // AND NO SEARCH BOX. Fifty-five rows need one; a median of seventeen,
       // already split three ways by the team control, does not, and the box
       // cost the pinned bar a third of its height.
@@ -265,6 +269,60 @@ if (cards.length) {
          && asLeague.indexOf('>both sides<') >= 0);
       v3Do('v3gascope', 'league'); render();
     }
+    // NARROWING BY KIND, the same control the board carries and the reason
+    // the search box could go. `ATL_GB` holds two kinds across three rows.
+    {
+      const pick = k => fireDoc('change', { target: {
+        getAttribute: a => a === 'data-v3gacat' ? '' : null, value: k } });
+      const h3 = app();
+      ok('a game\u2019s angles can be narrowed by kind',
+         h3.indexOf('data-v3gacat') >= 0);
+      // THE OPTIONS INSIDE THIS SELECT, not every option on the screen --
+      // the week picker and the game picker are options too, and scraping the
+      // page wholesale reads their values as kinds.
+      const from = h3.slice(h3.indexOf('data-v3gacat'));
+      const inSel = from.slice(0, from.indexOf('</select>'));
+      const offered = (inSel.match(/<option value="([^"]+)"/g) || [])
+        .map(m => m.slice('<option value="'.length, -1))
+        .filter(k => k !== 'all');
+      // EVERY KIND OFFERED HAS ROWS BEHIND IT. The payload names six and this
+      // game carries two; offering the other four draws options that filter
+      // the card to nothing.
+      const live = {};
+      (DATA.angles.week[cards[0].game_id] || []).forEach(pr => {
+        const row = DATA.angles.rows.filter(r => r.id === pr[1])[0];
+        if (row && row.cat) live[row.cat] = 1;
+      });
+      ok('and only the kinds it carries are offered',
+         offered.length > 0 && offered.every(k => live[k]),
+         'offered=' + offered.join(',') + ' live=' + Object.keys(live).join(','));
+      // IN THE PAYLOAD'S ORDER, not the order the rows happen to arrive in.
+      // `rows` is sorted by percentage, so a page collecting its own list
+      // reshuffles this dropdown whenever a record moves.
+      const want = DATA.angles.cats.filter(k => live[k]);
+      ok('in the order the payload names them',
+         offered.join('|') === want.join('|'),
+         offered.join('|') + ' vs ' + want.join('|'));
+      const nAll = (h3.match(/data-v3gangle="/g) || []).length;
+      pick(offered[0]);
+      const one = app();
+      const nOne = (one.match(/data-v3gangle="/g) || []).length;
+      ok('picking a kind shows fewer rows than all of them',
+         nOne > 0 && nOne < nAll, 'kind=' + nOne + ' all=' + nAll);
+      ok('with that kind selected',
+         one.indexOf('value="' + offered[0] + '" selected') >= 0);
+      // A FILTER THAT EMPTIES THE LIST KEEPS ITS OWN CONTROLS, which is the
+      // lesson the search box left behind: returning nothing took the control
+      // with it and there was no way back.
+      v3Do('v3gateam', cards[0].home); render();
+      pick('Setting');
+      const none = app();
+      ok('and a kind this game has none of still leaves the bar',
+         none.indexOf('data-v3gacat') >= 0 || none.indexOf('class="pbar"') >= 0);
+      pick('all'); v3Do('v3gateam', 'all'); render();
+      ok('clearing it brings every row back',
+         (app().match(/data-v3gangle="/g) || []).length === nAll);
+    }
   }
 
   // A game that is not on the board must say so rather than throwing.
@@ -314,20 +372,34 @@ ok('a row with no price gets no verdict',
 // button: the delegated listener never matches it, and nothing throws or logs.
 V.tab = 'props'; V.game = null; V.picks = {};
 const seen = new Set();
-[['props', null], ['games', null], ['slip', null], ['ladder', null]]
+// `angles` IS IN THE SWEEP NOW. It was not, so the board's four controls
+// were outside the only test that catches a dead one -- and two of them were
+// added after it.
+[['props', null], ['games', null], ['slip', null], ['ladder', null],
+ ['angles', null]]
   .forEach(([t]) => {
     V.tab = t;
     try { render(); } catch (e) { /* reported above */ }
-    (app().match(/data-(v3[a-z]+)=/g) || []).forEach(
-      m => seen.add(m.slice(5, -1)));
+    // NOT JUST `data-v3x=`. A valueless attribute -- `<select data-v3gacat
+    // aria-label=...>` -- has no `=` after it, so the old pattern skipped
+    // every select and every text field on the page, which is how four angle
+    // controls sat outside this test while it reported all wired.
+    (app().match(/data-(v3[a-z]+)(?=[=\s>])/g) || []).forEach(
+      m => seen.add(m.slice(5)));
   });
 if (cards.length) {
   V.tab = 'games'; V.game = cards[0].game_id;
-  ['notes', 'players', 'bets', 'score'].forEach(gt => {
+  // AND `odds`, which carries the public money, the comparison and the
+  // game's angles: three sections' worth of controls the sweep never saw.
+  ['notes', 'players', 'bets', 'score', 'odds'].forEach(gt => {
     V.gameTab = gt;
     try { render(); } catch (e) { /* reported above */ }
-    (app().match(/data-(v3[a-z]+)=/g) || []).forEach(
-      m => seen.add(m.slice(5, -1)));
+    // NOT JUST `data-v3x=`. A valueless attribute -- `<select data-v3gacat
+    // aria-label=...>` -- has no `=` after it, so the old pattern skipped
+    // every select and every text field on the page, which is how four angle
+    // controls sat outside this test while it reported all wired.
+    (app().match(/data-(v3[a-z]+)(?=[=\s>])/g) || []).forEach(
+      m => seen.add(m.slice(5)));
   });
 }
 // Attributes the `input`/`change` listeners own rather than the click
@@ -336,10 +408,24 @@ if (cards.length) {
 // (`change`), the text fields (`input`), and the ask form (`submit`).
 const handled = new Set(V3CLICKS.concat(
   ['v3week', 'v3gamesel', 'v3sortsel', 'v3gameto', 'v3q', 'v3q2', 'v3l',
-   'v3askform']));
+   'v3askform',
+   // The board's and the game's angle controls: two selects, a search box and
+   // a range, none of them a click.
+   'v3angleq', 'v3angleteam', 'v3anglecat', 'v3anglefrom', 'v3gacat',
+   // NOT A CONTROL AT ALL. `v3yrlab` marks the number the slider's `input`
+   // handler rewrites in place, which is the one thing on the page that must
+   // not trigger a render.
+   'v3yrlab']));
 const dead = [...seen].filter(k => !handled.has(k));
 ok('every control the screens emit is wired', dead.length === 0,
    'emitted and never handled: ' + dead.join(', '));
+// AND THE SWEEP REALLY REACHED THEM. A screen renamed out of the list above
+// takes its controls out of this test without failing it, which is how the
+// board and the odds tab came to be uncovered in the first place.
+ok('and the sweep reaches the angle controls',
+   seen.has('v3anglecat') && seen.has('v3gacat'),
+   [...seen].filter(k => k.indexOf('angle') >= 0 || k.indexOf('ga') === 0)
+     .join(','));
 
 
 // ── The back stack ──────────────────────────────────────────────────────
@@ -1264,9 +1350,32 @@ ok('and explains why half is not enough',
        + ' for ATL');
     V.angleOpen = null;
   }
+  // LEAGUE OR THIS CLUB, WITHOUT LOSING THE CLUB. Choosing one used to be the
+  // only switch, so the way back to the league record was to clear the
+  // selection and find it again in a list of thirty-two.
+  ok('a club chosen, the board offers league or that club',
+     own.indexOf('data-v3anglescope') >= 0);
+  // COMPARED ON THE TABLE, not on the whole screen: the bar differs by the
+  // club still being selected, and that is the point of the control. The
+  // numbers under it have to be the league's, to the character.
+  const table = h => h.slice(h.indexOf('class="arow arow--h"'));
+  v3Do('v3anglescope', 'league');
+  const back = L();
+  ok('and the league reading comes back with the club still picked',
+     V.angleTeam === 'ATL' && table(back) === table(league),
+     'team=' + V.angleTeam);
+  ok('the both-sides tag returns with it',
+     back.indexOf('>both sides<') >= 0);
+  v3Do('v3anglescope', 'team');
+  ok('and the club reading is one tap back',
+     L().indexOf('1-5') >= 0 && table(L()) !== table(league));
   fireDoc('change', { target: {
     getAttribute: a => a === 'data-v3angleteam' ? '' : null, value: '' } });
   ok('and clearing it restores the league board', L() === league);
+  // ABSENT WITH NO CLUB CHOSEN, because the league record is then the only one
+  // there is and a two-way control with one live side teaches the wrong thing.
+  ok('with no club chosen there is nothing to compare, so no control',
+     L().indexOf('data-v3anglescope') < 0);
 }
 
 // TWO DECIMALS, because break-even is 52.38% and whole points cannot show a

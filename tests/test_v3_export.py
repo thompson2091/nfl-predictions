@@ -283,6 +283,12 @@ def payload_v3():
         # The fixture's floor is low so a fixture row can still go green;
         # production uses 300.
         "tint_min": 200,
+        # THE KINDS, IN THE ORDER BOTH FILTERS OFFER THEM, and deliberately
+        # longer than the two the rows below use: the surfaces are supposed to
+        # drop a kind nothing carries rather than draw an option that filters
+        # to an empty screen. Reversed against the rows' own order too, so a
+        # page that quietly sorted them itself would show it.
+        "cats": ["The line", "Form", "Setting", "Spot", "Rest", "Opponent"],
         "rows": [
             {"id": "blowout_loss", "label": "Off a 20+ loss",
              "blurb": "{team} lost by {detail} last week.",
@@ -526,6 +532,21 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "and the chooser rides in the pinned bar, not under it",
                  "it is a handful of groups, not one control per metric",
                  "and is absent on the injury view",
+                 # The angle kinds, on both surfaces. Pinned for the same
+                 # reason as the metric groups: an assertion that stops
+                 # running reports nothing and the file still says passed.
+                 "and the kind chooser rides in the bar, not under it",
+                 "a game\u2019s angles can be narrowed by kind",
+                 "and only the kinds it carries are offered",
+                 "in the order the payload names them",
+                 "picking a kind shows fewer rows than all of them",
+                 "and a kind this game has none of still leaves the bar",
+                 "a club chosen, the board offers league or that club",
+                 "and the league reading comes back with the club still "
+                 "picked",
+                 "with no club chosen there is nothing to compare, so no "
+                 "control",
+                 "and the sweep reaches the angle controls",
                  "the filters share one bar",
                  "before kickoff nothing is graded",
                  "and the call color is gone, because it is no longer a call",

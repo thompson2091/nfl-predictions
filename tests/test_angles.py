@@ -516,3 +516,27 @@ def test_an_opponent_angle_reads_the_opponent_not_the_team(sched):
     assert same.height < tg.height * 0.2, (
         "the opponent's last result matches the team's own too often; the "
         "join is probably reading the same row back")
+
+
+def test_every_angle_has_a_kind_the_filter_offers():
+    """A category is how either surface narrows eighty rows to a screen.
+
+    So an angle that arrives without one is not merely uncategorised, it is
+    unreachable: `measure` files it under "Other", neither filter lists that,
+    and the only way to it is scrolling the whole board — the thing the kinds
+    exist to stop. Same guarantee `test_every_matchup_metric_has_a_group`
+    gives the metrics, and it is here because both filters now depend on it.
+    """
+    ids = [a.id for a in A.ANGLES]
+    missing = [i for i in ids if i not in A.CATEGORY]
+    assert not missing, f"no category for {missing}"
+    stale = [i for i in A.CATEGORY if i not in ids]
+    assert not stale, f"{stale} are categorised but are not angles"
+    # Every kind an angle claims is one the filter actually offers.
+    unknown = sorted({c for c in A.CATEGORY.values()} - set(A.CATEGORIES))
+    assert not unknown, f"{unknown} is used but is not in CATEGORIES"
+    # And no offered kind is empty, which would draw an option that filters
+    # the board to nothing.
+    for cat in A.CATEGORIES:
+        live = [i for i in ids if A.CATEGORY.get(i) == cat]
+        assert live, f"the {cat!r} kind has no angles left in it"

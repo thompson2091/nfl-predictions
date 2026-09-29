@@ -455,6 +455,11 @@ def _angles_block(payload: dict, season: int | None, week: int | None) -> None:
         sched = pl.read_parquet(get_path("raw") / "schedules.parquet")
         payload["angles"] = {
             "break_even": A.BREAK_EVEN,
+            # THE KINDS, IN THE ORDER BOTH FILTERS OFFER THEM. Not collected
+            # on the page: `rows` is sorted by percentage, so a page building
+            # its own list would reshuffle its dropdown whenever a record
+            # moved.
+            "cats": list(A.CATEGORIES),
             # A row is tinted only when it clears AND has enough games to
             # mean it. See `angles.TINT_MIN_GAMES`.
             "tint_min": A.TINT_MIN_GAMES,

@@ -626,10 +626,26 @@ PLAIN: dict[str, str] = {
 }
 
 
+#: THE ORDER THE FILTER OFFERS THEM IN, which is not the order they happen to
+#: appear in. `measure()` sorts its rows by percentage, so a page that
+#: collected categories as it met them would reorder its own dropdown every
+#: time a record moved. Shipped from here instead, the way
+#: `matchup_stats.GROUPS` is the source of truth for metric groups.
+#:
+#: Roughly outside-in: what the line says, then how the team has been playing,
+#: then where and when, then the situation, then rest, then the other team.
+CATEGORIES: tuple[str, ...] = (
+    "The line", "Form", "Setting", "Spot", "Rest", "Opponent",
+)
+
 #: WHAT KIND OF THING EACH ONE IS. Forty-six rows is past the length anyone
 #: reads top to bottom, and the groupings people already think in — how the
 #: team has been playing, how rested it is, what the line says, where it is —
 #: are the ones worth filtering by.
+#:
+#: EVERY ANGLE NEEDS ONE, and a test says so. An angle added without an entry
+#: falls to "Other", which no filter offers, so it stops being findable on
+#: either surface without anything failing.
 CATEGORY: dict[str, str] = {
     # How the team has been playing.
     "blowout_loss": "Form", "bad_loss": "Form", "blowout_win": "Form",

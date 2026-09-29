@@ -150,8 +150,14 @@ const V = Object.assign({
   //: Whose record the two columns show. League-wide by default: it is the
   //: bigger sample, and the median team-and-angle pair is 25 graded games.
   gaScope: 'league',
+  //: Which kind of pattern a game's angles are narrowed to, or all of them.
+  gaCat: 'all',
   //: One club's own games on the board, or every club's.
   angleTeam: '',
+  //: And on the board, whose record the columns show once a club is chosen.
+  //: `team` is what choosing one has always done; `league` is the new half,
+  //: and it keeps the selection so the two readings are two taps apart.
+  angleScope: 'team',
   ask: '', answer: '',
   // The saved picks, and which of them the Picks tab is showing. `saved` was
   // a boolean nothing read; the slip and the saved copy are different things
@@ -2246,8 +2252,25 @@ function v3Angles(c) {
   // seventeen, already split three ways by the team control, does not -- and
   // the box cost the pinned bar a third of its height for a filter nobody
   // reached for.
-  const rows = mine
-    .filter(pair => by[pair[1]] && (team === 'all' || pair[0] === team))
+  const picked = mine
+    .filter(pair => by[pair[1]] && (team === 'all' || pair[0] === team));
+  // THE KINDS THIS GAME CARRIES, in the order the payload names them rather
+  // than the order they turn up in: `rows` is sorted by percentage, so a list
+  // collected here would reshuffle itself whenever a record moved. Narrowed
+  // by the team control first, so every option offered has rows behind it,
+  // and offered at all only where there are two to choose between.
+  const seen = {};
+  picked.forEach(pair => {
+    const k = by[pair[1]].cat;
+    if (k) seen[k] = 1;
+  });
+  const kinds = (A.cats || []).filter(k => seen[k]);
+  // SELF-HEALING, NOT RESET. Walking to a game that carries none of the
+  // chosen kind shows everything for that game and leaves the choice alone,
+  // so walking back restores it.
+  const cat = kinds.indexOf(V.gaCat) >= 0 ? V.gaCat : 'all';
+  const rows = picked
+    .filter(pair => cat === 'all' || by[pair[1]].cat === cat)
     .map(pair => ({
       team: pair[0], r: by[pair[1]],
       run: v3AngleSince(by[pair[1]], from, be, own ? pair[0] : ''),
@@ -2259,7 +2282,7 @@ function v3Angles(c) {
   // Returning nothing here took the search box with it, so a typo emptied the
   // section and there was no way left to clear it. The card is only absent
   // when the GAME carries no patterns, which is checked above.
-  if (!rows.length && team === 'all') return '';
+  if (!rows.length && team === 'all' && cat === 'all') return '';
 
   const pct = d => (d && d.n) ? d.pct : -1;
   const SORTS = {
@@ -2306,7 +2329,19 @@ function v3Angles(c) {
     + '<div class="seg seg--3" style="flex:1">'
     + v3Seg('v3gateam', [['all', 'Both'], [c.away, c.away], [c.home, c.home]],
             team)
-    + '</div>'
+    + '</div></div>'
+    // ROW TWO IS THE SAME ON BOTH SURFACES -- which kind, then whose record,
+    // in that order. The board carries the identical pair, so a reader who
+    // has learned one page has learned the other. Row one is where they
+    // differ, and only because thirty-two teams need a list where two need
+    // three buttons.
+    + '<div class="pbar__row pbar__row--two">'
+    + (kinds.length < 2 ? '' : '<div class="picker mxsel">'
+       + '<select data-v3gacat aria-label="Filter by kind">'
+       + ['all'].concat(kinds).map(k => '<option value="' + esc(k) + '"'
+           + (k === cat ? ' selected' : '') + '>'
+           + (k === 'all' ? 'All kinds' : esc(k)) + '</option>').join('')
+       + '</select></div>')
     // WHOSE RECORD THE TWO COLUMNS ARE. League-wide is the bigger sample and
     // the default; one team's own games is the only reading under which a
     // whole-game condition can say anything, and it is one tap away.
@@ -2326,7 +2361,10 @@ function v3Angles(c) {
     + head('all', '\u2019' + String(from).slice(2) + '+ ATS')
     + '</div>'
     + (rows.length ? '' : '<p class="help" style="padding:12px 0">'
-       + esc(team) + ' carries none of these.</p>')
+       + (cat === 'all' ? esc(team) + ' carries none of these.'
+          : 'Nothing under ' + esc(cat)
+            + (team === 'all' ? '' : ' for ' + esc(team)) + ' on this game.')
+       + '</p>')
     + rows.map(o => {
         const r = o.r, a = o.run;
         // COLOR TRACKS THE LONG RUN ONLY, and only once the interval clears.
@@ -3864,13 +3902,28 @@ function v3AnglesPage() {
   const teams = v3AngleTeams();
   const team = (V.angleTeam && teams.indexOf(V.angleTeam) >= 0)
     ? V.angleTeam : '';
-  const since = r => v3AngleSince(r, from, be, team);
-  const seasonOf = r => team
-    ? v3AngleTeamYear(r, team, DATA.season) : r.season;
-  const baseOf = r => v3AngleBase(r, from, team);
+  // LEAGUE OR THIS CLUB, once one is chosen. Choosing a club used to BE the
+  // switch, and there was no way back to the league record short of clearing
+  // the selection and finding it again in a list of thirty-two. The segment
+  // keeps the selection and swaps the reading instead, so one open row can be
+  // read both ways in two taps. `team` is the default, which is exactly what
+  // choosing a club did before this existed.
+  //
+  // With no club chosen there is nothing to compare against, so the control
+  // is absent rather than present and inert, and `scope` is the league.
+  const scope = (team && V.angleScope !== 'league') ? team : '';
+  const since = r => v3AngleSince(r, from, be, scope);
+  const seasonOf = r => scope
+    ? v3AngleTeamYear(r, scope, DATA.season) : r.season;
+  const baseOf = r => v3AngleBase(r, from, scope);
 
-  const cats = [];
-  all.forEach(r => { if (r.cat && cats.indexOf(r.cat) < 0) cats.push(r.cat); });
+  // THE KINDS, IN THE ORDER THE PAYLOAD NAMES THEM. Collected from the rows
+  // instead -- which is what this did -- the list reordered itself whenever a
+  // record moved, because `rows` arrives sorted by percentage.
+  const seen = {};
+  all.forEach(r => { if (r.cat) seen[r.cat] = 1; });
+  const cats = ((A.cats && A.cats.length) ? A.cats : Object.keys(seen))
+    .filter(c => seen[c]);
   const cat = (V.angleCat && cats.indexOf(V.angleCat) >= 0)
     ? V.angleCat : 'all';
   // MATCHED ON THE NAME, THE DESCRIPTION AND THE KIND. Someone looking for
@@ -3907,7 +3960,7 @@ function v3AnglesPage() {
     + k + '" aria-pressed="' + (key === k) + '">' + label + arrow(k)
     + '</button>';
 
-  const detail = r => v3AngleGames(r, games, team,
+  const detail = r => v3AngleGames(r, games, scope,
     v3BaseLine(since(r), baseOf(r)));
 
   return '<div class="wrap">'
@@ -3917,9 +3970,10 @@ function v3AnglesPage() {
     + 'often that pattern actually beat the point spread. Tap one to see this '
     + 'season\u2019s games.</p>'
     + '<div class="pbar pbar--free">'
-    // Search and kind share a line; the years get their own, because a range
-    // needs the width to be worth dragging. Two rows rather than three keeps
-    // the pinned bar near 76px on a phone.
+    // ROW ONE IS WHO, ROW TWO IS HOW TO SLICE, ROW THREE IS SINCE WHEN --
+    // the same three on a game's angles, so a reader who has learned one page
+    // has learned the other. Only row one differs, and only because
+    // thirty-two teams need a list where a game's two need three buttons.
     + '<div class="pbar__row">'
     + '<div class="search"><input type="search" data-v3angleq '
     + 'placeholder="Search patterns" value="' + esc(V.angleQ || '') + '" '
@@ -3933,13 +3987,22 @@ function v3AnglesPage() {
         .concat(teams.map(t => '<option value="' + esc(t) + '"'
           + (t === team ? ' selected' : '') + '>' + esc(t) + '</option>'))
         .join('')
-    + '</select></div>'
+    + '</select></div></div>'
+    + '<div class="pbar__row pbar__row--two">'
     + '<div class="picker mxsel"><select data-v3anglecat '
     + 'aria-label="Filter by kind">'
     + ['all'].concat(cats).map(c => '<option value="' + esc(c) + '"'
         + (c === cat ? ' selected' : '') + '>'
         + (c === 'all' ? 'All kinds' : esc(c)) + '</option>').join('')
-    + '</select></div></div>'
+    + '</select></div>'
+    // ABSENT UNTIL THERE IS A CLUB TO COMPARE. With none chosen the league
+    // record is the only one there is, and a two-way control with one live
+    // side is a control that teaches the wrong thing.
+    + (team ? '<div class="seg seg--2" style="flex:1">'
+       + v3Seg('v3anglescope', [['league', 'League'], ['team', 'Team']],
+               scope ? 'team' : 'league')
+       + '</div>' : '')
+    + '</div>'
     + v3YearSlider(first, last, from)
     + '</div>'
     + '<div class="card" style="margin-top:0">'
@@ -3959,7 +4022,7 @@ function v3AnglesPage() {
           + '" data-v3angle="' + esc(r.id) + '" aria-expanded="' + open + '">'
           + '<span class="arow__l">' + esc(r.label)
           + (r.mined ? ' <i class="tag tag--warn">added</i>' : '')
-          + (team ? '' : v3WholeTag(r))
+          + (scope ? '' : v3WholeTag(r))
           + v3SurpriseTag(seasonOf(r), a) + '</span>'
           + '<span class="num"><b>' + v3AnglePct(seasonOf(r)) + '</b>'
           + '<i>' + v3AngleRec(seasonOf(r)) + '</i></span>'
@@ -4342,7 +4405,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3stake', 'v3ask', 'v3askdefault', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
                   'v3half', 'v3metric', 'v3boardgame', 'v3anglesort', 'v3angle',
-                  'v3anglegame', 'v3angleclear',
+                  'v3anglegame', 'v3angleclear', 'v3anglescope',
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
                   'v3sortpick'];
 
@@ -4462,6 +4525,11 @@ document.addEventListener('change', ev => {
     // A `<select>` fires `change`, not `click`. Wired only into the click
     // table it drew correctly, highlighted correctly and filtered nothing.
     V.angleCat = t.value; V.angleOpen = null; V.top = 'section'; render();
+  } else if (t.getAttribute('data-v3gacat') != null) {
+    // A `<select>` again, so `change` and not the click table. No `V.top`
+    // here: the game's other angle controls keep the reader where they were,
+    // and this one sits in the same bar.
+    V.gaCat = t.value; V.gaOpen = null; render();
   } else if (t.getAttribute('data-v3sortsel') != null) {
     V.sort = t.value; render();
   } else if (t.getAttribute('data-v3gameto') != null) {
@@ -4537,6 +4605,12 @@ function v3Do(kind, v) {
       else { V.angleSort = v; V.angleDesc = (v !== 'name'); }
       break;
     case 'v3angleclear': V.angleQ = ''; break;
+    // The reading changes under a pinned bar, so the board starts at
+    // the top of what it just rebuilt -- the same as the kind and the
+    // club beside it.
+    case 'v3anglescope':
+      V.angleScope = v; V.angleOpen = null; V.top = 'section';
+      break;
     case 'v3gasort':
       if (V.gaSort === v) V.gaDesc = !V.gaDesc;
       else { V.gaSort = v; V.gaDesc = (v !== 'name'); }

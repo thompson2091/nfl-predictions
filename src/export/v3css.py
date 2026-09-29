@@ -287,6 +287,12 @@ button{cursor:pointer}
 .yrs b{min-width:3.2em;text-align:right;font-size:15px;font-weight:700}
 .pbar .seg button{height:32px;font-size:13px}
 .pbar__row{display:flex;align-items:center;gap:6px}
+/* ROW TWO HAS TWO CONTROLS AND ROOM FOR THEM. The row above is
+   cramped on purpose -- three things on a phone -- so the picker is
+   pinned narrow there. Here it takes the space it is given, and
+   takes all of it when the reading control is absent. */
+.pbar__row--two .picker{flex:1;min-width:0}
+.pbar__row--two .picker select{max-width:none}
 .pbar .search{flex:1;min-width:0;margin-top:0}
 .pbar .search input{height:34px;padding-right:34px}
 .pbar .searchx{top:1px;right:2px}
