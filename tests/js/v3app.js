@@ -647,6 +647,65 @@ if (cards.length) {
   ok('the exact-score card says what the whole list is worth',
      app().indexOf('finish on a score nobody listed') >= 0);
 
+  // ── Where the line falls, which a list of bands cannot show ───────────
+  //
+  // Nine percentages in a column are a distribution already. What they cannot
+  // carry is the one number that decides a spread bet, because it lands INSIDE
+  // a band as often as on a boundary: the fixture is -6.5, which cuts "GB by
+  // 4-7" a quarter of the way in.
+  {
+    const g = app();
+    ok('the bands are drawn as a shape, not only as a list',
+       g.indexOf('class="mstrip"') >= 0);
+    const mm = (cards[0].scores || {}).margins || [];
+    ok('with a column per band',
+       (g.match(/class="mstrip__c/g) || []).length === mm.length,
+       (g.match(/class="mstrip__c/g) || []).length + ' of ' + mm.length);
+    ok('and the line drawn over them',
+       g.indexOf('class="mstrip__l"') >= 0);
+    // THE SPLIT BAND IS NEITHER. Coloring it as covering or as not covering
+    // says the line is somewhere it is not.
+    ok('the band the line cuts is marked as neither side',
+       g.indexOf('mstrip__c--split') >= 0);
+    ok('bands past the line are covering',
+       g.indexOf('mstrip__c--yes') >= 0);
+    ok('and bands short of it are not',
+       g.indexOf('mstrip__c--no') >= 0);
+    // OUR OWN NUMBER TOO, where it differs enough to be worth drawing. The
+    // fixture is -6.5 against our -0.9, which is two bands apart.
+    ok('our own number is drawn where it differs',
+       g.indexOf('mstrip__l--us') >= 0);
+    // AND SAID IN WORDS, because a rule over bars is not self-explanatory to
+    // somebody who does not bet. The fixture's home team is favored by 6.5.
+    ok('and the picture is explained in words',
+       g.indexOf('has to win by 7 or more') >= 0
+       && g.indexOf('beating the spread') >= 0);
+    // A COVER IS NOT ALWAYS A WIN, which is the sentence this got wrong: on a
+    // home team getting points it read "has to win by -2 or more". Three
+    // cases, and the middle one is real -- at +0.5 a tie is enough.
+    const sk = cards[0].spread;
+    cards[0].spread = 2.5; render();
+    ok('a home team getting points covers by losing narrowly',
+       app().indexOf('can lose by up to 2 and still beat it') >= 0);
+    cards[0].spread = 0.5; render();
+    ok('and at half a point it only has to avoid losing',
+       app().indexOf('only has to avoid losing') >= 0);
+    // A WHOLE NUMBER RETURNS THE STAKE, and the two-color picture cannot say
+    // so, because a push is neither side of the line.
+    cards[0].spread = -7; render();
+    ok('a whole-number line says where the push is',
+       app().indexOf('7-point win is a push') >= 0);
+    cards[0].spread = sk; render();
+    // THE STRIP IS NOT DRAWN WITHOUT A LINE TO DRAW. A margin set with no
+    // bounds gives the rule nowhere to go, and a rule at the far left is a
+    // confident lie about where the line is.
+    const keep = cards[0].spread;
+    cards[0].spread = null; render();
+    ok('and no strip at all when there is no line to place',
+       app().indexOf('class="mstrip"') < 0);
+    cards[0].spread = keep; render();
+  }
+
   // The per-book listing printed eleven spreads a game, each with a fair
   // chance of 50% — because a spread IS a coin flip, so the column that
   // looked like information was the one quantity that cannot vary.
@@ -744,6 +803,35 @@ if (cards.length) {
        u.cells.every(cl => h.indexOf(cl.label) >= 0));
     ok('each with its percentage',
        u.cells.every(cl => h.indexOf(cl.pct.toFixed(0) + '%') >= 0));
+    // A GRID, NOT A RANKING. The nine scenarios are one question crossed with
+    // another, and drawn as a column of bars they read as nine unrelated
+    // things in order of size.
+    ok('the scenarios are drawn as a grid', h.indexOf('class="ugrid"') >= 0);
+    ok('with the two scoring questions as its columns',
+       h.indexOf('>Low</span>') >= 0 && h.indexOf('>High</span>') >= 0);
+    // ROWS COME FROM THE PAYLOAD'S ORDER, which runs from the underdog
+    // winning to the favorite pulling away. Collected from the cells instead
+    // they would arrive sorted by size, which is not an axis.
+    const rowsIn = (u.bands || []).filter(b => (u.cells || []).some(
+      cl => cl.band === b.key));
+    ok('one row per band that has cells', rowsIn.every(
+       b => h.indexOf('>' + b.short + '</span>') >= 0),
+       rowsIn.map(b => b.short).join(','));
+    // AND NO ROW FOR A BAND NOTHING REACHED. Two zeroes read as a missing
+    // number rather than as a result that did not happen.
+    const empty = (u.bands || []).filter(b => !(u.cells || []).some(
+      cl => cl.band === b.key));
+    ok('and no row for a band nothing reached', empty.every(
+       b => h.indexOf('>' + b.short + '</span>') < 0),
+       empty.map(b => b.short).join(','));
+    // THE MARGINS ARE THE POINT OF A GRID: a row total is how it ends
+    // whatever the scoring, a column total is over against under whatever the
+    // result, and the whole thing still adds to 100.
+    ok('with row and column totals, which a list cannot have',
+       (h.match(/class="ugrid__t"/g) || []).length >= rowsIn.length + 3,
+       String((h.match(/class="ugrid__t"/g) || []).length));
+    ok('and it still says the whole thing adds to 100',
+       h.indexOf('adds to 100') >= 0);
   }
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }

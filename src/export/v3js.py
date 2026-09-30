@@ -1872,6 +1872,62 @@ function v3GameNotes(gid, cats, shown) {
 // 50%, shootout 31%, upset 28%" — read as a ranking and cannot be one,
 // because they add to more than everything that can happen and nothing on
 // screen says which of them overlap. This column adds up.
+function v3UnfoldGrid(u) {
+  const cells = u.cells || [];
+  const by = {};
+  let most = 0;
+  cells.forEach(x => {
+    by[x.band + '|' + x.side] = x;
+    if (x.pct > most) most = x.pct;
+  });
+  // A band with no cells at all is left out rather than drawn empty: it is a
+  // result that did not happen once in the comparable games, and a row of two
+  // zeroes reads as a missing number.
+  const rows = (u.bands || []).filter(
+    b => by[b.key + '|over'] || by[b.key + '|under']);
+  if (rows.length < 2) return '';
+  const pct = x => (x ? x.pct : 0);
+  const cell = x => {
+    const v = pct(x);
+    // Shaded by size, so the grid has a shape as well as numbers. The floor
+    // keeps a 1% cell legible rather than invisible.
+    const a = most > 0 ? Math.max(0.06, v / most * 0.45) : 0;
+    // AN OVERLAY RATHER THAN A MIXED COLOR. A tint needs the accent at a
+    // fraction, and neither `rgba()` on a hex custom property nor
+    // `color-mix()` can be relied on here, so the accent is a layer at an
+    // opacity and the number sits above it.
+    return '<span class="ugrid__c' + (v ? '' : ' ugrid__c--0') + '"'
+      + (x ? ' title="' + esc(x.label) + ' \u2014 ' + v.toFixed(1)
+             + '%" aria-label="' + esc(x.label) + ', ' + v.toFixed(1) + '%"'
+           : ' aria-label="did not happen once"')
+      + '><i style="opacity:' + a.toFixed(2) + '"></i><b>'
+      + (v ? v.toFixed(0) + '%' : '\u2013') + '</b></span>';
+  };
+  let cu = 0, co = 0;
+  rows.forEach(b => {
+    cu += pct(by[b.key + '|under']);
+    co += pct(by[b.key + '|over']);
+  });
+  return '<div class="ugrid">'
+    + '<span></span><span class="ugrid__h">Low</span>'
+    + '<span class="ugrid__h">High</span><span class="ugrid__h">All</span>'
+    + rows.map(b => {
+        const un = by[b.key + '|under'], ov = by[b.key + '|over'];
+        return '<span class="ugrid__r" title="' + esc(b.short) + '">'
+          + esc(b.short) + '</span>' + cell(un) + cell(ov)
+          + '<span class="ugrid__t">' + (pct(un) + pct(ov)).toFixed(0)
+          + '%</span>';
+      }).join('')
+    + '<span class="ugrid__r" style="color:var(--mut)">All</span>'
+    + '<span class="ugrid__t" style="text-align:center">' + cu.toFixed(0)
+    + '%</span><span class="ugrid__t" style="text-align:center">'
+    + co.toFixed(0) + '%</span><span class="ugrid__t">'
+    + (cu + co).toFixed(0) + '%</span>'
+    + '<span class="ugrid__f"><span>Rows: how it ends.</span>'
+    + '<span>Columns: scoring against the total.</span></span>'
+    + '</div>';
+}
+
 function v3Unfold() {
   const c = (v3GameSet().cards || []).filter(
     x => x.game_id === V.game)[0];
@@ -1889,15 +1945,22 @@ function v3Unfold() {
     + chip(h.one_score.pct.toFixed(0) + '%', 'within one score')
     + chip(h.upset.pct.toFixed(0) + '%', u.dog + ' wins')
     + chip(h.shootout.pct.toFixed(0) + '%', 'high scoring')
-    + '</div><div style="margin-top:12px">'
-    + u.cells.filter(x => x.pct >= 1).map(x =>
-        '<div class="mrow"><span class="mrow__l">' + esc(x.label) + '</span>'
-        + '<div class="mbar"><i style="width:' + Math.min(100, Math.max(2, x.pct * 4))
-        + '%"></i></div>'
-        + '<span class="mrow__v num">' + x.pct.toFixed(0) + '%</span></div>')
-      .join('')
-    + '</div><p class="help" style="margin-top:8px">These are every way the '
-    + 'game can go, so the column adds to 100.</p></div>';
+    + '</div>'
+    // A GRID, BECAUSE THE PARTITION IS TWO QUESTIONS AND WAS DRAWN AS ONE.
+    //
+    // Nine bars in a column read as a ranking of nine unrelated scenarios.
+    // They are not: they are how the game ends crossed with how much scoring
+    // there is, and every cell is one answer to each. The grid says that once
+    // in its headers where a list spelled it out nine times, and it makes the
+    // margins visible -- a row total is "how it ends" whatever the scoring, a
+    // column total is over against under whatever the result.
+    //
+    // ROW ORDER COMES FROM THE PAYLOAD, not from here. See
+    // `score_dist.unfold`: a band added there would otherwise land wherever
+    // this guessed, or nowhere.
+    + v3UnfoldGrid(u)
+    + '<p class="help" style="margin-top:8px">These are every way the '
+    + 'game can go, so the whole grid adds to 100.</p></div>';
 }
 
 function v3Note(n) {
@@ -2443,6 +2506,102 @@ function v3ThinNote(c) {
     + 'them as a lean rather than a price.</span></div>';
 }
 
+// WHERE THE LINE FALLS, which nine bars in a column cannot show.
+//
+// The list under this one carries every band's percentage and its interval.
+// What a list cannot carry is the one number that decides a spread bet -- the
+// margin the favorite has to beat -- because that lands INSIDE a band about as
+// often as on a boundary: a 6.5 line cuts "by 4-7" a quarter of the way in.
+// So the rule is drawn over the bars, not between them.
+//
+// COLORED BY WHICH SIDE OF THE LINE A BAND IS ON, not by which team. The list
+// already colors by team, and it is not the question a line answers.
+function v3MarginStrip(d, spread, model, mg) {
+  const bands = (d.margins || []).filter(m => m.n);
+  if (bands.length < 3 || !has(spread)) return '';
+  let max = 0;
+  bands.forEach(m => { if (m.pct > max) max = m.pct; });
+  if (!(max > 0)) return '';
+  // `spread` is the HOME number, so a favored home team carries a negative
+  // one and has to win by more than this to cover.
+  const t = -spread;
+  // AN OPEN-ENDED BAND NEEDS A NOMINAL FAR EDGE, and only so a rule can be
+  // placed inside it: a 17-point line falls in "by 15+", which has no upper
+  // bound. Fourteen further points is the width of every closed band but the
+  // tie and the three-pointer.
+  const lo = m => (m.mlo == null ? m.mhi - 14 : m.mlo);
+  const hi = m => (m.mhi == null ? m.mlo + 14 : m.mhi);
+  const state = m => {
+    if (m.mlo != null && m.mlo > t) return 'yes';
+    if (m.mhi != null && m.mhi <= t) return 'no';
+    return 'split';
+  };
+  // THE MARGIN FALLS LEFT TO RIGHT, which is the order the list is already in:
+  // the home team's biggest wins first, the away team's last. So a threshold
+  // sits this far from the left edge of the band that holds it.
+  const at = x => {
+    for (let i = 0; i < bands.length; i++) {
+      const a = lo(bands[i]), b = hi(bands[i]);
+      if (x >= a - 0.5 && x <= b + 0.5) {
+        const f = Math.max(0, Math.min(1, (b - x + 0.5) / (b - a + 1)));
+        return (i + f) / bands.length * 100;
+      }
+    }
+    return x > hi(bands[0]) ? 0 : 100;
+  };
+  const rule = (x, cls, lab) => '<span class="mstrip__l' + cls + '" style="'
+    + 'left:' + at(x).toFixed(2) + '%"><b>' + esc(lab) + '</b></span>';
+  const hit = m => (mg != null && (m.mlo != null || m.mhi != null)
+    && (m.mlo == null || mg >= m.mlo) && (m.mhi == null || mg <= m.mhi));
+  const short = m => (m.mlo === 0 && m.mhi === 0) ? 'T'
+    : String(m.band).replace(/^.* by /, '');
+  // THE SMALLEST MARGIN THAT BEATS THE LINE, and it is not always a win.
+  // Written as "has to win by -2 or more" the first time, on a home team
+  // getting 2.5 points, which is a team that covers by LOSING narrowly. Three
+  // cases, and the middle one is real: at +0.5 a tie is enough.
+  const need = Math.floor(t) + 1;
+  const what = need > 0 ? 'has to win by ' + need + ' or more'
+    : need === 0 ? 'only has to avoid losing'
+    : 'can lose by up to ' + (-need) + ' and still beat it';
+  // AND THE PUSH, on a whole-number line, because the stake comes back and
+  // neither side of the picture is right about it.
+  const push = (t % 1 !== 0) ? ''
+    : (t === 0 ? ' A tie is a push.'
+       : ' A ' + Math.abs(t) + '-point ' + (t > 0 ? 'win' : 'loss')
+         + ' is a push.');
+  // OUR OWN RULE ONLY WHERE IT WOULD BE LEGIBLE. Measured in the picture, not
+  // in points: this game is -2.5 against our -3.1, six tenths of a point
+  // apart and 2% of the width apart, so two rules and two labels would land
+  // on top of each other and read as one.
+  const gap = has(model) ? Math.abs(at(t) - at(-model)) : 0;
+  return '<div class="mstrip">'
+    + bands.map(m => '<span class="mstrip__c mstrip__c--'
+        + (hit(m) ? 'hit' : state(m)) + '" title="' + esc(m.band) + ' \u2014 '
+        + m.pct.toFixed(1) + '%"><i style="height:'
+        + (m.pct / max * 100).toFixed(1) + '%"></i></span>').join('')
+    + rule(t, '', 'line')
+    + (gap >= 5 ? rule(-model, ' mstrip__l--us', 'ours') : '')
+    + '</div>'
+    + '<div class="mstrip__ax">'
+    + bands.map(m => '<span>' + esc(short(m)) + '</span>').join('')
+    + '</div>'
+    + '<div class="mstrip__ends"><span>' + esc(d.home) + ' wins by more</span>'
+    + '<span>' + esc(d.away) + ' wins by more</span></div>'
+    + '<div class="mkey"><span><i style="background:var(--ours)"></i>'
+    + esc(d.home) + ' covers</span>'
+    + '<span><i style="background:var(--mut3)"></i>' + esc(d.home)
+    + ' does not</span>'
+    + (mg != null ? '<span><i style="background:var(--good)"></i>where this '
+       + 'one finished</span>' : '') + '</div>'
+    + '<p class="help" style="margin-top:8px">Each bar is how often games '
+    + 'priced like this one finished that way. The solid line is the '
+    + 'bookmaker\u2019s number: ' + esc(d.home) + ' ' + what
+    + ', so bars to the left of the line are ' + esc(d.home)
+    + ' beating the spread and bars to the right are not.' + push
+    + (gap >= 5 ? ' The dashed line is where our own number would put it.'
+       : '') + '</p>';
+}
+
 function v3GameScores(c) {
   const d = c && c.scores;
   if (!d || !d.n) {
@@ -2619,7 +2778,9 @@ function v3GameScores(c) {
     + Math.abs(d.mean_margin) + '.</p></div>'
     + '<h2 class="h1" style="font-size:19px;line-height:24px;margin-top:20px">'
     + 'How it finished</h2>'
-    + '<div class="card">' + margins + '</div>'
+    + '<div class="card">'
+    + v3MarginStrip(d, c.spread, c.model_spread, played ? fh - fa : null)
+    + margins + '</div>'
     + '<h2 class="h1" style="font-size:19px;line-height:24px;margin-top:20px">'
     + 'Likeliest exact scores</h2>'
     + '<div class="card">'

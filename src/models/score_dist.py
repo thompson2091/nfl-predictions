@@ -527,6 +527,22 @@ def scenarios(spread: float, total: float, home: str, away: str,
                 "lo": round(lo * 100, 1), "hi": round(hi * 100, 1)})
     cells.sort(key=lambda x: -x["n"])
     out["cells"] = cells
+    # THE ORDER A READER SCANS, AND A NAME SHORT ENOUGH FOR A GRID ROW.
+    #
+    # `bands` above is ordered by margin because that is how the predicates
+    # read; `cells` is ordered by size because that is how a ranked list
+    # reads. Neither is how a two-dimensional picture reads, which runs from
+    # the underdog winning at one end to the favorite pulling away at the
+    # other with level in the middle. Shipped rather than hardcoded on the
+    # page: a band added here would otherwise land in whatever position the
+    # page happened to guess, or in none.
+    out["bands"] = [
+        {"key": "upset", "short": f"{dog} wins"},
+        {"key": "tie", "short": "Level"},
+        {"key": "narrow", "short": f"{fav} by 1-7"},
+        {"key": "comfortable", "short": f"{fav} by 8-14"},
+        {"key": "pulls away", "short": f"{fav} by 15+"},
+    ]
 
     # The headline numbers a reader wants without reading a table. These DO
     # overlap each other and are labeled separately for that reason.

@@ -286,6 +286,61 @@ button{cursor:pointer}
 .yrs input[type=range]{flex:1;min-width:0;accent-color:var(--ours);height:28px}
 .yrs b{min-width:3.2em;text-align:right;font-size:15px;font-weight:700}
 .pbar .seg button{height:32px;font-size:13px}
+/* ---- the margin strip: nine bands as a shape you can take in at once ----
+   The list below it carries the numbers and the intervals. This carries where
+   the line falls, which the list cannot show: a bar chart of nine bands says
+   nothing about the one number that decides every spread bet. */
+.mstrip{position:relative;display:flex;align-items:flex-end;gap:2px;height:96px;
+  margin-top:12px;padding:0 2px}
+.mstrip__c{position:relative;flex:1;min-width:0;display:flex;
+  align-items:flex-end;height:100%}
+.mstrip__c i{display:block;width:100%;border-radius:4px 4px 0 0;
+  background:var(--mut3);min-height:2px}
+/* COVERING AND NOT, not home and away: the list already colors by team, and
+   the question this picture answers is which side of the line a band is on. */
+.mstrip__c--yes i{background:var(--ours)}
+.mstrip__c--split i{background:linear-gradient(to right,var(--ours) 50%,
+  var(--mut3) 50%)}
+.mstrip__c--hit i{background:var(--good)}
+.mstrip__ax{display:flex;gap:2px;margin-top:4px;padding:0 2px}
+.mstrip__ax span{flex:1;min-width:0;text-align:center;font-size:10px;
+  color:var(--mut);font-variant-numeric:tabular-nums}
+.mstrip__ends{display:flex;justify-content:space-between;margin-top:2px;
+  font-size:11px;font-weight:600;color:var(--mut)}
+/* The line itself, and our own number as a dashed one. Drawn over the bars
+   rather than between them, because it lands inside a band as often as not. */
+.mstrip__l{position:absolute;top:-2px;bottom:0;width:0;
+  border-left:2px solid var(--ink);z-index:2}
+.mstrip__l--us{border-left:2px dashed var(--ours)}
+.mstrip__l b{position:absolute;top:-16px;left:50%;transform:translateX(-50%);
+  font-size:10px;font-weight:700;white-space:nowrap;color:inherit}
+.mkey{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;
+  color:var(--mut)}
+.mkey i{display:inline-block;width:10px;height:10px;border-radius:2px;
+  margin-right:4px;vertical-align:-1px}
+
+/* ---- the unfold grid: a partition drawn as the two questions it is ----
+   Bars in one column made a ranking of nine scenarios. The scenarios are one
+   question crossed with another -- how it ends, and how much scoring -- and a
+   grid says that where a list has to spell it out nine times. */
+.ugrid{display:grid;grid-template-columns:minmax(0,1fr) 54px 54px 46px;
+  gap:4px;margin-top:12px;align-items:center}
+.ugrid__h{font-size:11px;font-weight:700;color:var(--mut);text-align:center;
+  text-transform:uppercase;letter-spacing:.04em}
+.ugrid__r{font-size:13px;font-weight:600;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.ugrid__c{position:relative;overflow:hidden;height:38px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;font-size:14px;
+  font-weight:700;font-variant-numeric:tabular-nums;background:var(--inset);
+  color:var(--ink)}
+.ugrid__c i{position:absolute;top:0;right:0;bottom:0;left:0;
+  background:var(--ours)}
+.ugrid__c b{position:relative;font-weight:700}
+.ugrid__c--0{color:var(--mut3)}
+.ugrid__t{font-size:13px;font-weight:700;text-align:right;color:var(--mut);
+  font-variant-numeric:tabular-nums}
+.ugrid__f{grid-column:1/5;display:flex;justify-content:space-between;
+  font-size:12px;color:var(--mut);margin-top:2px}
 .pbar__row{display:flex;align-items:center;gap:6px}
 /* ROW TWO HAS TWO CONTROLS AND ROOM FOR THEM. The row above is
    cramped on purpose -- three things on a phone -- so the picker is
