@@ -438,6 +438,68 @@ def _flag_role_doubt(payload: dict, market: str) -> None:
                 r["role_doubt"] = True
 
 
+#: How many past weeks ride in the page. The rest is fetched when a reader
+#: asks for it: all of it inline is about 1.6 MB, which is a third again on a
+#: page that already loads 4.6.
+HISTORY_INLINE = 10
+
+
+def _player_names(obj, out: set) -> None:
+    """Every player the board can print, wherever in the payload they sit.
+
+    Walked rather than enumerated: the props live under `markets`, the yards
+    boards under `yards`, and more will arrive. A market added next season
+    would otherwise ship its players no history and nothing would say so.
+    """
+    if isinstance(obj, dict):
+        v = obj.get("player")
+        if isinstance(v, str):
+            out.add(v)
+        for x in obj.values():
+            _player_names(x, out)
+    elif isinstance(obj, list):
+        for x in obj:
+            _player_names(x, out)
+
+
+def _history_block(payload: dict) -> None:
+    """What each player's line has done before.
+
+    NOT A PATTERN BOARD, and `player_history` says at length why not. This is
+    three facts a week -- the line, what he did, the date -- with no rate
+    against a price and nothing colored to mean good.
+
+    TWO COPIES, because all of it is too much to inline and none of it is a
+    worse first impression than a spinner. The last ten weeks ride in the
+    page; the whole record is written per market and fetched when a reader
+    opens it.
+    """
+    try:
+        from src.evaluation import player_history as PH
+
+        names: set = set()
+        _player_names(payload, names)
+        if not names:
+            return
+        full = PH.for_board(sorted(names), last=None)
+        if not full:
+            return
+        # NOT "history". That key is the props board's own week index, which
+        # `pwa._split_history` lifts into the week files, and writing over it
+        # would empty the week picker without a word.
+        payload["pastlines"] = {
+            "markets": PH.market_meta(),
+            "inline": HISTORY_INLINE,
+            "players": {n: {m: r[:HISTORY_INLINE] for m, r in d.items()}
+                        for n, d in full.items()},
+        }
+        # Carried out of the payload by `52_export_v3`, which writes it to the
+        # data folder. It must never reach the page: that is the 1.6 MB.
+        payload["_pastlines_full"] = full
+    except Exception as e:  # noqa: BLE001
+        print(f"  history skipped: {e}", file=sys.stderr)
+
+
 def _angles_block(payload: dict, season: int | None, week: int | None) -> None:
     """Every ATS angle's record, and which of them each team carries.
 
@@ -1876,6 +1938,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     # And after that, because a row showing only an opening line is a line
     # like any other and belongs in the count.
     _angles_block(payload, s, w)
+    _history_block(payload)
     _mark_consensus_lines(payload)
     payload["brand"] = brand
     payload["season"] = s

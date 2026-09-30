@@ -75,8 +75,24 @@ def main() -> int:
     from src.export.askctx import build as ask_briefs
     briefs = ask_briefs(payload)
 
+    # OUT OF THE PAYLOAD BEFORE IT IS RENDERED. The whole record is about
+    # 1.6 MB and the page already loads 4.6; it is written per market and
+    # fetched when a reader opens a player, the same way a past week is.
+    full = payload.pop("_pastlines_full", None) or {}
+
     from src.export.v3 import render
     files = render(payload)
+    if full:
+        per: dict = {}
+        for name, markets in full.items():
+            for mkt, rows in markets.items():
+                per.setdefault(mkt, {})[name] = rows
+        for mkt, rows in per.items():
+            files[f"data/hist-{mkt}.json"] = json.dumps(
+                rows, separators=(",", ":"), allow_nan=False)
+        print(f"  {len(per)} history files "
+              f"({sum(len(files['data/hist-' + m + '.json']) for m in per) / 1024:,.0f} KB)",
+              file=sys.stderr)
     for gid, brief in briefs.items():
         files[f"data/ask/{gid}.json"] = json.dumps(brief, separators=(",", ":"),
                                                    allow_nan=False)
@@ -93,6 +109,7 @@ def main() -> int:
     if data_dir.exists():
         keep = {out / n for n in files}
         for old in list(data_dir.glob("h-*.json")) \
+                + list(data_dir.glob("hist-*.json")) \
                 + list((data_dir / "ask").glob("*.json")):
             if old not in keep:
                 old.unlink()
