@@ -45,10 +45,10 @@ ARCHIVE = "data/archive/odds_history.parquet"
 
 
 def _norm(c: pl.Expr) -> pl.Expr:
-    """The project's normalisation, plus the two things books do to a name.
+    """The project's normalization, plus the two things books do to a name.
 
     THE BASE RULES MUST MATCH `odds_history._norm_expr` and a test asserts they
-    do: two normalisations differing by one punctuation rule fail on a handful
+    do: two normalizations differing by one punctuation rule fail on a handful
     of players and look exactly like a thin archive rather than a bug.
 
     THE TWO ADDITIONS ARE BOTH REAL AND BOTH WERE COSTING REAL PLAYERS.
@@ -83,14 +83,27 @@ def _ids() -> pl.DataFrame:
     """
     r = pl.read_parquet(get_path("raw") / "rosters.parquet")
     col = "player_name" if "player_name" in r.columns else "full_name"
+    # A BLANK ID IS NOT A SECOND PERSON. The roster carries unsigned and
+    # practice-squad rows with `player_id` empty rather than null, and counting
+    # those as another man made 152 names look shared when almost none were --
+    # Quinshon Judkins has one real id and one blank row listed at DL.
     base = (r.select(["season", col, "player_id"]).drop_nulls()
+            .filter(pl.col("player_id").str.strip_chars() != "")
             .with_columns(_norm(pl.col(col)).alias("nm")))
     by_season = base.unique(subset=["season", "nm"], keep="first").select(
         ["season", "nm", "player_id"])
-    once = (base.group_by("nm").agg(pl.col("player_id").n_unique().alias("k"),
-                                    pl.col("player_id").first().alias("any_id"))
-            .filter(pl.col("k") == 1).select(["nm", "any_id"]))
-    return by_season, once
+    counted = base.group_by("nm").agg(
+        pl.col("player_id").n_unique().alias("k"),
+        pl.col("player_id").first().alias("any_id"))
+    once = counted.filter(pl.col("k") == 1).select(["nm", "any_id"])
+    # TWO MEN, ONE NAME, AND THE BOARD PRINTS THE NAME. There are two Michael
+    # Carters, a back and a corner; the per-season lookup hands whichever it
+    # meets first to both, so one man's chart carried the other's weeks -- five
+    # weeks with two games in them, which is not a thing that happens. Neither
+    # the page nor a reader can tell them apart, so the honest answer is to
+    # show neither rather than to pick one and be wrong half the time.
+    both = counted.filter(pl.col("k") > 1).select("nm")
+    return by_season, once, both
 
 
 def _closing() -> pl.DataFrame:
@@ -108,7 +121,7 @@ def _closing() -> pl.DataFrame:
         if close.height:
             h = close
     h = drop_in_play(h)
-    # NORMALISE BEFORE DEDUPING, or the dedupe does not dedupe. Keying on the
+    # NORMALIZE BEFORE DEDUPING, or the dedupe does not dedupe. Keying on the
     # book's own spelling left Joe Burrow twice in one week because one book
     # writes "Joe Burrow" and another "Joe Burrow (CIN)", and the id has the
     # same problem: this season's rows arrive as `CIN_PIT` where every other
@@ -135,8 +148,9 @@ def _closing() -> pl.DataFrame:
          .unique(subset=["season", "week", "game_id", "nm", "market"],
                  keep="first")
          .drop("_mid"))
-    by_season, once = _ids()
-    return (h.join(by_season, on=["season", "nm"], how="left")
+    by_season, once, both = _ids()
+    return (h.join(both, on="nm", how="anti")
+            .join(by_season, on=["season", "nm"], how="left")
             .join(once, on="nm", how="left")
             .with_columns(pl.coalesce([pl.col("player_id"),
                                        pl.col("any_id")]).alias("pid"))
@@ -241,6 +255,15 @@ def history(last: int | None = None, players: list[str] | None = None) -> dict:
                              opp.alias("opp")])
              .filter(pl.col("did").is_not_null())
              .sort(["season", "week"], descending=True))
+        # ONE MAN PLAYS ONE GAME A WEEK. Six players are left quoted in two
+        # fixtures in the same week -- a name the roster does not record as
+        # shared, resolving to one id for two people -- and there is no way to
+        # say which game was his. The week goes; the rest of his record stays.
+        dup = (j.group_by(["nm", "season", "week"])
+               .agg(pl.col("game_id").n_unique().alias("g"))
+               .filter(pl.col("g") > 1).drop("g"))
+        if dup.height:
+            j = j.join(dup, on=["nm", "season", "week"], how="anti")
         if last is not None:
             j = j.group_by("nm", maintain_order=True).head(last)
         rows: dict = {}
@@ -299,7 +322,7 @@ def match_rate() -> dict:
 
 
 def for_board(names, last: int | None = 10) -> dict:
-    """History keyed by the NAME THE BOARD PRINTS, not by a normalised one.
+    """History keyed by the NAME THE BOARD PRINTS, not by a normalized one.
 
     The page looks a player up with `row.player`, exactly as it looks up an
     injury. Normalising on the page would mean the same rules written twice --
@@ -307,7 +330,7 @@ def for_board(names, last: int | None = 10) -> dict:
     does -- and a rule that drifted would empty the section for a handful of
     players and look like a thin archive.
 
-    So the mapping is done here: every board name is normalised once, matched,
+    So the mapping is done here: every board name is normalized once, matched,
     and the result filed back under the spelling the board uses.
     """
     keys = {}

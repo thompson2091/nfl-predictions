@@ -341,6 +341,45 @@ button{cursor:pointer}
   font-variant-numeric:tabular-nums}
 .ugrid__f{grid-column:1/5;display:flex;justify-content:space-between;
   font-size:12px;color:var(--mut);margin-top:2px}
+/* ---- a player's past lines: what happened, and nothing more ----
+   No green anywhere. In this app green means our call was right; here an over
+   is not good and an under is not bad, it depends which side you would take,
+   and coloring it would read as a recommendation the table does not make. */
+.pl{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.pl__h{font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;
+  letter-spacing:.04em}
+/* The chart: what he did MINUS his line, so the middle IS the line. */
+.pl__c{position:relative;display:flex;align-items:center;gap:2px;height:72px;
+  margin-top:10px}
+.pl__z{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line);
+  z-index:0}
+.pl__b{position:relative;z-index:1;flex:1;min-width:0;border-radius:2px;
+  background:var(--mut3)}
+/* Up from the middle is over, down is under. A market with no line has no
+   middle, so its bars sit on the floor and their height is the price. */
+.pl__b--up{align-self:flex-start;transform:translateY(50%);
+  transform-origin:bottom;background:var(--ours)}
+.pl__b--dn{align-self:flex-end;transform:translateY(-50%);background:var(--mut3)}
+.pl__b--hit{background:var(--ours)}
+/* A WEEK HE RECORDED NOTHING, which is one in nine and every one an under.
+   Outlined rather than hidden inside the count: it is the single fact most
+   likely to mislead somebody reading a rate, so it is drawn instead. */
+.pl__b--zero{background:repeating-linear-gradient(45deg,var(--mut3),
+  var(--mut3) 2px,transparent 2px,transparent 4px);
+  outline:1px solid var(--mut3)}
+.pl__ax{display:flex;justify-content:space-between;margin-top:4px;
+  font-size:11px;color:var(--mut)}
+.pl__s{margin:8px 0 0;font-size:13px;color:var(--mut)}
+.pl__l{margin-top:8px;max-height:260px;overflow-y:auto}
+.pl__r{display:grid;grid-template-columns:58px 62px minmax(0,1fr);gap:6px;
+  align-items:center;padding:5px 0;border-top:1px solid var(--line);
+  font-size:13px}
+.pl__w{color:var(--mut);font-variant-numeric:tabular-nums}
+.pl__o{color:var(--mut)}
+.pl__v{text-align:right;font-weight:600}
+.pl__more{margin-top:10px;width:100%;height:36px;border-radius:10px;
+  border:1px solid var(--btnline);background:var(--inset);font-size:13px;
+  font-weight:600;color:var(--ink)}
 .pbar__row{display:flex;align-items:center;gap:6px}
 /* ROW TWO HAS TWO CONTROLS AND ROOM FOR THEM. The row above is
    cramped on purpose -- three things on a phone -- so the picker is

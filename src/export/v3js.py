@@ -152,6 +152,9 @@ const V = Object.assign({
   gaScope: 'league',
   //: Which kind of pattern a game's angles are narrowed to, or all of them.
   gaCat: 'all',
+  //: Whose full record has been fetched and opened out. One at a time: the
+  //: whole market is a megabyte and nobody reads two players' careers at once.
+  pastAll: null,
   //: One club's own games on the board, or every club's.
   angleTeam: '',
   //: And on the board, whose record the columns show once a club is chosen.
@@ -787,6 +790,134 @@ function v3Cell(label, value, tone, cls) {
 //
 // Built from fields that may be absent, so each is emitted only when it has a
 // value — a detail panel of eleven em-dashes says less than four real numbers.
+// WHAT HIS LINE HAS DONE BEFORE, which is the question people open a player
+// to ask and the board cannot answer: the board prices one week.
+//
+// THIS MAKES NO CLAIM AND SAYS SO BY WHAT IT LEAVES OUT. No rate against the
+// price, no expectation, no interval, and no green -- those are the machinery
+// of an edge, and measuring an edge on a player prop needs a usage model, a 7%
+// house cut cleared, and a baseline holding playing time constant. A line, what
+// he did, and the date need none of it, and a week he caught nothing is a zero
+// a reader can see for themselves rather than a distortion buried in a rate.
+function v3PastMarket() {
+  return V3HIST[V.market] || '';
+}
+
+// FETCHED, NOT INLINED, past the first ten. All of it in the page is 1.5 MB on
+// top of the 4.5 it already carries; ten weeks is 495 KB and draws the chart.
+// The rest arrives the same way a past week does.
+function v3PastAll(mk, then) {
+  const k = 'hist:' + mk;
+  if (V3CACHE[k]) { then(V3CACHE[k]); return; }
+  const path = 'data/hist-' + mk + '.json';
+  const fail = why => { V3CACHE[k] = { error: why }; then(V3CACHE[k]); };
+  let p;
+  try { p = fetch(path); } catch (e) { fail(String(e)); return; }
+  p.then(r => {
+    if (!r.ok) { fail('the server answered ' + r.status); return; }
+    return r.json().then(o => { V3CACHE[k] = { players: o || {} };
+                                then(V3CACHE[k]); });
+  }).catch(e => fail(String(e)));
+}
+
+function v3PastRows(row) {
+  const mk = v3PastMarket();
+  if (!mk || !row || !row.player) return null;
+  const k = 'hist:' + mk;
+  const full = V3CACHE[k] && V3CACHE[k].players
+    && V3CACHE[k].players[row.player];
+  if (V.pastAll === row.player && full) return { rows: full, all: true };
+  const P = DATA.pastlines || {};
+  const rows = ((P.players || {})[row.player] || {})[mk];
+  return rows && rows.length ? { rows: rows, all: false } : null;
+}
+
+function v3PastLines(row) {
+  const mk = v3PastMarket();
+  const got = v3PastRows(row);
+  if (!got) return '';
+  const P = DATA.pastlines || {};
+  const meta = (P.markets || []).filter(m => m.key === mk)[0] || {};
+  const yes = meta.kind === 'yesno';
+  const rows = got.rows;
+  // r = [season, week, opponent, home, line, odds, did]
+  const did = r => r[6], line = r => r[4];
+  // THE CHART IS WHAT HE DID MINUS HIS LINE, because his line moves week to
+  // week: nine catches against 6.5 and nine against 9.5 are not the same week,
+  // and the raw count cannot say so while the margin can. On a market with no
+  // line the chart is the price he was quoted instead.
+  const val = r => yes ? v3PastImp(r[5])
+    : (did(r) - (line(r) == null ? 0 : line(r)));
+  const vals = rows.map(val);
+  let top = 0;
+  vals.forEach(v => { const a = Math.abs(v); if (a > top) top = a; });
+  if (!top) top = 1;
+  const bars = rows.map((r, i) => {
+    const v = vals[i];
+    const zero = !yes && did(r) === 0;
+    const hit = yes ? did(r) === 1 : v > 0;
+    const h = Math.max(4, Math.round(Math.abs(v) / top * 100));
+    const cls = 'pl__b' + (yes ? (hit ? ' pl__b--hit' : '')
+      : (v > 0 ? ' pl__b--up' : ' pl__b--dn')) + (zero ? ' pl__b--zero' : '');
+    const ttl = v3PastWhen(r) + ' ' + (r[3] ? 'vs ' : 'at ') + r[2] + ' \u2014 '
+      + v3PastSaid(r, meta);
+    return '<span class="' + cls + '" title="' + esc(ttl) + '" '
+      + 'style="height:' + h + '%"></span>';
+  }).slice().reverse().join('');
+  const over = rows.filter(r => yes ? did(r) === 1
+    : (line(r) != null && did(r) > line(r))).length;
+  const zeros = rows.filter(r => !yes && did(r) === 0).length;
+  const list = rows.map(r =>
+    '<div class="pl__r"><span class="pl__w">' + esc(v3PastWhen(r)) + '</span>'
+    + '<span class="pl__o">' + (r[3] ? 'vs ' : 'at ') + esc(r[2]) + '</span>'
+    + '<span class="pl__v num">' + esc(v3PastSaid(r, meta)) + '</span></div>')
+    .join('');
+  const more = (!got.all && (DATA.pastlines || {}).inline
+    && rows.length >= (DATA.pastlines || {}).inline)
+    ? '<button class="pl__more" data-v3pastall="' + esc(row.player) + '">'
+      + 'Show every week</button>' : '';
+  return '<div class="pl">'
+    + '<div class="pl__h">' + esc(meta.label || mk) + ', last '
+    + rows.length + '</div>'
+    + '<div class="pl__c">' + (yes ? '' : '<i class="pl__z"></i>') + bars
+    + '</div>'
+    + '<div class="pl__ax"><span>'
+    + esc(v3PastWhen(rows[rows.length - 1])) + '</span><span>'
+    + esc(v3PastWhen(rows[0])) + '</span></div>'
+    + '<p class="pl__s">' + (yes
+        ? over + ' of ' + rows.length + ' landed'
+        : over + ' of ' + rows.length + ' went over')
+      + (zeros ? ' \u00b7 ' + zeros + ' week' + (zeros > 1 ? 's' : '')
+                 + ' he recorded nothing' : '') + '</p>'
+    + '<div class="pl__l">' + list + '</div>' + more + '</div>';
+}
+
+function v3PastImp(odds) {
+  if (!has(odds)) return 0.5;
+  return odds > 0 ? 100 / (odds + 100) : (-odds) / (-odds + 100);
+}
+
+// THE PLAYOFFS ARE NOT WEEK 22. The archive numbers them straight on from the
+// regular season, so a Super Bowl line read as "wk22", which is a week that
+// does not exist to anybody who watches football.
+const V3PAST_WK = { 19: 'WC', 20: 'DIV', 21: 'CONF', 22: 'SB' };
+
+function v3PastWhen(r) {
+  const w = V3PAST_WK[r[1]] || ('wk' + r[1]);
+  return '\u2019' + String(r[0]).slice(2) + ' ' + w;
+}
+
+function v3PastSaid(r, meta) {
+  if (meta.kind === 'yesno') {
+    return (r[6] === 1 ? 'yes' : 'no') + (has(r[5]) ? ' \u00b7 '
+      + v3Dash(american(r[5])) : '');
+  }
+  const n = r[6], ln = r[4];
+  const unit = meta.unit ? ' ' + meta.unit : '';
+  return (ln == null ? '' : ln + ' \u00b7 ') + n + unit
+    + (ln == null ? '' : ' \u00b7 ' + (n > ln ? 'over' : 'under'));
+}
+
 function v3Detail(row) {
   const f = [];
   const add = (l, v) => { if (v != null && v !== '') f.push([l, v]); };
@@ -852,7 +983,7 @@ function v3Detail(row) {
   return '<div class="detail"><dl>'
     + f.map(x => '<div><dt>' + esc(x[0]) + '</dt><dd class="num">' + x[1]
         + '</dd></div>').join('')
-    + '</dl></div>';
+    + '</dl>' + v3PastLines(row) + '</div>';
 }
 
 // WHAT HAPPENED, IN THE ROW'S OWN UNITS.
@@ -4603,7 +4734,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3stake', 'v3ask', 'v3askdefault', 'v3open', 'v3dir',
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
                   'v3half', 'v3metric', 'v3boardgame', 'v3anglesort', 'v3angle',
-                  'v3anglegame', 'v3angleclear', 'v3anglescope',
+                  'v3anglegame', 'v3angleclear', 'v3anglescope', 'v3pastall',
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
                   'v3sortpick'];
 
@@ -4803,6 +4934,16 @@ function v3Do(kind, v) {
       else { V.angleSort = v; V.angleDesc = (v !== 'name'); }
       break;
     case 'v3angleclear': V.angleQ = ''; break;
+    // FETCHED ON THE TAP, not on the render: the full record for a market is
+    // most of a megabyte and almost nobody opens it. The re-render is the
+    // callback's job because the file may already be cached, in which case
+    // this is synchronous and the render below it would draw the old panel.
+    case 'v3pastall': {
+      const mk = v3PastMarket();
+      V.pastAll = v;
+      if (mk) v3PastAll(mk, () => render());
+      break;
+    }
     // The reading changes under a pinned bar, so the board starts at
     // the top of what it just rebuilt -- the same as the kind and the
     // club beside it.

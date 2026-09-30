@@ -494,6 +494,76 @@ if (someRow) {
   V.open = null;
 }
 
+// ── What his line has done before ───────────────────────────────────────
+//
+// A fact, not a finding. No rate against the price, no expectation, no
+// interval and no green: an over is not good and an under is not bad, it
+// depends which side you would take, and coloring it would read as a
+// recommendation this makes none of.
+{
+  const P = DATA.pastlines || {};
+  const who = Object.keys(P.players || {})[0];
+  ok('the payload carries a player\u2019s past lines', !!who, 'none shipped');
+  if (who) {
+    V.tab = 'props'; V.market = 'any'; V.open = null; V.pastAll = null;
+    const r = x.rowsFor('any', null).filter(q => q.player === who)[0];
+    ok('and that player is on the board', !!r, who);
+    if (r) {
+      render();
+      ok('a closed row shows no history', app().indexOf('class="pl"') < 0);
+      v3Do('v3open', r.id);
+      const open = app();
+      ok('opening a player shows what his line has done before',
+         open.indexOf('class="pl"') >= 0);
+      // A BAR PER WEEK, which is what makes it a shape rather than a list.
+      const bars = (open.match(/class="pl__b/g) || []).length;
+      const have = ((P.players[who] || {})['anytime_td'] || []).length;
+      ok('a bar for every week', bars === have, bars + ' of ' + have);
+      ok('and a row for every week too',
+         (open.match(/class="pl__r"/g) || []).length === have);
+      // NOTHING THAT READS AS A VERDICT. `good` is the class this app tints
+      // green with, and a history that wore it would be making a claim.
+      const panel = open.slice(open.indexOf('class="pl"'));
+      ok('with nothing colored to mean good',
+         panel.indexOf('class="num good') < 0 && panel.indexOf(' good"') < 0);
+      // A MARKET WITH NO LINE IS DRAWN DIFFERENTLY, because there is no middle
+      // for a bar to sit either side of. The price is the height instead.
+      ok('a yes-or-no market draws no center line',
+         panel.indexOf('class="pl__z"') < 0);
+      // The same player on the receptions board, which needs its own row
+      // opened: `V.open` holds an id from the market just left.
+      V.market = 'rec'; V.open = null; render();
+      const rr = x.rowsFor('rec', null).filter(q => q.player === who)[0];
+      if (rr) v3Do('v3open', rr.id);
+      const rec = app();
+      const recp = rec.slice(rec.indexOf('class="pl"'));
+      ok('while a market with a line draws one',
+         rec.indexOf('class="pl"') >= 0 && recp.indexOf('class="pl__z"') >= 0,
+         rr ? 'row opened' : 'no receptions row for ' + who);
+      // THE WEEK HE RECORDED NOTHING IS DRAWN, not folded into a count: it is
+      // one player-game in nine and every one of them an under, which is the
+      // single fact most likely to mislead a reader of a rate.
+      const b = x.rowsFor('rec', null).filter(q => (P.players[q.player] || {})
+        .receptions && (P.players[q.player] || {}).receptions
+        .some(z => z[6] === 0))[0];
+      if (b) {
+        V.open = null; render(); v3Do('v3open', b.id);
+        const z = app();
+        ok('a week he recorded nothing is marked on the chart',
+           z.indexOf('pl__b--zero') >= 0);
+        ok('and counted in words under it',
+           z.indexOf('recorded nothing') >= 0);
+      }
+      // ALL OF IT IS BEHIND A LINK, because the whole record is most of a
+      // megabyte per market and almost nobody opens it.
+      V.market = 'any'; V.open = null; render(); v3Do('v3open', r.id);
+      ok('the rest is offered behind a link',
+         app().indexOf('data-v3pastall=') >= 0);
+      V.open = null; V.pastAll = null; V.market = 'any';
+    }
+  }
+}
+
 // ── The game filter survives a market change ────────────────────────────
 if (cards.length) {
   V.tab = 'props'; V.game = cards[0].game_id; V.market = 'any';

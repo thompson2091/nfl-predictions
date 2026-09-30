@@ -304,6 +304,34 @@ def payload_v3():
     # THE ANGLES BOARD, with a winner, a loser and one added later — the three
     # shapes the page has to draw. Without a losing row the "nothing is
     # dropped for going cold" assertion passes by having nothing to drop.
+    # A PLAYER'S PAST LINES. Two markets on purpose -- one with a line and one
+    # without -- because the two are drawn differently and a fixture carrying
+    # only one leaves the other's renderer untested while the file reports all
+    # passed. `Alpha Back` is on the anytime board above; `Bravo Wide` carries
+    # a week he recorded nothing, which is the row this table exists to show.
+    p["pastlines"] = {
+        "markets": [
+            {"key": "anytime_td", "label": "Anytime touchdown",
+             "kind": "yesno", "unit": ""},
+            {"key": "receptions", "label": "Receptions", "kind": "line",
+             "unit": "catches"},
+        ],
+        "inline": 3,
+        "players": {
+            "Alpha Back": {
+                "anytime_td": [[2026, 3, "GB", 0, None, 140, 1],
+                               [2026, 2, "CHI", 1, None, 175, 0],
+                               [2026, 1, "MIN", 0, None, 120, 1]],
+                "receptions": [[2026, 3, "GB", 0, 3.5, -115, 5.0],
+                               [2026, 2, "CHI", 1, 4.5, -120, 2.0],
+                               [2026, 1, "MIN", 0, 3.5, 105, 4.0]],
+            },
+            "Bravo Wide": {
+                "receptions": [[2026, 3, "GB", 0, 5.5, -110, 0.0],
+                               [2026, 2, "CHI", 1, 5.5, -110, 7.0]],
+            },
+        },
+    }
     p["angles"] = {
         "break_even": 0.5238,
         # A row is tinted only when it clears AND has the games to mean it.
@@ -616,6 +644,15 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "one row per band that has cells",
                  "and no row for a band nothing reached",
                  "with row and column totals, which a list cannot have",
+                 # A player's past lines: a fact, not a finding.
+                 "the payload carries a player\u2019s past lines",
+                 "opening a player shows what his line has done before",
+                 "a bar for every week",
+                 "with nothing colored to mean good",
+                 "a yes-or-no market draws no center line",
+                 "while a market with a line draws one",
+                 "a week he recorded nothing is marked on the chart",
+                 "the rest is offered behind a link",
                  "the filters share one bar",
                  "before kickoff nothing is graded",
                  "and the call color is gone, because it is no longer a call",
