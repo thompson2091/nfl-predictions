@@ -1378,6 +1378,56 @@ ok('and explains why half is not enough',
      L().indexOf('data-v3anglescope') < 0);
 }
 
+// THE FLIP SIDE, NAMED. Thirty rows are one half of a pair -- the same games
+// with the cover on the other sideline -- and unnamed the fade reads as a
+// restatement of the edge above it. A reader took 5-2 and 2-5 for one claim.
+{
+  const rows = (DATA.angles || {}).rows || [];
+  const pair = rows.filter(r => r.mirror)[0];
+  ok('the board has a mirror pair to talk about', !!pair,
+     'no row carries `mirror`');
+  if (pair) {
+    const other = rows.filter(r => r.id === pair.mirror)[0];
+    ok('and its partner is on the board too', !!other, pair.mirror);
+    ok('the pairing is symmetric', other && other.mirror === pair.id,
+       other && other.mirror);
+    // SAME GAMES, REVERSED RECORD -- which is what the tag claims, so the
+    // fixture has to actually be that or the claim is untested.
+    ok('the two records really are each other reversed',
+       other && pair.all.n === other.all.n && pair.all.w === other.all.l
+       && pair.all.l === other.all.w,
+       pair.all.w + '-' + pair.all.l + ' vs '
+       + (other ? other.all.w + '-' + other.all.l : '?'));
+    V.angleTeam = ''; V.angleOpen = null; render();
+    ok('a paired row is tagged as one side of two',
+       L().indexOf('>flip side</i>') >= 0);
+    // AND THE TAG NAMES THE OTHER ROW, or it says a row is half of something
+    // without saying half of what.
+    ok('and the tag names the row it pairs with',
+       L().indexOf(other.label) >= 0, other.label);
+    V.angleOpen = pair.id; render();
+    const open = L();
+    ok('opening it shows both records side by side',
+       open.indexOf('scored from the other side') >= 0);
+    ok('with the arithmetic said plainly',
+       open.indexOf('add to 100%') >= 0);
+    // NOT ON THE CLUB READING. Per club the two rows are not the same games at
+    // all -- each picks the fixtures that club was on one side of -- so the
+    // complement does not hold and must not be claimed.
+    const teams = Object.keys((DATA.angles || {}).team_splits || {});
+    if (teams.length) {
+      V.angleTeam = teams[0]; V.angleScope = 'team'; render();
+      const club = L();
+      ok('but the club reading drops the arithmetic it cannot claim',
+         club.indexOf('add to 100%') < 0);
+      ok('while still naming the pair',
+         club.indexOf('scored from the other side') >= 0);
+      V.angleTeam = ''; V.angleScope = 'team';
+    }
+    V.angleOpen = null; render();
+  }
+}
+
 // TWO DECIMALS, because break-even is 52.38% and whole points cannot show a
 // row sitting either side of it.
 ok('percentages carry two decimals', /\d+\.\d\d%/.test(L()));

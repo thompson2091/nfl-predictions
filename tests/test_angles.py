@@ -600,3 +600,44 @@ def test_a_quarterbacks_record_against_one_opponent_looks_backward(sched):
         if checked > 400:
             break
     assert checked > 100, f"only {checked} pairs checked"
+
+
+def test_a_mirror_pair_is_the_same_games_from_the_other_side(sched):
+    """Thirty rows are one half of a pair, and the page has to say so.
+
+    A reader read "Quarterback has never beaten this opponent" at 5-2 and
+    "Opposing quarterback has never beaten this team" at 2-5 as the same claim.
+    They are the same games with the cover on the other sideline, which is the
+    opposite claim, and nothing on the row said it.
+
+    BOTH HALVES OF THE TEST MATTER. Reversed records alone would pair the
+    wrong rows: `pickem`, `div_home_dog` and `div_road_fav` are all 208-208 on
+    416 games. Equal game sets alone would pair a condition with a re-slicing
+    of itself.
+    """
+    rows = A.measure(sched)
+    by = {r["id"]: r for r in rows}
+    mir = {r["id"]: r["mirror"] for r in rows if r["mirror"]}
+    assert len(mir) >= 20, f"only {len(mir)} rows paired; expected thirty"
+    for x, y in mir.items():
+        assert y in by, f"{x} points at {y}, which is not on the board"
+        assert mir.get(y) == x, f"{x} -> {y} is not symmetric"
+        a, b = by[x]["all"], by[y]["all"]
+        assert a["n"] == b["n"] and a["w"] == b["l"] and a["l"] == b["w"], (
+            f"{x} is {a['w']}-{a['l']} and {y} is {b['w']}-{b['l']}; a mirror "
+            f"has to be the exact reverse")
+        # A whole-game condition is 50% because it holds both sides itself, not
+        # because another row is its upside down. It carries its own tag.
+        assert not by[x]["whole_game"], (
+            f"{x} is a whole-game condition and cannot have a mirror")
+    # THE FALSE POSITIVE THE RECORD TEST ALONE WOULD MAKE. All three are
+    # 208-208 on 416 games and only two of them are a pair.
+    same = [i for i in ("pickem", "div_home_dog", "div_road_fav") if i in by]
+    if len(same) == 3:
+        recs = {i: (by[i]["all"]["w"], by[i]["all"]["l"]) for i in same}
+        assert len(set(recs.values())) == 1, (
+            f"the fixture for this assertion has changed: {recs}")
+        assert mir.get("div_home_dog") == "div_road_fav", mir.get("div_home_dog")
+        assert "pickem" not in mir, (
+            "pickem was paired on an identical record, which is the mistake "
+            "the game-set half of the test exists to prevent")

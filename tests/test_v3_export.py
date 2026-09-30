@@ -304,13 +304,27 @@ def payload_v3():
              "blurb": "{team} is a divisional underdog.",
              "added": "2026-10-05", "mined": True,
              "plain": "An underdog against a divisional rival.",
-             "cat": "The line",
+             "cat": "The line", "mirror": "div_fav",
              "all": {"n": 1046, "w": 548, "l": 498, "pct": 0.524,
                      "lo": 0.494, "hi": 0.554, "clears": False},
              "since": {"n": 30, "w": 14, "l": 16, "pct": 0.467,
                        "lo": 0.298, "hi": 0.643, "clears": False},
              "season": {"n": 13, "w": 8, "l": 5, "pct": 0.615,
                         "lo": 0.355, "hi": 0.823, "clears": False}},
+            # THE OTHER HALF OF `div_dog`, same games and the cover on the
+            # other side, so the flip-side tag and the sentence that shows both
+            # records have something to find. Slotted here because the board
+            # arrives sorted by the long run and a test below asserts it.
+            {"id": "div_fav", "label": "Divisional favorite",
+             "blurb": "{team} is a divisional favorite.",
+             "added": "2026-10-05", "mined": True, "mirror": "div_dog",
+             "plain": "Favoured against a divisional rival.",
+             "cat": "The line",
+             "all": {"n": 1046, "w": 498, "l": 548, "pct": 0.476,
+                     "lo": 0.446, "hi": 0.506, "clears": False},
+             "since": None,
+             "season": {"n": 13, "w": 5, "l": 8, "pct": 0.385,
+                        "lo": 0.177, "hi": 0.645, "clears": False}},
             {"id": "off_ot", "label": "Off an overtime game",
              "blurb": "{team} went to overtime last week.",
              "added": "2026-09-28", "mined": False, "whole_game": True,
@@ -340,7 +354,7 @@ def payload_v3():
         # and a fixture where each team appears once cannot tell the two
         # lookups apart.
         "week": {"ATL_GB": [["ATL", "blowout_loss"], ["GB", "div_dog"],
-                            ["GB", "off_ot"]],
+                            ["ATL", "div_fav"], ["GB", "off_ot"]],
                  "CAR_ATL": [["ATL", "off_ot"], ["CAR", "div_dog"]]},
         # WHAT THE SPLIT'S OWN COMPOSITION PREDICTS. `blowout_loss` is put
         # entirely in the road-underdog cell, which covers 60% here against
@@ -385,6 +399,8 @@ def payload_v3():
                              "2023": [22, 26], "2026": [7, 1]},
             "div_dog": {"2015": [48, 44], "2020": [50, 46],
                         "2023": [45, 47], "2026": [8, 5]},
+            "div_fav": {"2015": [44, 48], "2020": [46, 50],
+                        "2023": [47, 45], "2026": [5, 8]},
             "off_ot": {"2015": [11, 14], "2020": [12, 13],
                        "2023": [10, 15], "2026": [3, 2]},
         },
@@ -547,6 +563,15 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "with no club chosen there is nothing to compare, so no "
                  "control",
                  "and the sweep reaches the angle controls",
+                 # The mirror pair, named on the row and explained in the
+                 # panel. Pinned so the block cannot stop running quietly.
+                 "the board has a mirror pair to talk about",
+                 "the two records really are each other reversed",
+                 "a paired row is tagged as one side of two",
+                 "and the tag names the row it pairs with",
+                 "opening it shows both records side by side",
+                 "with the arithmetic said plainly",
+                 "but the club reading drops the arithmetic it cannot claim",
                  "the filters share one bar",
                  "before kickoff nothing is graded",
                  "and the call color is gone, because it is no longer a call",

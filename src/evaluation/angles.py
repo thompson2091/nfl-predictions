@@ -486,13 +486,19 @@ ANGLES: tuple[Angle, ...] = (
     # there, so "has never beaten them" means not in eleven seasons, not never
     # in a career. Watson's 0-3 is wholly inside the window; a veteran's
     # earlier meetings are invisible and the row cannot tell the difference.
-    Angle("qb_never_beat", "Quarterback has never beaten them",
+    Angle("qb_never_beat", "Quarterback has never beaten this opponent",
           "{team}’s quarterback has never beaten this opponent.", _REG10,
           pl.col("qb_never_beat"), mined=True),
-    Angle("qb_never_lost", "Quarterback has never lost to them",
+    Angle("qb_never_lost", "Quarterback has never lost to this opponent",
           "{team}’s quarterback has never lost to this opponent.",
           _REG10, pl.col("qb_never_lost"), mined=True),
-    Angle("opp_qb_never_beat", "Facing a quarterback who has never beaten them",
+    # NOT "Facing a ...", WHICH THE OTHER OPPONENT ROWS USE. The pair above
+    # reads "this opponent" and this one has to name the other end of the same
+    # sentence, or the two rows differ only in a pronoun whose referent flips
+    # between them -- which is exactly how a reader took the fade for a
+    # restatement of the edge.
+    Angle("opp_qb_never_beat",
+          "Opposing quarterback has never beaten this team",
           "{team} faces a quarterback who has never beaten it.", _REG10,
           pl.col("opp_qb_never_beat"), mined=True),
 
@@ -989,6 +995,47 @@ def _record(f: pl.DataFrame) -> dict | None:
             "clears": lo > BREAK_EVEN and n >= TINT_MIN_GAMES}
 
 
+def mirrors(tg: pl.DataFrame, recs: dict[str, dict]) -> dict[str, str]:
+    """Which angles are the same fixtures seen from the other sideline.
+
+    BOTH TESTS ARE NEEDED. A reversed record on an equal count is not enough:
+    `pickem`, `div_home_dog` and `div_road_fav` are all 208-208 on 416 games
+    and only the last two are a pair. The same GAMES is not enough either --
+    it would pair a condition with itself sliced differently. Together they
+    are tight: identical fixtures whose outcomes are each other's reverse.
+
+    NOT "ONE SIDE EACH", which was the first attempt and was too strict. A
+    handful of fixtures qualify on both sides -- two teams both playing their
+    last game before a bye, two quarterbacks who have each never beaten the
+    other's club -- and those games contribute a cover and a non-cover to both
+    rows, so the records stay exact complements while the sides overlap. That
+    rule dropped `pre_bye`/`opp_pre_bye` and the quarterback pair, which are
+    the two most confusable on the board.
+
+    A whole-game condition is skipped. It already holds both sides of every
+    game it selects, which is why its record is 50% -- not because some other
+    row is its upside down. The `both sides` tag says that instead.
+    """
+    gsets: dict[str, frozenset] = {}
+    for a in ANGLES:
+        if a.whole_game or a.id not in recs:
+            continue
+        g = tg.filter(a.predicate)["game_id"]
+        if g.is_empty():
+            continue
+        gsets[a.id] = frozenset(g.to_list())
+    out: dict[str, str] = {}
+    ids = list(gsets)
+    for i, x in enumerate(ids):
+        rx = recs[x]
+        for y in ids[i + 1:]:
+            ry = recs[y]
+            if (gsets[x] == gsets[y] and rx["n"] == ry["n"]
+                    and rx["w"] == ry["l"] and rx["l"] == ry["w"]):
+                out[x], out[y] = y, x
+    return out
+
+
 def measure(schedules: pl.DataFrame, season: int | None = None) -> list[dict]:
     """Every angle's record: all-time, since it was added, and this season.
 
@@ -1012,8 +1059,18 @@ def measure(schedules: pl.DataFrame, season: int | None = None) -> list[dict]:
             "cat": CATEGORY.get(a.id, "Other"),
             "added": a.added.isoformat(), "mined": a.mined,
             "whole_game": a.whole_game,
+            # THE ROW THIS ONE IS THE OTHER HALF OF, where there is one. Eight
+            # pairs on the board are the same games scored from the other
+            # side, and without saying so the fade reads as a restatement of
+            # the edge beside it.
+            "mirror": None,
             "all": allt, "since": _record(added), "season": _record(cur),
         })
+    # THE OTHER HALF OF EACH PAIR, filled in once every record exists: the
+    # test needs both sides' numbers, so it cannot run row by row.
+    mir = mirrors(tg, {r["id"]: r["all"] for r in out})
+    for r in out:
+        r["mirror"] = mir.get(r["id"])
     out.sort(key=lambda r: -r["all"]["pct"])
     return out
 

@@ -2376,7 +2376,7 @@ function v3Angles(c) {
         return '<button class="arow' + (open ? ' arow--on' : '')
           + '" data-v3gangle="' + esc(id) + '" aria-expanded="' + open + '">'
           + '<span class="arow__l"><b>' + esc(o.team) + '</b> '
-          + esc(r.label) + (own ? '' : v3WholeTag(r))
+          + esc(r.label) + (own ? '' : v3WholeTag(r)) + v3MirrorTag(r, by)
           + v3SurpriseTag(o.season, a) + '</span>'
           + '<span class="num"><b>' + v3AnglePct(o.season) + '</b>'
           + '<i>' + v3AngleRec(o.season) + '</i></span>'
@@ -2384,7 +2384,11 @@ function v3Angles(c) {
           + v3AnglePct(a) + '</b><i>' + v3AngleRec(a) + '</i></span>'
           + '</button>'
           + (open ? v3AngleGames(r, games, own ? o.team : '',
-                                 v3BaseLine(a, o.base)) : '');
+                                 v3BaseLine(a, o.base)
+                                 + v3MirrorLine(r, by,
+                                     x => v3AngleSince(x, from, be,
+                                                       own ? o.team : ''),
+                                     own ? o.team : '')) : '');
       }).join('')
     // THE DENOMINATOR IS THE FINDING, so it is on the card rather than in a
     // footnote. Without it a reader sees four splits and no idea that
@@ -3885,6 +3889,37 @@ function v3WholeTag(r) {
       + 'arithmetic.">both sides</i>' : '';
 }
 
+// THE ROW THIS ONE IS THE OTHER HALF OF. Thirty of the board's rows are one
+// side of a pair -- the same games with the cover on the other sideline -- and
+// without saying so the fade reads as a restatement of the edge above it. A
+// reader took "Quarterback has never beaten this opponent" at 5-2 and
+// "Opposing quarterback has never beaten this team" at 2-5 for the same claim,
+// which is the whole reason this exists.
+function v3MirrorTag(r, by) {
+  const o = (r && r.mirror && by) ? by[r.mirror] : null;
+  if (!o) return '';
+  return ' <i class="tag tag--flat" title="The same games as \u201c'
+    + esc(o.label) + '\u201d, with the cover on the other side. Backing one '
+    + 'is betting against the other.">flip side</i>';
+}
+
+// AND THE ARITHMETIC, IN THE OPENED PANEL, where there is room to show both
+// numbers. Only on the league reading: per club the two rows are not the same
+// games at all, because each picks the fixtures that club was on one side of.
+function v3MirrorLine(r, by, runOf, team) {
+  const o = (r && r.mirror && by) ? by[r.mirror] : null;
+  if (!o) return '';
+  const head = '<p class="adet__p">The same games as <b style="color:'
+    + 'var(--ink)">' + esc(o.label) + '</b>, scored from the other side';
+  if (team) return head + '.</p>';
+  const a = runOf(r), b = runOf(o);
+  if (!a || !a.n || !b || !b.n) return head + '.</p>';
+  return head + ': <b style="color:var(--ink)">' + v3AngleRec(a) + '</b> here, '
+    + '<b style="color:var(--ink)">' + v3AngleRec(b) + '</b> there. Every game '
+    + 'that covers for one loses for the other, so the two add to 100% and '
+    + 'backing both is backing neither.</p>';
+}
+
 function v3AnglesPage() {
   const A = DATA.angles || {};
   const all = (A.rows || []).slice();
@@ -3960,8 +3995,10 @@ function v3AnglesPage() {
     + k + '" aria-pressed="' + (key === k) + '">' + label + arrow(k)
     + '</button>';
 
+  const byId = {};
+  all.forEach(r => { byId[r.id] = r; });
   const detail = r => v3AngleGames(r, games, scope,
-    v3BaseLine(since(r), baseOf(r)));
+    v3BaseLine(since(r), baseOf(r)) + v3MirrorLine(r, byId, since, scope));
 
   return '<div class="wrap">'
     + '<h1 class="h1">Angles</h1>'
@@ -4022,7 +4059,7 @@ function v3AnglesPage() {
           + '" data-v3angle="' + esc(r.id) + '" aria-expanded="' + open + '">'
           + '<span class="arow__l">' + esc(r.label)
           + (r.mined ? ' <i class="tag tag--warn">added</i>' : '')
-          + (scope ? '' : v3WholeTag(r))
+          + (scope ? '' : v3WholeTag(r)) + v3MirrorTag(r, byId)
           + v3SurpriseTag(seasonOf(r), a) + '</span>'
           + '<span class="num"><b>' + v3AnglePct(seasonOf(r)) + '</b>'
           + '<i>' + v3AngleRec(seasonOf(r)) + '</i></span>'
