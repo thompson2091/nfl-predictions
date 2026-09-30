@@ -540,3 +540,63 @@ def test_every_angle_has_a_kind_the_filter_offers():
     for cat in A.CATEGORIES:
         live = [i for i in ids if A.CATEGORY.get(i) == cat]
         assert live, f"the {cat!r} kind has no angles left in it"
+
+
+def test_a_quarterbacks_record_against_one_opponent_looks_backward(sched):
+    """Counted before this meeting, across seasons, and played games only.
+
+    Three ways this goes wrong silently. Counting the current game makes every
+    first meeting look like a second. Taking the running total per club rather
+    than per quarterback loses every player who changed teams — which is the
+    case that prompted the angle. And letting an unplayed fixture into the
+    count turns the column null from that point on, which reads as "no streak"
+    on exactly the games the board is for.
+    """
+    tg = A.team_weeks(sched)
+    for c in ("qb_seen", "qb_won", "qb_lost", "qb_never_beat",
+              "qb_never_lost", "opp_qb_never_beat"):
+        assert tg.filter(pl.col(c).is_null()).height == 0, (
+            f"{c} is null somewhere; an unplayed fixture has poisoned the "
+            f"running total")
+    # A first meeting has no prior record, whatever else is true of it.
+    first = tg.filter(pl.col("qb_seen") == 0)
+    assert first.height > 1000, f"only {first.height} first meetings"
+    assert first.filter((pl.col("qb_won") > 0)
+                        | (pl.col("qb_lost") > 0)).height == 0, (
+        "a first meeting carries a prior record")
+    # The flags say what they claim to.
+    bad = tg.filter(pl.col("qb_never_beat")
+                    & ((pl.col("qb_seen") < 2) | (pl.col("qb_won") > 0)))
+    assert bad.height == 0, f"{bad.height} rows claim a streak they lack"
+    # ACROSS CLUBS, which per-team accumulation would miss. Watson faced
+    # Pittsburgh for Houston in 2020 and for Cleveland in 2022 and 2023, so by
+    # the 2023 meeting the count has to be two, not one.
+    ids = sched.filter(pl.col("game_type") == "REG")
+    names = pl.concat([
+        ids.select([pl.col(f"{s}_qb_id").alias("qb"),
+                    pl.col(f"{s}_qb_name").alias("nm")])
+        for s in ("home", "away")]).drop_nulls().unique(subset=["qb"])
+    w = (tg.join(names, on="qb", how="left")
+           .filter(pl.col("nm").str.contains("Watson")
+                   & (pl.col("opp") == "PIT"))
+           .sort(["season", "week"]))
+    assert w.height >= 3, f"only {w.height} Watson-Pittsburgh meetings"
+    seen = w["qb_seen"].to_list()
+    assert seen == list(range(len(seen))), (
+        f"the count should run 0,1,2,... and runs {seen}; the total is "
+        f"probably being taken per club rather than per quarterback")
+    assert w["qb_won"].to_list() == [0] * len(seen), (
+        "a quarterback credited with a win he does not have")
+    # And the opponent's copy is the other side of the same fixture.
+    by = {(r["game_id"], r["team"]): r for r in tg.iter_rows(named=True)}
+    checked = 0
+    for (gid, team), r in list(by.items()):
+        other = by.get((gid, r["opp"]))
+        if other is None:
+            continue
+        assert r["opp_qb_never_beat"] == other["qb_never_beat"], (
+            f"{team} in {gid} carries the wrong side's quarterback record")
+        checked += 1
+        if checked > 400:
+            break
+    assert checked > 100, f"only {checked} pairs checked"

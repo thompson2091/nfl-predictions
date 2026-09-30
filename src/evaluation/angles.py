@@ -101,6 +101,9 @@ _REG8 = date(2026, 9, 30)
 #: The complementary seven, added so a game card reads the same from either
 #: sideline. See the block above `div_home_fav`.
 _REG9 = date(2026, 9, 30)
+#: The quarterback against one opponent, which is a dimension nothing else
+#: here had: the player rather than the club.
+_REG10 = date(2026, 9, 30)
 
 ANGLES: tuple[Angle, ...] = (
     Angle("blowout_loss", "Off a 20+ loss",
@@ -457,6 +460,42 @@ ANGLES: tuple[Angle, ...] = (
           pl.col("at_home") & pl.col("prev_home") & pl.col("prev2_home"),
           mined=True),
 
+    # ---- THE QUARTERBACK AGAINST ONE OPPONENT -----------------------------
+    #
+    # A NEW DIMENSION, not another cut of an old one. Every angle above is
+    # about a club: how it has been playing, how rested it is, what its line
+    # says. These three are about the man taking the snaps, across seasons and
+    # across rosters -- Deshaun Watson is 0-3 against Pittsburgh in three
+    # seasons for two clubs, and `revenge` cannot see it because `revenge` is
+    # one club within one season.
+    #
+    # THE FACT THAT PROMPTED THEM IS NOT EVIDENCE, and the board should be the
+    # thing that says so. A quarterback against one opponent is 2,452 cells at
+    # a MEDIAN OF TWO GAMES; on the 169 with six or more, the spread between
+    # them is 18.0% against 17.4% from chance alone, a ratio of 1.03. Three
+    # straight losses happens to a coin one time in eight. So the per-player
+    # record stays off the board and the league-wide spot goes on it, which is
+    # the only version of the question that has a sample.
+    #
+    # NEITHER SIDE CLEARS. Never beaten them is a fade at 46.28% on 242 games
+    # and never lost to them is 53.29% on 319 -- over the games floor, and its
+    # lower bound is 47.8%, so no tint. The three-meeting cut looks stronger
+    # and is not: it takes 242 games down to 70.
+    #
+    # SINCE 2015 ONLY, which the plain words have to say. The archive starts
+    # there, so "has never beaten them" means not in eleven seasons, not never
+    # in a career. Watson's 0-3 is wholly inside the window; a veteran's
+    # earlier meetings are invisible and the row cannot tell the difference.
+    Angle("qb_never_beat", "Quarterback has never beaten them",
+          "{team}’s quarterback has never beaten this opponent.", _REG10,
+          pl.col("qb_never_beat"), mined=True),
+    Angle("qb_never_lost", "Quarterback has never lost to them",
+          "{team}’s quarterback has never lost to this opponent.",
+          _REG10, pl.col("qb_never_lost"), mined=True),
+    Angle("opp_qb_never_beat", "Facing a quarterback who has never beaten them",
+          "{team} faces a quarterback who has never beaten it.", _REG10,
+          pl.col("opp_qb_never_beat"), mined=True),
+
     # ---- THE COMPLEMENTARY SEVEN ------------------------------------------
     #
     # ADDED FOR THE GAME CARD, NOT FOR THE BOARD. Each one below is an angle
@@ -570,6 +609,12 @@ PLAIN: dict[str, str] = {
     "third_road": "Away from home a third straight week.",
     "second_road": "Away from home a second straight week.",
     "second_home": "At home a second straight week.",
+    "qb_never_beat": "Their starting quarterback has faced this opponent at "
+                     "least twice since 2015 and never won.",
+    "qb_never_lost": "Their starting quarterback has faced this opponent at "
+                     "least twice since 2015 and never lost.",
+    "opp_qb_never_beat": "The quarterback they face has tried at least twice "
+                         "since 2015 and never beaten them.",
     "third_home": "At home a third straight week.",
     "home_after_road": "Home at last after two straight on the road.",
     "rematch": "Playing the same opponent it played last week.",
@@ -670,6 +715,8 @@ CATEGORY: dict[str, str] = {
     # Where they are in the season and who they just saw.
     "third_road": "Spot", "second_road": "Spot", "home_after_road": "Spot",
     "second_home": "Spot", "third_home": "Spot",
+    "qb_never_beat": "Spot", "qb_never_lost": "Spot",
+    "opp_qb_never_beat": "Opponent",
     # THE OPPONENT is its own kind: every other angle here asks what shape the
     # team is in, and these three ask about the team across from it.
     "opp_off_bye": "Opponent", "opp_short_week": "Opponent",
@@ -846,6 +893,45 @@ def team_weeks(schedules: pl.DataFrame) -> pl.DataFrame:
            .with_columns(pl.lit(True).alias("pre_bye")))
     tg = (tg.join(pre, on=["season", "team", "week"], how="left")
             .with_columns(pl.col("pre_bye").fill_null(False)))
+    # THIS QUARTERBACK AGAINST THIS OPPONENT, across seasons and rosters.
+    #
+    # `revenge` is the team's record and only within one season. This follows
+    # the PLAYER: Deshaun Watson is 0-3 against Pittsburgh over three seasons
+    # and two clubs, and nothing else here can see that.
+    #
+    # NOT A LOOK-AHEAD. The prior record counts PLAYED meetings only, before
+    # this one, and the starter is announced before kickoff -- which is the
+    # same footing `qb_change` and `qb_second` already stand on.
+    #
+    # COUNTED ON THIS FRAME, not the full schedule, and that is safe here
+    # where it was not for `pre_bye`: the 208 games this frame drops for
+    # having no closing spread are exactly the 208 with no starter named, all
+    # of them 2026 fixtures nobody has played. No prior meeting is lost.
+    #
+    # GLOBAL CHRONOLOGICAL ORDER, not per team: a quarterback's meetings with
+    # one opponent run across seasons and clubs, so the running total has to
+    # be taken over (quarterback, opponent) with the frame in date order.
+    tg = tg.sort(["season", "week"]).with_columns([
+        pl.col("margin").is_not_null().cast(pl.Int8).alias("_qbp"),
+        ((pl.col("margin") > 0).fill_null(False)).cast(pl.Int8).alias("_qbw"),
+        ((pl.col("margin") < 0).fill_null(False)).cast(pl.Int8).alias("_qbl"),
+    ])
+    qk = ["qb", "opp"]
+    tg = tg.with_columns([
+        (pl.col("_qbp").cum_sum().over(qk) - pl.col("_qbp")).alias("qb_seen"),
+        (pl.col("_qbw").cum_sum().over(qk) - pl.col("_qbw")).alias("qb_won"),
+        (pl.col("_qbl").cum_sum().over(qk) - pl.col("_qbl")).alias("qb_lost"),
+    ]).drop(["_qbp", "_qbw", "_qbl"])
+    # TWO MEETINGS, NOT THREE. Three is the cut that sounds stronger and is
+    # not: it takes the sample from 242 games to 70, which buys noise rather
+    # than confidence. A tie counts as neither, so a quarterback who drew once
+    # and lost once has still never beaten them.
+    tg = tg.with_columns([
+        ((pl.col("qb_seen") >= 2) & (pl.col("qb_won") == 0))
+        .fill_null(False).alias("qb_never_beat"),
+        ((pl.col("qb_seen") >= 2) & (pl.col("qb_lost") == 0))
+        .fill_null(False).alias("qb_never_lost"),
+    ])
     # THE OPPONENT'S SITUATION, which nothing here had ever used: all sixty
     # angles above are about the team itself. `opp_rest` already rides on the
     # frame; the opponent's LAST RESULT does not, and a self-join on the game
@@ -854,10 +940,15 @@ def team_weeks(schedules: pl.DataFrame) -> pl.DataFrame:
         tg.select(["game_id", pl.col("team").alias("opp"),
                    pl.col("prev_margin").alias("opp_prev_margin"),
                    # The opponent's bye is on the same join, and `pre_bye` is
-                   # already computed above, so it costs nothing.
-                   pl.col("pre_bye").alias("opp_pre_bye")]),
+                   # already computed above, so it costs nothing. Nor does the
+                   # quarterback fact, which is why it is computed above too.
+                   pl.col("pre_bye").alias("opp_pre_bye"),
+                   pl.col("qb_never_beat").alias("opp_qb_never_beat")]),
         on=["game_id", "opp"], how="left")
-    tg = tg.with_columns(pl.col("opp_pre_bye").fill_null(False))
+    tg = tg.with_columns([
+        pl.col("opp_pre_bye").fill_null(False),
+        pl.col("opp_qb_never_beat").fill_null(False),
+    ])
     # RECORD SO FAR, counted BEFORE this week's game. `cum_sum` includes the
     # current row, so each is subtracted back out — without that a team is
     # credited with the result it has not played yet.
