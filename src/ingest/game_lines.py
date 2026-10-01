@@ -146,6 +146,20 @@ def append_snapshot(rows: list[dict], season: int, week: int,
     book at the same price are two observations of a market that did not move,
     which is information; collapsing them here would make it impossible to say
     later how long a price stood.
+
+    ONE CAPTURE CANNOT BE BOTH ENDS OF A WEEK, and that is the single
+    exception. 2026 week 4 was archived with a 7-book capture written twice —
+    identical in every field but the label, once as the open and once as the
+    close — nine days before kickoff. Nothing errored, and the consequences
+    were downstream and silent: the week HAD a close, so `matchups.board`
+    priced it off that instead of off the 21-book open captured a week later,
+    and dropped every outcome below `MIN_BOOKS` until the moneyline survived
+    on one game of sixteen. A week's movement table was all zeroes for the
+    same reason, which reads as a market that did not move.
+
+    Refused rather than relabeled: which end a capture belongs to is the
+    caller's to know, and guessing here would put a wrong answer in an
+    append-only file that cannot be corrected later.
     """
     p = path or LINES_PATH
     df = pl.DataFrame(rows).with_columns([
@@ -154,11 +168,47 @@ def append_snapshot(rows: list[dict], season: int, week: int,
         pl.lit(snapshot).alias("snapshot"),
     ])
     if p.exists():
-        df = pl.concat([pl.read_parquet(p), df], how="diagonal_relaxed")
+        prior = pl.read_parquet(p)
+        df = _drop_other_end(df, prior, season, week, snapshot)
+        if df.is_empty():
+            print(f"  Game lines: nothing to add for {season} week {week} "
+                  f"{snapshot}")
+            return prior
+        df = pl.concat([prior, df], how="diagonal_relaxed")
     p.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(p)
     print(f"  Game lines: {df.height:,} rows -> {p}")
     return df
+
+
+def _drop_other_end(df: pl.DataFrame, prior: pl.DataFrame, season: int,
+                    week: int, snapshot: str) -> pl.DataFrame:
+    """Drop rows from a capture this week already holds under the other label.
+
+    Keyed on `captured_at`, which is stamped once per fetch, so the test is
+    "has this exact capture already been filed as the other end" and not
+    "does this look like something we have seen". A genuine re-run under the
+    SAME label still appends, because a price standing for three hours is
+    three observations and the archive is where that is recorded.
+    """
+    if prior.is_empty() or "captured_at" not in prior.columns:
+        return df
+    clash = (prior.filter((pl.col("season") == int(season))
+                          & (pl.col("week") == int(week))
+                          & (pl.col("snapshot") != snapshot))
+                  .select("captured_at").unique().to_series().to_list())
+    if not clash:
+        return df
+    keep = df.filter(~pl.col("captured_at").is_in(clash))
+    if keep.height < df.height:
+        other = (prior.filter((pl.col("season") == int(season))
+                              & (pl.col("week") == int(week))
+                              & (pl.col("snapshot") != snapshot))
+                      .select("snapshot").unique().to_series().to_list())
+        print(f"  Game lines: refused {df.height - keep.height:,} rows for "
+              f"{season} week {week} — this capture is already archived as "
+              f"{'/'.join(sorted(other))}. One fetch is one end of a week.")
+    return keep
 
 
 def consensus(df: pl.DataFrame) -> pl.DataFrame:

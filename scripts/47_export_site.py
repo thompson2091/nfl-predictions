@@ -1563,6 +1563,53 @@ def _family_counts(names: list[str]) -> list[dict]:
             for k, v in sorted(fam.items(), key=lambda kv: -kv[1])]
 
 
+def _line_ends(season: int, week: int) -> tuple[bool, float | None]:
+    """`(stale_close, capture_gap_hours)` for one week of the game-line archive.
+
+    Lifted out of `games` because the answer is needed BEFORE the board is
+    built — which end to price the week off is the first decision, not a
+    footnote printed under numbers already chosen.
+
+    A close that predates the newest open is not a close. Week 3 of 2026 held a
+    pair captured four minutes apart while a real open landed the next day, and
+    the four-minute pair still differed by a point or two on five lines — not
+    because the market moved but because the set of books quoting them changed,
+    which shifts a median. Requiring "some line moved" passed that; requiring
+    the close to come AFTER the open does not, and needs no threshold to say so.
+    """
+    import polars as pl
+
+    from src.ingest.game_lines import LINES_PATH
+    try:
+        d = (pl.read_parquet(LINES_PATH)
+             .filter((pl.col("season") == season) & (pl.col("week") == week)))
+        if d.is_empty():
+            return (False, None)
+        # The LATEST of each, not the earliest. A week can hold several
+        # captures per end, and what decides whether a close exists is the
+        # newest one.
+        ends = {k: v for k, v in
+                d.group_by("snapshot").agg(pl.col("captured_at").max().alias("t"))
+                .iter_rows()}
+        ts = {k: v for k, v in
+              d.group_by("snapshot").agg(pl.col("captured_at").min().alias("t"))
+              .iter_rows()}
+        stale = ("open" in ends and "close" in ends
+                 and ends["close"] < ends["open"])
+        gap_h = None
+        if "open" in ts and "close" in ts:
+            from datetime import datetime
+            fmt = "%Y-%m-%dT%H:%M:%SZ"
+            gap_h = round((datetime.strptime(ts["close"], fmt)
+                           - datetime.strptime(ts["open"], fmt)).total_seconds()
+                          / 3600.0, 2)
+        return (bool(stale), gap_h)
+    except Exception:                                            # noqa: BLE001
+        # Pricing off the close is the status quo; an unreadable archive must
+        # not silently switch the page to the other end.
+        return (False, None)
+
+
 def games(season: int | None, week: int | None) -> dict:
     """This week's games as the market prices them — and no model column.
 
@@ -1587,10 +1634,38 @@ def games(season: int | None, week: int | None) -> dict:
         print(f"  games unavailable ({e})", file=sys.stderr)
         return {}
 
-    b = board(season, week)
+    # WHICH END TO PRICE THE WEEK OFF, decided before the board is built.
+    #
+    # `board` defaults to the close, which is the price you could actually
+    # take. Mid-week there is no close, and what sits in that slot can be a
+    # capture that was filed as one: 2026 week 4 held a 7-book snapshot from
+    # the Tuesday NINE DAYS before kickoff, byte-identical to a row set also
+    # filed as the open, while the two genuine 21-book captures were both
+    # labeled open. `board` drops any outcome quoted by fewer than MIN_BOOKS,
+    # so pricing off that close left the moneyline standing on ONE of sixteen
+    # games — and `v3Games` hides its whole book/model/adjusted/gap strip when
+    # the book number is null, so fifteen games showed no numbers at all while
+    # the model had an opinion on every one of them.
+    #
+    # Falling back to the open is the same argument `opening_prices` makes for
+    # the props board: early in the week the open is more coverage, not less.
+    # `priced_from` rides along in the payload so the page can say which end it
+    # is showing rather than implying a close that does not exist.
+    stale_close, gap_h = _line_ends(season, week)
+    priced_from = "open" if stale_close else "close"
+    b = board(season, week, snapshot=priced_from)
+    # A close that clears MIN_BOOKS on nothing is not a close either. The
+    # staleness test only catches a close that is OLDER than the open; one
+    # captured later by too few books fails here instead.
+    if b.is_empty() and priced_from == "close":
+        b = board(season, week, snapshot="open")
+        priced_from = "open"
     if b.is_empty():
         print(f"  no game lines for {season} week {week}", file=sys.stderr)
         return {}
+    if priced_from == "open":
+        print(f"  games: no usable close for week {week} — priced off the open",
+              file=sys.stderr)
 
     mv = movement(season, week)
     moves = {}
@@ -1612,40 +1687,6 @@ def games(season: int | None, week: int | None) -> dict:
     from src.evaluation.rlm import MIN_MOVE_PP
 
     real = [m for m in moves.values() if abs(m["move_pp"] or 0) >= MIN_MOVE_PP]
-    gap_h = None
-    stale_close = False
-    try:
-        import polars as pl
-
-        from src.ingest.game_lines import LINES_PATH
-        d = (pl.read_parquet(LINES_PATH)
-             .filter((pl.col("season") == season) & (pl.col("week") == week)))
-        # The LATEST of each, not the earliest. A week can hold several
-        # captures per end, and what decides whether a close exists is the
-        # newest one — see `stale_close` below.
-        ends = {k: v for k, v in
-                d.group_by("snapshot").agg(pl.col("captured_at").max().alias("t"))
-                .iter_rows()}
-        ts = {k: v for k, v in
-              d.group_by("snapshot").agg(pl.col("captured_at").min().alias("t"))
-              .iter_rows()}
-        # A close that predates the newest open is not a close. Week 3 held a
-        # pair captured four minutes apart while a real open landed the next
-        # day, and the four-minute pair still differed by a point or two on
-        # five lines — not because the market moved but because the set of
-        # books quoting them changed, which shifts a median. Requiring "some
-        # line moved" passed that; requiring the close to come AFTER the open
-        # does not, and needs no threshold to say so.
-        if "open" in ends and "close" in ends:
-            stale_close = ends["close"] < ends["open"]
-        if "open" in ts and "close" in ts:
-            from datetime import datetime
-            fmt = "%Y-%m-%dT%H:%M:%SZ"
-            gap_h = round((datetime.strptime(ts["close"], fmt)
-                           - datetime.strptime(ts["open"], fmt)).total_seconds()
-                          / 3600.0, 2)
-    except Exception:                                            # noqa: BLE001
-        pass
 
     # De-vig, so the page can print a probability rather than a price.
     #
@@ -1676,6 +1717,10 @@ def games(season: int | None, week: int | None) -> dict:
             "moved": bool(real) and not stale_close,
             "capture_gap_hours": gap_h,
             "stale_close": stale_close,
+            # Which end the prices on this page came from. "open" says the
+            # week has no usable close yet, which is the normal state from the
+            # rollover until the capture before kickoff.
+            "priced_from": priced_from,
             "min_move_pp": MIN_MOVE_PP,
             # Stated on the page rather than left for the reader to wonder at.
             "no_model": ("The team-rate model is a regression ON the total and "

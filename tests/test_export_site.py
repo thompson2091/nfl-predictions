@@ -245,3 +245,86 @@ def test_the_history_index_counts_priced_rows_per_game():
     assert by_game == {"2": {"CAR_ATL": 2}}, by_game
     assert "CIN_HOU" not in by_game["2"], (
         "a game with nothing quoted must be absent, not present as zero")
+
+
+def test_one_capture_cannot_be_filed_as_both_ends_of_a_week():
+    """Writing the same fetch under both labels invents a close that is not one.
+
+    2026 week 4 archived a 7-book capture twice — identical in every field but
+    the label — nine days before kickoff. Nothing errored. `matchups.board`
+    defaults to the close, so it priced the week off that instead of off the
+    21-book open captured a week later, dropped every outcome quoted by fewer
+    than MIN_BOOKS, and left the moneyline standing on one game of sixteen.
+    """
+    import polars as pl
+
+    from src.ingest.game_lines import append_snapshot
+
+    import tempfile
+    rows = [{"captured_at": "2026-09-22T20:45:36Z", "game_id": "PIT_CLE",
+             "home_team": "CLE", "away_team": "PIT", "bookmaker": "fanduel",
+             "market": "h2h", "outcome": "PIT", "outcome_raw": "Pittsburgh",
+             "point": None, "odds": -110, "implied_prob": 0.5238}]
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "game_lines.parquet"
+        append_snapshot(rows, season=2026, week=4, snapshot="open", path=p)
+        append_snapshot(rows, season=2026, week=4, snapshot="close", path=p)
+        d = pl.read_parquet(p)
+
+    assert d.height == 1, "the second label was written anyway"
+    assert d["snapshot"].to_list() == ["open"], "the first label did not stand"
+
+
+def test_a_repeat_capture_under_its_own_label_still_appends():
+    """The guard is about the OTHER end, not about de-duplicating the archive.
+
+    A price standing for three hours across three captures is three
+    observations, and how long a price stood is only answerable because they
+    are all on disk.
+    """
+    import polars as pl
+
+    from src.ingest.game_lines import append_snapshot
+
+    import tempfile
+    def _row(at):
+        return [{"captured_at": at, "game_id": "PIT_CLE", "home_team": "CLE",
+                 "away_team": "PIT", "bookmaker": "fanduel", "market": "h2h",
+                 "outcome": "PIT", "outcome_raw": "Pittsburgh", "point": None,
+                 "odds": -110, "implied_prob": 0.5238}]
+
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "game_lines.parquet"
+        append_snapshot(_row("2026-09-29T16:00:10Z"), season=2026, week=4,
+                        snapshot="open", path=p)
+        append_snapshot(_row("2026-09-30T16:00:12Z"), season=2026, week=4,
+                        snapshot="open", path=p)
+        d = pl.read_parquet(p)
+
+    assert d.height == 2, "a genuine second open capture was refused"
+
+
+def test_a_week_with_no_usable_close_is_priced_off_its_open():
+    """A stale close must not decide which prices the games page shows.
+
+    `board` defaults to the close and drops outcomes below MIN_BOOKS, and
+    `v3Games` hides its whole book/model/adjusted/gap strip when the book
+    number is null — so a thin close showed fifteen of sixteen games with no
+    numbers at all while the model had an opinion on every one of them.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "se", Path(__file__).resolve().parents[1] / "scripts/47_export_site.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    src = Path(__file__).resolve().parents[1] / "scripts/47_export_site.py"
+    text = src.read_text()
+    assert "stale_close, gap_h = _line_ends(season, week)" in text, \
+        "the ends are read after the board is built again"
+    assert 'board(season, week, snapshot=priced_from)' in text, \
+        "the board no longer takes the end it was told to use"
+    i_ends = text.index("stale_close, gap_h = _line_ends(season, week)")
+    i_board = text.index("b = board(season, week, snapshot=priced_from)")
+    assert i_ends < i_board, "which end to price off is decided too late"
