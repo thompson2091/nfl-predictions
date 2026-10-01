@@ -1764,3 +1764,18 @@ def test_the_form_table_aligns_its_four_numbers():
     i = css.index(".tf__hd,.tf__row{")
     assert "tabular-nums" in css[i:i + 600], \
         "the form numbers no longer line up down the page"
+
+
+def test_a_control_is_clickable_across_its_whole_pill():
+    """A select sized to its text inside a pill that stretches.
+
+    `.pbar .picker select` sizes to content so several controls share a pinned
+    row. Alone in a row on a desktop that is a 950px pill with a 96px select
+    at the left: "All kinds" opened on the words and did nothing on the nine
+    tenths of the pill that look exactly as clickable.
+    """
+    css = _v3css()
+    i = css.index(".pbar__row--two .picker select{")
+    rule = css[i:i + 120]
+    assert "flex:1" in rule, "the lone picker's select sizes to its text again"
+    assert "max-width:none" in rule, "and it is capped at 96px"

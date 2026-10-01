@@ -514,7 +514,14 @@ button{cursor:pointer}
    pinned narrow there. Here it takes the space it is given, and
    takes all of it when the reading control is absent. */
 .pbar__row--two .picker{flex:1;min-width:0}
-.pbar__row--two .picker select{max-width:none}
+/* THE WHOLE PILL IS THE CONTROL, NOT THE WORDS IN IT.
+   `.pbar .picker select` sizes a select to its content so several can share a
+   pinned row. In this row the picker is on its own and stretches to the width
+   of the bar — on a desktop that is a 950px pill with a 96px select at the
+   left of it, so "All kinds" opened on the text and did nothing on the nine
+   tenths of the pill that look exactly as clickable. `flex:1` with the
+   max-width already lifted puts the select back under the whole pill. */
+.pbar__row--two .picker select{max-width:none;flex:1}
 .pbar .search{flex:1;min-width:0;margin-top:0}
 .pbar .search input{height:34px;padding-right:34px}
 .pbar .searchx{top:1px;right:2px}
