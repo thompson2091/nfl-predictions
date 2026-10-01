@@ -978,20 +978,32 @@ button{cursor:pointer}
    saying it, their number for one side, and the score that implies. The bar
    is deliberately thin — the figure is the fact and the bar is only there so
    three rows can be compared without reading them. */
-.proj{margin-top:14px}
+/* EVERY ROW ON THE SAME TRACKS. Each row is its own grid — it has to be, to
+   carry a background and a border — and `auto` on the first column sized it
+   to that row's own label. "SPORTSBOOKS", "OUR MODEL / from 2943 past games"
+   and "ADJUSTED" are three different widths, so the percentages started at
+   three different places and the thing meant to be read down a column could
+   not be. The label column is a fixed width now, declared once, so the three
+   rows line up whatever is written in them. */
+.proj{margin-top:14px;--proj-l:104px}
 .proj__r{display:grid;
-  grid-template-columns:minmax(0,auto) 52px minmax(40px,1fr) minmax(0,auto);
-  gap:12px;align-items:center;padding:9px 0;
+  grid-template-columns:var(--proj-l) 48px minmax(32px,1fr) minmax(0,auto);
+  gap:10px;align-items:center;padding:9px 0;
   border-top:1px solid var(--line3)}
+@media (min-width:600px){.proj{--proj-l:148px}}
 .proj__r--h{padding:0 0 4px;border-top:0;font-size:11px;letter-spacing:.04em;
   text-transform:uppercase;color:var(--mut2)}
 .proj__r--h .proj__w,.proj__r--h .proj__p{text-align:right;display:block}
+/* The column heading is wider than the column it names and leans into the
+   empty label cell beside it rather than wrapping or clipping. */
+.proj__r--h .proj__w{white-space:nowrap;overflow:visible}
 .proj__r--h{align-items:end}
 /* The blend is what the page serves, so it carries the tint the rest of the
    app uses for our own number rather than being a third anonymous row. */
 .proj__r--adj{background:var(--goodbg);border-radius:8px;
   padding-left:8px;padding-right:8px;margin:0 -8px}
 .proj__s{display:flex;flex-direction:column;gap:1px;min-width:0}
+.proj__s .eyebrow{white-space:nowrap}
 .proj__s .sub{font-size:11px;line-height:14px}
 .proj__w{text-align:right}
 .proj__w b{font-size:17px;line-height:20px;display:block}

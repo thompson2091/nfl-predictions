@@ -1825,3 +1825,18 @@ def test_a_control_is_clickable_across_its_whole_pill():
     rule = css[i:i + 120]
     assert "flex:1" in rule, "the lone picker's select sizes to its text again"
     assert "max-width:none" in rule, "and it is capped at 96px"
+
+
+def test_every_projection_row_sits_on_the_same_columns():
+    """Each row is its own grid, so `auto` sized the label column per row.
+
+    "SPORTSBOOKS", "OUR MODEL / from 2943 past games" and "ADJUSTED" are three
+    different widths, so the percentages started at three different places and
+    the thing meant to be compared down a column could not be.
+    """
+    css = _v3css()
+    i = css.index(".proj__r{")
+    rule = css[i:i + 240]
+    assert "var(--proj-l)" in rule, "the label column sizes to its own row again"
+    assert "minmax(0,auto) 52px" not in rule, "the old auto track is back"
+    assert "--proj-l:" in css, "the label width is not declared anywhere"
