@@ -2,6 +2,22 @@
 import polars as pl
 
 
+def implied_team_total(total_line, spread_line):
+    """Points this team is expected to score, from the two numbers the book posts.
+
+    Scalars or polars expressions — the arithmetic is the same either way, and
+    sharing it is the point. `team_form` draws a chart against this number and
+    the feature matrix trains on it; computing it twice is how the two come to
+    disagree about what the market expected and nobody notices, because both
+    answers look like points.
+
+    `spread_line` must already be in THIS TEAM's perspective: positive when
+    they are favored. The docstring below has the history of getting that
+    backwards.
+    """
+    return (total_line + spread_line) / 2
+
+
 def _line_features() -> list[pl.Expr]:
     """Line-derived features, once, for a `spread_line` already in team perspective.
 
@@ -24,7 +40,8 @@ def _line_features() -> list[pl.Expr]:
     expressions serves both.
     """
     return [
-        ((pl.col("total_line") + pl.col("spread_line")) / 2).alias("implied_team_total"),
+        implied_team_total(pl.col("total_line"),
+                           pl.col("spread_line")).alias("implied_team_total"),
         (pl.col("spread_line") > 0).cast(pl.Float64).alias("is_favorite"),
         (pl.col("spread_line") >= 7).cast(pl.Float64).alias("is_big_favorite"),
     ]

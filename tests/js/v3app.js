@@ -807,6 +807,32 @@ if (cards.length) {
   ok('the projected scores keep a decimal',
      /\d+\.\d\u2013\d+\.\d/.test(h),
      'whole numbers collapse a close game into a tie');
+
+  // ── Recent form ───────────────────────────────────────────────────────
+  //
+  // A ROW OF SCORES CANNOT BE READ, so the bar is the score and the tick is
+  // what the game was priced for. Both have to be on screen: a chart that
+  // drew the bars and dropped the ticks would look finished and mean
+  // something else.
+  ok('recent form draws both teams', h.indexOf('Recent form') >= 0
+     && h.indexOf('scored') >= 0 && h.indexOf('allowed') >= 0);
+  ok('every bar carries its own expectation',
+     (h.match(/class="tf__t"/g) || []).length >= 18,
+     'ticks drawn: ' + (h.match(/class="tf__t"/g) || []).length);
+  // Ten games in week 3 is mostly last season. Drawn and marked, not hidden.
+  ok('the season boundary is marked rather than hidden',
+     h.indexOf('tf__s--brk') >= 0 && h.indexOf('tf__b--prev') >= 0);
+  // A game with no archived line draws a bar and no tick, not a tick at zero.
+  ok('a week with no line still draws its bar',
+     (h.match(/class="tf__b/g) || []).length
+     > (h.match(/class="tf__t"/g) || []).length);
+  ok('the form says the scores include defensive touchdowns',
+     h.indexOf('special-teams') >= 0);
+  // UNDER THE PROJECTION, ABOVE THE MONEY. Asked for in that order, and the
+  // order is the argument: what is expected, then what they have been doing.
+  ok('recent form sits between the projection and the money',
+     h.indexOf('Our model') < h.indexOf('Recent form'),
+     'form is above the projection');
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 

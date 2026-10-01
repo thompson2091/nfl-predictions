@@ -462,6 +462,30 @@ def _player_names(obj, out: set) -> None:
             _player_names(x, out)
 
 
+def _team_form_block(payload: dict, season: int | None,
+                     week: int | None) -> None:
+    """Each team's last ten, scored and allowed, against what was expected.
+
+    Inlined rather than fetched: 32 teams x 10 games x 8 small fields is about
+    40 KB, against the 1.6 MB that made the player record a separate file.
+
+    Absent rather than empty when the schedule cannot answer, so the page can
+    tell "no form to show" from "a chart with nothing in it" — `v3TeamForm`
+    draws nothing at all rather than an axis over a blank.
+    """
+    if not (season and week):
+        return
+    try:
+        from src.evaluation import team_form as TF
+
+        rows = TF.rows_for(int(season), int(week))
+        if not rows:
+            return
+        payload["teamform"] = {"last": TF.LAST, "teams": rows}
+    except Exception as e:  # noqa: BLE001
+        print(f"  team form skipped: {e}", file=sys.stderr)
+
+
 def _history_block(payload: dict) -> None:
     """What each player's line has done before.
 
@@ -1984,6 +2008,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     # like any other and belongs in the count.
     _angles_block(payload, s, w)
     _history_block(payload)
+    _team_form_block(payload, s, w)
     _mark_consensus_lines(payload)
     payload["brand"] = brand
     payload["season"] = s

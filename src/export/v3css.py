@@ -384,6 +384,34 @@ button{cursor:pointer}
   var(--mut3) 2px,transparent 2px,transparent 4px);
   outline:1px solid var(--mut3)}
 .pl__l{margin-top:8px;max-height:260px;overflow-y:auto}
+/* ---- recent form: score bars with the week's expectation across them ----
+   Each slot is its own box so the tick can sit ABOVE the bar when a team was
+   expected to score more than it did — the one case a tick drawn inside the
+   bar cannot show, and the case most worth seeing. */
+.tf__t2{margin-top:14px}
+.tf__t2:first-of-type{margin-top:8px}
+.tf__r{display:flex;align-items:flex-end;gap:8px;margin-top:6px}
+.tf__l{width:52px;flex-shrink:0;font-size:11px;color:var(--mut);
+  padding-bottom:2px}
+.tf__c{position:relative;display:flex;align-items:flex-end;gap:3px;
+  height:56px;flex:1;min-width:0;overflow:hidden}
+.tf__s{position:relative;flex:1;min-width:0;height:100%}
+/* The season changes between two bars, so the divider is the newer season's
+   left edge rather than a rule floating between them. */
+.tf__s--brk{border-left:1px dashed var(--line);margin-left:3px;padding-left:3px}
+.tf__b{position:absolute;left:0;right:0;bottom:0;border-radius:2px;
+  background:var(--mut3)}
+.tf__b--over{background:var(--ours)}
+/* Last season, still drawn: muted rather than dropped, so ten games is ten
+   games in September and the reader can see which of them were a year ago. */
+.tf__b--prev{opacity:.45}
+.tf__t{position:absolute;left:-1px;right:-1px;height:2px;border-radius:1px;
+  background:var(--ink);opacity:.55}
+.tf__sw{width:10px;height:3px;border-radius:1px;background:var(--ink);
+  opacity:.55}
+/* The two teams' lists are the long part of this card; neither needs to be
+   taller than a phone. */
+.tf .pl__l{max-height:200px}
 /* Why the button did nothing. Muted rather than red: the ten weeks above it
    are real and the panel is still useful. */
 .pl__e{margin:8px 0 0;font-size:12px;color:var(--mut)}

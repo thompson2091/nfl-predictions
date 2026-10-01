@@ -486,6 +486,25 @@ def payload_v3():
              "spread": 2.5, "pf": None, "pa": None, "covered": None,
              "by": None, "played": False}]},
     }
+    # RECENT FORM, CROSSING A SEASON ON PURPOSE. Ten games in week 3 is
+    # mostly last year, which is the case the divider and the muted bars
+    # exist for — a fixture that stayed inside one season would render
+    # neither and report passing.
+    #
+    # GB's week-1 row carries no expectation, because a game the archive has
+    # no line for must draw a bar and no tick rather than a tick at zero.
+    def _form(team, base):
+        rows = []
+        for i in range(10):
+            szn, wk = (2026, 3 - i) if i < 2 else (2025, 20 - i)
+            pf = base + (i % 4) * 3
+            pa = base - 2 + (i % 3) * 4
+            rows.append([szn, wk, "OPP", i % 2, pf, pa,
+                         None if (team == "GB" and i == 1) else 22.5,
+                         None if (team == "GB" and i == 1) else 21.0])
+        return rows
+    p["teamform"] = {"last": 10,
+                     "teams": {"GB": _form("GB", 24), "ATL": _form("ATL", 19)}}
     return p
 
 

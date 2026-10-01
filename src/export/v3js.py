@@ -2566,6 +2566,105 @@ function v3GTab(v) {
 // They belong together and they are one answer: what this game is priced at
 // and who is backing it. As a section they are a tap away instead of a
 // scroll, and every other section starts at the top of the page.
+// WHAT THE TWO TEAMS HAVE DONE, AGAINST WHAT WAS EXPECTED OF THEM.
+//
+// A ROW OF SCORES CANNOT BE READ. 27, 14, 31, 20 invites an average — "this
+// offense scores 23" — and the four games were played against four defenses
+// the market priced differently. So the bar is the score and the tick across
+// it is that week's implied team total: height says how much, the tick says
+// whether it was more or less than the game was priced for. `team_form` has
+// the long version, and `player_history` makes the identical argument one
+// level down about a prop line that moves week to week.
+//
+// ONE SCALE FOR ALL FOUR ROWS. Two teams, points scored and points allowed,
+// every bar measured against the same maximum — otherwise the taller of two
+// offenses is whichever one the renderer scaled more generously.
+function v3TeamForm(c) {
+  const TF = DATA.teamform || {};
+  const teams = TF.teams || {};
+  const sides = [[c.away, teams[c.away]], [c.home, teams[c.home]]]
+    .filter(x => x[1] && x[1].length);
+  if (!sides.length) return '';
+  // r = [season, week, opponent, home, pf, pa, exp_for, exp_against]
+  let top = 0;
+  sides.forEach(s => s[1].forEach(r => {
+    [r[4], r[5], r[6], r[7]].forEach(v => { if (has(v) && v > top) top = v; });
+  }));
+  if (!top) return '';
+  // Headroom, so the tallest bar is not flush with the ceiling and a tick at
+  // the maximum is still drawn inside the box.
+  top = top * 1.1;
+
+  const season = sides[0][1][0] ? sides[0][1][0][0] : null;
+  const barRow = (rows, val, exp) => {
+    // Oldest on the left, which is the direction the axis underneath reads.
+    const cells = rows.slice().reverse().map((r, i, arr) => {
+      const v = val(r), e = exp(r);
+      const over = has(v) && has(e) && v > e;
+      const prev = season != null && r[0] < season;
+      // The season changes BETWEEN two bars, so the divider belongs to the
+      // first bar of the newer season rather than to either season's edge.
+      const brk = i > 0 && arr[i - 1][0] !== r[0];
+      const h = has(v) ? Math.max(2, Math.round(v / top * 100)) : 0;
+      const t = has(e) ? Math.max(0, Math.min(100, Math.round(e / top * 100)))
+        : null;
+      const ttl = v3PastWhen(r) + ' ' + (r[3] ? 'vs ' : 'at ') + r[2]
+        + ' \u2014 ' + v + (has(e) ? ', expected ' + e : '');
+      return '<span class="tf__s' + (brk ? ' tf__s--brk' : '') + '" title="'
+        + esc(ttl) + '">'
+        + '<i class="tf__b' + (over ? ' tf__b--over' : '')
+        + (prev ? ' tf__b--prev' : '') + '" style="height:' + h + '%"></i>'
+        + (t == null ? ''
+           : '<i class="tf__t" style="bottom:' + t + '%"></i>')
+        + '</span>';
+    }).join('');
+    return '<div class="tf__c">' + cells + '</div>';
+  };
+
+  const count = (rows, val, exp) => rows.filter(
+    r => has(val(r)) && has(exp(r)) && val(r) > exp(r)).length;
+  const pf = r => r[4], pa = r => r[5], ef = r => r[6], ea = r => r[7];
+
+  const block = (name, rows) => {
+    const list = rows.map(r =>
+      '<div class="pl__r"><span class="pl__w">' + esc(v3PastWhen(r))
+      + '</span><span class="pl__o">' + (r[3] ? 'vs ' : 'at ') + esc(r[2])
+      + '</span><span class="pl__v num">' + r[4] + '\u2013' + r[5]
+      + (has(r[6]) && has(r[7])
+         ? ' \u00b7 expected ' + r[6] + '\u2013' + r[7] : '')
+      + '</span></div>').join('');
+    return '<div class="tf__t2">'
+      + '<div class="pl__h">' + esc(name) + ', last ' + rows.length + '</div>'
+      + '<p class="pl__s">Scored more than expected in '
+      + count(rows, pf, ef) + ' of ' + rows.length + ' \u00b7 allowed more in '
+      + count(rows, pa, ea) + '</p>'
+      + '<div class="tf__r"><span class="tf__l">scored</span>'
+      + barRow(rows, pf, ef) + '</div>'
+      + '<div class="tf__r"><span class="tf__l">allowed</span>'
+      + barRow(rows, pa, ea) + '</div>'
+      + '<div class="pl__ax"><span>' + esc(v3PastWhen(rows[rows.length - 1]))
+      + '</span><span>' + esc(v3PastWhen(rows[0])) + '</span></div>'
+      + '<div class="pl__l">' + list + '</div></div>';
+  };
+
+  return '<div class="card tf">'
+    + '<div class="pl__h">Recent form</div>'
+    + '<div class="pl__lg">'
+    + '<span class="pl__k"><i class="pl__sw pl__sw--up"></i>more than the game '
+    + 'was priced for</span>'
+    + '<span class="pl__k"><i class="pl__sw"></i>less</span>'
+    + '<span class="pl__k"><i class="tf__sw"></i>what was expected that week'
+    + '</span></div>'
+    + sides.map(s => block(s[0], s[1])).join('')
+    // SAID, NOT SUBTRACTED. A pick-six is seven points the offense did not
+    // score and seven the total settled on, and this panel sits beside a
+    // total. Taking them out would leave a number matching neither.
+    + '<p class="help">Final scores, so defensive and special-teams '
+    + 'touchdowns are in them. The expected line is the market\u2019s implied '
+    + 'total for that team that week \u2014 the posted total and spread, '
+    + 'split.</p></div>';
+}
+
 function v3GameOdds(c, gid) {
   return '<div class="card">'
     + '<div class="vs"><div><b>' + esc(c.away) + '</b><div class="sub">away</div>'
@@ -2575,6 +2674,10 @@ function v3GameOdds(c, gid) {
     + '<div class="sub" style="margin-top:8px">' + esc(v3Kick(c)) + '</div>'
     + v3WinBar(c)
     + v3Compare(c) + '</div>'
+    // UNDER THE PROJECTION AND ABOVE THE MONEY. The projection says what this
+    // game is expected to look like; this says what the two teams have
+    // actually been doing, which is the question it immediately raises.
+    + v3TeamForm(c)
     + v3PublicMoney(gid)
     // Directly under it, because it is the other half of the same feed: the
     // bars above are the ticket share and this is the dollar share.
