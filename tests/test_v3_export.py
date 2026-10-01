@@ -1746,45 +1746,35 @@ def test_the_desktop_width_is_spent_rather_than_stretched():
     block = css[i:i + 1800]
     assert ".wrap{max-width:880px}" in block, "the shell never widens"
     assert "68ch" in block, "prose runs the full width of the window"
-    assert "#v3rows{display:grid" in block, "the board is still one column"
+    assert "max-width:880px" in block, "the shell never widens"
 
 
-def test_a_player_opens_as_a_drawer_on_a_two_column_board():
-    """Two columns of rows and an inline panel are in each other's way.
+def test_a_player_opens_under_himself_at_every_width():
+    """One column, and the panel opens where it did on the phone.
 
-    Spanning the full width shoved half the board down the page and jumped
-    the row that was tapped; staying in its column gave a six-field grid and
-    a chart half the width they need. On a desktop the panel leaves the flow
-    and docks right; below 900px the phone keeps the inline expansion, which
-    is the one that was already good.
+    Two rows abreast with a docked drawer worked and read as two different
+    apps: the phone expanded the row you tapped and the desktop answered
+    somewhere else on the screen. What a reader learns on one has to be what
+    happens on the other.
     """
     css = _v3css()
     i = css.index("@media (min-width:900px)")
     block = css[i:i + 2600]
-    assert "#v3rows>.row--open>.detail{position:fixed" in block, \
-        "the opened panel is back in the flow of the board"
-    assert "#v3rows>.row--open{background:" in block, \
-        "nothing says which row the drawer belongs to"
-    assert "grid-column:1/-1" not in block.split("#v3rows>.row--open")[1][:400], \
-        "the opened row still spans and shoves the board"
+    assert "#v3rows{display:grid" not in block, \
+        "the board is two columns again"
+    assert "position:fixed" not in block, "the drawer is back"
 
     src = _v3js()
-    assert "detail__h" in src and "detail__x" in src, \
-        "the drawer has no title or close button"
-    # Named exactly, because the desktop block sits ABOVE the base rule in
-    # this file and carries its own `.detail__h` saying display:flex — so
-    # "the first .detail__h" and "the one before the media query" both find
-    # the wrong rule.
-    assert ".detail__h{display:none}" in css, \
-        "the drawer title shows inline on a phone, where the row says it"
+    assert "detail__h" not in src and "detail__x" not in src, \
+        "the panel carries a drawer's title and close button with no drawer"
 
 
-def test_only_the_player_board_becomes_two_columns():
+def test_no_list_on_the_site_is_made_two_columns():
     """`.list` is five lists — the board, the games list, the angles table
-    and a ladder. Only the board is a grid of equal cards."""
+    and a ladder — and none of them is a grid of equal cards."""
     css = _v3css()
     i = css.index("@media (min-width:900px)")
-    block = css[i:i + 1800]
+    block = css[i:i + 2600]
     assert ".list{display:grid" not in block, \
         "every list on the site was made two columns"
 

@@ -1286,14 +1286,6 @@ function v3Detail(row) {
         + (gm.mine ? ' \u2014 this player\u2019s side'
            : gm.facing ? ' \u2014 the other side' : ''), true);
   }
-  // A HEADER THE PANEL ONLY NEEDS WHEN IT IS DETACHED FROM ITS ROW.
-  //
-  // On a phone the detail opens directly under the player you tapped and the
-  // row above it is the title. On a desktop the board is two columns wide and
-  // an opening panel either shoved half the board down the page or was
-  // confined to half the width it needs — so there it opens as a drawer at
-  // the right, away from the row, and a drawer with no name on it belongs to
-  // nobody. Hidden below 900px, where the row is still saying it.
   // THE RECORD FIRST, THE FIGURES UNDER IT.
   //
   // The panel opened with twenty label-and-number pairs and put the chart of
@@ -1302,11 +1294,10 @@ function v3Detail(row) {
   // project, Likely range, Books quoting — and the thing most people opened
   // him for was a scroll away. What he has done the last ten weeks leads now;
   // the figures that price this week follow it.
+  // NO HEADER ON IT. The panel opens directly under the player it is about,
+  // at every width, so the row above it is the title — which is the whole
+  // reason the drawer that needed one is gone.
   return '<div class="detail">'
-    + '<div class="detail__h"><b>' + esc(row.player) + '</b>'
-    + '<span class="sub">' + esc(v3Fixture(row)) + '</span>'
-    + '<button class="detail__x" data-v3open="' + esc(row.id)
-    + '" aria-label="Close ' + esc(row.player) + '">\u00d7</button></div>'
     + v3PastLines(row)
     + '<dl>'
     + f.map(x => '<div' + (x[2] ? ' class="detail__w"' : '') + '><dt>'

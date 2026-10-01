@@ -95,58 +95,12 @@ button{cursor:pointer}
      does. These stay where they are and the layout grows around them. */
   .lede,.help,.pl__s{max-width:68ch}
 
-  /* TWO ROWS ABREAST on the PLAYER BOARD only. `.list` is also the games
-     list, the angles table and a ladder, none of which is a grid of equal
-     cards; `#v3rows` is the board and nothing else.
-     An opened row takes the full width back — its
-     detail panel is a six-field grid and a chart, which is the one thing on
-     this page that wants the whole 880px. */
-  #v3rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
-    column-gap:0}
-  #v3rows>.row{border-top:1px solid var(--line)}
-  #v3rows>.row:nth-child(-n+2){border-top:0}
-  #v3rows>.row:nth-child(odd){border-right:1px solid var(--line)}
-  /* A DRAWER, NOT AN EXPANSION. Two columns of rows and an inline panel are
-     in each other's way: spanning the full width shoves half the board down
-     the page and jumps the row you tapped, and staying in its column gives a
-     six-field grid and a chart half the width they need.
-     So on a desktop the panel leaves the flow entirely and docks right. The
-     board does not move, the row it belongs to is tinted, and the panel says
-     whose it is. Below 900px none of this applies and the phone keeps the
-     inline expansion it already had. */
-  #v3rows>.row--open{background:var(--inset)}
-  #v3rows>.row--open>.detail{position:fixed;z-index:14;
-    top:calc(64px + env(safe-area-inset-top,0px));
-    bottom:calc(68px + env(safe-area-inset-bottom,0px));
-    right:max(12px,calc((100vw - 1200px)/2));
-    width:min(420px,42vw);margin:0;overflow-y:auto;
-    box-shadow:0 10px 40px rgba(22,24,29,.18)}
-  #v3rows>.row--open>.detail .detail__h{display:flex;align-items:baseline;
-    gap:8px;position:sticky;top:-12px;margin:-12px -12px 8px;
-    padding:12px;background:var(--card);border-bottom:1px solid var(--line);
-    z-index:1}
-  .detail__h b{font-size:17px}
-  .detail__h .sub{flex:1;min-width:0}
-  .detail__x{flex:none;width:28px;height:28px;border-radius:999px;
-    border:1px solid var(--btnline);background:var(--inset);font-size:16px;
-    line-height:1;color:var(--mut)}
-
-  /* Any section that is a set of self-contained blocks: the money card's
-     three markets today, and whatever else is built the same way. One
-     utility rather than a rule per section, so a new block set gets the
-     behavior by being given the class. */
-  .cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
-    gap:0 20px;align-items:start}
-  /* NOT a full-width last row. Three markets in two columns is 2 + 1, and
-     spanning the 1 gave it bars twice the length of the two above it — the
-     same number drawn at two scales in one card. The explanatory blocks flow
-     into the grid behind the markets instead, which fills the row the third
-     market starts. */
-  /* A paragraph in a half-width column has its line length already; the
-     reading cap would only pull it in further and reopen the hole. */
-  .cols2--prose .help,.cols2--prose .lede{max-width:none}
-  .cols2--prose>*{margin-top:0}
-
+  /* ONE PLAYER TO A ROW, AND THE PANEL OPENS UNDER HIM.
+     Two abreast with a docked drawer worked and read as two different apps:
+     the phone expanded the row you tapped and the desktop answered somewhere
+     else on the screen. One column behaves the same way at every width, and
+     the thing a reader learns on their phone is the thing that happens on
+     their laptop. */
   /* The two teams, beside each other rather than one under the other: the
      whole point of the card is comparing them. The heading, the legend and
      the note still span it. */
@@ -468,9 +422,6 @@ button{cursor:pointer}
 .pl__seg{margin-top:8px}
 .pl__seg--stick{position:sticky;top:0;z-index:3;background:var(--card);
   padding-top:6px;padding-bottom:2px}
-/* The drawer scrolls inside itself, so the control sticks to the drawer's
-   top edge rather than the page's. */
-#v3rows>.row--open>.detail .pl__seg--stick{top:46px}
 .pl__m{margin:6px 0 0;font-size:14px;line-height:19px;color:var(--mut)}
 .pl__m b{color:var(--ink)}
 .pl__m b.pos{color:var(--good)}
@@ -666,8 +617,6 @@ button{cursor:pointer}
    doing around it. `1/-1` rather than `span 2`, so it still spans everything
    on a width where `auto-fit` has resolved to one column or to three. */
 .detail__w{grid-column:1/-1}
-/* Only the drawer needs a title; inline under its own row, the row is one. */
-.detail__h{display:none}
 .detail dt{font-size:13px;color:var(--mut);flex-shrink:0}
 /* `break-word`, NOT `anywhere`. `anywhere` is what let a squeezed column cut
    "average" into "av/era/ge" rather than wrapping at the spaces it had; it
