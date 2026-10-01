@@ -856,7 +856,16 @@ function v3PastLines(row) {
     const v = vals[i];
     const zero = !yes && did(r) === 0;
     const hit = yes ? did(r) === 1 : v > 0;
-    const h = Math.max(4, Math.round(Math.abs(v) / top * 100));
+    // HALF THE BOX, BECAUSE A BAR ONLY HAS HALF OF IT.
+    //
+    // The bars grow from the midline: `.pl__b--up` is pinned to the top and
+    // pushed down by half its own height, `--dn` the mirror. So the space a
+    // bar can occupy is 36 of the 72 pixels, and scaling the biggest week to
+    // 100% drew it at twice its room — it overflowed the chart and landed on
+    // the sentence underneath, which is what "5 of 10 went over" was being
+    // struck through by. `.pl__c` also clips now, so a future arithmetic
+    // slip is a clipped bar rather than text with a bar through it.
+    const h = Math.max(4, Math.round(Math.abs(v) / top * 50));
     const cls = 'pl__b' + (yes ? (hit ? ' pl__b--hit' : '')
       : (v > 0 ? ' pl__b--up' : ' pl__b--dn')) + (zero ? ' pl__b--zero' : '');
     const ttl = v3PastWhen(r) + ' ' + (r[3] ? 'vs ' : 'at ') + r[2] + ' \u2014 '
@@ -876,20 +885,46 @@ function v3PastLines(row) {
     && rows.length >= (DATA.pastlines || {}).inline)
     ? '<button class="pl__more" data-v3pastall="' + esc(row.player) + '">'
       + 'Show every week</button>' : '';
+  // A FETCH THAT FAILED IS NOT A PLAYER WITH TEN WEEKS. `v3PastRows` falls
+  // back to the inlined ten when the full record did not arrive, which is the
+  // right fallback and the wrong silence: the panel redrew identically and the
+  // button read as broken. The week fetch has said this since it was written —
+  // see the `V3CACHE[k].error` branch in `v3Rows` — and this is the same
+  // sentence for the other fetch.
+  const ck = V3CACHE['hist:' + mk];
+  const err = (V.pastAll === row.player && ck && ck.error)
+    ? '<p class="pl__e">Every week did not load \u2014 ' + esc(ck.error)
+      + '. These are the last ' + rows.length + '.</p>' : '';
+  // THE SENTENCE FIRST, THEN THE PICTURE IT DESCRIBES.
+  //
+  // Printed underneath, the count read as a footnote to a chart the reader
+  // had already given up on. A chart of bars above and below an unlabeled
+  // line is not self-explanatory to anyone who has not built one; the same
+  // ten weeks in a sentence are. So the words lead and the chart shows them.
+  const cap = (yes ? over + ' of ' + rows.length + ' landed'
+                   : over + ' of ' + rows.length + ' went over')
+    + (zeros ? ' \u00b7 ' + zeros + ' week' + (zeros > 1 ? 's' : '')
+               + ' he recorded nothing' : '');
+  // WHAT THE COLORS MEAN, ON THE PAGE RATHER THAN IN A TOOLTIP. Blue above
+  // and gray below was a convention the reader had to infer, and hovering a
+  // bar to find out is not available on a phone at all.
+  const key = (sw, txt) => '<span class="pl__k"><i class="pl__sw pl__sw--'
+    + sw + '"></i>' + txt + '</span>';
+  const legend = (yes
+      ? key('up', 'scored') + key('dn', 'did not')
+      : key('up', 'over his line that week') + key('dn', 'under'))
+    + (zeros ? key('zero', 'recorded nothing') : '');
   return '<div class="pl">'
     + '<div class="pl__h">' + esc(meta.label || mk) + ', last '
     + rows.length + '</div>'
+    + '<p class="pl__s">' + cap + '</p>'
+    + '<div class="pl__lg">' + legend + '</div>'
     + '<div class="pl__c">' + (yes ? '' : '<i class="pl__z"></i>') + bars
     + '</div>'
     + '<div class="pl__ax"><span>'
     + esc(v3PastWhen(rows[rows.length - 1])) + '</span><span>'
     + esc(v3PastWhen(rows[0])) + '</span></div>'
-    + '<p class="pl__s">' + (yes
-        ? over + ' of ' + rows.length + ' landed'
-        : over + ' of ' + rows.length + ' went over')
-      + (zeros ? ' \u00b7 ' + zeros + ' week' + (zeros > 1 ? 's' : '')
-                 + ' he recorded nothing' : '') + '</p>'
-    + '<div class="pl__l">' + list + '</div>' + more + '</div>';
+    + '<div class="pl__l">' + list + '</div>' + err + more + '</div>';
 }
 
 function v3PastImp(odds) {

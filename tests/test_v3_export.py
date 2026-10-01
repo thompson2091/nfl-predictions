@@ -1407,3 +1407,50 @@ def test_a_games_angle_filters_pin_under_the_section_bar():
     assert ".pbar{position:sticky;top:var(--gtabs-h,0px)" in css, (
         "the pinned bar no longer offsets itself by the section bar")
     assert ".gasec" in css, "the wrapper has no rule, so it scopes nothing"
+
+
+def _v3js() -> str:
+    from pathlib import Path
+    return (Path(__file__).resolve().parents[1]
+            / "src/export/v3js.py").read_text()
+def test_a_last_ten_bar_cannot_be_taller_than_the_half_it_grows_into():
+    """The bars grow from the midline, so their room is half the box.
+
+    `.pl__b--up` is pinned to the top of a 72px box and pushed down by half
+    its own height; `--dn` is the mirror. Scaling the biggest week to 100% of
+    the box drew it at twice its room, so it overflowed and landed across the
+    sentence underneath — the caption had a bar drawn through it.
+    """
+    src = _v3js()
+    assert "Math.abs(v) / top * 50" in src, \
+        "the last-10 bars are scaled to the whole box again"
+    assert "Math.abs(v) / top * 100" not in src, "the old full-box scale is back"
+
+    from pathlib import Path
+    css = (Path(__file__).resolve().parents[1]
+           / "src/export/v3css.py").read_text()
+    i = css.index(".pl__c{")
+    assert "overflow:hidden" in css[i:i + 200], \
+        "the chart no longer clips, so an overflowing bar reaches the text"
+def test_the_last_ten_chart_says_what_its_colors_mean():
+    """A chart of bars around an unlabeled line explains itself to nobody.
+
+    Hovering a bar carried the answer and is not available on a phone at all.
+    """
+    src = _v3js()
+    assert "pl__lg" in src and "over his line that week" in src, \
+        "the last-10 chart lost its legend"
+    assert src.index("'<p class=\"pl__s\">'") < src.index("'<div class=\"pl__c\">'"), \
+        "the count is printed under the chart again rather than above it"
+def test_a_history_fetch_that_failed_says_so():
+    """Falling back to ten weeks is right; doing it silently is not.
+
+    The panel redrew identically on a 404 and the button read as broken.
+    """
+    src = _v3js()
+    assert "pl__e" in src, "the past-lines failure line is gone"
+    assert "Every week did not load" in src, \
+        "a failed history fetch is silent again"
+    i = src.index("const err = (V.pastAll === row.player")
+    assert "ck.error" in src[i:i + 300], \
+        "the failure line is not reading the cached error"

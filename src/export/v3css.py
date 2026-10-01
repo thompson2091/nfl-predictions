@@ -350,7 +350,7 @@ button{cursor:pointer}
   letter-spacing:.04em}
 /* The chart: what he did MINUS his line, so the middle IS the line. */
 .pl__c{position:relative;display:flex;align-items:center;gap:2px;height:72px;
-  margin-top:10px}
+  margin-top:10px;overflow:hidden}
 .pl__z{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line);
   z-index:0}
 .pl__b{position:relative;z-index:1;flex:1;min-width:0;border-radius:2px;
@@ -369,8 +369,24 @@ button{cursor:pointer}
   outline:1px solid var(--mut3)}
 .pl__ax{display:flex;justify-content:space-between;margin-top:4px;
   font-size:11px;color:var(--mut)}
-.pl__s{margin:8px 0 0;font-size:13px;color:var(--mut)}
+/* The count now LEADS the chart, so it is the sentence a reader stops on
+   rather than a footnote under a picture they skipped. */
+.pl__s{margin:8px 0 0;font-size:13px;color:var(--fg)}
+/* What the colors mean, said once above the bars. Wraps rather than scrolls:
+   three keys do not fit one phone line and a legend that scrolls sideways is
+   a legend nobody reads. */
+.pl__lg{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;
+  font-size:11px;color:var(--mut)}
+.pl__k{display:inline-flex;align-items:center;gap:4px}
+.pl__sw{width:10px;height:10px;border-radius:2px;background:var(--mut3)}
+.pl__sw--up{background:var(--ours)}
+.pl__sw--zero{background:repeating-linear-gradient(45deg,var(--mut3),
+  var(--mut3) 2px,transparent 2px,transparent 4px);
+  outline:1px solid var(--mut3)}
 .pl__l{margin-top:8px;max-height:260px;overflow-y:auto}
+/* Why the button did nothing. Muted rather than red: the ten weeks above it
+   are real and the panel is still useful. */
+.pl__e{margin:8px 0 0;font-size:12px;color:var(--mut)}
 .pl__r{display:grid;grid-template-columns:58px 62px minmax(0,1fr);gap:6px;
   align-items:center;padding:5px 0;border-top:1px solid var(--line);
   font-size:13px}
