@@ -1696,9 +1696,9 @@ function v3Game(gid) {
     // one concept two names on one screen is how a reader concludes they are
     // two boards. The KEYS are unchanged: they are in saved state and in
     // links, and renaming a label is not a reason to break those.
-    + v3Seg('v3gtab', [['odds', 'Odds'], ['out', 'Score'],
-                       ['players', 'Props'], ['notes', 'Notes'],
-                       ['edge', 'Matchup']], V.gameTab)
+    + v3Seg('v3gtab', [['odds', 'Odds'], ['players', 'Props'],
+                       ['notes', 'Notes'], ['edge', 'Matchup'],
+                       ['angles', 'Angles']], V.gameTab)
     + '</div></div>'
     // THE TAB'S OWN CONTENT COMES FIRST, CONTEXT UNDER IT.
     //
@@ -1710,9 +1710,9 @@ function v3Game(gid) {
     // a control and the rows it controls.
     + (V.gameTab === 'odds' ? v3GameOdds(c, gid)
      : V.gameTab === 'players' ? v3GamePlayers(gid)
-     : V.gameTab === 'out' ? v3GameOutcome(c, gid)
      : V.gameTab === 'edge' ? v3GameMatchup(c)
-     : v3GameNotes(gid, cats, shown))
+     : V.gameTab === 'angles' ? v3Angles(c)
+     : v3GameNotes(c, gid, cats, shown))
     + '</div>';
 }
 
@@ -2298,9 +2298,18 @@ function v3Projection(c) {
     + '</div>' + note;
 }
 
-function v3GameNotes(gid, cats, shown) {
+// WHAT MIGHT HAPPEN, WHAT HAS BEEN HAPPENING, AND WHAT THE MODEL NOTICED.
+//
+// Recent form sits in the middle of those three on purpose: the unfold above
+// it is a distribution over this game, the notes below it are commentary, and
+// ten weeks of scores against what each week was priced for is the evidence
+// between them. It is also the reason the notes are worth reading — a note
+// about a team that has beaten its number five weeks running reads
+// differently from the same note in the abstract.
+function v3GameNotes(c, gid, cats, shown) {
   if (!shown.length) {
-    return '<div class="card"><p class="lede" style="font-size:15px">'
+    return v3Unfold() + v3TeamForm(c)
+      + '<div class="card"><p class="lede" style="font-size:15px">'
       + 'Nothing in this game disagrees with the market enough to be worth a '
       + 'note. That is a real answer, not a missing one.</p></div>';
   }
@@ -2308,6 +2317,7 @@ function v3GameNotes(gid, cats, shown) {
     + '" aria-pressed="' + (V.cat === k) + '">'
     + esc(k === 'all' ? 'All' : k) + '</button>').join('');
   return v3Unfold()
+    + v3TeamForm(c)
     + '<h2 class="h1" style="font-size:22px;line-height:28px;margin-top:20px">'
     + 'What our AI noticed</h2>'
     + '<p class="help">Written from this week’s prices and our model’s '
@@ -2697,7 +2707,11 @@ function v3GamePlayers(gid) {
 // the section that absorbed it rather than falling through to Notes — which
 // is silent, and reads as "the link forgot where I was".
 function v3GTab(v) {
-  if (v === 'bets' || v === 'score') return 'out';
+  // SCORE IS NOT A TAB ANY MORE, it is what the Odds tab becomes once the
+  // game has been played. It was dead weight for six days a week: a tab that
+  // said nothing until Sunday night, sitting second in a strip of five.
+  // Three names have meant it over time and all three land on Odds.
+  if (v === 'bets' || v === 'score' || v === 'out') return 'odds';
   // The injury report is part of the matchup now: it is the question of who
   // is on the field, which is what the efficiency table is comparing.
   if (v === 'inj') return 'edge';
@@ -2834,22 +2848,37 @@ function v3TeamForm(c) {
     + 'split.</p></div>';
 }
 
+// WHAT THE GAME IS PRICED AT, AND THEN WHAT IT CAME TO.
+//
+// Score used to be a tab of its own, second in the strip, saying nothing from
+// Tuesday to Sunday evening. A played game is not a different subject from
+// the same game unplayed — it is the same subject with an answer — so the
+// result leads this tab once there is one and the projection sits under it as
+// what was said beforehand. The frozen projection is what makes that honest:
+// `projection_freeze` serves the number the board carried before kickoff
+// rather than one recomputed afterwards.
 function v3GameOdds(c, gid) {
-  return '<div class="card">'
+  // NOT ONLY A FINAL SCORE. `v3GameScores` draws the margin bands and where
+  // the line cuts them, which is a question about a game that has not been
+  // played yet — gating the whole block on a result took the distribution off
+  // the page for six days a week. It is always here; what moves is where.
+  //
+  // Before kickoff the price leads and the distribution sits under it. After,
+  // the result leads and the projection becomes what was said beforehand —
+  // which `projection_freeze` makes honest by serving the number the board
+  // actually carried rather than one recomputed after the fact.
+  const played = has(c.final_home) && has(c.final_away);
+  const outcome = v3ThinNote(c) + v3GameScores(c) + v3GameBets(gid);
+  return (played ? outcome : '')
+    + '<div class="card">'
     + '<div class="vs"><div><b>' + esc(c.away) + '</b><div class="sub">away</div>'
     + '</div><div style="text-align:center;color:var(--mut2)">at</div>'
     + '<div style="text-align:right"><b>' + esc(c.home) + '</b>'
     + '<div class="sub">home</div></div></div>'
     + '<div class="sub" style="margin-top:8px">' + esc(v3Kick(c)) + '</div>'
     + v3Projection(c) + '</div>'
-    // UNDER THE PROJECTION AND ABOVE THE MONEY. The projection says what this
-    // game is expected to look like; this says what the two teams have
-    // actually been doing, which is the question it immediately raises.
-    + v3TeamForm(c)
     + v3PublicMoney(gid)
-    // Directly under it, because it is the other half of the same feed: the
-    // bars above are the ticket share and this is the dollar share.
-    + v3Angles(c);
+    + (played ? '' : outcome);
 }
 
 // WHAT THE SPLITS SAY, AND WHAT THEY ARE WORTH.

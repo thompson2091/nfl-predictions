@@ -144,7 +144,9 @@ if (cards.length) {
     const gid = cards[0].game_id;
     const wk = (DATA.angles || {}).week || {};
     const mine = wk[gid] || [];
-    V.game = gid; V.gameTab = 'odds'; V.gaTeam = 'all'; V.gaOpen = null;
+    // ANGLES IS ITS OWN TAB NOW. It was the longest block on the odds tab and
+    // brought four controls of its own, under a card about the price.
+    V.game = gid; V.gameTab = 'angles'; V.gaTeam = 'all'; V.gaOpen = null;
     V.gaSort = 'season'; V.gaDesc = true;
     render();
     const h = app();
@@ -389,10 +391,14 @@ const seen = new Set();
   });
 if (cards.length) {
   V.tab = 'games'; V.game = cards[0].game_id;
-  // AND `odds`, which carries the public money, the comparison and the
-  // game's angles: three sections' worth of controls the sweep never saw.
-  ['notes', 'players', 'bets', 'score', 'odds'].forEach(gt => {
-    V.gameTab = gt;
+  // AND `odds`, which carries the public money and the projection, and
+  // `angles`, which is now its own tab and brings four controls with it.
+  // `bets` and `score` are names this app no longer renders and are swept
+  // THROUGH `v3GTab`, which is the only thing standing between an old link
+  // and a blank screen.
+  ['notes', 'players', 'bets', 'score', 'out', 'odds', 'edge',
+   'angles'].forEach(gt => {
+    V.gameTab = x.v3GTab(gt);
     try { render(); } catch (e) { /* reported above */ }
     // NOT JUST `data-v3x=`. A valueless attribute -- `<select data-v3gacat
     // aria-label=...>` -- has no `=` after it, so the old pattern skipped
@@ -704,7 +710,7 @@ if (cards.length) {
   // and the ladder from a single `comparables(spread, total)` call, so they
   // were two tabs rendering one thing and reading them together meant
   // moving between them.
-  V.gameTab = 'out'; render();
+  V.gameTab = 'odds'; render();
   ok('the final-score tab renders', app().indexOf('How it finished') >= 0);
   // "Likeliest", not "Most common": the list is ordered for THIS game by a
   // kernel over real finals, not by league-wide frequency. The heading is
@@ -855,25 +861,33 @@ if (cards.length) {
   ok('the bar still says both shares to a screen reader',
      /aria-label="[^"]*percent, [^"]*percent"/.test(h));
 
-  ok('recent form draws both teams', h.indexOf('Recent form') >= 0
-     && h.indexOf('scored') >= 0 && h.indexOf('allowed') >= 0);
+  V.gameTab = 'notes'; render();
+  const hn = app();
+  // RECENT FORM IS ON NOTES NOW, between the distribution above it and the
+  // model's commentary below: ten weeks of scores against what each week was
+  // priced for is the evidence between a forecast and a remark about one.
+  ok('recent form draws both teams', hn.indexOf('Recent form') >= 0
+     && hn.indexOf('scored') >= 0 && hn.indexOf('allowed') >= 0);
+  ok('and it has left the odds tab', h.indexOf('Recent form') < 0,
+     'recent form is still on the odds tab');
   ok('every bar carries its own expectation',
-     (h.match(/class="tf__t"/g) || []).length >= 18,
-     'ticks drawn: ' + (h.match(/class="tf__t"/g) || []).length);
+     (hn.match(/class="tf__t"/g) || []).length >= 18,
+     'ticks drawn: ' + (hn.match(/class="tf__t"/g) || []).length);
   // Ten games in week 3 is mostly last season. Drawn and marked, not hidden.
   ok('the season boundary is marked rather than hidden',
-     h.indexOf('tf__s--brk') >= 0 && h.indexOf('tf__b--prev') >= 0);
+     hn.indexOf('tf__s--brk') >= 0 && hn.indexOf('tf__b--prev') >= 0);
   // A game with no archived line draws a bar and no tick, not a tick at zero.
   ok('a week with no line still draws its bar',
-     (h.match(/class="tf__b/g) || []).length
-     > (h.match(/class="tf__t"/g) || []).length);
+     (hn.match(/class="tf__b/g) || []).length
+     > (hn.match(/class="tf__t"/g) || []).length);
   ok('the form says the scores include defensive touchdowns',
-     h.indexOf('special-teams') >= 0);
-  // UNDER THE PROJECTION, ABOVE THE MONEY. Asked for in that order, and the
-  // order is the argument: what is expected, then what they have been doing.
-  ok('recent form sits between the projection and the money',
-     h.indexOf('Our model') < h.indexOf('Recent form'),
-     'form is above the projection');
+     hn.indexOf('special-teams') >= 0);
+  // BETWEEN THE UNFOLD AND THE NOTES. The order is the argument: a
+  // distribution over this game, the evidence, then the commentary.
+  ok('recent form sits between the unfold and the notes',
+     hn.indexOf('Recent form') < hn.indexOf('What our AI noticed'),
+     'form is below the notes it is meant to inform');
+  V.gameTab = 'odds'; render();
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 
@@ -2334,7 +2348,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
 // about games like this one. The projection is specific to this game. The
 // marker joins them; it must not claim either is the other.
 {
-  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'out';
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'odds';
   V.week = null; render();
   const seen = app();
   if (seen.indexOf('srow') >= 0) {
@@ -2384,7 +2398,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
 // only by luck of banker's rounding, missing 8 of 16 games under a note that
 // promised it was marked.
 {
-  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'out';
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'odds';
   V.week = null; render();
   const seen = app();
   if (seen.indexOf('Total points') >= 0) {
@@ -2424,10 +2438,10 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'notes';
   V.week = null; render();
   let threw = null;
-  try { v3Do('v3gtab', 'out'); } catch (e) { threw = e; }
+  try { v3Do('v3gtab', 'angles'); } catch (e) { threw = e; }
   ok('switching section does not throw', !threw, threw && threw.message);
   ok('and lands on the section rather than the tab you left',
-     V.gameTab === 'out');
+     V.gameTab === 'angles');
   // The flag is consumed by the render, so the NEXT paint keeps its place.
   ok('and the scroll intent is consumed, not left armed',
      V.top === false, String(V.top));
@@ -2481,7 +2495,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
 // were in the Outcome tables and wanted the same table for another game, the
 // control had scrolled off and the only route was out to the list and back in.
 if (cards.length > 1) {
-  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'out';
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'odds';
   V.week = null; render();
   const gh = app();
   const barAt = gh.indexOf('class="gtabs"');
@@ -2511,8 +2525,11 @@ if (cards.length > 1) {
     scroll.scrollTop = DEEP;
 
     v3Do('v3gamestep', step[1]);
+    // The section a reader was on used to be Outcome; that tab is now the
+    // Odds tab once a game has been played, so the section being KEPT is
+    // what this checks, not which name it happens to have.
     ok('stepping keeps the section you were reading',
-       V.gameTab === 'out', String(V.gameTab));
+       V.gameTab === 'odds', String(V.gameTab));
     ok('and changes the game', V.game === step[1]);
     ok('and lands on that section, not the top of the new game',
        scroll.scrollTop === BAR_AT, 'scrollTop ' + scroll.scrollTop);
@@ -2520,11 +2537,11 @@ if (cards.length > 1) {
     // The dropdown is the same control and must agree.
     const other = (cards.filter(c => c.game_id !== V.game)[0] || {}).game_id;
     if (other) {
-      V.gameTab = 'out'; render(); scroll.scrollTop = DEEP;
+      V.gameTab = 'odds'; render(); scroll.scrollTop = DEEP;
       fireDoc('change', { target: {
         getAttribute: k => k === 'data-v3gameto' ? '' : null,
         value: other } });
-      ok('the dropdown keeps the section too', V.gameTab === 'out');
+      ok('the dropdown keeps the section too', V.gameTab === 'odds');
       ok('and lands in the same place as the arrows',
          scroll.scrollTop === BAR_AT, 'scrollTop ' + scroll.scrollTop);
     }
@@ -2550,7 +2567,7 @@ if (cards.length) {
                              { thin: true, n: 52, min_n: 60 });
     if (c.ladders) c.ladders = Object.assign({}, keep.ladders,
                                              { thin: true, n: 52 });
-    V.tab = 'games'; V.game = c.game_id; V.gameTab = 'out';
+    V.tab = 'games'; V.game = c.game_id; V.gameTab = 'odds';
     V.week = null; render();
     const gh = app();
     ok('a thin game says so', gh.indexOf('class="thin"') >= 0);
@@ -2583,24 +2600,27 @@ if (cards.length) {
   V.week = null; render();
   const gh = app();
   const at = k => gh.indexOf('data-v3gtab="' + k + '"');
-  ['odds', 'out', 'players', 'notes', 'edge'].forEach(k =>
+  ['odds', 'players', 'notes', 'edge', 'angles'].forEach(k =>
     ok('the ' + k + ' section is on the bar', at(k) >= 0));
   ok('and injuries is not one of them, having joined the matchup',
      at('inj') < 0);
-  // The three you can BET sit together, ahead of the two that explain them.
+  // SCORE IS NOT ONE EITHER. It said nothing from Tuesday to Sunday night
+  // and sat second in the strip; the Odds tab is what it becomes once there
+  // is a result.
+  ok('and score is not a section of its own', at('out') < 0);
+  // The two you can BET sit together, ahead of the three that explain them.
   ok('the betting sections come first and are not split by commentary',
-     at('odds') < at('out') && at('out') < at('players')
-     && at('players') < at('notes') && at('notes') < at('edge'));
-  // The LABELS say what is in each: the ladder of lines under the score
-  // distribution is about the score, and the player rows are the Props board
+     at('odds') < at('players') && at('players') < at('notes')
+     && at('notes') < at('edge') && at('edge') < at('angles'));
+  // The LABELS say what is in each: the player rows are the Props board
   // scoped to this game rather than a second, differently named one.
   ok('the sections are labeled for their contents',
-     gh.indexOf('>Score<') >= 0 && gh.indexOf('>Props<') >= 0
+     gh.indexOf('>Props<') >= 0 && gh.indexOf('>Angles<') >= 0
      && gh.indexOf('>Outcome<') < 0 && gh.indexOf('>Players<') < 0);
-  // Renaming a label must not move the reader: the keys are in saved state
-  // and in links.
-  ok('and the keys behind them are unchanged',
-     at('out') >= 0 && at('players') >= 0);
+  // An old name in saved state or in a link has to land somewhere real.
+  ok('and the names this app dropped still resolve',
+     x.v3GTab('out') === 'odds' && x.v3GTab('score') === 'odds'
+     && x.v3GTab('bets') === 'odds' && x.v3GTab('inj') === 'edge');
   // Opening a game from the list lands on the price, which is what the page
   // showed before the market block became a section rather than a preamble.
   V.game = null; V.tab = 'games'; V.gameTab = 'notes'; render();
@@ -3033,7 +3053,7 @@ if (cards.length) {
   const c = cards[0];
   const keep = { s: c.scores, fh: c.final_home, fa: c.final_away };
   if (keep.s && (keep.s.scores || []).length > 1) {
-    V.tab = 'games'; V.game = c.game_id; V.gameTab = 'out'; V.week = null;
+    V.tab = 'games'; V.game = c.game_id; V.gameTab = 'odds'; V.week = null;
 
     // A PROJECTION THAT LANDS ON ONE OF THE LISTED SCORES, so a row really is
     // "one we called". Without it nothing is liked, nothing can be red, and
@@ -3106,7 +3126,7 @@ if (cards.length) {
   const c = cards[0];
   const keep = { s: c.scores, fh: c.final_home, fa: c.final_away };
   if (keep.s && keep.s.home_win && keep.s.over) {
-    V.tab = 'games'; V.game = c.game_id; V.gameTab = 'out'; V.week = null;
+    V.tab = 'games'; V.game = c.game_id; V.gameTab = 'odds'; V.week = null;
     // An underdog home team: the model leans AWAY.
     c.scores = Object.assign({}, keep.s, {
       home_win: { n: 133, pct: 37.4, lo: 32.5, hi: 42.5 },
