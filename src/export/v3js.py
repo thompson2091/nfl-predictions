@@ -155,6 +155,10 @@ const V = Object.assign({
   //: Whose full record has been fetched and opened out. One at a time: the
   //: whole market is a megabyte and nobody reads two players' careers at once.
   pastAll: null,
+  //: How many of a player's recent weeks the history panel reads over. Null
+  //: is everything inlined; a number is the reader asking a narrower
+  //: question, and the chart, the count and the money all answer it.
+  pastN: null,
   //: One club's own games on the board, or every club's.
   angleTeam: '',
   //: And on the board, whose record the columns show once a club is chosen.
@@ -959,6 +963,42 @@ function v3PastRows(row) {
   return rows && rows.length ? { rows: rows, all: false } : null;
 }
 
+// WHAT BACKING HIM EVERY ONE OF THOSE WEEKS WOULD HAVE RETURNED.
+//
+// $100 a week at the price the archive holds, which is ONE SIDE: the Yes on a
+// touchdown market and the Over on a line. The No and the Under are not in the
+// archive at all, so "what if you had faded him" is a question this cannot
+// answer and does not pretend to — the panel names the side it priced.
+//
+// A WEEK HE DID NOT PLAY IS A VOID, NOT A LOSS. `player_history` fills a man
+// with no stat row as a zero, which is right for the record and wrong for the
+// money: a book hands the stake back on an inactive player. Counting those as
+// losing $100 would understate the return by 3,029 of 15,502 anytime-TD weeks
+// — a fifth of the record — so they are set aside and counted out loud.
+//
+// NOT A FORECAST. Ten bets is nowhere near enough to separate a player from
+// the vig; this is a record of what happened, which is why it is stated in
+// dollars rather than as a rate or an edge.
+function v3PastMoney(rows, meta) {
+  const yes = meta.kind === 'yesno';
+  const profit = o => o > 0 ? o : 10000 / -o;
+  let money = 0, bets = 0, voids = 0, won = 0, unpriced = 0;
+  rows.forEach(r => {
+    const odds = r[5], did = r[6], line = r[4];
+    // `played` arrived after this row shape did. An older cached payload has
+    // seven fields and no flag, and treating "missing" as "played" keeps the
+    // old answer rather than silently voiding every week in it.
+    const played = r.length > 7 ? r[7] : 1;
+    if (!has(odds)) { unpriced++; return; }
+    if (played === 0) { voids++; return; }
+    const hit = yes ? did === 1 : (has(line) && did > line);
+    bets++;
+    if (hit) { won++; money += profit(odds); } else { money -= 100; }
+  });
+  return { money: money, bets: bets, voids: voids, won: won,
+           unpriced: unpriced, side: yes ? 'yes' : 'the over' };
+}
+
 function v3PastLines(row) {
   const mk = v3PastMarket();
   const got = v3PastRows(row);
@@ -966,8 +1006,13 @@ function v3PastLines(row) {
   const P = DATA.pastlines || {};
   const meta = (P.markets || []).filter(m => m.key === mk)[0] || {};
   const yes = meta.kind === 'yesno';
-  const rows = got.rows;
-  // r = [season, week, opponent, home, line, odds, did]
+  const every = got.rows;
+  // ONE WINDOW FOR THE WHOLE PANEL. Reading the chart over ten weeks and the
+  // money over three would be two answers to one question, and the reader
+  // picked the question.
+  const win = (V.pastN && V.pastN < every.length) ? V.pastN : every.length;
+  const rows = every.slice(0, win);
+  // r = [season, week, opponent, home, line, odds, did, played]
   const did = r => r[6], line = r => r[4];
   // THE CHART IS WHAT HE DID MINUS HIS LINE, because his line moves week to
   // week: nine catches against 6.5 and nine against 9.5 are not the same week,
@@ -1041,10 +1086,41 @@ function v3PastLines(row) {
       ? key('up', 'scored') + key('dn', 'did not')
       : key('up', 'over his line that week') + key('dn', 'under'))
     + (zeros ? key('zero', 'recorded nothing') : '');
+  // THE WINDOW THE READER PICKED. Only offered where it would narrow
+  // anything: with six weeks on record, "last 10" is the same six.
+  const opts = [3, 5, 10].filter(n => n < every.length)
+    .map(n => [String(n), 'last ' + n]);
+  opts.push(['all', 'all ' + every.length]);
+  const pick = opts.length > 1
+    ? '<div class="seg seg--' + opts.length + ' pl__seg">'
+      + v3Seg('v3pastn', opts,
+              (V.pastN && V.pastN < every.length) ? String(V.pastN) : 'all')
+      + '</div>' : '';
+
+  const m = v3PastMoney(rows, meta);
+  const money = m.bets
+    ? '<p class="pl__m">$100 a week on <b>' + esc(m.side) + '</b>: '
+      + '<b class="' + (m.money >= 0 ? 'pos' : 'neg') + '">'
+      + (m.money >= 0 ? '+$' : '\u2212$')
+      + Math.abs(m.money).toFixed(0) + '</b> over ' + m.bets + ' bet'
+      + (m.bets === 1 ? '' : 's') + ', ' + m.won + ' won'
+      + (m.voids ? ' \u00b7 ' + m.voids + ' week'
+         + (m.voids > 1 ? 's' : '') + ' voided, he did not play' : '')
+      + (m.unpriced ? ' \u00b7 ' + m.unpriced + ' with no price archived' : '')
+      + '</p>'
+      // SAID EVERY TIME, because the number is the kind that gets screenshotted.
+      + '<p class="help">What that side actually returned, at the archived '
+      + 'price, before any judgment about whether it will again \u2014 ' + m.bets
+      + ' bets cannot separate a player from the hold. The other side is not '
+      + 'priced in the archive, so there is no fade figure to show.</p>'
+    : '';
+
   return '<div class="pl">'
     + '<div class="pl__h">' + esc(meta.label || mk) + ', last '
     + rows.length + '</div>'
+    + pick
     + '<p class="pl__s">' + cap + '</p>'
+    + money
     + '<div class="pl__lg">' + legend + '</div>'
     + '<div class="pl__c">' + (yes ? '' : '<i class="pl__z"></i>') + bars
     + '</div>'
@@ -1981,7 +2057,16 @@ function v3PublicMoney(gid) {
     + 'much of the <b style="color:var(--ink)">money</b>. They are different '
     + 'things: a side can be the popular pick and still hold less of the cash.'
     + '</p>'
-    + blocks
+    // THREE SELF-CONTAINED BLOCKS, which on a wide screen is three screens
+    // of scrolling to compare two of them. `cols2` stacks below 900px and
+    // pairs above it, so the phone is unchanged and the desktop shows the
+    // spread beside the total.
+    + '<div class="cols2">' + blocks + '</div>'
+    // THE SAME TREATMENT FOR THE PROSE. Two explanatory blocks stacked in a
+    // full-width card are two short paragraphs down the left of it with half
+    // the card empty beside them — capping the line length fixed the reading
+    // and left the hole. Side by side they fill the card they are in.
+    + '<div class="cols2 cols2--prose">'
     + '<div class="pub"><div class="pub__h">'
     + '<span class="eyebrow">What a move means</span></div>'
     + '<p class="help" style="margin-top:2px">A sportsbook nudges these '
@@ -1999,6 +2084,7 @@ function v3PublicMoney(gid) {
     + 'on one side is not evidence it is wrong, and whether the bigger money '
     + 'is the smarter money is exactly what this project has not measured '
     + '— the split archive began on 25 September.</p>'
+    + '</div>'
     + '</div>';
 }
 
@@ -5031,6 +5117,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
                   'v3half', 'v3metric', 'v3boardgame', 'v3anglesort', 'v3angle',
                   'v3anglegame', 'v3angleclear', 'v3anglescope', 'v3pastall',
+                  'v3pastn',
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
                   'v3sortpick'];
 
@@ -5234,6 +5321,10 @@ function v3Do(kind, v) {
     // most of a megabyte and almost nobody opens it. The re-render is the
     // callback's job because the file may already be cached, in which case
     // this is synchronous and the render below it would draw the old panel.
+    // The window the history panel reads over. 'all' is null rather than a
+    // count, so a player with more weeks than the control offers still gets
+    // every one of them when it is picked.
+    case 'v3pastn': V.pastN = (v === 'all') ? null : parseInt(v, 10); break;
     case 'v3pastall': {
       const mk = v3PastMarket();
       V.pastAll = v;

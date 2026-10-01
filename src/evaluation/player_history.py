@@ -197,7 +197,7 @@ def _roster(wk: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
 
 
 def history(last: int | None = None, players: list[str] | None = None) -> dict:
-    """`{market: {player: [[season, week, opp, home, line, odds, did], ...]}}`.
+    """`{market: {player: [[season, week, opp, home, line, odds, did, played]]}}`.
 
     Newest first, so a cap keeps the recent weeks rather than the old ones.
 
@@ -229,8 +229,18 @@ def history(last: int | None = None, players: list[str] | None = None) -> dict:
         m = odds.filter(pl.col("market") == mkt)
         if m.is_empty():
             continue
-        j = m.join(wk.drop("team"), on=["game_id", "pid"], how="left",
-                   suffix="_w")
+        # A MARKER COLUMN, BECAUSE A ZERO AND A VOID ARE NOT THE SAME BET.
+        #
+        # The fill below is right for the record — a man who did not play
+        # recorded nothing, and deleting those weeks would show a rosier
+        # history than the one that happened. It is wrong for money: a book
+        # voids an anytime-touchdown bet on a player who is inactive and hands
+        # the stake back. Counting that as a losing $100 understates the
+        # return by exactly the weeks the reader most wants excluded, and
+        # nothing downstream could tell the two apart from a zero alone.
+        j = m.join(wk.drop("team").with_columns(
+                       pl.lit(1, dtype=pl.Int8).alias("_played")),
+                   on=["game_id", "pid"], how="left", suffix="_w")
         if j.is_empty():
             continue
         if kind == "line":
@@ -252,7 +262,9 @@ def history(last: int | None = None, players: list[str] | None = None) -> dict:
         opp = pl.when(home_team == pl.col("team")).then(away_team) \
                 .otherwise(home_team)
         j = (j.with_columns([did.alias("did"), home.alias("home"),
-                             opp.alias("opp")])
+                             opp.alias("opp"),
+                             pl.col("_played").fill_null(0).cast(pl.Int8)
+                               .alias("played")])
              .filter(pl.col("did").is_not_null())
              .sort(["season", "week"], descending=True))
         # ONE MAN PLAYS ONE GAME A WEEK. Six players are left quoted in two
@@ -274,6 +286,7 @@ def history(last: int | None = None, players: list[str] | None = None) -> dict:
                 None if r["point"] is None else float(r["point"]),
                 None if r["odds"] is None else int(r["odds"]),
                 float(r["did"]) if kind == "line" else int(r["did"]),
+                int(r["played"]),
             ])
         out[mkt] = rows
     return out

@@ -108,6 +108,17 @@ button{cursor:pointer}
   #v3rows>.row:nth-child(odd){border-right:1px solid var(--line)}
   #v3rows>.row--open{grid-column:1/-1;border-right:0}
 
+  /* Any section that is a set of self-contained blocks: the money card's
+     three markets today, and whatever else is built the same way. One
+     utility rather than a rule per section, so a new block set gets the
+     behavior by being given the class. */
+  .cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:0 20px;align-items:start}
+  /* A paragraph in a half-width column has its line length already; the
+     reading cap would only pull it in further and reopen the hole. */
+  .cols2--prose .help,.cols2--prose .lede{max-width:none}
+  .cols2--prose>*{margin-top:0}
+
   /* The two teams, beside each other rather than one under the other: the
      whole point of the card is comparing them. The heading, the legend and
      the note still span it. */
@@ -419,6 +430,12 @@ button{cursor:pointer}
 /* The count now LEADS the chart, so it is the sentence a reader stops on
    rather than a footnote under a picture they skipped. */
 .pl__s{margin:8px 0 0;font-size:13px;color:var(--fg)}
+/* The window control, and the money the window is read over. */
+.pl__seg{margin-top:8px}
+.pl__m{margin:6px 0 0;font-size:14px;line-height:19px;color:var(--mut)}
+.pl__m b{color:var(--ink)}
+.pl__m b.pos{color:var(--good)}
+.pl__m b.neg{color:var(--bad)}
 /* What the colors mean, said once above the bars. Wraps rather than scrolls:
    three keys do not fit one phone line and a legend that scrolls sideways is
    a legend nobody reads. */
@@ -653,8 +670,13 @@ button{cursor:pointer}
 .add[aria-pressed=true]{background:var(--ours);color:#fff;border-color:var(--ours)}
 .more{width:100%;height:52px;border:0;border-top:1px solid var(--line);
   background:var(--card);color:var(--ours);font-size:15px;font-weight:600}
+/* A SENTENCE, NOT A BANNER. Centred with nothing holding it, an empty state
+   ran the full width of a desktop window as one line — "Nothing on this
+   market is priced far enough above our number to flag this week" set across
+   880px reads as a headline for a page rather than as an answer to what you
+   just asked for. It is centred text, so the cap centres with it. */
 .empty{padding:24px 16px;text-align:center;color:var(--mut);font-size:15px;
-  line-height:20px}
+  line-height:20px;max-width:46ch;margin-left:auto;margin-right:auto}
 
 /* ---- graded past weeks. The whole point of looking back. ---- */
 .row--won{background:var(--goodbg)}

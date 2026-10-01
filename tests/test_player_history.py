@@ -163,10 +163,14 @@ def test_the_board_looks_a_player_up_by_the_name_it_prints():
 
 
 def test_every_row_is_the_shape_the_page_unpacks():
-    """`[season, week, opponent, home, line, odds, did]` and nothing else.
+    """`[season, week, opponent, home, line, odds, did, played]`, in that order.
 
-    The page indexes these by position, so a seventh field arriving in the
-    wrong place is a silent mis-draw rather than an error.
+    The page indexes these by position, so a field arriving in the wrong place
+    is a silent mis-draw rather than an error.
+
+    `played` is last and arrived last, which is why `v3PastMoney` treats a
+    seven-field row as played: a cached payload written before it existed
+    should keep its old answer rather than have every week voided.
     """
     h = PH.history(last=3)
     seen = 0
@@ -174,7 +178,10 @@ def test_every_row_is_the_shape_the_page_unpacks():
         meta = [m for m in PH.market_meta() if m["key"] == mkt][0]
         for rows in per.values():
             for r in rows:
-                assert len(r) == 7, r
+                assert len(r) == 8, r
+                # A void is not a loss and a zero is not a void: the money
+                # figure needs to tell them apart, and only this says so.
+                assert r[7] in (0, 1), r
                 assert isinstance(r[0], int) and isinstance(r[1], int)
                 assert isinstance(r[2], str) and r[3] in (0, 1)
                 assert r[5] is None or isinstance(r[5], int)

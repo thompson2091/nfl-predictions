@@ -3100,4 +3100,65 @@ if (cards.length) {
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 
+
+// ── A player's record, in money ─────────────────────────────────────────
+//
+// "7 of 10 landed" is a rate; what a reader wants from it is what backing him
+// those ten weeks would have returned. The two have to agree about which
+// weeks they are talking about, which is why one control drives both.
+{
+  V.tab = 'props'; V.game = null; V.market = 'any'; V.filter = 'all';
+  V.q = ''; V.pastN = null; V.pastAll = null; render();
+  // Pulled out of the HTML rather than off the DOM: the stub has no
+  // querySelectorAll, and an empty list from one would have skipped every
+  // check below while the run still said all passed.
+  const m0 = /data-v3open="([^"]+)"/.exec(app());
+  ok('the props board has a player to open', !!m0, 'no openable row');
+  if (m0) {
+    x.v3Do('v3open', m0[1]);
+    const h = app();
+    ok('a player panel prices the record it just counted',
+       h.indexOf('$100 a week on') >= 0, 'no money line in the panel');
+    // THE SIDE THE ARCHIVE HOLDS, named rather than implied. There is no
+    // under price in it, so there is no fade figure and the panel says so.
+    ok('the money line names the side it priced',
+       h.indexOf('>yes<') >= 0 || h.indexOf('>the over<') >= 0);
+    ok('and says the other side is not priced',
+       h.indexOf('no fade figure') >= 0
+       || h.indexOf('other side is not') >= 0);
+    // NOT A FORECAST, said every time: this is the number that gets
+    // screenshotted away from its caveats.
+    ok('the money line is stated as a record, not a signal',
+       h.indexOf('cannot separate a player from the hold') >= 0);
+    ok('the window is selectable', h.indexOf('data-v3pastn') >= 0);
+    // THE ARITHMETIC, ONCE, ON A FIXTURE WHOSE ANSWER IS WORKED OUT BY HAND.
+    // Ten weeks: +140, -100, +120, VOID, +90.91 (at -110), -100, no price,
+    // +130, -100, +115 = +295.91. The void and the unpriced week are the two
+    // that a careless sum turns into -$200.
+    ok('the money is the sum of the weeks that were actually bets',
+       h.indexOf('+$296') >= 0, 'money line: '
+       + (/\$100 a week on[\s\S]{0,160}/.exec(h) || [''])[0]);
+    ok('and the voided week is counted out loud, not dropped quietly',
+       h.indexOf('1 week voided') >= 0);
+    ok('as is the week with no archived price',
+       h.indexOf('1 with no price archived') >= 0);
+    ok('eight bets from ten weeks, five of them won',
+       h.indexOf('over 8 bets, 5 won') >= 0);
+
+    // ONE WINDOW FOR THE WHOLE PANEL. Three weeks means a three-week chart,
+    // a three-week count and three weeks of money.
+    x.v3Do('v3pastn', '3');
+    const h3 = app();
+    ok('picking three weeks narrows the count',
+       /\bof 3\b/.test(h3), 'the caption still counts ten');
+    ok('and narrows the money with it',
+       (h3.match(/over \d+ bets?/) || [''])[0] !== ''
+       && !/over (\d\d)+ bets/.test(h3.replace(/over 1 bet/, '')),
+       'the money still reads over more bets than the window holds');
+    x.v3Do('v3pastn', 'all');
+  }
+  V.open = null; V.pastN = null;
+}
+
+
 done();

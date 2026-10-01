@@ -319,9 +319,28 @@ def payload_v3():
         "inline": 3,
         "players": {
             "Alpha Back": {
-                "anytime_td": [[2026, 3, "GB", 0, None, 140, 1],
-                               [2026, 2, "CHI", 1, None, 175, 0],
-                               [2026, 1, "MIN", 0, None, 120, 1]],
+                # TEN WEEKS, so the window control has something to narrow —
+                # it is only drawn where it would, and a three-week fixture
+                # left every assertion about it unexercised while the run
+                # still reported passing.
+                #
+                # One week he did not play (played=0): a book voids that bet
+                # and hands the stake back, and counting it as a losing $100
+                # is the error the flag exists to prevent. One week with no
+                # archived price, which is not a bet at all. And two rows in
+                # the OLD seven-field shape, because a cached payload written
+                # before `played` existed must keep its answer rather than
+                # have every week of it voided.
+                "anytime_td": [[2026, 3, "GB", 0, None, 140, 1, 1],
+                               [2026, 2, "CHI", 1, None, 175, 0, 1],
+                               [2026, 1, "MIN", 0, None, 120, 1, 1],
+                               [2025, 18, "DET", 1, None, 240, 0, 0],
+                               [2025, 17, "SEA", 0, None, -110, 1, 1],
+                               [2025, 16, "LA", 1, None, 160, 0, 1],
+                               [2025, 15, "SF", 0, None, None, 0, 1],
+                               [2025, 14, "ARI", 1, None, 130, 1, 1],
+                               [2025, 13, "NO", 0, None, 210, 0],
+                               [2025, 12, "TB", 1, None, 115, 1]],
                 "receptions": [[2026, 3, "GB", 0, 3.5, -115, 5.0],
                                [2026, 2, "CHI", 1, 4.5, -120, 2.0],
                                [2026, 1, "MIN", 0, 3.5, 105, 4.0]],
