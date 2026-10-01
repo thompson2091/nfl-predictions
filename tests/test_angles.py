@@ -81,12 +81,59 @@ def test_an_angle_added_later_is_graded_from_the_day_it_was_added(sched):
             assert r["since"]["n"] <= r["all"]["n"]
 
 
+#: Angles added after the founding day and NOT mined. Each one is here
+#: because it was written down before it was measured, which is the whole
+#: distinction `mined` exists to carry — and each is named individually, so
+#: adding a hot row still has to come past this list and say so.
+#:
+#: The four spread bands complete a partition rather than adding four
+#: patterns: the board had the two ends of the line and nothing between them,
+#: so "road favorite" pooled a team laying 1.5 with one laying 9.5. They were
+#: written as a set, measured afterwards, and the losing bands were kept —
+#: `test_the_spread_bands_partition_the_line` is what makes "a partition"
+#: checkable rather than a claim in a comment.
+REGISTERED_LATER = {
+    "fav_3h_to_6h", "fav_7_to_9h", "dog_3h_to_6h", "dog_7_to_9h",
+}
+
+
 def test_a_mined_angle_is_labeled_as_one():
     """A row added because it was hot must not read like a registered one."""
     for a in A.ANGLES:
-        if a.added > date(2026, 9, 28):
+        if a.added > date(2026, 9, 28) and a.id not in REGISTERED_LATER:
             assert a.mined, (
                 f"{a.id} was added after registration but is not marked mined")
+
+
+def test_every_later_registration_is_still_on_the_board():
+    """An exemption for an angle that has gone is an exemption for the next
+    one to take its name."""
+    ids = {a.id for a in A.ANGLES}
+    gone = sorted(REGISTERED_LATER - ids)
+    assert not gone, f"exempted but no longer an angle: {gone}"
+
+
+def test_the_spread_bands_partition_the_line(sched):
+    """Every favorite falls in exactly one band, and so does every underdog.
+
+    This is what makes the four new rows a partition rather than four more
+    patterns. A gap would be a team on nobody's row; an overlap would be a
+    team counted twice, and both read as a measured result rather than as an
+    arithmetic slip.
+    """
+    import polars as pl
+
+    tg = A.team_weeks(sched).filter(pl.col("my_spread").is_not_null()
+                                    & (pl.col("my_spread") != 0))
+    bands = {a.id: a.predicate for a in A.ANGLES
+             if a.id in ("fav_3_or_less", "fav_3h_to_6h", "fav_7_to_9h",
+                         "big_fav", "dog_3_or_less", "dog_3h_to_6h",
+                         "dog_7_to_9h", "big_dog")}
+    assert len(bands) == 8, sorted(bands)
+    hits = tg.select([p.cast(pl.Int32).alias(k) for k, p in bands.items()])
+    total = hits.select(pl.sum_horizontal(pl.all()).alias("n"))["n"]
+    assert total.min() == 1, "a team-game falls on no band"
+    assert total.max() == 1, "a team-game falls on two bands"
 
 
 def test_qualifying_entries_match_the_splits_in_their_own_game(sched):

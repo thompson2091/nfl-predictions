@@ -104,6 +104,8 @@ _REG9 = date(2026, 9, 30)
 #: The quarterback against one opponent, which is a dimension nothing else
 #: here had: the player rather than the club.
 _REG10 = date(2026, 9, 30)
+#: The middle of the spread, which the board had been stepping over.
+_REG11 = date(2026, 10, 1)
 
 ANGLES: tuple[Angle, ...] = (
     Angle("blowout_loss", "Off a 20+ loss",
@@ -241,6 +243,35 @@ ANGLES: tuple[Angle, ...] = (
     Angle("fav_3_or_less", "Favored by 3 or less",
           "{team} is laying {detail}.", _REG2,
           (pl.col("my_spread") > 0) & (pl.col("my_spread") <= 3)),
+    # THE MIDDLE OF THE SPREAD, WHICH WAS BEING STEPPED OVER.
+    #
+    # The board had the two ends — three or less, ten or more — and nothing
+    # between them, so "road favorite" pooled a team laying 1.5 with a team
+    # laying 9.5 and reported one number for both. Asked for directly: a
+    # favorite by 3 is not a favorite by 7 or by 10.
+    #
+    # Four rows complete a PARTITION rather than adding four more patterns:
+    # with these, every favorite falls in exactly one of <=3, 3.5-6.5, 7-9.5,
+    # 10+, and every underdog in its mirror. That is why they are registered
+    # together and not mined — nothing here was chosen for being hot, and a
+    # band that loses is as much of the answer as one that wins.
+    #
+    # THIS MAKES THE MULTIPLE-TESTING PROBLEM WORSE, WHICH THE CARD ALREADY
+    # SAYS. Every band is a smaller sample than the row it was carved out of,
+    # and the board reports how many angles were measured together precisely
+    # so four more cannot be read as four more chances to be right.
+    Angle("fav_3h_to_6h", "Favored by 3.5 to 6.5",
+          "{team} is laying {detail}.", _REG11,
+          (pl.col("my_spread") > 3) & (pl.col("my_spread") < 7)),
+    Angle("fav_7_to_9h", "Favored by 7 to 9.5",
+          "{team} is laying {detail}.", _REG11,
+          (pl.col("my_spread") >= 7) & (pl.col("my_spread") < 10)),
+    Angle("dog_3h_to_6h", "Underdog by 3.5 to 6.5",
+          "{team} is getting {detail}.", _REG11,
+          (pl.col("my_spread") < -3) & (pl.col("my_spread") > -7)),
+    Angle("dog_7_to_9h", "Underdog by 7 to 9.5",
+          "{team} is getting {detail}.", _REG11,
+          (pl.col("my_spread") <= -7) & (pl.col("my_spread") > -10)),
     Angle("thursday", "On Thursday",
           "{team} plays Thursday.", _REG2, pl.col("weekday") == "Thursday",
           whole_game=True),
@@ -631,6 +662,12 @@ PLAIN: dict[str, str] = {
     "pickem": "Essentially a coin flip; neither side is favored.",
     "dog_3_or_less": "A small underdog, getting three points or fewer.",
     "fav_3_or_less": "A small favorite, laying three points or fewer.",
+    "fav_3h_to_6h": "Laying more than a field goal and less than a "
+                    "touchdown.",
+    "fav_7_to_9h": "Laying a touchdown or more, but single digits.",
+    "dog_3h_to_6h": "Getting more than a field goal and less than a "
+                    "touchdown.",
+    "dog_7_to_9h": "Getting a touchdown or more, but single digits.",
     "thursday": "Playing on Thursday night.",
     "monday": "Playing on Monday night.",
     "early_season": "One of the first four weeks, when form is still unknown.",
@@ -716,6 +753,8 @@ CATEGORY: dict[str, str] = {
     "big_dog": "The line", "div_dog": "The line", "div_fav": "The line",
     "spread_3": "The line", "spread_7": "The line", "pickem": "The line",
     "dog_3_or_less": "The line", "fav_3_or_less": "The line",
+    "fav_3h_to_6h": "The line", "fav_7_to_9h": "The line",
+    "dog_3h_to_6h": "The line", "dog_7_to_9h": "The line",
     "road_dog": "The line", "home_fav": "The line",
     "fav_after_dog": "The line", "dog_after_fav": "The line",
     # Where they are in the season and who they just saw.
