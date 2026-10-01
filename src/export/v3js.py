@@ -2173,84 +2173,98 @@ function v3GameSwitch(gid) {
     + '</select>' + step(1) + '</div>';
 }
 
-function v3WinBar(c) {
-  const bars = [];
-  if (has(c.win_home)) bars.push(['Sportsbooks', c.win_home, null]);
+// THREE SOURCES, ONE ROW EACH, RATHER THAN THE SAME THREE TWICE.
+//
+// This was two stacked blocks: three labeled win bars, then three boxes
+// carrying the same three sources' projected scores. Six blocks for three
+// facts, a screen and a half on a phone before anything new, and comparing
+// the model to the book meant scrolling between two groups that were already
+// in the same order.
+//
+// One row per source instead, carrying everything that source says. The
+// comparison runs down a column, and it surfaces what the split layout hid:
+// on PIT at CLE the blend's win number is the book's to the point — the model
+// has not earned the right to move it — which took two bars a screen apart to
+// notice.
+//
+// ONE SIDE FOR THE WHOLE COLUMN. Naming each row's own favorite would put
+// "PIT 58%" above "CLE 51%" and ask the reader to flip one of them in their
+// head before comparing. The book's favorite names the column, every row
+// reports that side, and the score cell still names its own leader because
+// that is where a disagreement between the three belongs.
+function v3Projection(c) {
+  const aw = v3AdjWin(c);
+  const rows = [];
+  if (has(c.win_home)) rows.push(['Sportsbooks', c.win_home, null,
+                                  c.spread, c.total]);
   if (has(c.model_win_home))
-    bars.push(['Our model', c.model_win_home, c.model_win_n]);
+    rows.push(['Our model', c.model_win_home, c.model_win_n,
+               c.model_spread, c.model_total]);
   // ADJUSTED: the fitted blend of the two above it. The weight comes from
   // `game_blend`, swept over 1,904 walk-forward games rather than chosen, and
   // it is small — which is the useful part. It says how far the model has
-  // earned the right to move the book, and "about a seventh of the way" is a
-  // more honest answer than either number alone.
-  const aw = v3AdjWin(c);
-  if (aw != null) bars.push(['Adjusted', aw, null]);
-  if (!bars.length) return '';
-  return '<div style="margin-top:16px;display:flex;flex-direction:column;'
-    + 'gap:10px">'
-    + bars.map(b => {
-        const h = Math.round(b[1] * 100), a = 100 - h;
-        return '<div>'
-          + '<div class="eyebrow" style="display:flex;justify-content:'
-          + 'space-between"><span>' + esc(b[0]) + '</span>'
-          + (b[2] ? '<span style="text-transform:none;letter-spacing:0">from '
-             + b[2] + ' past games</span>' : '') + '</div>'
-          + '<div class="bar" style="margin-top:4px" role="img" aria-label="'
-          + esc(c.away) + ' ' + a + ' percent, ' + esc(c.home) + ' ' + h
-          + ' percent">'
-          + '<span class="a num" style="width:' + a + '%">' + esc(c.away)
-          + ' ' + a + '%</span>'
-          + '<span class="h num" style="width:' + h + '%">' + esc(c.home)
-          + ' ' + h + '%</span></div></div>';
-      }).join('')
-    + '</div>';
-}
+  // earned the right to move the book.
+  if (aw != null) rows.push(['Adjusted', aw, null,
+                             (c.blend || {}).spread, (c.blend || {}).total]);
+  if (!rows.length) return '';
 
-// The two projections, side by side, as SCORES — whole numbers, because
-// "KC 28.8-17.2" is not a football score and reads as spurious precision on
-// a number whose interval is ten points wide.
-function v3Compare(c) {
-  const line = (label, sp, tot, cls) => {
-    if (!has(sp) || !has(tot)) return '';
-    const hh = tot / 2 - sp / 2, aa = tot / 2 + sp / 2;
-    const lead = hh >= aa ? c.home : c.away;
-    // TEAM ON ITS OWN LINE, SCORE UNDER IT. Three boxes across at phone
-    // width and "CIN 23.0-19.5" wrapped mid-score, reading as two numbers on
-    // two rows.
-    //
-    // One decimal on the score: rounding turned a 0.6-point model margin into
-    // "LA 22-22", a projected tie built from numbers that did not say one.
-    return '<div class="cmp' + (cls || '') + '">'
-      + '<span class="eyebrow">' + esc(label) + '</span>'
-      + '<b class="cmp__t">' + esc(lead) + '</b>'
-      + '<b class="num cmp__s">' + Math.max(hh, aa).toFixed(1)
-      + '\u2013' + Math.min(hh, aa).toFixed(1) + '</b>'
-      + '<span class="sub num">by ' + Math.abs(sp) + ' \u00b7 ' + tot
-      + ' pts</span></div>';
+  // Whose number the win column is. The book's lean where there is one, the
+  // model's where there is not, so the column has a subject either way.
+  const base = has(c.win_home) ? c.win_home : rows[0][1];
+  const homeSide = base >= 0.5;
+  const side = homeSide ? c.home : c.away;
+
+  const cell = (r) => {
+    const w = homeSide ? r[1] : 1 - r[1];
+    const pct = Math.round(w * 100);
+    // A SCORE IS STILL A SCORE. Same derivation as the boxes this replaces:
+    // the total split by the spread, one decimal, because rounding turned a
+    // 0.6-point model margin into a projected tie.
+    const sp = r[3], tot = r[4];
+    let score = '', sub = '';
+    if (has(sp) && has(tot)) {
+      const hh = tot / 2 - sp / 2, aa = tot / 2 + sp / 2;
+      const lead = hh >= aa ? c.home : c.away;
+      score = esc(lead) + ' ' + Math.max(hh, aa).toFixed(1) + '\u2013'
+        + Math.min(hh, aa).toFixed(1);
+      sub = 'by ' + Math.abs(sp) + ' \u00b7 ' + tot + ' pts';
+    }
+    return '<div class="proj__r' + (r[0] === 'Adjusted' ? ' proj__r--adj' : '')
+      + '">'
+      + '<div class="proj__s"><span class="eyebrow">' + esc(r[0]) + '</span>'
+      + (r[2] ? '<span class="sub">from ' + r[2] + ' past games</span>' : '')
+      + '</div>'
+      + '<div class="proj__w"><b class="num">' + pct + '%</b>'
+      + '<span class="proj__bar" role="img" aria-label="' + esc(side) + ' '
+      + pct + ' percent"><i style="width:' + pct + '%"></i></span></div>'
+      + '<div class="proj__p">'
+      + (score ? '<b class="num">' + score + '</b>' : '<b>\u2014</b>')
+      + (sub ? '<span class="sub num">' + sub + '</span>' : '')
+      + '</div></div>';
   };
-  const a = line('Sportsbooks', c.spread, c.total, '');
-  const b = line('Our model', c.model_spread, c.model_total, ' cmp--ours');
-  const adj = c.blend
-    ? line('Adjusted', c.blend.spread, c.blend.total, ' cmp--adj') : '';
-  if (!a && !b) return '';
+
   // THE OTHER SIDE OF THE PROJECTION, BESIDE IT.
   //
-  // A point estimate is the whole headline and the distribution was a tab
+  // A point estimate is the whole headline and the distribution is a tab
   // away. On 25 September Atlanta won at Green Bay by 21 as a road dog: the
   // page said "GB 23.8-22.2" and every number looked wrong, while the same
-  // build had an outright Atlanta win at 28.5% — which is not a long shot,
-  // and is a number nobody saw without changing tabs. Said here, a projection
-  // reads as the middle of a distribution rather than as a forecast.
+  // build had an outright Atlanta win at 28.5% — not a long shot, and a
+  // number nobody saw without changing tabs. Said here, a projection reads as
+  // the middle of a distribution rather than as a forecast.
   const u = c.unfold;
   const note = (u && !u.thin && u.headline)
-    ? '<p class="help" style="margin-top:8px">A projection is the middle of a '
+    ? '<p class="help" style="margin-top:10px">A projection is the middle of a '
       + 'range, not a call. In ' + u.n + ' games priced like this one, '
       + esc(u.dog) + ' won outright <b>'
       + u.headline.upset.pct.toFixed(0) + '%</b> of the time and '
       + u.headline.one_score.pct.toFixed(0) + '% finished within one score.</p>'
     : '';
-  return '<div class="' + (adj ? 'three' : 'two')
-    + '" style="margin-top:16px">' + a + b + adj + '</div>' + note;
+  return '<div class="proj">'
+    + '<div class="proj__r proj__r--h"><span></span>'
+    + '<span class="proj__w">' + esc(side) + ' win</span>'
+    + '<span class="proj__p">projected score</span></div>'
+    + rows.map(cell).join('')
+    + '</div>' + note;
 }
 
 function v3GameNotes(gid, cats, shown) {
@@ -2796,8 +2810,7 @@ function v3GameOdds(c, gid) {
     + '<div style="text-align:right"><b>' + esc(c.home) + '</b>'
     + '<div class="sub">home</div></div></div>'
     + '<div class="sub" style="margin-top:8px">' + esc(v3Kick(c)) + '</div>'
-    + v3WinBar(c)
-    + v3Compare(c) + '</div>'
+    + v3Projection(c) + '</div>'
     // UNDER THE PROJECTION AND ABOVE THE MONEY. The projection says what this
     // game is expected to look like; this says what the two teams have
     // actually been doing, which is the question it immediately raises.

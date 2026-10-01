@@ -802,6 +802,22 @@ if (cards.length) {
   const h = app();
   ok('the win bar carries both the book and our model',
      h.indexOf('Sportsbooks') >= 0 && h.indexOf('Our model') >= 0);
+  // ONE ROW PER SOURCE, not three bars and then three boxes saying the same
+  // three things. Six blocks for three facts was a screen and a half on a
+  // phone before anything new.
+  ok('each source is one row carrying everything it says',
+     (h.match(/class="proj__r(?! proj__r--h)/g) || []).length >= 2,
+     'the projection is not a row per source');
+  ok('the win column names one side for every row',
+     /class="proj__w">[A-Z]{2,4} win</.test(h),
+     'the win column has no subject');
+  // THE REGRESSION THIS ALMOST SHIPPED WITH. The distribution note lived
+  // inside the block that was replaced, and a point estimate without it reads
+  // as a forecast — Atlanta won at Green Bay by 21 as a road dog on a page
+  // that said GB 23.8-22.2 and had the upset at 28.5% one tab away.
+  ok('a projection still says it is the middle of a range',
+     h.indexOf('middle of a') >= 0 && h.indexOf('won outright') >= 0,
+     'the distribution note was dropped with the layout');
   // A DECIMAL, not a whole number. Rounding turned a 0.6-point model margin
   // into "LA 22-22" — a projected tie, from numbers that did not say one.
   ok('the projected scores keep a decimal',

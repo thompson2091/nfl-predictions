@@ -924,6 +924,33 @@ button{cursor:pointer}
 .pubrow--names .pubrow__a,.pubrow--names .pubrow__b{font-size:11px;
   font-weight:600;color:var(--mut2)}
 
+/* ---- the projection: three sources, one row each ----------------------
+   Three columns that hold their width whatever the numbers are: who is
+   saying it, their number for one side, and the score that implies. The bar
+   is deliberately thin — the figure is the fact and the bar is only there so
+   three rows can be compared without reading them. */
+.proj{margin-top:14px}
+.proj__r{display:grid;grid-template-columns:minmax(0,1fr) 76px minmax(0,auto);
+  gap:10px;align-items:center;padding:9px 0;
+  border-top:1px solid var(--line3)}
+.proj__r--h{padding:0 0 4px;border-top:0;font-size:11px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--mut2)}
+.proj__r--h .proj__w,.proj__r--h .proj__p{text-align:right;display:block}
+/* The blend is what the page serves, so it carries the tint the rest of the
+   app uses for our own number rather than being a third anonymous row. */
+.proj__r--adj{background:var(--goodbg);border-radius:8px;
+  padding-left:8px;padding-right:8px;margin:0 -8px}
+.proj__s{display:flex;flex-direction:column;gap:1px;min-width:0}
+.proj__s .sub{font-size:11px;line-height:14px}
+.proj__w{text-align:right}
+.proj__w b{font-size:17px;line-height:20px;display:block}
+.proj__bar{display:block;height:3px;margin-top:4px;border-radius:999px;
+  background:var(--sunk);overflow:hidden}
+.proj__bar i{display:block;height:100%;background:var(--ours)}
+.proj__p{text-align:right;min-width:0}
+.proj__p b{font-size:16px;line-height:20px;display:block;white-space:nowrap}
+.proj__p .sub{font-size:11px;line-height:14px;white-space:nowrap}
+
 /* ---- where the public is ---- */
 .pub{margin-top:12px}
 .pub__h{display:flex;align-items:baseline;justify-content:space-between;
