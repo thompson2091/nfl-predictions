@@ -1413,6 +1413,8 @@ def _v3js() -> str:
     from pathlib import Path
     return (Path(__file__).resolve().parents[1]
             / "src/export/v3js.py").read_text()
+
+
 def test_a_last_ten_bar_cannot_be_taller_than_the_half_it_grows_into():
     """The bars grow from the midline, so their room is half the box.
 
@@ -1432,6 +1434,8 @@ def test_a_last_ten_bar_cannot_be_taller_than_the_half_it_grows_into():
     i = css.index(".pl__c{")
     assert "overflow:hidden" in css[i:i + 200], \
         "the chart no longer clips, so an overflowing bar reaches the text"
+
+
 def test_the_last_ten_chart_says_what_its_colors_mean():
     """A chart of bars around an unlabeled line explains itself to nobody.
 
@@ -1442,18 +1446,6 @@ def test_the_last_ten_chart_says_what_its_colors_mean():
         "the last-10 chart lost its legend"
     assert src.index("'<p class=\"pl__s\">'") < src.index("'<div class=\"pl__c\">'"), \
         "the count is printed under the chart again rather than above it"
-def test_a_history_fetch_that_failed_says_so():
-    """Falling back to ten weeks is right; doing it silently is not.
-
-    The panel redrew identically on a 404 and the button read as broken.
-    """
-    src = _v3js()
-    assert "pl__e" in src, "the past-lines failure line is gone"
-    assert "Every week did not load" in src, \
-        "a failed history fetch is silent again"
-    i = src.index("const err = (V.pastAll === row.player")
-    assert "ck.error" in src[i:i + 300], \
-        "the failure line is not reading the cached error"
 
 
 def test_a_streak_is_counted_against_the_line_he_was_quoted_that_week():
@@ -1612,3 +1604,68 @@ def test_no_layout_rule_decides_a_phone_by_a_width_that_phones_outgrew():
     i = rules.index(".three{")
     assert "auto-fit" in rules[i:i + 200], \
         "the comparison block is back on three fixed columns"
+
+
+def test_every_data_file_the_build_writes_is_one_the_deploy_uploads():
+    """The build and the deploy disagreed about a filename for months.
+
+    `52_export_v3.py` writes `data/hist-<market>.json`; `58_deploy.py`
+    collected `data/h-*.json`, which is a literal `h`, a literal `-`, then
+    anything. `hist-` has an `i` in that second position, so six files
+    totalling 1.6 MB were built on every deploy and uploaded on none. Nothing
+    failed anywhere: the page fetched one, got a 404, fell back to the ten
+    weeks it already had, and redrew the button that had asked for more.
+
+    So the globs are a named contract, and this reads it against the paths the
+    exporter actually writes. A new data file now fails here rather than going
+    missing in production.
+    """
+    import fnmatch
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    dep = (root / "scripts/58_deploy.py").read_text()
+    m = re.search(r"DATA_GLOBS = \(([^)]*)\)", dep)
+    assert m, "58_deploy.py no longer declares DATA_GLOBS"
+    globs = re.findall(r'"([^"]+)"', m.group(1))
+    assert globs, "DATA_GLOBS is empty"
+
+    written = set()
+    for rel in ("scripts/52_export_v3.py", "src/export/pwa.py"):
+        for hit in re.finditer(r'"data/([A-Za-z0-9_\-{}/.]+\.json)"',
+                               (root / rel).read_text()):
+            written.add(hit.group(1))
+    assert written, "found no data file paths in the exporter"
+
+    for name in sorted(written):
+        # `{market}` and friends stand for whatever the week holds.
+        sample = re.sub(r"\{[^}]*\}", "X", name)
+        assert any(fnmatch.fnmatch(sample, g) for g in globs), \
+            f"the build writes data/{name} and no DATA_GLOBS entry carries it"
+
+
+def test_the_history_files_are_actually_uploaded_not_just_declared():
+    """A contract nothing reads would pass the test above and ship nothing."""
+    from pathlib import Path
+
+    dep = (Path(__file__).resolve().parents[1]
+           / "scripts/58_deploy.py").read_text()
+    assert 'data.glob("hist-*.json")' in dep, \
+        "the deploy no longer collects the history files"
+    assert "for f in hist_files:" in dep, \
+        "the history files are collected and never copied"
+
+
+def test_a_history_fetch_that_failed_says_so():
+    """Falling back to ten weeks is right; doing it silently is not.
+
+    The panel redrew identically on a 404 and the button read as broken.
+    """
+    src = _v3js()
+    assert "pl__e" in src, "the past-lines failure line is gone"
+    assert "Every week did not load" in src, \
+        "a failed history fetch is silent again"
+    i = src.index("const err = (V.pastAll === row.player")
+    assert "ck.error" in src[i:i + 300], \
+        "the failure line is not reading the cached error"

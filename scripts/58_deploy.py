@@ -51,6 +51,21 @@ DEFAULTS = {
 #: an app that loads, works, and never installs or goes offline.
 TOP = ["index.html", "manifest.webmanifest", "sw.js"]
 
+#: EVERY DATA FILE THE BUILD WRITES, AS THE PATTERNS THAT CARRY IT UP. This is
+#: the contract between `52_export_v3.py`, which decides what to write, and
+#: this script, which decides what to send — and it was broken for as long as
+#: the full player history existed. The week files are `h-<market>-<week>.json`
+#: and the glob that collected them was `h-*.json`; the history files are
+#: `hist-<market>.json`, whose second character is an `i` and not a `-`, so
+#: they matched nothing and six files totalling 1.6 MB stayed on the laptop.
+#: Nothing failed: the page fetched one, got a 404, and quietly redrew the
+#: button that had asked for it.
+#:
+#: `test_every_data_file_the_build_writes_is_one_the_deploy_uploads` reads this
+#: tuple against the paths the exporter actually writes, so the next file added
+#: there fails a test rather than going missing in production.
+DATA_GLOBS = ("h-*.json", "hist-*.json", "ask/*.json")
+
 
 def env(key: str) -> str:
     v = os.environ.get(key)
@@ -233,6 +248,7 @@ reports.
         return 1
     data = out / "data"
     week_files = sorted(data.glob("h-*.json")) if data.exists() else []
+    hist_files = sorted(data.glob("hist-*.json")) if data.exists() else []
     ask_files = sorted((data / "ask").glob("*.json")) if data.exists() else []
     if not week_files:
         # A warning, not a failure: a season before any week is played has
@@ -270,6 +286,23 @@ reports.
                     print(f"upload of {f.name} failed", file=sys.stderr)
                     return 1
             _prune(s, root, {f.name for f in week_files}, a.dry_run)
+        # A SEPARATE STEP, NOT A WIDER GLOB. Loosening the week glob to `h*`
+        # would also put these under `_prune`, which deletes anything matching
+        # PRUNABLE that is not in its keep-set — a sweep they have no reason
+        # to be inside. They are rewritten whole on every build.
+        if hist_files:
+            print(f"  {len(hist_files)} history files "
+                  f"({sum(f.stat().st_size for f in hist_files) / 1024:,.0f} KB)",
+                  file=sys.stderr)
+            for f in hist_files:
+                if not s.copy(str(f), f"{root}/data/{f.name}"):
+                    print(f"upload of {f.name} failed", file=sys.stderr)
+                    return 1
+        else:
+            # Said out loud: "Show every week" is the only thing that reads
+            # them, and with none uploaded it is a button that does nothing.
+            print("  note: no data/hist-*.json to upload — \"Show every week\" "
+                  "will 404", file=sys.stderr)
         if ask_files:
             print(f"  {len(ask_files)} ask briefs", file=sys.stderr)
             for f in ask_files:
