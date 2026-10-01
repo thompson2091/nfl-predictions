@@ -75,6 +75,53 @@ button{cursor:pointer}
 .num{font-variant-numeric:tabular-nums}
 .wrap{max-width:560px;margin:0 auto;padding:0 16px}
 
+/* ---- desktop: a layout, not a stretched phone -------------------------
+   560px is a phone column, and on a 1700px screen it is a phone column with
+   1100px of background beside it. Widening that alone would be the stretch:
+   a board row 900px wide puts a player's name and his price at opposite ends
+   of the screen with nothing in between.
+   So the width is spent on things that have more to show — two board rows
+   abreast, the two teams' form side by side, the detail pairs in columns —
+   while prose stays at a line length somebody can read, and the bars top and
+   bottom stop running the full width of the glass. */
+@media (min-width:900px){
+  .wrap{max-width:880px}
+  /* The shell's own bars are flex items in a column, so centring their
+     CONTENT is a max-width on each rather than a wrapper the markup lacks. */
+  .appbar,.tabbar{max-width:912px;margin-left:auto;margin-right:auto;
+    width:100%}
+  .h1{font-size:34px;line-height:40px}
+  /* A line of text is readable to about 70 characters whatever the window
+     does. These stay where they are and the layout grows around them. */
+  .lede,.help,.pl__s{max-width:68ch}
+
+  /* TWO ROWS ABREAST on the PLAYER BOARD only. `.list` is also the games
+     list, the angles table and a ladder, none of which is a grid of equal
+     cards; `#v3rows` is the board and nothing else.
+     An opened row takes the full width back — its
+     detail panel is a six-field grid and a chart, which is the one thing on
+     this page that wants the whole 880px. */
+  #v3rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    column-gap:0}
+  #v3rows>.row{border-top:1px solid var(--line)}
+  #v3rows>.row:nth-child(-n+2){border-top:0}
+  #v3rows>.row:nth-child(odd){border-right:1px solid var(--line)}
+  #v3rows>.row--open{grid-column:1/-1;border-right:0}
+
+  /* The two teams, beside each other rather than one under the other: the
+     whole point of the card is comparing them. The heading, the legend and
+     the note still span it. */
+  .tf{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:0 24px;align-items:start}
+  .tf>.pl__h,.tf>.pl__lg,.tf>.help{grid-column:1/-1}
+  .tf .pl__l{max-height:none}
+  .tf__c{height:72px}
+}
+@media (min-width:1280px){
+  .wrap{max-width:1040px}
+  .appbar,.tabbar{max-width:1072px}
+}
+
 /* ---- header and the week picker, which is global on purpose ---- */
 /* No height and no margin here: `.appbar` owns both, and two owners is what
    made the header overflow its own bar. */
@@ -412,6 +459,26 @@ button{cursor:pointer}
 /* The two teams' lists are the long part of this card; neither needs to be
    taller than a phone. */
 .tf .pl__l{max-height:200px}
+/* SIX COLUMNS, THE FOUR NUMERIC ONES ALIGNED. Packed into one right-aligned
+   string — "30-27 · expected 19.5-23" — the four numbers formed two pairs
+   whose dashes meant different things, and nothing lined up down the page.
+   `tabular-nums` so the decimals sit under each other and a week that broke
+   pattern is visible without reading any of them. */
+.tf__hd,.tf__row{display:grid;
+  grid-template-columns:minmax(48px,auto) minmax(40px,1fr)
+    repeat(4,minmax(34px,auto));
+  gap:4px 8px;align-items:baseline;padding:5px 0;
+  border-top:1px solid var(--line3);font-size:13px}
+.tf__hd{border-top:0;padding-bottom:2px;font-size:10px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--mut2)}
+.tf__n,.tf__x{text-align:right;font-variant-numeric:tabular-nums}
+.tf__n{font-weight:600}
+/* The expectation is the number the one beside it is being read against, so
+   it is present and quiet rather than absent or equal. */
+.tf__x{color:var(--mut);font-size:12px}
+.tf__n--over{color:var(--ours)}
+/* Last season in the table too, so the muting means one thing on this card. */
+.tf__row--prev{opacity:.6}
 /* Why the button did nothing. Muted rather than red: the ten weeks above it
    are real and the panel is still useful. */
 .pl__e{margin:8px 0 0;font-size:12px;color:var(--mut)}

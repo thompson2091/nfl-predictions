@@ -2625,14 +2625,34 @@ function v3TeamForm(c) {
     r => has(val(r)) && has(exp(r)) && val(r) > exp(r)).length;
   const pf = r => r[4], pa = r => r[5], ef = r => r[6], ea = r => r[7];
 
+  // SIX ALIGNED COLUMNS, NOT ONE PACKED STRING.
+  //
+  // This read "30-27 · expected 19.5-23" on one right-aligned line, which is
+  // four numbers in two en-dashed pairs where the dash means "against" in one
+  // and nothing in the other — and the reader has to remember that the first
+  // of each pair is this team. Columns say it instead: what they scored, what
+  // was expected of them, what they allowed, what was expected of that. The
+  // numbers line up down the page, so a week that broke pattern is visible
+  // without reading any of them.
+  const cell = (v, exp) => {
+    const over = has(v) && has(exp) && v > exp;
+    return '<span class="tf__n num' + (over ? ' tf__n--over' : '') + '">'
+      + (has(v) ? v : '\u2014') + '</span>'
+      + '<span class="tf__x num">' + (has(exp) ? exp.toFixed(1) : '\u2014')
+      + '</span>';
+  };
   const block = (name, rows) => {
-    const list = rows.map(r =>
-      '<div class="pl__r"><span class="pl__w">' + esc(v3PastWhen(r))
-      + '</span><span class="pl__o">' + (r[3] ? 'vs ' : 'at ') + esc(r[2])
-      + '</span><span class="pl__v num">' + r[4] + '\u2013' + r[5]
-      + (has(r[6]) && has(r[7])
-         ? ' \u00b7 expected ' + r[6] + '\u2013' + r[7] : '')
-      + '</span></div>').join('');
+    const list = '<div class="tf__hd">'
+      + '<span></span><span></span>'
+      + '<span class="tf__n">scored</span><span class="tf__x">exp</span>'
+      + '<span class="tf__n">allowed</span><span class="tf__x">exp</span>'
+      + '</div>'
+      + rows.map(r =>
+        '<div class="tf__row' + (r[0] < season ? ' tf__row--prev' : '') + '">'
+        + '<span class="pl__w">' + esc(v3PastWhen(r)) + '</span>'
+        + '<span class="pl__o">' + (r[3] ? 'vs ' : 'at ') + esc(r[2])
+        + '</span>' + cell(r[4], r[6]) + cell(r[5], r[7])
+        + '</div>').join('');
     return '<div class="tf__t2">'
       + '<div class="pl__h">' + esc(name) + ', last ' + rows.length + '</div>'
       + '<p class="pl__s">Scored more than expected in '

@@ -1688,3 +1688,60 @@ def test_a_history_fetch_that_failed_says_so():
     i = src.index("const err = (V.pastAll === row.player")
     assert "ck.error" in src[i:i + 300], \
         "the failure line is not reading the cached error"
+
+
+def _v3css() -> str:
+    from pathlib import Path
+    return (Path(__file__).resolve().parents[1]
+            / "src/export/v3css.py").read_text()
+
+
+def test_the_desktop_width_is_spent_rather_than_stretched():
+    """560px on a 1700px screen is a phone column with a field beside it.
+
+    Widening that alone is the stretch: a board row 900px wide puts a player's
+    name and his price at opposite ends of the screen. So the width goes to
+    things with more to show, and prose keeps a line length.
+    """
+    css = _v3css()
+    assert "@media (min-width:900px)" in css, "there is no desktop layout"
+    i = css.index("@media (min-width:900px)")
+    block = css[i:i + 1800]
+    assert ".wrap{max-width:880px}" in block, "the shell never widens"
+    assert "68ch" in block, "prose runs the full width of the window"
+    assert "#v3rows{display:grid" in block, "the board is still one column"
+    assert "#v3rows>.row--open{grid-column:1/-1" in block, \
+        "an opened row is confined to half the width it needs"
+
+
+def test_only_the_player_board_becomes_two_columns():
+    """`.list` is five lists — the board, the games list, the angles table
+    and a ladder. Only the board is a grid of equal cards."""
+    css = _v3css()
+    i = css.index("@media (min-width:900px)")
+    block = css[i:i + 1800]
+    assert ".list{display:grid" not in block, \
+        "every list on the site was made two columns"
+
+
+def test_the_shell_bars_stop_at_the_content_width():
+    """A header with its two ends 1700px apart reads as two headers."""
+    css = _v3css()
+    i = css.index("@media (min-width:900px)")
+    block = css[i:i + 1800]
+    assert ".appbar,.tabbar{max-width:912px" in block, \
+        "the top and bottom bars still run the full width of the glass"
+
+
+def test_the_form_table_aligns_its_four_numbers():
+    """"30-27 · expected 19.5-23" is four numbers in two en-dashed pairs
+    whose dashes mean different things, right-aligned as one string."""
+    src = _v3js()
+    assert "tf__hd" in src and "tf__row" in src, "the form list is a string again"
+    assert '"tf__n">scored</span>' in src \
+        and '"tf__n">allowed</span>' in src, \
+        "the form table lost its column headers"
+    css = _v3css()
+    i = css.index(".tf__hd,.tf__row{")
+    assert "tabular-nums" in css[i:i + 600], \
+        "the form numbers no longer line up down the page"
