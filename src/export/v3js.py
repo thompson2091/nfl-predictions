@@ -593,6 +593,24 @@ function v3SortBar() {
     + (V.desc ? '\u2193 High' : '\u2191 Low') + '</button></div>';
 }
 
+// THE CAVEATS STAY; THEY STOP BEING THE PAGE.
+//
+// This project will not drop a caveat — several of them are the reason a
+// number is not a tip, and `angles` would be a list of winning patterns
+// without them. But four paragraphs under a table is the part of the card
+// with the most words and the least news, and on the second visit it is
+// scrolled past. Folded, it is one line until somebody wants it, and it is
+// still there in the page for the reader who does.
+//
+// `<details>` rather than a button and a state flag: it survives a re-render
+// without being in `V`, it opens from the keyboard, and a reader who prints
+// the page or searches it finds the text either way.
+function v3Fold(label, html) {
+  if (!html) return '';
+  return '<details class="fold"><summary>' + esc(label) + '</summary>'
+    + '<div class="fold__b">' + html + '</div></details>';
+}
+
 function v3Seg(attr, opts, on) {
   return opts.map(o => '<button data-' + attr + '="' + o[0] + '" aria-pressed="'
     + (o[0] === on) + '">' + esc(o[1]) + '</button>').join('');
@@ -1228,7 +1246,20 @@ function v3Detail(row) {
         + (gm.mine ? ' \u2014 this player\u2019s side'
            : gm.facing ? ' \u2014 the other side' : ''), true);
   }
-  return '<div class="detail"><dl>'
+  // A HEADER THE PANEL ONLY NEEDS WHEN IT IS DETACHED FROM ITS ROW.
+  //
+  // On a phone the detail opens directly under the player you tapped and the
+  // row above it is the title. On a desktop the board is two columns wide and
+  // an opening panel either shoved half the board down the page or was
+  // confined to half the width it needs — so there it opens as a drawer at
+  // the right, away from the row, and a drawer with no name on it belongs to
+  // nobody. Hidden below 900px, where the row is still saying it.
+  return '<div class="detail">'
+    + '<div class="detail__h"><b>' + esc(row.player) + '</b>'
+    + '<span class="sub">' + esc(v3Fixture(row)) + '</span>'
+    + '<button class="detail__x" data-v3open="' + esc(row.id)
+    + '" aria-label="Close ' + esc(row.player) + '">\u00d7</button></div>'
+    + '<dl>'
     + f.map(x => '<div' + (x[2] ? ' class="detail__w"' : '') + '><dt>'
         + esc(x[0]) + '</dt><dd class="num">' + x[1]
         + '</dd></div>').join('')
@@ -2069,40 +2100,36 @@ function v3PublicMoney(gid) {
     });
   }
 
+  // THE DATA FIRST, THE LESSON UNDER IT. This card opened with two sentences
+  // about what bets and money are before showing either — a paragraph every
+  // reader scrolls past from their second visit on. The distinction still has
+  // to be made, so it is made below, with the rest of the explanation, behind
+  // one line.
   return '<div class="card"><div class="name">Where the money is</div>'
-    + '<p class="lede" style="font-size:15px;line-height:20px;margin-top:6px">'
-    + 'How many <b style="color:var(--ink)">bets</b> are on each side, and how '
-    + 'much of the <b style="color:var(--ink)">money</b>. They are different '
-    + 'things: a side can be the popular pick and still hold less of the cash.'
-    + '</p>'
     // THREE SELF-CONTAINED BLOCKS, which on a wide screen is three screens
     // of scrolling to compare two of them. `cols2` stacks below 900px and
     // pairs above it, so the phone is unchanged and the desktop shows the
     // spread beside the total.
     + '<div class="cols2">' + blocks + '</div>'
-    // THE SAME TREATMENT FOR THE PROSE. Two explanatory blocks stacked in a
-    // full-width card are two short paragraphs down the left of it with half
-    // the card empty beside them — capping the line length fixed the reading
-    // and left the hole. Side by side they fill the card they are in.
-    + '<div class="cols2 cols2--prose">'
-    + '<div class="pub"><div class="pub__h">'
-    + '<span class="eyebrow">What a move means</span></div>'
-    + '<p class="help" style="margin-top:2px">A sportsbook nudges these '
-    + 'numbers to keep the amount bet on each side roughly even. When the '
-    + 'number moves toward a team, backing that team has got more expensive '
-    + '— usually because bets have been arriving on it. A number that '
-    + 'has not moved means the two sides are close to balanced.</p></div>'
-    + '<p class="help" style="margin-top:12px">Shares are Action '
-    + 'Network’s, which publishes bets and money on all three markets.'
-    + (other.length
-       ? ' Sportsbook Review’s customers lean the other way on '
-         + other.join(' and ') + '.'
-       : '')
-    + ' <b style="color:var(--ink)">None of this is a tip.</b> A crowd being '
-    + 'on one side is not evidence it is wrong, and whether the bigger money '
-    + 'is the smarter money is exactly what this project has not measured '
-    + '— the split archive began on 25 September.</p>'
-    + '</div>'
+    + v3Fold('What these shares mean',
+        '<p class="help">How many <b>bets</b> are on each side, and how much '
+        + 'of the <b>money</b> \u2014 they are different things: a side can be '
+        + 'the popular pick and still hold less of the cash.</p>'
+        + '<p class="help">A sportsbook nudges these numbers to keep the '
+        + 'amount bet on each side roughly even. When the number moves toward '
+        + 'a team, backing that team has got more expensive \u2014 usually '
+        + 'because bets have been arriving on it. A number that has not moved '
+        + 'means the two sides are close to balanced.</p>'
+        + '<p class="help">Shares are Action Network\u2019s, which publishes '
+        + 'bets and money on all three markets.'
+        + (other.length
+           ? ' Sportsbook Review\u2019s customers lean the other way on '
+             + other.join(' and ') + '.'
+           : '')
+        + ' <b>None of this is a tip.</b> A crowd being on one side is not '
+        + 'evidence it is wrong, and whether the bigger money is the smarter '
+        + 'money is exactly what this project has not measured \u2014 the '
+        + 'split archive began on 25 September.</p>')
     + '</div>';
 }
 
@@ -2234,9 +2261,13 @@ function v3Projection(c) {
       + '<div class="proj__s"><span class="eyebrow">' + esc(r[0]) + '</span>'
       + (r[2] ? '<span class="sub">from ' + r[2] + ' past games</span>' : '')
       + '</div>'
-      + '<div class="proj__w"><b class="num">' + pct + '%</b>'
+      + '<div class="proj__w"><b class="num">' + pct + '%</b></div>'
+      // THE BAR IS THE COLUMN THAT STRETCHES. Everything else in the row is
+      // sized to its text, so on a desktop the extra width went into the gap
+      // between the label and the numbers and left them jammed at the right
+      // edge. The bar is the one thing here that gets better with width.
       + '<span class="proj__bar" role="img" aria-label="' + esc(side) + ' '
-      + pct + ' percent"><i style="width:' + pct + '%"></i></span></div>'
+      + pct + ' percent"><i style="width:' + pct + '%"></i></span>'
       + '<div class="proj__p">'
       + (score ? '<b class="num">' + score + '</b>' : '<b>\u2014</b>')
       + (sub ? '<span class="sub num">' + sub + '</span>' : '')
@@ -2261,7 +2292,7 @@ function v3Projection(c) {
     : '';
   return '<div class="proj">'
     + '<div class="proj__r proj__r--h"><span></span>'
-    + '<span class="proj__w">' + esc(side) + ' win</span>'
+    + '<span class="proj__w">' + esc(side) + ' win</span><span></span>'
     + '<span class="proj__p">projected score</span></div>'
     + rows.map(cell).join('')
     + '</div>' + note;
@@ -3000,6 +3031,10 @@ function v3Angles(c) {
     // THE DENOMINATOR IS THE FINDING, so it is on the card rather than in a
     // footnote. Without it a reader sees four splits and no idea that
     // forty-five others were measured at the same time and said nothing.
+    // THE DENOMINATOR STAYS ON THE CARD. How many angles were measured
+    // together is the finding, not a footnote, so it is the one line that
+    // does not fold; everything under it explains how to read the table and
+    // folds away until asked for.
     + '<p class="help" style="margin-top:10px">Break-even at \u2212110 is '
     + (be * 100).toFixed(2) + '%. Of the ' + (A.rows || []).length
     + ' angles measured together, <b style="color:var(--ink)">'
@@ -3007,7 +3042,7 @@ function v3Angles(c) {
         r => r.all && v3Clears(r.all.lo, r.all.n, be)).length
     + '</b> clear it once the interval is taken into account. A season\u2019s '
     + 'worth of any one of these is a handful of games.</p>'
-    + v3BaseNote() + '</div></div>';
+    + v3Fold('How to read this table', v3BaseNote()) + '</div></div>';
 }
 
 // WHO IS ON THE FIELD, THEN HOW THE UNITS COMPARE.

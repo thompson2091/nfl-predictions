@@ -106,7 +106,30 @@ button{cursor:pointer}
   #v3rows>.row{border-top:1px solid var(--line)}
   #v3rows>.row:nth-child(-n+2){border-top:0}
   #v3rows>.row:nth-child(odd){border-right:1px solid var(--line)}
-  #v3rows>.row--open{grid-column:1/-1;border-right:0}
+  /* A DRAWER, NOT AN EXPANSION. Two columns of rows and an inline panel are
+     in each other's way: spanning the full width shoves half the board down
+     the page and jumps the row you tapped, and staying in its column gives a
+     six-field grid and a chart half the width they need.
+     So on a desktop the panel leaves the flow entirely and docks right. The
+     board does not move, the row it belongs to is tinted, and the panel says
+     whose it is. Below 900px none of this applies and the phone keeps the
+     inline expansion it already had. */
+  #v3rows>.row--open{background:var(--inset)}
+  #v3rows>.row--open>.detail{position:fixed;z-index:14;
+    top:calc(64px + env(safe-area-inset-top,0px));
+    bottom:calc(68px + env(safe-area-inset-bottom,0px));
+    right:max(12px,calc((100vw - 1200px)/2));
+    width:min(420px,42vw);margin:0;overflow-y:auto;
+    box-shadow:0 10px 40px rgba(22,24,29,.18)}
+  #v3rows>.row--open>.detail .detail__h{display:flex;align-items:baseline;
+    gap:8px;position:sticky;top:-12px;margin:-12px -12px 8px;
+    padding:12px;background:var(--card);border-bottom:1px solid var(--line);
+    z-index:1}
+  .detail__h b{font-size:17px}
+  .detail__h .sub{flex:1;min-width:0}
+  .detail__x{flex:none;width:28px;height:28px;border-radius:999px;
+    border:1px solid var(--btnline);background:var(--inset);font-size:16px;
+    line-height:1;color:var(--mut)}
 
   /* Any section that is a set of self-contained blocks: the money card's
      three markets today, and whatever else is built the same way. One
@@ -114,9 +137,11 @@ button{cursor:pointer}
      behavior by being given the class. */
   .cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
     gap:0 20px;align-items:start}
-  /* An odd last block takes the row rather than leaving a hole beside it:
-     three markets in two columns is 2 + 1, and the 1 looked abandoned. */
-  .cols2>*:last-child:nth-child(odd){grid-column:1/-1}
+  /* NOT a full-width last row. Three markets in two columns is 2 + 1, and
+     spanning the 1 gave it bars twice the length of the two above it — the
+     same number drawn at two scales in one card. The explanatory blocks flow
+     into the grid behind the markets instead, which fills the row the third
+     market starts. */
   /* A paragraph in a half-width column has its line length already; the
      reading cap would only pull it in further and reopen the hole. */
   .cols2--prose .help,.cols2--prose .lede{max-width:none}
@@ -630,6 +655,8 @@ button{cursor:pointer}
    doing around it. `1/-1` rather than `span 2`, so it still spans everything
    on a width where `auto-fit` has resolved to one column or to three. */
 .detail__w{grid-column:1/-1}
+/* Only the drawer needs a title; inline under its own row, the row is one. */
+.detail__h{display:none}
 .detail dt{font-size:13px;color:var(--mut);flex-shrink:0}
 /* `break-word`, NOT `anywhere`. `anywhere` is what let a squeezed column cut
    "average" into "av/era/ge" rather than wrapping at the spaces it had; it
@@ -685,6 +712,17 @@ button{cursor:pointer}
    market is priced far enough above our number to flag this week" set across
    880px reads as a headline for a page rather than as an answer to what you
    just asked for. It is centred text, so the cap centres with it. */
+/* A caveat kept, and kept out of the way. One line until it is asked for. */
+.fold{margin-top:10px;border-top:1px solid var(--line3);padding-top:8px}
+.fold>summary{cursor:pointer;list-style:none;font-size:12px;color:var(--mut);
+  display:flex;align-items:center;gap:6px;padding:2px 0}
+.fold>summary::-webkit-details-marker{display:none}
+.fold>summary::before{content:"";width:0;height:0;flex:none;
+  border-left:5px solid var(--mut2);border-top:4px solid transparent;
+  border-bottom:4px solid transparent;transition:transform .15s ease}
+.fold[open]>summary::before{transform:rotate(90deg)}
+.fold__b>p:first-child{margin-top:6px}
+
 .empty{padding:24px 16px;text-align:center;color:var(--mut);font-size:15px;
   line-height:20px;max-width:46ch;margin-left:auto;margin-right:auto}
 
@@ -930,12 +968,14 @@ button{cursor:pointer}
    is deliberately thin — the figure is the fact and the bar is only there so
    three rows can be compared without reading them. */
 .proj{margin-top:14px}
-.proj__r{display:grid;grid-template-columns:minmax(0,1fr) 76px minmax(0,auto);
-  gap:10px;align-items:center;padding:9px 0;
+.proj__r{display:grid;
+  grid-template-columns:minmax(0,auto) 52px minmax(40px,1fr) minmax(0,auto);
+  gap:12px;align-items:center;padding:9px 0;
   border-top:1px solid var(--line3)}
 .proj__r--h{padding:0 0 4px;border-top:0;font-size:11px;letter-spacing:.04em;
   text-transform:uppercase;color:var(--mut2)}
 .proj__r--h .proj__w,.proj__r--h .proj__p{text-align:right;display:block}
+.proj__r--h{align-items:end}
 /* The blend is what the page serves, so it carries the tint the rest of the
    app uses for our own number rather than being a third anonymous row. */
 .proj__r--adj{background:var(--goodbg);border-radius:8px;
@@ -944,7 +984,10 @@ button{cursor:pointer}
 .proj__s .sub{font-size:11px;line-height:14px}
 .proj__w{text-align:right}
 .proj__w b{font-size:17px;line-height:20px;display:block}
-.proj__bar{display:block;height:3px;margin-top:4px;border-radius:999px;
+/* Its own column, and the only one that stretches: everything else is sized
+   to its text, so without this the desktop's extra width became a gap down
+   the middle of the row with the numbers pinned to the right edge. */
+.proj__bar{display:block;height:4px;border-radius:999px;
   background:var(--sunk);overflow:hidden}
 .proj__bar i{display:block;height:100%;background:var(--ours)}
 .proj__p{text-align:right;min-width:0}

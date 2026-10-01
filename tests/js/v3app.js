@@ -2198,10 +2198,18 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // LAYMAN TERMS. "pp" is a unit a reader has to be taught.
   ok('no percentage-point jargon anywhere on the card',
      html.indexOf('pp') < 0, html.slice(html.indexOf('pp') - 60, 60));
-  // WHAT A MOVE MEANS, said once, in words.
+  // WHAT A MOVE MEANS, said once, in words — now behind a fold rather than
+  // ahead of the bars. The words are what this check is about; the heading
+  // they used to sit under is not.
   ok('the card explains what a line move means',
-     html.indexOf('What a move means') >= 0
-     && html.indexOf('keep the amount bet on each side roughly even') >= 0);
+     html.indexOf('keep the amount bet on each side roughly even') >= 0);
+  ok('and the explanation is folded, not leading the card',
+     html.indexOf('<details class="fold"') >= 0
+     && html.indexOf('<details class="fold"')
+        < html.indexOf('keep the amount bet on each side roughly even'),
+     'the explanation is not inside a fold');
+  ok('the bars come before the words that explain them',
+     html.indexOf('class="pubrow"') < html.indexOf('<details class="fold"'));
   ok('and gives the two numbers for the markets that have them',
      html.indexOf('Opened at') >= 0 || html.indexOf('has not moved') >= 0,
      html);
