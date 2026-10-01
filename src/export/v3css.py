@@ -458,8 +458,19 @@ button{cursor:pointer}
 /* The count now LEADS the chart, so it is the sentence a reader stops on
    rather than a footnote under a picture they skipped. */
 .pl__s{margin:8px 0 0;font-size:13px;color:var(--fg)}
-/* The window control, and the money the window is read over. */
+/* The window control, and the money the window is read over.
+
+   STICKY WITHIN ITS OWN SECTION, which is what `position:sticky` already
+   means: it holds at the top while the chart, the money line and ten weeks of
+   rows scroll under it, and lets go the moment the section itself leaves —
+   no scroll listener, nothing to release by hand. Asked for in exactly those
+   terms: keep it while I am reading the section, stop once I am past it. */
 .pl__seg{margin-top:8px}
+.pl__seg--stick{position:sticky;top:0;z-index:3;background:var(--card);
+  padding-top:6px;padding-bottom:2px}
+/* The drawer scrolls inside itself, so the control sticks to the drawer's
+   top edge rather than the page's. */
+#v3rows>.row--open>.detail .pl__seg--stick{top:46px}
 .pl__m{margin:6px 0 0;font-size:14px;line-height:19px;color:var(--mut)}
 .pl__m b{color:var(--ink)}
 .pl__m b.pos{color:var(--good)}

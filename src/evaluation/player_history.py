@@ -196,8 +196,25 @@ def _roster(wk: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
     return ros, played
 
 
+def _american(p: pl.Expr) -> pl.Expr:
+    """An implied probability as an American price, the way the odds API does.
+
+    Same arithmetic as `odds_api._prob_to_american`, as an expression: a
+    favorite is `-100p/(1-p)` and a dog `100(1-p)/p`, rounded. It is here
+    rather than imported because that one takes a float and this runs over a
+    column, and the shape of the formula is the part worth keeping identical.
+    """
+    return (pl.when(p >= 0.5)
+              .then(-100.0 * p / (1.0 - p))
+              .otherwise(100.0 * (1.0 - p) / p)).round(0)
+
+
 def history(last: int | None = None, players: list[str] | None = None) -> dict:
-    """`{market: {player: [[season, week, opp, home, line, odds, did, played]]}}`.
+    """`{market: {player: [[season, week, opp, home, line, odds, did, played,
+    other]]}}`.
+
+    `other` is the OPPOSITE side's price — the Under on a line, the No on a
+    touchdown — in American odds, or null where the archive never held it.
 
     Newest first, so a cap keeps the recent weeks rather than the old ones.
 
@@ -261,10 +278,42 @@ def history(last: int | None = None, players: list[str] | None = None) -> dict:
         home = (home_team == pl.col("team")).cast(pl.Int64)
         opp = pl.when(home_team == pl.col("team")).then(away_team) \
                 .otherwise(home_team)
+        # THE OTHER SIDE, RECOVERED RATHER THAN ASSUMED.
+        #
+        # The archive stores one price per player-week — the Yes, or the Over
+        # — and for a long time that was the whole story: "what if you had
+        # faded him" was a question it could not answer. But `odds_api` writes
+        # `overround` as p_yes + p_no, taken from the median of the books
+        # that posted BOTH sides, so the other side's implied probability is
+        # `overround - implied_prob` exactly. Not a house edge assumed and
+        # split; the number the books were actually showing.
+        #
+        # Null where no book posted the other side, which is most of the
+        # touchdown market and almost none of the yardage ones. A null here
+        # means no bet rather than a bet at a guessed price.
+        #
+        # ONLY WHERE THE OTHER SIDE IS A REAL QUOTE. Measured over the whole
+        # archive, the recovered probability has a median of 0.556 on
+        # receptions and 0.535 on the yardage markets — a two-way line, which
+        # is what those are. On anytime touchdown it is 0.996 and on first
+        # touchdown 1.000: nobody is posting "will not score" at -999900, and
+        # that number is the complement of a longshot rather than a price.
+        # Pricing a fade off it would show a 99% win rate for a cent a bet.
+        #
+        # So the other side exists on the line markets and nowhere else, and
+        # the sanity bound catches the handful of two-way rows that went the
+        # same way — 25 across 181,000.
+        other_p = ((pl.col("overround") - pl.col("implied_prob"))
+                   if kind == "line" else pl.lit(None, dtype=pl.Float64))
         j = (j.with_columns([did.alias("did"), home.alias("home"),
                              opp.alias("opp"),
                              pl.col("_played").fill_null(0).cast(pl.Int8)
-                               .alias("played")])
+                               .alias("played"),
+                             pl.when(other_p.is_null() | (other_p <= 0.02)
+                                     | (other_p >= 0.98))
+                               .then(None)
+                               .otherwise(_american(other_p))
+                               .alias("other_odds")])
              .filter(pl.col("did").is_not_null())
              .sort(["season", "week"], descending=True))
         # ONE MAN PLAYS ONE GAME A WEEK. Six players are left quoted in two
@@ -287,6 +336,7 @@ def history(last: int | None = None, players: list[str] | None = None) -> dict:
                 None if r["odds"] is None else int(r["odds"]),
                 float(r["did"]) if kind == "line" else int(r["did"]),
                 int(r["played"]),
+                None if r["other_odds"] is None else int(r["other_odds"]),
             ])
         out[mkt] = rows
     return out

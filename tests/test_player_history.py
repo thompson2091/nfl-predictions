@@ -163,7 +163,7 @@ def test_the_board_looks_a_player_up_by_the_name_it_prints():
 
 
 def test_every_row_is_the_shape_the_page_unpacks():
-    """`[season, week, opponent, home, line, odds, did, played]`, in that order.
+    """`[season, week, opp, home, line, odds, did, played, other]`, in order.
 
     The page indexes these by position, so a field arriving in the wrong place
     is a silent mis-draw rather than an error.
@@ -178,10 +178,12 @@ def test_every_row_is_the_shape_the_page_unpacks():
         meta = [m for m in PH.market_meta() if m["key"] == mkt][0]
         for rows in per.values():
             for r in rows:
-                assert len(r) == 8, r
+                assert len(r) == 9, r
                 # A void is not a loss and a zero is not a void: the money
                 # figure needs to tell them apart, and only this says so.
                 assert r[7] in (0, 1), r
+                # The fade's price, or nothing. Never a guess.
+                assert r[8] is None or isinstance(r[8], int), r
                 assert isinstance(r[0], int) and isinstance(r[1], int)
                 assert isinstance(r[2], str) and r[3] in (0, 1)
                 assert r[5] is None or isinstance(r[5], int)
@@ -195,3 +197,34 @@ def test_every_row_is_the_shape_the_page_unpacks():
             if seen > 2000:
                 return
     assert seen > 100, f"only {seen} rows checked"
+
+
+def test_the_other_side_is_recovered_only_where_it_was_really_quoted():
+    """`overround` is p_yes + p_no, so the fade's price is arithmetic.
+
+    It is arithmetic that means something on a line, where both sides are
+    posted: the recovered probability has a median of 0.556 on receptions and
+    0.535 on the yardage markets. On the touchdown markets it is 0.996 and
+    1.000 — nobody posts "will not score" at -999900, and that figure is the
+    complement of a longshot rather than a price. Pricing a fade off it would
+    show a 99% win rate at a cent a bet.
+    """
+    h = PH.history(last=5)
+    meta = {m["key"]: m for m in PH.market_meta()}
+    for mkt, per in h.items():
+        rows = [r for v in per.values() for r in v]
+        if not rows:
+            continue
+        got = [r for r in rows if len(r) > 8 and r[8] is not None]
+        if meta[mkt]["kind"] == "yesno":
+            assert not got, (
+                f"{mkt} recovered a fade price from a one-sided market")
+        else:
+            assert len(got) > len(rows) * 0.9, (
+                f"{mkt}: only {len(got)} of {len(rows)} carry the other side")
+            # And it is a price somebody could have taken.
+            for r in got:
+                assert abs(r[8]) >= 100, r
+                assert abs(r[8]) <= 5000, (
+                    f"{mkt}: {r[8]} is the complement of a longshot, not a "
+                    "price")

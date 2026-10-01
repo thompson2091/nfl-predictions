@@ -341,9 +341,27 @@ def payload_v3():
                                [2025, 14, "ARI", 1, None, 130, 1, 1],
                                [2025, 13, "NO", 0, None, 210, 0],
                                [2025, 12, "TB", 1, None, 115, 1]],
-                "receptions": [[2026, 3, "GB", 0, 3.5, -115, 5.0],
-                               [2026, 2, "CHI", 1, 4.5, -120, 2.0],
-                               [2026, 1, "MIN", 0, 3.5, 105, 4.0]],
+                # A WINDOW THAT RAN UNDER, with the under's price on it.
+                #
+                # Seven of ten under at -130 and three over: 7 x $76.92 won
+                # against $300 lost is +$238, and the panel has to price the
+                # UNDER to get there. Backing the over on the same ten weeks
+                # is the opposite question and a different number, which is
+                # the bug this fixture exists to catch.
+                #
+                # The ninth field is the under's price, recovered from the
+                # two-sided quote in `player_history`, not assumed.
+                "receptions": [
+                    [2026, 3, "GB", 0, 3.5, 100, 2.0, 1, -130],
+                    [2026, 2, "CHI", 1, 4.5, 100, 2.0, 1, -130],
+                    [2026, 1, "MIN", 0, 3.5, 100, 1.0, 1, -130],
+                    [2025, 18, "DET", 1, 4.5, 100, 6.0, 1, -130],
+                    [2025, 17, "SEA", 0, 3.5, 100, 2.0, 1, -130],
+                    [2025, 16, "LA", 1, 4.5, 100, 1.0, 1, -130],
+                    [2025, 15, "SF", 0, 3.5, 100, 5.0, 1, -130],
+                    [2025, 14, "ARI", 1, 4.5, 100, 3.0, 1, -130],
+                    [2025, 13, "NO", 0, 3.5, 100, 7.0, 1, -130],
+                    [2025, 12, "TB", 1, 4.5, 100, 0.0, 1, -130]],
             },
             "Bravo Wide": {
                 "receptions": [[2026, 3, "GB", 0, 5.5, -110, 0.0],
@@ -1607,7 +1625,7 @@ def test_the_game_money_note_is_last_and_spans_the_panel():
     """
     src = _v3js()
     i = src.index("function v3Detail(row)")
-    body = src[i:src.index("v3PastLines(row) + '</div>';", i)]
+    body = src[i:src.index("</dl></div>", i)]
     assert body.index("add('Our read'") < body.index("Big money in this game"), \
         "the game-money note is back in the middle of the list"
     assert "), true);" in body.split("Big money in this game")[1][:400], \

@@ -3209,14 +3209,30 @@ if (cards.length) {
     // under price in it, so there is no fade figure and the panel says so.
     ok('the money line names the side it priced',
        h.indexOf('>yes<') >= 0 || h.indexOf('>the over<') >= 0);
-    ok('and says the other side is not priced',
-       h.indexOf('no fade figure') >= 0
-       || h.indexOf('other side is not') >= 0);
+    // THE MONEY FOLLOWS THE STREAK NOW. A player who went under six of ten
+    // is not asking what backing the over would have returned, so the side
+    // is read off the window and named — and where the archive never held
+    // that side, the panel says which market that is about rather than
+    // quietly pricing the other one.
+    ok('the money names a side the window actually ran',
+       />yes<|>the over<|>no<|>the under</.test(h), 'no side named');
+    ok('and a fade with no archived price says so rather than inventing one',
+       h.indexOf('$100 a week on') >= 0
+       || h.indexOf('no price for that side') >= 0);
     // NOT A FORECAST, said every time: this is the number that gets
     // screenshotted away from its caveats.
     ok('the money line is stated as a record, not a signal',
        h.indexOf('cannot separate a player from the hold') >= 0);
     ok('the window is selectable', h.indexOf('data-v3pastn') >= 0);
+    // IT HOLDS WHILE YOU READ THE SECTION AND LETS GO WITH IT — which is
+    // what `position:sticky` is, so there is nothing to release by hand.
+    ok('and it sticks to the top of its own section',
+       h.indexOf('pl__seg--stick') >= 0);
+    // THE RECORD LEADS THE PANEL. Twenty label-and-number pairs used to sit
+    // between the tap and the chart of what the player has actually done.
+    ok('the record comes before the figures that price this week',
+       h.indexOf('class="pl"') < h.indexOf('<dl>'),
+       'the facts list is still first');
     // THE ARITHMETIC, ONCE, ON A FIXTURE WHOSE ANSWER IS WORKED OUT BY HAND.
     // Ten weeks: +140, -100, +120, VOID, +90.91 (at -110), -100, no price,
     // +130, -100, +115 = +295.91. The void and the unpriced week are the two
@@ -3242,6 +3258,31 @@ if (cards.length) {
        && !/over (\d\d)+ bets/.test(h3.replace(/over 1 bet/, '')),
        'the money still reads over more bets than the window holds');
     x.v3Do('v3pastn', 'all');
+
+    // ── The money follows the streak ──────────────────────────────────
+    //
+    // Asked for directly: if he is 0 of 3 over, tell me what $100 on the
+    // UNDER would have made. The receptions fixture ran under in seven of
+    // ten at -130 against three overs — 7 x $76.92 against $300 — so the
+    // panel reads +$238 only if it priced the under. Backing the over on
+    // those same ten weeks is -$238, which is what a side-blind version
+    // prints while looking equally plausible.
+    V.market = 'rec'; V.open = null; render();
+    const mr = /data-v3open="([^"]+)"/.exec(app());
+    ok('the receptions board has a player to open', !!mr);
+    if (mr) {
+      x.v3Do('v3open', mr[1]);
+      const hu = app();
+      ok('a window that ran under is priced on the under',
+         hu.indexOf('>the under<') >= 0,
+         (/\$100 a week on[\s\S]{0,120}/.exec(hu) || [''])[0]);
+      ok('and the money is the under\u2019s, not the over\u2019s',
+         hu.indexOf('+$238') >= 0,
+         (/\$100 a week on[\s\S]{0,160}/.exec(hu) || [''])[0]);
+      ok('seven of its ten weeks won', hu.indexOf('over 10 bets, 7 won') >= 0);
+      x.v3Do('v3open', mr[1]);
+    }
+    V.market = 'any';
   }
   V.open = null; V.pastN = null;
 }

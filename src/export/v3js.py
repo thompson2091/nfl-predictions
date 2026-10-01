@@ -997,24 +997,49 @@ function v3PastRows(row) {
 // NOT A FORECAST. Ten bets is nowhere near enough to separate a player from
 // the vig; this is a record of what happened, which is why it is stated in
 // dollars rather than as a rate or an edge.
-function v3PastMoney(rows, meta) {
+function v3PastMoney(rows, meta, back) {
   const yes = meta.kind === 'yesno';
   const profit = o => o > 0 ? o : 10000 / -o;
+  // WHICH SIDE THE MONEY WENT ON. Backing the over every week answers a
+  // question nobody asked of a player who has gone under six times running:
+  // what the record is worth is what BACKING THE RECORD would have returned.
+  // `back` is 'over' or 'under'; the caller reads it off the window.
+  const under = back === 'under';
   let money = 0, bets = 0, voids = 0, won = 0, unpriced = 0;
   rows.forEach(r => {
-    const odds = r[5], did = r[6], line = r[4];
-    // `played` arrived after this row shape did. An older cached payload has
-    // seven fields and no flag, and treating "missing" as "played" keeps the
-    // old answer rather than silently voiding every week in it.
+    // `played` and the other side's price both arrived after this row shape
+    // did. An older cached payload has seven fields and no flag, and treating
+    // "missing" as "played" keeps its old answer rather than voiding every
+    // week in it.
     const played = r.length > 7 ? r[7] : 1;
+    const odds = under ? (r.length > 8 ? r[8] : null) : r[5];
+    const did = r[6], line = r[4];
     if (!has(odds)) { unpriced++; return; }
     if (played === 0) { voids++; return; }
-    const hit = yes ? did === 1 : (has(line) && did > line);
+    const over = yes ? did === 1 : (has(line) && did > line);
+    const hit = under ? !over : over;
     bets++;
     if (hit) { won++; money += profit(odds); } else { money -= 100; }
   });
   return { money: money, bets: bets, voids: voids, won: won,
-           unpriced: unpriced, side: yes ? 'yes' : 'the over' };
+           unpriced: unpriced,
+           side: under ? (yes ? 'no' : 'the under') : (yes ? 'yes' : 'the over') };
+}
+
+//: Which way the window ran, which is the side the money question is about.
+//: Ties go to the over, because that is the side the archive always holds a
+//: price for and a 5-5 record is not a streak in either direction.
+function v3PastBack(rows, meta) {
+  const yes = meta.kind === 'yesno';
+  let over = 0, n = 0;
+  rows.forEach(r => {
+    const did = r[6], line = r[4];
+    if (!has(did)) return;
+    if (!yes && !has(line)) return;
+    n++;
+    if (yes ? did === 1 : did > line) over++;
+  });
+  return (n && over * 2 < n) ? 'under' : 'over';
 }
 
 function v3PastLines(row) {
@@ -1110,12 +1135,16 @@ function v3PastLines(row) {
     .map(n => [String(n), 'last ' + n]);
   opts.push(['all', 'all ' + every.length]);
   const pick = opts.length > 1
-    ? '<div class="seg seg--' + opts.length + ' pl__seg">'
+    ? '<div class="seg seg--' + opts.length + ' pl__seg pl__seg--stick">'
       + v3Seg('v3pastn', opts,
               (V.pastN && V.pastN < every.length) ? String(V.pastN) : 'all')
       + '</div>' : '';
 
-  const m = v3PastMoney(rows, meta);
+  // WHICH WAY THIS WINDOW RAN, decided before the money is counted, because
+  // it is what the money is about: a player who has gone under six weeks
+  // running is not asking what backing the over would have returned.
+  const back = v3PastBack(rows, meta);
+  const m = v3PastMoney(rows, meta, back);
   const money = m.bets
     ? '<p class="pl__m">$100 a week on <b>' + esc(m.side) + '</b>: '
       + '<b class="' + (m.money >= 0 ? 'pos' : 'neg') + '">'
@@ -1127,11 +1156,22 @@ function v3PastLines(row) {
       + (m.unpriced ? ' \u00b7 ' + m.unpriced + ' with no price archived' : '')
       + '</p>'
       // SAID EVERY TIME, because the number is the kind that gets screenshotted.
-      + '<p class="help">What that side actually returned, at the archived '
-      + 'price, before any judgment about whether it will again \u2014 ' + m.bets
-      + ' bets cannot separate a player from the hold. The other side is not '
-      + 'priced in the archive, so there is no fade figure to show.</p>'
-    : '';
+      + '<p class="help">The side this window actually ran, at the archived '
+      + 'price, before any judgment about whether it will again \u2014 '
+      + m.bets + ' bets cannot separate a player from the hold.'
+      + (back === 'under'
+         ? ' The under\u2019s price is recovered from the two-sided quote the '
+           + 'books posted, not assumed.' : '')
+      + '</p>'
+    // NOTHING TO BET IS NOT A LOSS OF ZERO. A window that ran under on a
+    // market where the archive never held the other side has no figure here,
+    // and the reason is worth a line: it is the market, not the player.
+    : (back === 'under'
+       ? '<p class="help">This window ran ' + esc(yes ? 'no' : 'under')
+         + ', and the archive holds no price for that side on this market '
+         + '\u2014 the books quote the ' + esc(yes ? 'yes' : 'over')
+         + ' and little else, so there is no figure to show.</p>'
+       : '');
 
   return '<div class="pl">'
     + '<div class="pl__h">' + esc(meta.label || mk) + ', last '
@@ -1254,16 +1294,25 @@ function v3Detail(row) {
   // confined to half the width it needs — so there it opens as a drawer at
   // the right, away from the row, and a drawer with no name on it belongs to
   // nobody. Hidden below 900px, where the row is still saying it.
+  // THE RECORD FIRST, THE FIGURES UNDER IT.
+  //
+  // The panel opened with twenty label-and-number pairs and put the chart of
+  // what the player has actually done below them, so a tap landed on Model,
+  // Book, Adjusted, Edge, Price, Best price, Opened at, Moved, Line, We
+  // project, Likely range, Books quoting — and the thing most people opened
+  // him for was a scroll away. What he has done the last ten weeks leads now;
+  // the figures that price this week follow it.
   return '<div class="detail">'
     + '<div class="detail__h"><b>' + esc(row.player) + '</b>'
     + '<span class="sub">' + esc(v3Fixture(row)) + '</span>'
     + '<button class="detail__x" data-v3open="' + esc(row.id)
     + '" aria-label="Close ' + esc(row.player) + '">\u00d7</button></div>'
+    + v3PastLines(row)
     + '<dl>'
     + f.map(x => '<div' + (x[2] ? ' class="detail__w"' : '') + '><dt>'
         + esc(x[0]) + '</dt><dd class="num">' + x[1]
         + '</dd></div>').join('')
-    + '</dl>' + v3PastLines(row) + '</div>';
+    + '</dl></div>';
 }
 
 // WHAT HAPPENED, IN THE ROW'S OWN UNITS.
