@@ -814,6 +814,31 @@ if (cards.length) {
   // what the game was priced for. Both have to be on screen: a chart that
   // drew the bars and dropped the ticks would look finished and mean
   // something else.
+  // ── Where the money is ───────────────────────────────────────────────
+  //
+  // A ROW WHOSE HEIGHT DOES NOT DEPEND ON THE SPLIT. Both labels used to sit
+  // inside their own segment, so at 84/16 the trailing one wrapped onto two
+  // lines inside a sixth of the width — the most lopsided splits, which are
+  // the ones worth looking at, were the ones that looked broken.
+  // The win bar at the top of the card legitimately labels its segments —
+  // it is one bar across the width and the words fit. This is about the
+  // public-split rows, whose segments are now empty by construction.
+  // Matched as a whole row rather than by looking for a label anywhere: the
+  // win bar at the top of the card legitimately labels its segments — it is
+  // one bar across the width and the words fit — so "is there a label in a
+  // bar" cannot tell the two apart. This says what a public-split row IS.
+  ok('a money row is caption, share, empty bar, share',
+     /<div class="pubrow"><span class="eyebrow">[^<]*<\/span>\s*<span class="num pubrow__a">[^<]*<\/span>\s*<div class="bar"[^>]*><span class="h" style="width:\d+%"><\/span><span class="a" style="width:\d+%"><\/span><\/div>\s*<span class="num pubrow__b">/
+       .test(h),
+     'the public-split row is not the four-column shape');
+  ok('the shares sit in their own columns',
+     h.indexOf('pubrow__a') >= 0 && h.indexOf('pubrow__b') >= 0);
+  ok('and each team is named once above them',
+     h.indexOf('pubrow--names') >= 0);
+  // The screen reader still gets both sides from one bar.
+  ok('the bar still says both shares to a screen reader',
+     /aria-label="[^"]*percent, [^"]*percent"/.test(h));
+
   ok('recent form draws both teams', h.indexOf('Recent form') >= 0
      && h.indexOf('scored') >= 0 && h.indexOf('allowed') >= 0);
   ok('every bar carries its own expectation',

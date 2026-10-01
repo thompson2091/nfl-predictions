@@ -114,6 +114,9 @@ button{cursor:pointer}
      behavior by being given the class. */
   .cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
     gap:0 20px;align-items:start}
+  /* An odd last block takes the row rather than leaving a hole beside it:
+     three markets in two columns is 2 + 1, and the 1 looked abandoned. */
+  .cols2>*:last-child:nth-child(odd){grid-column:1/-1}
   /* A paragraph in a half-width column has its line length already; the
      reading cap would only pull it in further and reopen the hole. */
   .cols2--prose .help,.cols2--prose .lede{max-width:none}
@@ -732,7 +735,8 @@ button{cursor:pointer}
 .vs b{font-size:22px;line-height:28px;font-weight:700}
 .bar{display:flex;height:32px;border-radius:8px;overflow:hidden;
   font-size:13px;font-weight:600}
-.bar span{display:flex;align-items:center;padding:0 10px}
+/* Segments carry no text now, so no padding to reserve for it. */
+.bar span{display:flex;align-items:center}
 .bar .a{background:var(--sunk);color:var(--ink)}
 .bar .h{background:var(--ours);color:#fff;justify-content:flex-end}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -902,10 +906,23 @@ button{cursor:pointer}
    The caption is fixed-width so both bars start at the same x and can be
    read against each other; a table of moves used to sit here instead, which
    put the three markets' movement in one place and their shares in another. */
-.pubrow{display:grid;grid-template-columns:46px minmax(0,1fr);gap:8px;
-  align-items:center;margin-top:6px}
+/* FOUR COLUMNS WHOSE WIDTHS DO NOT DEPEND ON THE SPLIT: the caption, this
+   side's share, the bar, the other side's share. With both labels inside
+   their own segments the row got taller the more lopsided the split was —
+   "CLE 16%" wrapped inside a sixth of the width — so the rows worth reading
+   were the ones that looked broken. */
+.pubrow{display:grid;grid-template-columns:46px 40px minmax(0,1fr) 40px;
+  gap:8px;align-items:center;margin-top:6px}
 .pubrow .bar{height:28px}
 .pubrow>.eyebrow{text-align:right}
+.pubrow__a{text-align:right;font-size:13px;font-weight:600;white-space:nowrap}
+.pubrow__b{text-align:left;font-size:13px;font-weight:600;white-space:nowrap;
+  color:var(--mut)}
+/* The two teams, once, over the columns their numbers are in. */
+.pubrow--names{margin-top:2px;font-size:11px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--mut2)}
+.pubrow--names .pubrow__a,.pubrow--names .pubrow__b{font-size:11px;
+  font-weight:600;color:var(--mut2)}
 
 /* ---- where the public is ---- */
 .pub{margin-top:12px}

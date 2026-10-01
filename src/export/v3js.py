@@ -1910,19 +1910,36 @@ function v3MoneyBlock(label, note, m, move) {
   if (!m || !m.sides || m.sides.length < 2) return '';
   const a = m.sides[0], b = m.sides[1];
   if (a.tickets == null && a.money == null) return '';
+  // THE NUMBERS OUTSIDE THE BAR, AND EACH TEAM NAMED ONCE.
+  //
+  // Both labels used to sit INSIDE their own segment, which made the layout a
+  // function of the split: at 84/16 the trailing segment is a sixth of the
+  // width and "CLE 16%" wrapped onto two lines inside it, so the row grew
+  // taller the more lopsided it got — the cases worth looking at were the
+  // ones that looked broken. The 88% escape hatch below it dropped the label
+  // entirely past that point, which is a third behavior for one row.
+  //
+  // Four fixed columns instead, so nothing inside them depends on the split:
+  // the caption, this side's share, the bar, the other side's share. The two
+  // teams are named once in a header row over their own columns rather than
+  // four times down the block.
   const bar = (cap, x, y) => {
     if (x == null || y == null) return '';
     const w = Math.max(0, Math.min(100, Math.round(x)));
     return '<div class="pubrow"><span class="eyebrow">' + cap + '</span>'
+      + '<span class="num pubrow__a">' + x.toFixed(0) + '%</span>'
       + '<div class="bar" role="img" aria-label="' + cap + ': ' + esc(a.side)
-      + ' ' + w + ' percent">'
-      + '<span class="h num" style="width:' + w + '%;justify-content:'
-      + 'flex-start">' + esc(a.side) + ' ' + x.toFixed(0) + '%</span>'
-      + '<span class="a num" style="width:' + (100 - w)
-      + '%;justify-content:flex-end">'
-      + (w >= 88 ? '' : esc(b.side) + ' ' + y.toFixed(0) + '%')
-      + '</span></div></div>';
+      + ' ' + w + ' percent, ' + esc(b.side) + ' ' + (100 - w) + ' percent">'
+      + '<span class="h" style="width:' + w + '%"></span>'
+      + '<span class="a" style="width:' + (100 - w) + '%"></span>'
+      + '</div>'
+      + '<span class="num pubrow__b">' + y.toFixed(0) + '%</span></div>';
   };
+  const names = (a.tickets != null || a.money != null)
+    ? '<div class="pubrow pubrow--names"><span></span>'
+      + '<span class="pubrow__a">' + esc(a.side) + '</span><span></span>'
+      + '<span class="pubrow__b">' + esc(b.side) + '</span></div>'
+    : '';
   // WHICH SIDE IS CARRYING THE BIGGER BETS, said as a comparison rather than
   // as a gap in percentage points. "5pp" is a unit a reader has to be taught;
   // "bigger bets are landing on ARI" is a sentence they already have.
@@ -1934,6 +1951,7 @@ function v3MoneyBlock(label, note, m, move) {
   return '<div class="pub">'
     + '<div class="pub__h"><span class="eyebrow">' + esc(label) + '</span>'
     + (note ? '<span class="sub">' + esc(note) + '</span>' : '') + '</div>'
+    + names
     + bar('Bets', a.tickets, b.tickets)
     + bar('Money', a.money, b.money)
     + (who
