@@ -4855,12 +4855,16 @@ function v3AnglesPage() {
     // THE DENOMINATOR IS THE FINDING. The headline card that carried this
     // came off the top of the page for space; the count of patterns measured
     // has to survive somewhere, or a winner reads as a system.
+    // HOW MANY WERE MEASURED STAYS; HOW TO READ THE TABLE FOLDS. The count
+    // is the finding — a reader seeing four splits has no idea that seventy
+    // eight others were measured beside them and said nothing — and the rest
+    // explains the columns to somebody who has already read it once.
     + '<p class="help">With ' + all.length + ' patterns measured, two or '
     + 'three will look good on luck alone, so even a winner here would not '
     + 'mean much. Nothing is dropped for going cold either: a split that '
     + 'reverted is the most useful row on this page, and a board with the '
     + 'losers removed is a board of survivors.</p>'
-    + v3BaseNote() + '</div>'
+    + v3Fold('How to read this table', v3BaseNote()) + '</div>'
     + '</div>';
 }
 

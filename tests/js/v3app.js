@@ -3170,6 +3170,23 @@ if (cards.length) {
 }
 
 
+// ── The caveats are kept, and kept out of the way ──────────────────────
+//
+// This project will not drop a caveat; several are the reason a number is not
+// a tip. But four paragraphs under a table is the part of a card with the
+// most words and the least news, and folding them is the difference between
+// keeping them and making the reader scroll past them every week.
+{
+  V.tab = 'angles'; V.game = null; V.week = null; render();
+  const ah = app();
+  ok('the angles page folds how to read it', ah.indexOf('<details class="fold"') >= 0);
+  ok('but says how many were measured together without being asked',
+     /patterns measured/.test(ah)
+     && ah.indexOf('patterns measured') < ah.indexOf('<details class="fold"'),
+     'the denominator is behind the fold');
+  V.tab = 'props';
+}
+
 // ── A player's record, in money ─────────────────────────────────────────
 //
 // "7 of 10 landed" is a rate; what a reader wants from it is what backing him
