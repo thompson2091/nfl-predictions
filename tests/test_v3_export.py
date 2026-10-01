@@ -1454,3 +1454,83 @@ def test_a_history_fetch_that_failed_says_so():
     i = src.index("const err = (V.pastAll === row.player")
     assert "ck.error" in src[i:i + 300], \
         "the failure line is not reading the cached error"
+
+
+def test_a_streak_is_counted_against_the_line_he_was_quoted_that_week():
+    """Not against this week's line, which he never played against.
+
+    A player's number moves week to week — three catches against 1.5 and three
+    against 3.5 are not the same week — so counting past games against today's
+    line reports a run the player never had. The row's tag and the chart above
+    it have to be answering one question.
+    """
+    src = _v3js()
+    i = src.index("function v3Streak(row)")
+    body = src[i:i + 1800]
+    assert "recent[i][4]" in body and "recent[i][6]" in body, \
+        "the streak no longer reads the archived line and result per week"
+    assert "did > line" in body, "the streak is not compared to that week's line"
+    assert "row.line" not in body and "row.book" not in body, \
+        "the streak reached for this week's line"
+
+
+def test_a_short_or_ragged_record_is_silent_rather_than_flagged():
+    """Five weeks with a line AND a result, or no tag at all.
+
+    A flag built on three weeks would appear most often on exactly the players
+    with the least behind them.
+    """
+    src = _v3js()
+    i = src.index("function v3Streak(row)")
+    body = src[i:i + 1800]
+    assert "rows.length < V3STREAK_OF" in body, "a short record is now flagged"
+    assert "known < V3STREAK_OF" in body, \
+        "weeks with no line or no result are counted toward the streak"
+
+
+def test_the_streak_tag_is_not_colored_like_a_recommendation():
+    """Recent form is not an edge this project has measured.
+
+    `player_history` makes the argument: a rate over five games carries an
+    interval wide enough to cover almost anything. The tag is drawn beside the
+    facts, not painted as one of the good/bad marks the board uses to grade.
+    """
+    src = _v3js()
+    i = src.index("function v3StreakTag(row)")
+    body = src[i:i + 700]
+    assert "tag--good" not in body and "tag--bad" not in body \
+        and "tag--warn" not in body, "the streak tag grades the player"
+
+
+def test_the_streak_filter_is_reachable_and_has_an_empty_state():
+    src = _v3js()
+    assert "['streak', 'Streaks']" in src, "the Streaks segment is gone"
+    assert "seg--5" in src, "the filter bar still claims four segments"
+    assert "V.filter === 'streak'" in src, "the Streaks segment filters nothing"
+    assert "Nobody on this market went one way in" in src, \
+        "the Streaks filter has no empty state"
+
+
+def test_a_streak_that_describes_the_whole_market_is_not_drawn():
+    """A tag on 97% of the board is a label for the market, not the player.
+
+    Measured on the week this was written: "did not score in 4 of his last 5"
+    was true of 385 of the 398 players eligible on first TD and 325 of 398 on
+    anytime TD — most players do not score most weeks. The other direction on
+    those markets is 0 and 8 players, and that is the fact worth seeing.
+
+    The cut is read off the board rather than written per market, so a season
+    where unders stop being the norm on receptions starts showing them with no
+    edit here.
+    """
+    src = _v3js()
+    i = src.index("function v3Streak(row)")
+    body = src[i:i + 2600]
+    assert "v3StreakBase(mk)" in body, "the base-rate gate is gone"
+    assert "> 0.5) return null" in body, \
+        "a direction covering most of the board is drawn again"
+    j = src.index("function v3StreakBase(mk)")
+    base = src[j:j + 1400]
+    assert "V3STREAKBASE[mk]" in base, "the base rate is recomputed per row"
+    assert "{ over: 1, under: 1 }" in base, \
+        "a market with nothing to measure now flags everything"

@@ -428,6 +428,12 @@ function v3MarketControls(after) {
   // stays, cut to the part that prevents the misread.
   const filterHelp = {
     fade: 'Priced ABOVE our number \u2014 bets to leave alone, not to place.',
+    // The same caution the tag carries, said once at the top rather than on
+    // every row: a lopsided five weeks is a fact about the past, and this
+    // project has not measured it into an edge.
+    streak: 'Players who went one way in ' + V3STREAK_MIN + ' of their last '
+      + V3STREAK_OF + ' weeks, against the line they were quoted each week. '
+      + 'Recent form, not an edge \u2014 nothing here is filtered on price.',
   }[V.filter] || '';
   // ONE PINNED BAR, THREE TIGHT ROWS, AND THE PROSE UNDERNEATH IT.
   //
@@ -449,9 +455,10 @@ function v3MarketControls(after) {
   // still on the page.
   return '<div class="pbar">'
     + '<div class="seg seg--' + served_.length + '">' + mkts + '</div>'
-    + '<div class="seg seg--4">'
+    + '<div class="seg seg--5">'
     + v3Seg('v3filter', [['all', 'Everyone'], ['short', 'Shortlist'],
-                         ['fade', 'Fades'], ['fav', 'Starred']], V.filter)
+                         ['fade', 'Fades'], ['streak', 'Streaks'],
+                         ['fav', 'Starred']], V.filter)
     + '</div>'
     + '<div class="pbar__row">' + v3Search() + v3SortBar() + '</div>'
     + '</div>'
@@ -645,6 +652,7 @@ function v3Rows() {
   const view = (V.filter === 'short' || V.filter === 'fade') ? V.filter : null;
   let rows = rowsFor(V.market, view).filter(r => r.priced && !r.blocked);
   if (V.filter === 'fav') rows = rows.filter(r => isFav(r.id));
+  if (V.filter === 'streak') rows = rows.filter(r => v3Streak(r));
   if (V.game) rows = rows.filter(r => v3Same(r.gameId, V.game));
   rows = v3Match(rows);
   if (!rows.length) {
@@ -654,6 +662,10 @@ function v3Rows() {
         + 'flag this week.'
       : V.q
       ? 'No player matching \u201c' + esc(V.q) + '\u201d on this market.'
+      : V.filter === 'streak'
+      ? 'Nobody on this market went one way in ' + V3STREAK_MIN + ' of their '
+        + 'last ' + V3STREAK_OF + ' weeks. A player needs five weeks with a '
+        + 'line and a result to be counted at all.'
       : V.filter === 'fav'
       ? 'Nothing starred on this market. Tap the star beside a player to '
         + 'keep them here.'
@@ -731,6 +743,9 @@ function v3Row(row) {
     + (row.role_doubt
        ? '<span class="tag tag--bad">Role changed</span>' : '')
     + (scr ? '<span class="tag tag--warn">Script risk</span>' : '')
+    // Recent form, before the tap rather than after it. Asked for: "identify
+    // potential outliers before clicking the player name".
+    + v3StreakTag(row)
     + '<span class="tag">' + (open ? 'Hide detail' : 'More') + '</span>'
     + '</div></div></button>'
     + '<div class="rowacts">'
@@ -799,6 +814,118 @@ function v3Cell(label, value, tone, cls) {
 // house cut cleared, and a baseline holding playing time constant. A line, what
 // he did, and the date need none of it, and a week he caught nothing is a zero
 // a reader can see for themselves rather than a distortion buried in a rate.
+//: How many recent weeks a streak is read over, and how many of them have to
+//: agree before it is worth saying. Four of five rather than five of five: a
+//: perfect run is rare enough that the flag would almost never appear, and the
+//: fact worth surfacing is a lopsided record, not an unbroken one.
+const V3STREAK_OF = 5, V3STREAK_MIN = 4;
+
+// RECENT FORM, AGAINST THE LINE HE WAS QUOTED THAT WEEK.
+//
+// Not against this week's line. His number moves — three catches against 1.5
+// and three against 3.5 are not the same week — so counting every past game
+// against today's line would report a streak the player never actually ran.
+// The chart above the fold already reads this way; this is the same question
+// answered in one phrase for a reader who has not opened him yet.
+//
+// NOT A SIGNAL, AND DELIBERATELY NOT COLORED LIKE ONE. `player_history` makes
+// the argument at length: a rate over five games has an interval wide enough
+// to cover almost anything, and this project has measured no edge in recent
+// form. It is drawn as a neutral tag beside the other facts, because a reader
+// scanning a board can see it and a reader acting on it alone is not being
+// told by the page that they should.
+//
+// Returns null unless the last five weeks all carry a line and a result, so a
+// player with a short or ragged record is silent rather than flagged on three.
+function v3Streak(row) {
+  const mk = v3PastMarket();
+  if (!mk || !row || !row.player) return null;
+  const P = DATA.pastlines || {};
+  const meta = (P.markets || []).filter(m => m.key === mk)[0] || {};
+  const rows = ((P.players || {})[row.player] || {})[mk];
+  if (!rows || rows.length < V3STREAK_OF) return null;
+  const yes = meta.kind === 'yesno';
+  // Newest first, which is the order the archive is written in — the chart
+  // reverses it to draw left to right and the list under it does not.
+  const recent = rows.slice(0, V3STREAK_OF);
+  let hit = 0, known = 0;
+  for (let i = 0; i < recent.length; i++) {
+    const did = recent[i][6], line = recent[i][4];
+    if (!has(did)) continue;
+    if (!yes && !has(line)) continue;
+    known++;
+    if (yes ? did === 1 : did > line) hit++;
+  }
+  if (known < V3STREAK_OF) return null;
+  const miss = known - hit;
+  if (hit < V3STREAK_MIN && miss < V3STREAK_MIN) return null;
+  const over = hit >= V3STREAK_MIN;
+  // A FLAG ON MOST OF THE BOARD IS THE MARKET, NOT THE PLAYER.
+  //
+  // Measured on the week this was built: "did not score in 4 of his last 5"
+  // was true of 385 of the 398 players eligible on first TD, and 325 of 398
+  // on anytime TD. Both are simply what a touchdown market looks like — most
+  // players do not score most weeks — and a tag drawn on 97% of rows is a
+  // label for the market wearing a player's name. The other direction on the
+  // same market is 0 and 8 players, which IS the thing worth seeing.
+  //
+  // So the cut is read off the board rather than written down: whichever
+  // direction covers more than half of the players this market can even
+  // count, is that market's default and is not said. Nothing is hardcoded per
+  // market, so a season where unders stop being the norm on receptions starts
+  // showing them without anyone editing this.
+  if (v3StreakBase(mk)[over ? 'over' : 'under'] > 0.5) return null;
+  return { n: over ? hit : miss, of: known, over: over, yes: yes };
+}
+
+//: Memoized per market: the share of eligible players whose last five weeks
+//: ran 4+ one way. Computed over the inlined history the page already
+//: carries, so it costs one pass over data already in memory and moves with
+//: the board rather than with a constant somebody set once.
+const V3STREAKBASE = {};
+function v3StreakBase(mk) {
+  if (V3STREAKBASE[mk]) return V3STREAKBASE[mk];
+  const P = DATA.pastlines || {};
+  const meta = (P.markets || []).filter(m => m.key === mk)[0] || {};
+  const yes = meta.kind === 'yesno';
+  const players = P.players || {};
+  let n = 0, up = 0, dn = 0;
+  for (const name in players) {
+    const rows = (players[name] || {})[mk];
+    if (!rows || rows.length < V3STREAK_OF) continue;
+    let hit = 0, known = 0;
+    for (let i = 0; i < V3STREAK_OF; i++) {
+      const did = rows[i][6], line = rows[i][4];
+      if (!has(did)) continue;
+      if (!yes && !has(line)) continue;
+      known++;
+      if (yes ? did === 1 : did > line) hit++;
+    }
+    if (known < V3STREAK_OF) continue;
+    n++;
+    if (hit >= V3STREAK_MIN) up++;
+    else if (known - hit >= V3STREAK_MIN) dn++;
+  }
+  // No eligible players is not "every direction is rare": with nothing to
+  // measure against, nothing is flagged.
+  V3STREAKBASE[mk] = n ? { over: up / n, under: dn / n }
+                       : { over: 1, under: 1 };
+  return V3STREAKBASE[mk];
+}
+
+// The tag itself, so the board row and anywhere else that wants it agree on
+// the wording.
+function v3StreakTag(row) {
+  const st = v3Streak(row);
+  if (!st) return '';
+  const what = st.yes ? (st.over ? 'scored' : 'did not score')
+                      : (st.over ? 'over' : 'under');
+  return '<span class="tag" title="Counted against the line he was quoted '
+    + 'each week, not this week\u2019s. Recent form is not an edge this '
+    + 'project has measured \u2014 it is here to be seen, not acted on.">'
+    + st.n + ' of ' + st.of + ' ' + what + '</span>';
+}
+
 function v3PastMarket() {
   return V3HIST[V.market] || '';
 }
