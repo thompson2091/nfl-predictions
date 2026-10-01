@@ -491,14 +491,30 @@ button{cursor:pointer}
 /* ---- the full-stat panel behind a row ---- */
 .detail{flex-basis:100%;width:100%;margin-top:4px;padding:12px;
   border-radius:12px;background:var(--card);border:1px solid var(--line)}
-.detail dl{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+/* TWO COLUMNS WHEN TWO COLUMNS FIT, WHICH IS NOT A QUESTION ABOUT THE PHONE.
+   This was `repeat(2, 1fr)` with a `max-width:420px` override, and every
+   iPhone from the 14 Pro Max on is 428 to 440 CSS pixels wide — so the
+   override missed, the pair stayed side by side, and each value got about
+   60px. "PIT to win, 1.5x the average bet" then came down the screen one
+   character per line. A width breakpoint has to be re-guessed every time a
+   handset gets wider; `auto-fit` asks the question that actually matters,
+   which is whether a column has room for a label and its number. */
+.detail dl{margin:0;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
   gap:2px 12px}
 .detail dl>div{display:flex;justify-content:space-between;gap:8px;
   padding:6px 0;border-bottom:1px solid var(--line3);min-width:0}
+/* A fact written as a sentence takes the whole panel, whatever the grid is
+   doing around it. `1/-1` rather than `span 2`, so it still spans everything
+   on a width where `auto-fit` has resolved to one column or to three. */
+.detail__w{grid-column:1/-1}
 .detail dt{font-size:13px;color:var(--mut);flex-shrink:0}
+/* `break-word`, NOT `anywhere`. `anywhere` is what let a squeezed column cut
+   "average" into "av/era/ge" rather than wrapping at the spaces it had; it
+   only earns its keep on an unbroken string longer than its box, and every
+   value here is a phrase. */
 .detail dd{margin:0;font-size:13px;font-weight:600;text-align:right;
-  min-width:0;overflow-wrap:anywhere}
-@media (max-width:420px){.detail dl{grid-template-columns:1fr}}
+  min-width:0;overflow-wrap:break-word}
 
 /* ---- cards and lists ---- */
 .card{margin-top:16px;padding:16px;background:var(--card);border-radius:16px;
@@ -596,7 +612,17 @@ button{cursor:pointer}
 .bar .a{background:var(--sunk);color:var(--ink)}
 .bar .h{background:var(--ours);color:#fff;justify-content:flex-end}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+/* SAME INTENT AS THE BREAKPOINT IT REPLACES, MEASURED ON SPACE INSTEAD OF ON
+   THE HANDSET. `@media (max-width:420px){.three{grid-template-columns:1fr}}`
+   said: below about 420px, stack them. Every iPhone from the 14 Pro Max on is
+   428 to 440 CSS pixels, so it never fired and three `.cmp` boxes shared a
+   phone — about 128px each for a 19px score set `white-space:nowrap` and a
+   "by 2.5 · 38.5 pts" line under it.
+   200px is that same 420 read as a column: two of these fit only where the
+   pair has the room the breakpoint was guarding, and a phone gets one per row
+   as intended. A wider window still gets its three. */
+.three{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:6px}
 
 /* ---- picks: what you kept, and how it settled ----
    A leg carries a dot rather than a word, because a saved slip is read at a
@@ -618,7 +644,6 @@ button{cursor:pointer}
 .panel .eyebrow{display:block;margin-bottom:2px}
 .num.good{color:var(--good)}
 .num.bad{color:var(--bad)}
-@media (max-width:420px){.three{grid-template-columns:1fr;gap:8px}}
 .cmp--adj{background:var(--goodbg)}
 .cmp--adj .eyebrow{color:var(--good)}
 .seg--5{grid-template-columns:repeat(5,minmax(0,1fr))}

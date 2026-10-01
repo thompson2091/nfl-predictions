@@ -1082,7 +1082,15 @@ function v3PastSaid(r, meta) {
 
 function v3Detail(row) {
   const f = [];
-  const add = (l, v) => { if (v != null && v !== '') f.push([l, v]); };
+  // A THIRD ARGUMENT FOR THE FACTS THAT ARE SENTENCES. Most of this list is a
+  // label and a number and pairs up two to a line happily. One of them is a
+  // clause — "PIT to win, 1.5x the average bet — this player's side" — and in
+  // half a row it wraps into a column of fragments. It takes the whole width
+  // and goes last, where a sentence reads as the note it is rather than as a
+  // field somebody squeezed.
+  const add = (l, v, wide) => {
+    if (v != null && v !== '') f.push([l, v, !!wide]);
+  };
   add('Model (no price)', v3Pct(row.modelOnly, 1));
   add('Book (de-vigged)', v3Pct(row.book, 1));
   add('Adjusted (blend)', v3Pct(row.ours, 1));
@@ -1116,14 +1124,6 @@ function v3Detail(row) {
   if (has(row.lo) && has(row.hi))
     add('Likely range', row.lo.toFixed(1) + ' to ' + row.hi.toFixed(1));
   add('Books quoting', has(row.nBooks) ? String(row.nBooks) : null);
-  const gm = v3GameMoney(row);
-  if (gm) {
-    add('Big money in this game',
-        gm.side + ' ' + gm.market.toLowerCase() + ', '
-        + gm.ratio.toFixed(1) + '\u00d7 the average bet'
-        + (gm.mine ? ' \u2014 this player\u2019s side'
-           : gm.facing ? ' \u2014 the other side' : ''));
-  }
   add('Board rank', has(row.rank) ? '#' + row.rank : null);
   add('Position', row.pos);
   add('Availability', row.status);
@@ -1142,8 +1142,19 @@ function v3Detail(row) {
     add('Practice', rep.p);
   }
   add('Our read', row.read);
+  // LAST, AND ACROSS THE WHOLE PANEL. It is the only fact here about the
+  // GAME rather than about the player, and the only one written as a clause.
+  const gm = v3GameMoney(row);
+  if (gm) {
+    add('Big money in this game',
+        gm.side + ' ' + gm.market.toLowerCase() + ', '
+        + gm.ratio.toFixed(1) + '\u00d7 the average bet'
+        + (gm.mine ? ' \u2014 this player\u2019s side'
+           : gm.facing ? ' \u2014 the other side' : ''), true);
+  }
   return '<div class="detail"><dl>'
-    + f.map(x => '<div><dt>' + esc(x[0]) + '</dt><dd class="num">' + x[1]
+    + f.map(x => '<div' + (x[2] ? ' class="detail__w"' : '') + '><dt>'
+        + esc(x[0]) + '</dt><dd class="num">' + x[1]
         + '</dd></div>').join('')
     + '</dl>' + v3PastLines(row) + '</div>';
 }

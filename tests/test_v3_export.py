@@ -1534,3 +1534,81 @@ def test_a_streak_that_describes_the_whole_market_is_not_drawn():
     assert "V3STREAKBASE[mk]" in base, "the base rate is recomputed per row"
     assert "{ over: 1, under: 1 }" in base, \
         "a market with nothing to measure now flags everything"
+
+
+def test_the_player_detail_pairs_are_sized_by_fit_not_by_handset():
+    """A width breakpoint has to be re-guessed every time a phone gets wider.
+
+    The detail list was two equal columns with a `max-width:420px` override to
+    collapse them. Every iPhone from the 14 Pro Max on is 428 to 440 CSS
+    pixels, so the override missed and each value got about 60px — "PIT to
+    win, 1.5x the average bet" came down the screen one character per line.
+    """
+    from pathlib import Path
+    css = (Path(__file__).resolve().parents[1]
+           / "src/export/v3css.py").read_text()
+    i = css.index(".detail dl{")
+    rule = css[i:i + 200]
+    assert "auto-fit" in rule and "minmax(260px" in rule, \
+        "the detail pairs are back on fixed columns"
+    assert "max-width:420px){.detail dl" not in css, \
+        "the handset breakpoint is back"
+
+
+def test_a_detail_value_wraps_at_its_spaces_before_it_breaks_a_word():
+    """`overflow-wrap:anywhere` cut "average" into "av/era/ge".
+
+    It only earns its keep on an unbroken string longer than its box, and
+    every value in this list is a phrase.
+    """
+    from pathlib import Path
+    css = (Path(__file__).resolve().parents[1]
+           / "src/export/v3css.py").read_text()
+    i = css.index(".detail dd{")
+    rule = css[i:i + 200]
+    assert "overflow-wrap:break-word" in rule, "the detail values break anywhere again"
+
+
+def test_the_game_money_note_is_last_and_spans_the_panel():
+    """It is a clause, not a field, and it is about the game not the player.
+
+    Sat between "Books quoting" and "Board rank" in half a row, it wrapped
+    into a column of fragments — "1.5x the av/era/ge bet".
+    """
+    src = _v3js()
+    i = src.index("function v3Detail(row)")
+    body = src[i:src.index("v3PastLines(row) + '</div>';", i)]
+    assert body.index("add('Our read'") < body.index("Big money in this game"), \
+        "the game-money note is back in the middle of the list"
+    assert "), true);" in body.split("Big money in this game")[1][:400], \
+        "the game-money note is no longer marked as a full-width fact"
+    assert "x[2] ? ' class=\"detail__w\"' : ''" in src, \
+        "the renderer ignores the full-width flag"
+
+    from pathlib import Path
+    css = (Path(__file__).resolve().parents[1]
+           / "src/export/v3css.py").read_text()
+    assert ".detail__w{grid-column:1/-1}" in css, \
+        "the full-width fact no longer spans the panel"
+
+
+def test_no_layout_rule_decides_a_phone_by_a_width_that_phones_outgrew():
+    """420px stopped meaning "a phone" in 2022.
+
+    Every iPhone from the 14 Pro Max on is 428 to 440 CSS pixels, so a
+    `max-width:420px` rule fires on none of them. Both rules that used it —
+    the player detail pairs and the game comparison — asked about the handset
+    when the question was whether a column had room, and both now ask that
+    instead.
+    """
+    import re
+    from pathlib import Path
+    css = (Path(__file__).resolve().parents[1]
+           / "src/export/v3css.py").read_text()
+    # Comments quote the rule they replaced, which is the point of them.
+    rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    assert "max-width:420px" not in rules, \
+        "a 420px breakpoint is back; use auto-fit with a content minimum"
+    i = rules.index(".three{")
+    assert "auto-fit" in rules[i:i + 200], \
+        "the comparison block is back on three fixed columns"
