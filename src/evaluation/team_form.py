@@ -35,6 +35,77 @@ from src.utils.paths import get_path
 #: by week 11 it has scrolled off on its own.
 LAST = 10
 
+#: The price columns, and which side of the fixture each belongs to. Optional:
+#: a test fixture carries the four numbers a form chart needs and none of
+#: these, and a missing price is a row with no money question rather than a
+#: schedule this cannot read.
+#:
+#: `(name, home_source, away_source)`. The two spread prices and the two
+#: moneylines SWAP with the perspective — a team's own price is its own side's
+#: — while the over and the under belong to the game and do not.
+PRICES: tuple[tuple[str, str, str], ...] = (
+    ("sp_odds", "home_spread_odds", "away_spread_odds"),
+    ("sp_odds_opp", "away_spread_odds", "home_spread_odds"),
+    ("ml", "home_moneyline", "away_moneyline"),
+    ("ml_opp", "away_moneyline", "home_moneyline"),
+    ("over_odds", "over_odds", "over_odds"),
+    ("under_odds", "under_odds", "under_odds"),
+)
+
+
+def _price(schedule: pl.DataFrame, col: str, alias: str) -> pl.Expr:
+    """One price column, or a null one of the right type where it is absent."""
+    if col in schedule.columns:
+        return pl.col(col).cast(pl.Float64).alias(alias)
+    return pl.lit(None, dtype=pl.Float64).alias(alias)
+
+
+def team_games(schedule: pl.DataFrame, season: int, week: int) -> pl.DataFrame:
+    """Every completed team-game before (season, week), one row per side.
+
+    **THE ONE PLACE THE SPREAD IS FLIPPED.** `spread_line` is posted from the
+    home side; `sp` here is in each team's OWN perspective, positive when that
+    team is favored. That is the convention `implied_team_total` documents and
+    the one this project got backwards once already, so it is written once and
+    both panels that need it read it from here. `team_lines` grades a cover
+    against this column and a sign error there would not look like an error:
+    it would look like a league where favorites cover 46% of the time.
+
+    Columns: `season, week, team, opp, home, pf, pa, sp, tot`, the six names in
+    `PRICES`, and `_ord` — seasons and weeks as one sortable line — newest
+    first.
+    """
+    d = schedule.filter(
+        pl.col("home_score").is_not_null() & pl.col("away_score").is_not_null()
+        # Played, and played before the week being previewed: a game in the
+        # week being previewed has not happened, and one that has — an early
+        # kickoff on a slate still to come — is not something the preview of
+        # its own week should report as form.
+        & ((pl.col("season") * 100 + pl.col("week"))
+           < (int(season) * 100 + int(week))))
+    if d.is_empty():
+        return d.head(0)
+
+    def side(is_home: bool) -> pl.DataFrame:
+        me, them = ("home", "away") if is_home else ("away", "home")
+        return d.select([
+            pl.col("season"), pl.col("week"),
+            pl.col(f"{me}_team").alias("team"),
+            pl.col(f"{them}_team").alias("opp"),
+            pl.lit(1 if is_home else 0, dtype=pl.Int8).alias("home"),
+            pl.col(f"{me}_score").alias("pf"),
+            pl.col(f"{them}_score").alias("pa"),
+            (pl.col("spread_line") if is_home
+             else -pl.col("spread_line")).cast(pl.Float64).alias("sp"),
+            pl.col("total_line").cast(pl.Float64).alias("tot"),
+            *[_price(schedule, h if is_home else a, name)
+              for name, h, a in PRICES],
+        ])
+
+    return (pl.concat([side(True), side(False)])
+            .with_columns((pl.col("season") * 100 + pl.col("week")).alias("_ord"))
+            .sort("_ord", descending=True))
+
 
 def rows_for(season: int, week: int, last: int = LAST,
              schedule: pl.DataFrame | None = None) -> dict[str, list]:
@@ -54,50 +125,16 @@ def rows_for(season: int, week: int, last: int = LAST,
             "away_score", "spread_line", "total_line"}
     if not need.issubset(set(schedule.columns)):
         return {}
-    d = schedule.filter(
-        pl.col("home_score").is_not_null() & pl.col("away_score").is_not_null()
-        # Played, and played before the week being previewed. `_ord` sorts
-        # seasons and weeks as one line rather than two.
-        & ((pl.col("season") * 100 + pl.col("week"))
-           < (int(season) * 100 + int(week))))
-    if d.is_empty():
+    both = team_games(schedule, season, week)
+    if both.is_empty():
         return {}
-
-    # One row per TEAM per game, home and away, so the two sides of a game can
-    # be read the same way. `spread_line` is flipped into each team's own
-    # perspective first — positive means that team is favored — which is the
-    # convention `implied_team_total` documents and the one the project got
-    # backwards once already.
-    home = d.select([
-        pl.col("season"), pl.col("week"),
-        pl.col("home_team").alias("team"),
-        pl.col("away_team").alias("opp"),
-        pl.lit(1, dtype=pl.Int8).alias("home"),
-        pl.col("home_score").alias("pf"),
-        pl.col("away_score").alias("pa"),
-        pl.col("spread_line").alias("_sp"), pl.col("total_line").alias("_tot"),
-    ])
-    away = d.select([
-        pl.col("season"), pl.col("week"),
-        pl.col("away_team").alias("team"),
-        pl.col("home_team").alias("opp"),
-        pl.lit(0, dtype=pl.Int8).alias("home"),
-        pl.col("away_score").alias("pf"),
-        pl.col("home_score").alias("pa"),
-        (-pl.col("spread_line")).alias("_sp"),
-        pl.col("total_line").alias("_tot"),
-    ])
-    both = pl.concat([home, away]).with_columns([
-        implied_team_total(pl.col("_tot"), pl.col("_sp")).alias("exp_for"),
+    both = both.with_columns([
+        implied_team_total(pl.col("tot"), pl.col("sp")).alias("exp_for"),
         # What the market expected of the OPPONENT, which is the number the
         # points-allowed row is drawn against. The two implied totals sum to
         # the posted total by construction.
-        implied_team_total(pl.col("_tot"), -pl.col("_sp")).alias("exp_against"),
-    ]).drop(["_sp", "_tot"])
-
-    both = (both.with_columns(
-                (pl.col("season") * 100 + pl.col("week")).alias("_ord"))
-                .sort("_ord", descending=True))
+        implied_team_total(pl.col("tot"), -pl.col("sp")).alias("exp_against"),
+    ])
     out: dict[str, list] = {}
     for team, grp in both.group_by("team"):
         name = team[0] if isinstance(team, tuple) else team

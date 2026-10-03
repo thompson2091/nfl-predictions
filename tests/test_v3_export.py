@@ -542,6 +542,78 @@ def payload_v3():
         return rows
     p["teamform"] = {"last": 10,
                      "teams": {"GB": _form("GB", 24), "ATL": _form("ATL", 19)}}
+
+    # AGAINST THE NUMBER, with every branch the panel can take in it.
+    #
+    # A fixture of ten clean covers would render the common row and report
+    # passing on a panel that crashes on any of the four cases that actually
+    # occur: a push, an ungraded week with no posted line, a week the feed has
+    # no price for, and a record that ran the other way so the money question
+    # is about fading rather than backing.
+    def _lines(team, flip):
+        rows = []
+        # Exactly the inline count, because that is what the real payload
+        # carries: `_team_lines_block` slices to `TEAMLINES_INLINE` and the
+        # rest goes to the fetched file.
+        for i in range(10):
+            szn, wk = (2026, 3 - i) if i < 2 else (2025, 20 - i)
+            # GB's spread record runs the team's way and ATL's runs against
+            # it, so one panel prices backing the team and the other prices
+            # FADING it — the branch with its own wording, and the one the
+            # player panel cannot offer because that archive holds one side.
+            res = 1 if (i % 4) else -1
+            if flip:
+                res = -res
+            push = i == 4
+            bare = i == 6      # no line posted: null results
+            noprice = i == 7   # graded, and no price to bet it at
+            rows.append([
+                szn, wk, "OPP", i % 2, 24 - (i % 5), 17 + (i % 4),
+                None if bare else (-3.5 if flip else 2.5),
+                None if bare else 44.5,
+                None if bare else (0 if push else res),
+                None if bare else (0 if push else -res),
+                None if bare else res,
+                None if noprice else -110, None if noprice else -108,
+                None if noprice else -105, None if noprice else -115,
+                None if noprice else (145 if flip else -165),
+                None if noprice else (-175 if flip else 140),
+            ])
+        return rows
+    p["teamlines"] = {
+        "markets": [{"key": "ats", "label": "Against the spread",
+                     "won": "covered", "lost": "did not cover"},
+                    {"key": "ou", "label": "Over/under",
+                     "won": "over", "lost": "under"},
+                    {"key": "ml", "label": "Moneyline",
+                     "won": "won", "lost": "lost"}],
+        "inline": 10,
+        "teams": {"GB": _lines("GB", False), "ATL": _lines("ATL", True)},
+    }
+
+    # HOW THIS ONE GOES, both ways it can arrive: one written and one on the
+    # template, because the template is a different render path and the label
+    # that distinguishes them only appears on one of them.
+    cards = (p.get("games") or {}).get("cards") or []
+    if cards:
+        p["stories"] = {
+            cards[0]["game_id"]: {
+                "paras": ["Atlanta arrives on a short week.",
+                          "Green Bay has scored above expectation.",
+                          "The matchup turns on third down.",
+                          "This sets up close and low-scoring."],
+                "scoreline": {"away": cards[0].get("away", "ATL"),
+                              "home": cards[0].get("home", "GB"),
+                              "away_pts": 19.4, "home_pts": 23.1,
+                              "spread": -3.7, "total": 42.5,
+                              "lead": cards[0].get("home", "GB")},
+                "written": True},
+        }
+        if len(cards) > 1:
+            p["stories"][cards[1]["game_id"]] = {
+                "paras": ["The book makes this one close."],
+                "scoreline": None, "written": False,
+                "rejected": "it names somebody the facts do not"}
     return p
 
 
@@ -562,6 +634,34 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
     # reporting "not exercised" and passing.
     for path in ("a past week renders", "game tab notes renders",
                  "game tab bets renders",
+                 # Against the number: the panel, and the four branches a
+                 # fixture of ten clean covers would never reach.
+                 "the odds tab carries each side’s record "
+                 "against the number",
+                 "a push is marked as a push rather than a loss",
+                 "a game with no posted line has no result against it",
+                 "a game with no price is named rather than counted",
+                 "and fades the team whose record ran the other way",
+                 "no result mark is colored as a verdict",
+                 "narrowing the window narrows both tables",
+                 "a fetch that failed says so rather than "
+                 "redrawing the same ten",
+                 "the fetched record replaces the inlined ten",
+                 # Difference: the sort, both ends of it, and the two markets
+                 # where it does and does not apply.
+                 "the board can be sorted by the difference",
+                 "descending leads with the projection furthest above the line",
+                 "ascending reaches the strongest unders instead",
+                 "and the two ends are different rows",
+                 "an opened row states the difference it was sorted by",
+                 "a touchdown board does not offer the difference sort",
+                 "a difference sort carried onto a touchdown board falls back",
+                 "and the sort is offered again on a market with lines",
+                 # The story, and that it sits under its evidence.
+                 "the Read tab carries the story",
+                 "and it comes after the notes it reads from",
+                 "the number is stated by code beneath the words",
+                 "a story that fell back to the template says so",
                  "a coaching note is labeled as context",
                  "and score is not a section of its own",
                  "the bets tab is a ladder, not a list of books",
@@ -1711,6 +1811,39 @@ def test_the_history_files_are_actually_uploaded_not_just_declared():
         "the deploy no longer collects the history files"
     assert "for f in hist_files:" in dep, \
         "the history files are collected and never copied"
+
+
+def test_the_upload_globs_what_this_tuple_names():
+    """`DATA_GLOBS` must be what the upload actually collects, not a label.
+
+    The test above is the right idea written for one file. `tlines.json` was
+    added to `DATA_GLOBS`, the declaration test passed, and the uploader —
+    which hardcodes its own glob per group and never reads the tuple — shipped
+    nothing. The build wrote the file, the test was green, and the live page
+    404'd on it on 2026-10-03: the same silent shape as the bug the constant
+    was introduced to prevent, one level further out.
+
+    The groups stay separate on purpose — week files are pruned, ask briefs go
+    to a subdirectory — so this holds the two in step rather than merging them.
+    """
+    import re
+    from pathlib import Path
+
+    dep = (Path(__file__).resolve().parents[1]
+           / "scripts/58_deploy.py").read_text()
+    globs = re.search(r"DATA_GLOBS = \(([^)]*)\)", dep).group(1)
+    names = re.findall(r'"([^"]+)"', globs)
+    assert names, "DATA_GLOBS is empty"
+    # What the upload actually reaches for, wherever it looks.
+    collected = set(re.findall(r'\.glob\("([^"]+)"\)', dep))
+    for name in names:
+        # `ask/*.json` is globbed as `*.json` inside `data / "ask"`.
+        bare = name.rsplit("/", 1)[-1]
+        assert name in collected or bare in collected, \
+            (f"DATA_GLOBS names {name} and the upload never globs it — "
+             f"it will be built, pass every test, and 404 in production")
+    assert "tline_files" in dep and "for f in tline_files:" in dep, \
+        "the team line record is collected and never copied"
 
 
 def test_a_history_fetch_that_failed_says_so():

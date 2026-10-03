@@ -69,6 +69,23 @@ def main() -> int:
     print(f"  {sum(len(v) for v in notes.values())} notes across "
           f"{len(notes)} games", file=sys.stderr)
 
+    # HOW EACH GAME IS LIKELY TO GO, in four paragraphs, under the notes that
+    # support it. Same split as the notes and the same guards: the facts are
+    # computed here, the prose is written around them, and a story whose
+    # numbers, names or directions do not check out falls back to its
+    # template rather than being printed.
+    from src.analysis import game_story
+    stories = game_story.build(payload, use_ai=not a.no_ai)
+    payload["stories"] = stories
+    wrote = sum(1 for s in stories.values() if s.get("written"))
+    print(f"  {len(stories)} stories, {wrote} written, "
+          f"{len(stories) - wrote} on the template", file=sys.stderr)
+    for s in stories.values():
+        why = s.get("rejected") or (
+            "a number was not in the facts" if s.get("unsourced") else None)
+        if why:
+            print(f"    held back: {why}", file=sys.stderr)
+
     # One brief per game for the Ask box. Written as separate files, never
     # inlined: the browser sends a game id and the SERVER loads the brief, so
     # nothing a reader types can become context. See `askctx`.
@@ -79,9 +96,18 @@ def main() -> int:
     # 1.6 MB and the page already loads 4.6; it is written per market and
     # fetched when a reader opens a player, the same way a past week is.
     full = payload.pop("_pastlines_full", None) or {}
+    # The same arrangement one level up: 413 KB of team record against 22 KB
+    # inlined, written here and fetched when a reader opens a team.
+    teams = payload.pop("_teamlines_full", None) or {}
 
     from src.export.v3 import render
     files = render(payload)
+    if teams:
+        files["data/tlines.json"] = json.dumps(
+            teams, separators=(",", ":"), allow_nan=False)
+        print(f"  team line record "
+              f"({len(files['data/tlines.json']) / 1024:,.0f} KB)",
+              file=sys.stderr)
     if full:
         per: dict = {}
         for name, markets in full.items():
@@ -110,6 +136,7 @@ def main() -> int:
         keep = {out / n for n in files}
         for old in list(data_dir.glob("h-*.json")) \
                 + list(data_dir.glob("hist-*.json")) \
+                + list(data_dir.glob("tlines.json")) \
                 + list((data_dir / "ask").glob("*.json")):
             if old not in keep:
                 old.unlink()

@@ -403,8 +403,9 @@ def render(payload: dict) -> dict[str, str]:
     # sees, and it made every rebuild a diff, which is worse than cosmetic:
     # it buries the churn that DOES matter under noise nobody can read past.
     # Sorting here fixes every such dict at once instead of one at a time.
-    data = (json.dumps(payload, separators=(",", ":"), allow_nan=False,
-                       sort_keys=True)
+    from src.export.payload import for_page
+    data = (json.dumps(for_page(payload), separators=(",", ":"),
+                       allow_nan=False, sort_keys=True)
             .replace("</", "<\\/"))
     brand = payload.get("brand") or "Pick Six"
     short = brand.split()[0] if len(brand) > 12 else brand

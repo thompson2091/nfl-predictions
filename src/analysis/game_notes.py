@@ -38,6 +38,11 @@ import os
 import re
 from pathlib import Path
 
+# The shared prose checks. `game_story` runs the same ones over its own output;
+# they live one level down so neither caller owns them, and `prose_checks` says
+# which real failure each of them came from.
+from src.analysis.prose_checks import claims_are_safe as _claims_are_safe
+
 #: Where phrased notes are kept between builds, keyed by brief hash.
 CACHE_DIR = Path("data/raw/game_notes_cache")
 
@@ -695,7 +700,7 @@ def phrase(notes: list[dict], card: dict, use_cache: bool = True) -> list[dict]:
         except json.JSONDecodeError:
             got = None
         if got:
-            return _apply(notes, got)
+            return _apply(notes, got, _vocab(card))
 
     client = _client()
     if client is None:
@@ -718,10 +723,26 @@ def phrase(notes: list[dict], card: dict, use_cache: bool = True) -> list[dict]:
         return notes
     if use_cache:
         path.write_text(json.dumps(got, indent=1))
-    return _apply(notes, got)
+    return _apply(notes, got, _vocab(card))
 
 
-def _apply(notes: list[dict], got: dict) -> list[dict]:
+def _vocab(card: dict) -> str:
+    """Wording a note may use that its own brief does not spell.
+
+    A note's brief carries team CODES — "The book has ARI by 2.5" — and a
+    written note says "favoring the Giants", which is the same fact in the
+    words a reader uses. Without the full names in scope the name check would
+    reject correct notes, which is how a guard gets deleted rather than fixed.
+    """
+    from src.analysis.game_story import _team_names  # noqa: PLC0415
+
+    names = _team_names()
+    return " ".join(
+        x for t in (card.get("away"), card.get("home")) if t
+        for x in (t, names.get(t) or ""))
+
+
+def _apply(notes: list[dict], got: dict, vocab: str = "") -> list[dict]:
     for n in notes:
         w = got.get(n["id"])
         if not isinstance(w, dict):
@@ -734,6 +755,24 @@ def _apply(notes: list[dict], got: dict) -> list[dict]:
         if not (_numbers_are_sourced(title, n["brief"])
                 and _numbers_are_sourced(why, n["brief"])):
             n["unsourced"] = True
+            continue
+        # AND WHAT THE SENTENCE CLAIMED ABOUT THOSE DIGITS.
+        #
+        # `_numbers_are_sourced` checks where a figure came from, not what was
+        # asserted about it, and `prose_checks` has the four shapes of failure
+        # that gap allows — the worst of them a player who does not exist.
+        # Measured over the 103 notes of one real week before being switched
+        # on here: all 206 fields pass, so this rejects nothing that was
+        # already right.
+        #
+        # `vocab` carries the two teams' full names, because a note's brief
+        # spells them as codes and "favoring the Giants" is a correct
+        # restatement of "NYG" rather than an invention.
+        bad = next((c for c in (_claims_are_safe(title, n["brief"], vocab=vocab),
+                                _claims_are_safe(why, n["brief"], vocab=vocab))
+                    if c), None)
+        if bad:
+            n["rejected"] = bad
             continue
         lean = n.get("lean")
         if lean and not (_direction_is_consistent(title, lean)

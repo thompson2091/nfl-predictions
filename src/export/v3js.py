@@ -110,6 +110,30 @@ const V3HIST = { any: 'anytime_td', first: 'first_td', rec: 'receptions',
 // touchdown market `betProb` answers MODEL while on a yardage market it
 // answers ADJUSTED — so the same control sorted by different quantities
 // depending on the tab you were on.
+// HOW FAR OUR NUMBER IS FROM THEIRS, IN THE UNITS THE MARKET IS POSTED IN.
+//
+// `edge` already answers "how far apart are we" in probability points, and it
+// is not the same question. Saquon Barkley on week 3 was projected 49.1
+// rushing yards against a 94.5 line — a 45-yard disagreement worth 1.2
+// points of edge, because a 94.5 line sits in the fat part of a wide
+// distribution and moving 45 yards through it barely moves the probability.
+// Sorted by edge he is nowhere; sorted by this he is first, which is the row
+// a reader scanning for "where do we most disagree" wants to find.
+//
+// SIGNED, NOT ABSOLUTE, and the same sign convention `edge` already uses:
+// positive is the over, negative the under. The board carries both sides —
+// 401 unders to 317 overs on week 3's rushing board — so an absolute value
+// would mix them into one list and throw away the direction. Signed, the
+// board's own ↓High/↑Low toggle reaches both ends: high is the strongest
+// overs, low the strongest unders. Absolute cannot be undone; this can.
+const v3Diff = r => (r.kind === 'ou' && has(r.line) && has(r.proj))
+  ? r.proj - r.line : null;
+
+//: `line` is true of a sort that only means anything on a market with a line
+//: and a projection. The touchdown boards carry neither — `anytime_td` week
+//: files have no `line`, `proj` or `side` column at all — so these sorted 498
+//: nulls and left the order untouched, which reads as a broken control rather
+//: than as an inapplicable one. `v3SortBar` offers them where they apply.
 const V3SORTS = [
   ['model', 'Model', r => has(r.modelOnly) ? r.modelOnly : r.ours],
   ['book', 'Book', r => r.book],
@@ -117,10 +141,17 @@ const V3SORTS = [
   ['edge', 'Edge', r => r.edge],
   ['ev', 'EV per $100', r => ev100(r)],
   ['odds', 'Odds', r => has(r.dec) ? r.dec : null],
-  ['proj', 'Projection', r => has(r.proj) ? r.proj : null],
+  ['proj', 'Projection', r => has(r.proj) ? r.proj : null, true],
+  ['diff', 'Difference from the line', r => v3Diff(r), true],
   ['fav', 'Starred first', r => (isFav(r.id) ? 1 : 0)],
   ['player', 'Name', r => r.player],
 ];
+
+//: Whether the market on screen posts a line to differ from. `KIND` is v1's
+//: and is the same table `rowsFor` branches on to build the rows in the first
+//: place, so this cannot disagree with what the rows actually carry — which a
+//: second list of market names here eventually would.
+const v3MktLines = () => KIND[V.market] === 'ou';
 
 const v3Model = r => has(r.modelOnly) ? r.modelOnly : r.ours;
 
@@ -159,6 +190,11 @@ const V = Object.assign({
   //: is everything inlined; a number is the reader asking a narrower
   //: question, and the chart, the count and the money all answer it.
   pastN: null,
+  //: Whose whole line record has been fetched and opened out, and over how
+  //: many games the team panel reads. Null is the ten inlined; a number is
+  //: the reader asking a narrower question, and the records, the dollars and
+  //: the rows all answer the same one.
+  tlAll: null, tlN: null,
   //: One club's own games on the board, or every club's.
   angleTeam: '',
   //: And on the board, whose record the columns show once a club is chosen.
@@ -582,7 +618,11 @@ function v3Search() {
 }
 
 function v3SortBar() {
-  const opts = V3SORTS.map(c => '<option value="' + c[0] + '"'
+  // The line-only sorts are offered where there is a line. A touchdown board
+  // picked up "Difference from the line" and sorted by 498 nulls — the
+  // control moved and the board did not, which is worse than not offering it.
+  const opts = V3SORTS.filter(c => v3MktLines() || !c[3])
+    .map(c => '<option value="' + c[0] + '"'
     + (V.sort === c[0] ? ' selected' : '') + '>' + esc(c[1]) + '</option>')
     .join('');
   return '<div class="picker">'
@@ -617,7 +657,15 @@ function v3Seg(attr, opts, on) {
 }
 
 function v3Sorted(rows) {
-  const col = V3SORTS.filter(c => c[0] === V.sort)[0] || V3SORTS[0];
+  let col = V3SORTS.filter(c => c[0] === V.sort)[0] || V3SORTS[0];
+  // A LINE-ONLY SORT ON A BOARD WITH NO LINES FALLS BACK RATHER THAN SORTING
+  // NULLS. Switching from Catches to Scores a TD carries the chosen sort
+  // across, and `v3SortBar` stops offering it there — so without this the
+  // select reverts to showing the first option while the rows stay ordered by
+  // a column that is null on every one of them. Here rather than in the
+  // market switch, because a bookmark and a remembered session arrive the
+  // same way and never pass through it.
+  if (col[3] && !v3MktLines()) col = V3SORTS[0];
   const get = col[2];
   const out = rows.slice();
   out.sort((a, b) => {
@@ -1255,6 +1303,15 @@ function v3Detail(row) {
   }
   add('Line', has(row.line) ? row.line + ' ' + (unitOf(row.key) || '') : null);
   add('We project', has(row.proj) ? row.proj.toFixed(1) : null);
+  // THE NUMBER THE DIFFERENCE SORT ORDERS BY, SAID OUT LOUD. A board can be
+  // sorted by a quantity it never shows, and the reader is then taking the
+  // ordering on trust — which is the one thing this page is built not to ask.
+  // In the market's own units, signed the way the sort is: over is positive.
+  const dv = v3Diff(row);
+  add('Difference', has(dv)
+    ? v3Dash((dv > 0 ? '+' : '') + dv.toFixed(1)) + ' '
+      + (unitOf(row.key) || '') + ' vs the line'
+    : null);
   if (has(row.lo) && has(row.hi))
     add('Likely range', row.lo.toFixed(1) + ' to ' + row.hi.toFixed(1));
   add('Books quoting', has(row.nBooks) ? String(row.nBooks) : null);
@@ -2346,12 +2403,52 @@ function v3Projection(c) {
 // between them. It is also the reason the notes are worth reading — a note
 // about a team that has beaten its number five weeks running reads
 // differently from the same note in the abstract.
+// HOW THIS ONE GOES, UNDER THE EVIDENCE FOR IT.
+//
+// LAST ON THE TAB, not first. The unfold, the form and the notes above it are
+// the facts; this is the reading of them, and a reading printed before its
+// evidence asks to be taken on the writer's word. Scrolled to, it is the
+// summary of everything already on screen.
+//
+// EVERY NUMBER IN IT WAS COMPUTED BEFORE THE TEXT WAS WRITTEN, and the
+// scoreline beneath is rendered here from `story.scoreline` rather than from
+// the prose — so the figure a reader quotes is the one the Odds tab shows,
+// not one a sentence happened to contain. `game_story` has the long version,
+// including the four claims the first real story got wrong and the checks
+// that now reject them.
+function v3Story(gid) {
+  const s = (DATA.stories || {})[gid];
+  if (!s || !(s.paras || []).length) return '';
+  const sc = s.scoreline;
+  // A TEMPLATE STORY IS NOT A WRITTEN ONE AND DOES NOT PRETEND TO BE. With no
+  // key, no network, or prose that failed a check, the page is plainer — the
+  // standard `game_notes` sets — and the label is how a reader can tell.
+  const tag = s.written ? ''
+    : '<p class="help" style="margin-top:0">Built from the figures below '
+      + 'rather than written up.</p>';
+  return '<div class="card st">'
+    + '<h2 class="h1 st__h">How this one goes</h2>' + tag
+    + s.paras.map(p => '<p class="st__p">' + esc(p) + '</p>').join('')
+    + (sc && has(sc.away_pts) && has(sc.home_pts)
+       ? '<div class="st__n"><span class="eyebrow">Our number</span>'
+         + '<b class="num">' + esc(sc.away) + ' ' + sc.away_pts.toFixed(1)
+         + ' – ' + esc(sc.home) + ' ' + sc.home_pts.toFixed(1) + '</b>'
+         + '</div>'
+       : '')
+    + '<p class="help">Written from this week’s numbers. Every figure in '
+    + 'it was computed first and checked against the facts it came from — '
+    + 'the wording is all that is written, and a projection is the middle of a '
+    + 'range rather than a call.</p>'
+    + '</div>';
+}
+
 function v3GameNotes(c, gid, cats, shown) {
   if (!shown.length) {
     return v3Unfold() + v3TeamForm(c)
       + '<div class="card"><p class="lede" style="font-size:15px">'
       + 'Nothing in this game disagrees with the market enough to be worth a '
-      + 'note. That is a real answer, not a missing one.</p></div>';
+      + 'note. That is a real answer, not a missing one.</p></div>'
+      + v3Story(gid);
   }
   const pills = cats.map(k => '<button class="cat" data-v3cat="' + esc(k)
     + '" aria-pressed="' + (V.cat === k) + '">'
@@ -2365,7 +2462,8 @@ function v3GameNotes(c, gid, cats, shown) {
     + '<div class="cats">' + pills + '</div>'
     + shown.map(v3Note).join('')
     + '<p class="help" style="margin-top:12px">These notes explain the game. '
-    + 'They do not tell you what to bet.</p>';
+    + 'They do not tell you what to bet.</p>'
+    + v3Story(gid);
 }
 
 // HOW THE GAME MAY UNFOLD, as a partition that adds to 100%.
@@ -2888,6 +2986,301 @@ function v3TeamForm(c) {
     + 'split.</p></div>';
 }
 
+//: A row is
+//:   [season, week, opp, home, pf, pa, sp, tot,
+//:    ats, ou, ml, spOdds, spOddsOpp, overOdds, underOdds, mlOdds, mlOddsOpp]
+//: and the first six are `team_form`'s, in order, so `v3PastWhen` and the
+//: vs/at reading are the ones the player panel already uses.
+const V3TL = { when: 0, wk: 1, opp: 2, home: 3, pf: 4, pa: 5, sp: 6, tot: 7 };
+
+//: Which field holds each market's result, and the two prices for backing the
+//: team and for fading it. Written down once: three markets each needing a
+//: result column and a pair of prices is exactly the shape that gets
+//: transposed by hand on the fourth copy.
+//:
+//: ON THE TOTAL, "back" IS THE OVER AND "fade" IS THE UNDER — the two sides
+//: of the game rather than of the team, which is why its words differ.
+const V3TLM = {
+  ats: { res: 8, back: 11, fade: 12, w: 'covered', l: 'did not cover',
+         bk: t => t, fd: t => t + '’s opponent' },
+  ou: { res: 9, back: 13, fade: 14, w: 'over', l: 'under',
+        bk: () => 'the over', fd: () => 'the under' },
+  ml: { res: 10, back: 15, fade: 16, w: 'won', l: 'lost',
+        bk: t => t, fd: t => t + '’s opponent' },
+};
+
+//: A team's rows: the whole record once fetched and opened, the inlined ten
+//: otherwise. The fallback is deliberate and so is saying it out loud — see
+//: the error branch in `v3TeamLines`, which is the same sentence the player
+//: panel prints when a fetch fails and the panel redraws identically.
+function v3TLRows(team) {
+  const T = DATA.teamlines || {};
+  const full = V3CACHE['tlines'] && V3CACHE['tlines'].teams
+    && V3CACHE['tlines'].teams[team];
+  if (V.tlAll === team && full) return { rows: full, all: true };
+  const rows = (T.teams || {})[team];
+  return rows && rows.length ? { rows: rows, all: false } : null;
+}
+
+// FETCHED, NOT INLINED, PAST THE FIRST TEN. All 32 teams back to 2015 is
+// 413 KB; ten games each is 22 KB and answers "is this number high for them".
+// One file rather than one per team: a reader who opens one side of a game
+// opens the other in the next breath, and 413 KB once beats 32 round trips.
+function v3TLFetch(then) {
+  const k = 'tlines';
+  if (V3CACHE[k]) { then(V3CACHE[k]); return; }
+  const fail = why => { V3CACHE[k] = { error: why }; then(V3CACHE[k]); };
+  let p;
+  try { p = fetch('data/tlines.json'); } catch (e) { fail(String(e)); return; }
+  p.then(r => {
+    if (!r.ok) { fail('the server answered ' + r.status); return; }
+    return r.json().then(o => { V3CACHE[k] = { teams: o || {} };
+                                then(V3CACHE[k]); });
+  }).catch(e => fail(String(e)));
+}
+
+//: A market's record over a window: wins, losses, and pushes counted out
+//: rather than folded into either. A game that lands on the number returns
+//: the stake, and there are 156 ATS and 56 total pushes in the archive — a
+//: record that called those losses would be wrong in the direction that
+//: flatters a reader into a bet.
+function v3TLRec(rows, mk) {
+  const f = V3TLM[mk].res;
+  let w = 0, l = 0, p = 0;
+  rows.forEach(r => {
+    const v = r[f];
+    if (!has(v)) return;
+    if (v > 0) w++; else if (v < 0) l++; else p++;
+  });
+  return { w: w, l: l, p: p, n: w + l + p };
+}
+
+//: Which way the window ran, which is the side the money question is about.
+//: A team that has failed to cover six of ten is not asking what backing it
+//: would have returned. Ties go to backing the team, because that is the
+//: reading someone opening a team's own panel came for.
+function v3TLBack(rows, mk) {
+  const rec = v3TLRec(rows, mk);
+  return rec.l > rec.w ? 'fade' : 'back';
+}
+
+// WHAT BACKING THAT SIDE EVERY ONE OF THOSE GAMES WOULD HAVE RETURNED.
+//
+// $100 a game at the price the schedule feed holds for the side the record
+// ran. BOTH SIDES ARE REAL QUOTES, which is the one way this panel is better
+// off than the player one: the player archive holds the Yes and the Over and
+// nothing else, so "what if you had faded him" is a question it cannot
+// answer, while the schedule posts both moneylines and both spread prices.
+//
+// A PUSH IS NOT A LOSS. The stake comes back, so it is set aside and counted
+// out loud — the same distinction `v3PastMoney` makes for a week a player did
+// not take the field.
+//
+// NOT A FORECAST, and this one has a measurement behind the warning rather
+// than only a small sample: forty-nine spread splits were tested together
+// over 504 team-weeks and not one clears the vig at the lower bound of its
+// interval. Ten games is far short of saying anything at all.
+function v3TLMoney(rows, mk, dir) {
+  const m = V3TLM[mk];
+  const f = m.res, pf = dir === 'fade' ? m.fade : m.back;
+  const profit = o => o > 0 ? o : 10000 / -o;
+  let money = 0, bets = 0, pushes = 0, won = 0, unpriced = 0;
+  rows.forEach(r => {
+    const res = r[f], odds = r[pf];
+    if (!has(res)) return;
+    if (!has(odds)) { unpriced++; return; }
+    if (res === 0) { pushes++; return; }
+    // Fading wins exactly when backing loses. There is no third outcome once
+    // the push is set aside, so this is the whole of it.
+    const hit = dir === 'fade' ? res < 0 : res > 0;
+    bets++;
+    if (hit) { won++; money += profit(odds); } else { money -= 100; }
+  });
+  return { money: money, bets: bets, pushes: pushes, won: won,
+           unpriced: unpriced };
+}
+
+// WHAT THE RECORDS ARE WORTH, COUNTED FROM THE ANGLES BOARD RATHER THAN
+// WRITTEN DOWN.
+//
+// The first draft of this said "forty-nine spread patterns were measured and
+// the best covers 52.6%", lifted from a comment. The payload said 86 patterns
+// and a best lower bound of 57.0% — the comment had been true of a smaller
+// list and the sentence it became was wrong twice over. So the numbers come
+// from `DATA.angles`, which is the same measurement the Angles page reports,
+// and they cannot go stale while the page says them.
+//
+// `clears` IS BOTH CONDITIONS, which is the part worth saying out loud: the
+// lower bound beats break-even AND the split has at least `tint_min` games.
+// An 86-game row clearing at the lower bound is a wide interval that happens
+// to start high, and `angles.TINT_MIN_GAMES` has the long version.
+function v3TLCaveat() {
+  const A = DATA.angles || {};
+  const rows = A.rows || [];
+  const be = has(A.break_even) ? (A.break_even * 100).toFixed(1) + '%' : null;
+  const clear = rows.filter(r => (r.all || {}).clears).length;
+  // Absent rather than invented: a build with no angles block gets the
+  // sentence that does not depend on one.
+  const ats = (rows.length && be)
+    ? '<p>These are results, not a model. This project measures spread '
+      + 'patterns the same way on the Angles page — ' + rows.length
+      + ' of them, graded together — and break-even at −110 is '
+      + be + '. '
+      + (clear
+         ? '<b>' + clear + ' of them clears it</b> at the lower bound of its '
+           + 'interval on a large enough sample.'
+         : '<b>Not one of them clears it</b> at the lower bound of its '
+           + 'interval on a large enough sample.')
+      + ' A team that has covered six of ten has done that, and nothing '
+      + 'follows from it about the game above.</p>'
+    : '<p>These are results, not a model. A team that has covered six of ten '
+      + 'has done that, and nothing follows from it about the game above.</p>';
+  return ats
+    // WHOSE LINE IT IS, without a figure that goes stale every Sunday. The
+    // measurement behind this sentence is in `team_lines`, dated, where it is
+    // context for whoever changes the code rather than a claim on a page.
+    + '<p>The line is the one the schedule feed records for each game: one '
+    + 'source’s number, close to the market’s close rather than at '
+    + 'it, and not the best price you could have taken. The spread is from '
+    + 'that team’s own side, so a favorite reads as a minus.</p>'
+    + '<p>A game that lands exactly on the number is a push: the stake comes '
+    + 'back, so it is counted separately rather than as a loss. The dollar '
+    + 'figures are $100 a game on the side the record ran, at that archived '
+    + 'price — and ten games cannot separate a team from the hold.</p>';
+}
+
+// WHAT THESE TWO TEAMS HAVE DONE AGAINST THE THREE NUMBERS ON THIS GAME.
+//
+// `team_form` beside it is the same question asked of the scoreboard: what
+// they scored, against what was expected. This is the question asked of the
+// markets a reader is actually looking at on the Odds tab — did the spread,
+// the total and the moneyline come in — and `player_history` is the same
+// panel one level down, for a prop line that moves week to week.
+//
+// THE RECORD FIRST, AND THE MONEY ON THE SIDE THE RECORD RAN. A record with
+// no price beside it invites the arithmetic to be done badly in someone's
+// head; the same record at the archived price is the honest version of the
+// number they were going to reach for anyway.
+//
+// NO COLOR THAT MEANS GOOD on the result marks. The project has measured
+// every ATS split it could build and not one clears the hold, so a green
+// "covered" would be the page implying a finding it does not have. The marks
+// read as what happened, and the fold under them says what that is worth.
+function v3TeamLines(c, gid) {
+  const T = DATA.teamlines || {};
+  const meta = T.markets || [];
+  if (!meta.length) return '';
+  const sides = [c.away, c.home].map(t => [t, v3TLRows(t)])
+    .filter(x => x[1]);
+  if (!sides.length) return '';
+
+  // ONE WINDOW FOR BOTH TEAMS AND ALL THREE MARKETS. The point of the panel
+  // is comparing two teams, and reading one over five games and the other
+  // over ten would make the comparison the renderer's choice rather than the
+  // reader's.
+  const least = Math.min.apply(null, sides.map(x => x[1].rows.length));
+  const opts = [3, 5, 10].filter(n => n < least).map(n => [String(n), 'last ' + n]);
+  opts.push(['all', 'all ' + least]);
+  const pick = opts.length > 1
+    ? '<div class="seg seg--' + opts.length + ' pl__seg">'
+      + v3Seg('v3tln', opts,
+              (V.tlN && V.tlN < least) ? String(V.tlN) : 'all') + '</div>'
+    : '';
+
+  const table = (team, got) => {
+    const every = got.rows;
+    const win = (V.tlN && V.tlN < every.length) ? V.tlN : every.length;
+    const rows = every.slice(0, win);
+    // THE SUMMARY BEFORE THE ROWS, because the record is what the reader came
+    // for and ten rows of line-and-result is what backs it up. The same
+    // ordering the player panel settled on: the sentence leads, the evidence
+    // follows.
+    const head = meta.map(m => {
+      const rec = v3TLRec(rows, m.key);
+      if (!rec.n) return '';
+      const dir = v3TLBack(rows, m.key);
+      const mm = V3TLM[m.key];
+      const money = v3TLMoney(rows, m.key, dir);
+      const side = dir === 'fade' ? mm.fd(team) : mm.bk(team);
+      const fig = money.bets
+        ? '<b class="' + (money.money >= 0 ? 'pos' : 'neg') + '">'
+          + (money.money >= 0 ? '+$' : '−$')
+          + Math.abs(money.money).toFixed(0) + '</b> on ' + esc(side)
+          + ', ' + money.won + ' of ' + money.bets
+          + (money.pushes ? ' · ' + money.pushes + ' push'
+             + (money.pushes > 1 ? 'es' : '') : '')
+          + (money.unpriced ? ' · ' + money.unpriced
+             + ' with no price' : '')
+        : '<span class="dim">no price archived</span>';
+      return '<div class="tl__sr">'
+        + '<span class="tl__sl">' + esc(m.label) + '</span>'
+        + '<b class="tl__sv num">' + rec.w + '–' + rec.l
+        + (rec.p ? '–' + rec.p : '') + '</b>'
+        + '<span class="tl__sm">' + fig + '</span></div>';
+    }).join('');
+
+    const body = rows.map(r => {
+      const mark = m => {
+        const v = r[V3TLM[m].res];
+        if (!has(v)) return '<span class="tl__m tl__m--na">—</span>';
+        const t = v > 0 ? V3TLM[m].w : v < 0 ? V3TLM[m].l : 'push';
+        const ch = v === 0 ? 'P'
+          : m === 'ou' ? (v > 0 ? 'O' : 'U')
+          : m === 'ats' ? (v > 0 ? 'C' : '–')
+          : (v > 0 ? 'W' : 'L');
+        return '<span class="tl__m tl__m--' + (v > 0 ? 'y' : v < 0 ? 'n' : 'p')
+          + '" title="' + esc(t) + '">' + ch + '</span>';
+      };
+      const sp = r[V3TL.sp], tot = r[V3TL.tot];
+      return '<div class="tl__r">'
+        + '<span class="tl__w">' + esc(v3PastWhen(r)) + '</span>'
+        + '<span class="tl__o">' + (r[V3TL.home] ? 'vs ' : 'at ')
+        + esc(r[V3TL.opp]) + '</span>'
+        + '<span class="tl__n num">'
+        + (has(sp) ? v3Dash(sp > 0 ? '-' + sp : '+' + Math.abs(sp)) : '—')
+        + '<span class="tl__t">' + (has(tot) ? tot : '—') + '</span>'
+        + '</span>'
+        + '<span class="tl__p num">' + r[V3TL.pf] + '–' + r[V3TL.pa]
+        + '</span>'
+        + '<span class="tl__ms">' + mark('ats') + mark('ou') + mark('ml')
+        + '</span></div>';
+    }).join('');
+
+    const more = (!got.all && T.inline && every.length >= T.inline)
+      ? '<button class="pl__more" data-v3tlall="' + esc(team) + '">'
+        + 'Show every game</button>' : '';
+    const ck = V3CACHE['tlines'];
+    const err = (V.tlAll === team && ck && ck.error)
+      ? '<p class="pl__e">Every game did not load — ' + esc(ck.error)
+        + '. These are the last ' + rows.length + '.</p>' : '';
+
+    return '<div class="tl">'
+      + '<div class="pl__h">' + esc(team) + ', last ' + rows.length + '</div>'
+      + '<div class="tl__s">' + head + '</div>'
+      + '<div class="tl__hd"><span class="tl__w">when</span>'
+      + '<span class="tl__o">opp</span>'
+      + '<span class="tl__n">line<span class="tl__t">total</span></span>'
+      + '<span class="tl__p">score</span>'
+      + '<span class="tl__ms">ats&nbsp;o/u&nbsp;ml</span></div>'
+      + '<div class="tl__b">' + body + '</div>' + err + more + '</div>';
+  };
+
+  // THE SPREAD IS PRINTED FROM THE TEAM'S OWN SIDE, which is the only reading
+  // that makes a column of them comparable: "-2.5" in CLE's table means CLE
+  // were favored by 2.5 that week, whoever was at home. `team_games` does
+  // that flip once, in Python, where a test holds the sign.
+  return '<div class="card tl__c">'
+    + '<h3 class="tl__t3">Against the number</h3>'
+    + '<p class="help">What each side has done against the three markets on '
+    + 'this game. The spread is from that team’s own perspective, so '
+    + '−2.5 means they were favored by 2.5 that week.</p>'
+    + pick
+    + '<div class="tl__g">' + sides.map(x => table(x[0], x[1])).join('')
+    + '</div>'
+    + v3Fold('What these records are and are not', v3TLCaveat())
+    + '</div>';
+}
+
 // WHAT THE GAME IS PRICED AT, AND THEN WHAT IT CAME TO.
 //
 // Score used to be a tab of its own, second in the strip, saying nothing from
@@ -2918,7 +3311,12 @@ function v3GameOdds(c, gid) {
     + '<div class="sub" style="margin-top:8px">' + esc(v3Kick(c)) + '</div>'
     + v3Projection(c) + '</div>'
     + v3PublicMoney(gid)
-    + (played ? '' : outcome);
+    + (played ? '' : outcome)
+    // AFTER THE PRICE AND THE PUBLIC, BEFORE NOTHING ELSE. The tab answers
+    // "what is this game priced at and who is backing it"; what the two sides
+    // have done against those same three numbers is the next question anyone
+    // asks, and it was previously answerable only by leaving the game.
+    + v3TeamLines(c, gid);
 }
 
 // WHAT THE SPLITS SAY, AND WHAT THEY ARE WORTH.
@@ -5256,7 +5654,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3fav', 'v3clear', 'v3sheet', 'v3close', 'v3drop', 'v3clearq',
                   'v3half', 'v3metric', 'v3boardgame', 'v3anglesort', 'v3angle',
                   'v3anglegame', 'v3angleclear', 'v3anglescope', 'v3pastall',
-                  'v3pastn',
+                  'v3pastn', 'v3tlall', 'v3tln',
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
                   'v3sortpick'];
 
@@ -5470,6 +5868,14 @@ function v3Do(kind, v) {
       if (mk) v3PastAll(mk, () => render());
       break;
     }
+    // The window the team panel reads over, and the tap that fetches the rest
+    // of the record. Both teams on the card read the same window, so this is
+    // one number rather than one per side.
+    case 'v3tln': V.tlN = (v === 'all') ? null : parseInt(v, 10); break;
+    case 'v3tlall':
+      V.tlAll = v;
+      v3TLFetch(() => render());
+      break;
     // The reading changes under a pinned bar, so the board starts at
     // the top of what it just rebuilt -- the same as the kind and the
     // club beside it.

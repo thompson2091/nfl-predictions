@@ -3915,7 +3915,9 @@ def render(payload: dict) -> str:
     # `</` inside the JSON would close the script tag early and render the rest
     # of the payload as text. Escaping is cheaper than trusting that no player
     # is ever named in a way that produces one.
-    data = (json.dumps(payload, separators=(",", ":"), allow_nan=False)
+    from src.export.payload import for_page
+    data = (json.dumps(for_page(payload), separators=(",", ":"),
+                       allow_nan=False)
             .replace("</", "<\\/"))
     brand = payload.get("brand") or "Pick Six"
     return (SHELL

@@ -443,6 +443,13 @@ def _flag_role_doubt(payload: dict, market: str) -> None:
 #: page that already loads 4.6.
 HISTORY_INLINE = 10
 
+#: And how many of a team's past games do. The same number as the player
+#: panel, because the two answer the same question at two levels and a reader
+#: who learns the window on one should not have to relearn it on the other.
+#: Ten of a team's games is 22 KB for all 32; the whole record back to 2015 is
+#: 413 KB and is fetched.
+TEAMLINES_INLINE = 10
+
 
 def _player_names(obj, out: set) -> None:
     """Every player the board can print, wherever in the payload they sit.
@@ -484,6 +491,45 @@ def _team_form_block(payload: dict, season: int | None,
         payload["teamform"] = {"last": TF.LAST, "teams": rows}
     except Exception as e:  # noqa: BLE001
         print(f"  team form skipped: {e}", file=sys.stderr)
+
+
+def _team_lines_block(payload: dict, season: int | None,
+                      week: int | None) -> None:
+    """What each team's spread, total and moneyline have done before.
+
+    TWO COPIES, the same arrangement the player record uses: the last ten
+    games ride in the page at 22 KB and the whole record back to 2015 is
+    written to its own file and fetched when a reader opens a team. Inlining
+    all of it would be 413 KB on a page that already loads 5.5 MB, for a panel
+    most readers never open.
+
+    NOT A PATTERN BOARD, and `team_lines` says at length why not: forty-nine
+    spread splits were measured together and not one clears the vig at the
+    lower bound of its interval. The panel shows what happened and makes no
+    claim about what happens next.
+
+    Absent rather than empty when the schedule cannot answer, so the page can
+    tell "no record to show" from "a table with nothing in it".
+    """
+    if not (season and week):
+        return
+    try:
+        from src.evaluation import team_lines as TL
+
+        full = TL.rows_for(int(season), int(week))
+        if not full:
+            return
+        payload["teamlines"] = {
+            "markets": TL.market_meta(),
+            "inline": TEAMLINES_INLINE,
+            "teams": {t: r[:TEAMLINES_INLINE] for t, r in full.items()},
+        }
+        # Carried out of the payload by `52_export_v3`, which writes it to the
+        # data folder, and stripped from every page by `export.payload` even
+        # if some future path forgets to pop it.
+        payload["_teamlines_full"] = full
+    except Exception as e:  # noqa: BLE001
+        print(f"  team lines skipped: {e}", file=sys.stderr)
 
 
 def _history_block(payload: dict) -> None:
@@ -2009,6 +2055,7 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     _angles_block(payload, s, w)
     _history_block(payload)
     _team_form_block(payload, s, w)
+    _team_lines_block(payload, s, w)
     _mark_consensus_lines(payload)
     payload["brand"] = brand
     payload["season"] = s

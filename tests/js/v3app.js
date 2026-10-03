@@ -15,6 +15,8 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3Ladder', 'v3Header', 'v3Nav', 'v3Rows', 'v3Do', 'V3TABS', 'V3MKT',
    'V3CLICKS', 'V3HIST', 'v3Questions', 'v3Value', 'v3Outcomes', 'v3Legs',
    'rowsFor', 'served', 'DATA', 'V3SORTS', 'v3Sorted', 'V3CACHE', 'v3Same',
+   // v1's null guard, so a check here reads the same way the page does.
+   'has', 'KIND', 'v3Diff', 'v3MktLines',
    'isFav', 'toggleFav', 'v3Slipbar', 'v3Sheet', 'V3SHEETS', 'v3Rungs',
    'v3Num', 'v3Rows', 'v3LadderSummary', 'v3Questions', 'v3AskSend',
    'V3BETTYPES',
@@ -28,7 +30,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3NowImplied', 'v3Clv', 'v3ClvNote', 'v3GameMoney']);
 const { V, render, v3Screen, v3Games, v3Game, v3Picks, v3Ladder, v3Nav,
         V3TABS, V3MKT, V3CLICKS, V3HIST, v3Questions, v3Value, v3Legs,
-        rowsFor, served, DATA } = x;
+        rowsFor, served, DATA, has } = x;
 
 // THE WHOLE SHELL, not just the scrolling pane. v3 renders the header into
 // `#appbar`, the tab bar into `#tabbar` and the slip bar into `#slipbarHost`,
@@ -486,6 +488,87 @@ if (withNulls.length > 2 && withNulls.every(r => r.proj == null)) {
 }
 V.sort = 'ours'; V.desc = true;
 
+// ── Difference: how far our number is from theirs, in the market's units ──
+//
+// NOT THE SAME QUESTION AS EDGE, which is the reason it exists. Edge is in
+// probability points, and a 45-yard disagreement on a 94.5 rushing line is
+// worth about a point of it — first by this column and nowhere by that one.
+{
+  const lineMkt = ['rec', 'rush', 'recv', 'pass'].filter(
+    m => x.rowsFor(m, null).some(r => has(r.line) && has(r.proj)))[0];
+  if (!lineMkt) {
+    ok('a market with lines to differ from', false, 'none in the fixture');
+  } else {
+    V.market = lineMkt; V.week = null; V.sort = 'diff'; V.desc = true;
+    const rows = x.rowsFor(lineMkt, null).filter(r => r.priced && !r.blocked);
+    const diff = r => r.proj - r.line;
+    const sorted = x.v3Sorted(rows).filter(r => has(r.line) && has(r.proj));
+    ok('the board can be sorted by the difference',
+       x.V3SORTS.some(c => c[0] === 'diff'));
+    // Descending is the strongest OVERS: the projection furthest above the
+    // line. The board carries both sides, so this is a real ordering choice
+    // and not a relabeling of the whole list.
+    ok('descending leads with the projection furthest above the line',
+       sorted.length < 2 || diff(sorted[0]) >= diff(sorted[1]),
+       sorted.length > 1
+         ? diff(sorted[0]).toFixed(1) + ' then ' + diff(sorted[1]).toFixed(1)
+         : 'too few rows');
+    ok('and the leader is an over',
+       sorted.length < 1 || diff(sorted[0]) > 0,
+       sorted.length ? String(diff(sorted[0])) : 'no rows');
+    V.desc = false;
+    const asc = x.v3Sorted(rows).filter(r => has(r.line) && has(r.proj));
+    // SIGNED, SO THE DIRECTION TOGGLE REACHES BOTH ENDS. An absolute
+    // difference would put the same row at the top whichever way the arrow
+    // pointed, and the strongest unders would be unreachable.
+    ok('ascending reaches the strongest unders instead',
+       asc.length < 1 || diff(asc[0]) <= diff(sorted[0]),
+       asc.length ? diff(asc[0]).toFixed(1) : 'no rows');
+    ok('and the two ends are different rows',
+       asc.length < 2 || asc[0].id !== sorted[0].id,
+       'the same row leads in both directions — is it sorting on magnitude?');
+    V.desc = true;
+
+    // THE NUMBER IT ORDERS BY IS ON THE PAGE. A board sorted by a quantity
+    // it never shows asks the reader to take the ordering on trust.
+    const r0 = sorted[0];
+    if (r0) {
+      V.tab = 'props'; V.open = null; render();
+      v3Do('v3open', r0.id);
+      const opened = app();
+      ok('an opened row states the difference it was sorted by',
+         opened.indexOf('Difference') >= 0);
+      ok('and states it signed, in the market’s own units',
+         opened.indexOf('vs the line') >= 0);
+      v3Do('v3open', r0.id);
+    }
+
+    // A TOUCHDOWN BOARD HAS NO LINE AND SO NO DIFFERENCE. `anytime_td` week
+    // files carry no `line`, `proj` or `side` column at all, so this sorted
+    // 498 nulls: the control moved and the board did not.
+    V.market = 'any'; V.sort = 'diff'; render();
+    const td = app();
+    ok('a touchdown board does not offer the difference sort',
+       td.indexOf('>Difference from the line<') < 0);
+    ok('nor the projection sort, which has the same gap',
+       td.indexOf('>Projection<') < 0);
+    // And a carried-over selection falls back rather than ordering by nulls.
+    const tdRows = x.rowsFor('any', null).filter(r => r.priced);
+    V.sort = 'diff';
+    const byDiff = x.v3Sorted(tdRows);
+    V.sort = 'model';
+    const byModel = x.v3Sorted(tdRows);
+    ok('a difference sort carried onto a touchdown board falls back',
+       byDiff.length === byModel.length
+         && byDiff.every((r, i) => r.id === byModel[i].id),
+       'the touchdown board is ordered by a column it does not have');
+    V.market = lineMkt; V.sort = 'diff';
+    ok('and the sort is offered again on a market with lines',
+       (render(), app().indexOf('>Difference from the line<') >= 0));
+  }
+  V.market = 'any'; V.sort = 'model'; V.desc = true; V.week = null;
+}
+
 // ── A row opens to show everything ──────────────────────────────────────
 const someRow = x.rowsFor('any', null).filter(r => r.priced)[0];
 if (someRow) {
@@ -861,6 +944,120 @@ if (cards.length) {
   ok('the bar still says both shares to a screen reader',
      /aria-label="[^"]*percent, [^"]*percent"/.test(h));
 
+  // ── Against the number: the three markets this tab is about ──────────
+  //
+  // `team_form` on the notes tab is the same question asked of the
+  // scoreboard. This is it asked of the spread, the total and the moneyline,
+  // which are the three numbers the Odds tab is already showing — so the
+  // record belongs beside them rather than a tab away.
+  V.tlN = null; V.tlAll = null; render();
+  const tl = app();
+  ok('the odds tab carries each side’s record against the number',
+     tl.indexOf('Against the number') >= 0);
+  ok('both teams are drawn', tl.indexOf('>GB, last ') >= 0
+     && tl.indexOf('>ATL, last ') >= 0);
+  ok('all three markets are named', tl.indexOf('Against the spread') >= 0
+     && tl.indexOf('Over/under') >= 0 && tl.indexOf('Moneyline') >= 0);
+  // A ROW PER GAME, five cells wide, read down a column.
+  ok('a row per game in the window',
+     (tl.match(/class="tl__r"/g) || []).length === 20,
+     'rows drawn: ' + (tl.match(/class="tl__r"/g) || []).length);
+  // `tl__m--` rather than `tl__m`, because `tl__ms` — the cell the three
+  // marks sit in — shares that prefix and was being counted as a fourth.
+  ok('every row carries three result marks',
+     (tl.match(/tl__m--/g) || []).length === 60,
+     'marks drawn: ' + (tl.match(/tl__m--/g) || []).length);
+
+  // A PUSH IS NOT A LOSS, and the fixture has one. The stake comes back, so
+  // the record shows it as a third number and the money sets it aside.
+  ok('a push is marked as a push rather than a loss',
+     tl.indexOf('tl__m--p') >= 0 && tl.indexOf('title="push"') >= 0);
+  ok('and it is counted out of the money rather than against it',
+     tl.indexOf('push') >= 0);
+  // An ungraded week draws its row and no mark, not a mark meaning lost.
+  ok('a game with no posted line has no result against it',
+     tl.indexOf('tl__m--na') >= 0);
+  // A graded week with no archived price is not a free bet.
+  ok('a game with no price is named rather than counted',
+     tl.indexOf('with no price') >= 0 || tl.indexOf('no price archived') >= 0);
+
+  // NO COLOR THAT MEANS GOOD. Every ATS split this project has measured
+  // sits under the hold, so a green "covered" would imply a finding the
+  // project does not have. The marks separate by fill, not by hue.
+  ok('no result mark is colored as a verdict',
+     tl.indexOf('tl__m--good') < 0 && tl.indexOf('tl__m--bad') < 0);
+  // COUNTED FROM THE ANGLES BOARD, not written down. The first draft said
+  // "forty-nine patterns, the best covers 52.6%" from a stale comment while
+  // the payload held 86 and a best lower bound of 57.0%.
+  ok('and the fold says what the records are worth',
+     /clears it<\/b> at the lower bound/.test(tl),
+     'no measured verdict in the fold');
+  ok('and counts the patterns from the angles board rather than a constant',
+     tl.indexOf(String((DATA.angles.rows || []).length) + ' of them, graded')
+       >= 0,
+     'the fold does not name the measured count');
+  ok('and names the break-even it is measured against',
+     tl.indexOf((DATA.angles.break_even * 100).toFixed(1) + '%') >= 0);
+  ok('the fold names whose line it is',
+     tl.indexOf('one source’s number') >= 0);
+  ok('and explains why a favorite reads as a minus',
+     tl.indexOf('favorite reads as a minus') >= 0);
+
+  // THE MONEY ON THE SIDE THE RECORD RAN. GB's spread record runs the team's
+  // way and ATL's runs against it, so one panel reads "back the team" and the
+  // other "back its opponent" — the fade branch, priced off the real quote
+  // the other side was posted at.
+  ok('the money names the side the record ran',
+     tl.indexOf('on GB,') >= 0 || tl.indexOf('on GB ') >= 0,
+     'no backing sentence for GB');
+  ok('and fades the team whose record ran the other way',
+     tl.indexOf('opponent') >= 0, 'no fade sentence anywhere');
+  ok('the over and the under are named as sides of the game',
+     tl.indexOf('the over') >= 0 || tl.indexOf('the under') >= 0);
+
+  // ONE WINDOW FOR BOTH TEAMS AND ALL THREE MARKETS. Reading one side over
+  // five games and the other over ten would make the comparison the
+  // renderer's choice rather than the reader's.
+  ok('the window control is offered', tl.indexOf('data-v3tln') >= 0);
+  x.v3Do('v3tln', '3');
+  const tl3 = app();
+  ok('narrowing the window narrows both tables',
+     (tl3.match(/class="tl__r"/g) || []).length === 6,
+     'rows at last 3: ' + (tl3.match(/class="tl__r"/g) || []).length);
+  ok('and the records are recounted over it',
+     tl3.indexOf('>GB, last 3<') >= 0);
+  x.v3Do('v3tln', 'all');
+
+  // THE REST OF THE RECORD IS FETCHED, and a fetch that failed is not a team
+  // with ten games. The panel falls back to the inlined ten, which is the
+  // right fallback and the wrong silence: it would redraw identically and the
+  // button would read as broken. Seeded rather than awaited, the same way the
+  // week fetch is tested above — a real `fetch` here would be a race.
+  ok('the rest of the record is offered', app().indexOf('data-v3tlall') >= 0);
+  V.tlAll = 'GB';
+  x.V3CACHE['tlines'] = { error: 'blocked by the browser' };
+  render();
+  const tlf = app();
+  ok('a fetch that failed says so rather than redrawing the same ten',
+     tlf.indexOf('Every game did not load') >= 0);
+  ok('and the inlined games are still shown',
+     (tlf.match(/class="tl__r"/g) || []).length === 20,
+     'rows after a failed fetch: '
+       + (tlf.match(/class="tl__r"/g) || []).length);
+  delete x.V3CACHE['tlines'];
+  // AND THE WHOLE RECORD, ONCE IT ARRIVES: twenty games for GB against the
+  // ten inlined, so the panel reads the fetched copy rather than ignoring it.
+  x.V3CACHE['tlines'] = { teams: { GB: (DATA.teamlines.teams.GB || [])
+    .concat(DATA.teamlines.teams.GB || []) } };
+  render();
+  const tla = app();
+  ok('the fetched record replaces the inlined ten',
+     tla.indexOf('>GB, last 20<') >= 0,
+     'no 20-game GB panel after the fetch landed');
+  ok('and the other side is still on its inlined ten',
+     tla.indexOf('>ATL, last 10<') >= 0);
+  V.tlAll = null; delete x.V3CACHE['tlines']; V.tlN = null;
+
   V.gameTab = 'notes'; render();
   const hn = app();
   // RECENT FORM IS ON NOTES NOW, between the distribution above it and the
@@ -882,6 +1079,40 @@ if (cards.length) {
      > (hn.match(/class="tf__t"/g) || []).length);
   ok('the form says the scores include defensive touchdowns',
      hn.indexOf('special-teams') >= 0);
+
+  // ── How this one goes: the story, LAST on the tab ────────────────────
+  //
+  // Last, not first. The unfold, the form and the notes above it are the
+  // facts; this is the reading of them, and a reading printed before its
+  // evidence asks to be taken on the writer's word.
+  ok('the Read tab carries the story', hn.indexOf('How this one goes') >= 0);
+  ok('and it comes after the notes it reads from',
+     hn.indexOf('How this one goes') > hn.indexOf('What our AI noticed'),
+     'story at ' + hn.indexOf('How this one goes')
+       + ', notes at ' + hn.indexOf('What our AI noticed'));
+  ok('and after recent form',
+     hn.indexOf('How this one goes') > hn.indexOf('Recent form'));
+  ok('every paragraph is drawn',
+     (hn.match(/class="st__p"/g) || []).length
+       === (DATA.stories[cards[0].game_id].paras || []).length,
+     'paragraphs: ' + (hn.match(/class="st__p"/g) || []).length);
+  // THE SCORELINE IS RENDERED FROM THE DATA, NOT LIFTED FROM THE PROSE, so
+  // the figure a reader quotes is the one the Odds tab shows.
+  ok('the number is stated by code beneath the words',
+     hn.indexOf('Our number') >= 0 && /23\.1/.test(hn) && /19\.4/.test(hn));
+  ok('and the story says the wording is the only written part',
+     hn.indexOf('the wording is all that is written') >= 0);
+  // A template story is not a written one and does not pretend to be.
+  if (cards.length > 1) {
+    const g0 = V.game;
+    V.game = cards[1].game_id; V.gameTab = 'notes'; render();
+    const h2 = app();
+    ok('a story that fell back to the template says so',
+       h2.indexOf('rather than written up') >= 0);
+    ok('and a story with no scoreline prints no number',
+       h2.indexOf('Our number') < 0);
+    V.game = g0; V.gameTab = 'notes'; render();
+  }
   // BETWEEN THE UNFOLD AND THE NOTES. The order is the argument: a
   // distribution over this game, the evidence, then the commentary.
   ok('recent form sits between the unfold and the notes',

@@ -64,7 +64,19 @@ TOP = ["index.html", "manifest.webmanifest", "sw.js"]
 #: `test_every_data_file_the_build_writes_is_one_the_deploy_uploads` reads this
 #: tuple against the paths the exporter actually writes, so the next file added
 #: there fails a test rather than going missing in production.
-DATA_GLOBS = ("h-*.json", "hist-*.json", "ask/*.json")
+#:
+#: **AND THE TUPLE MUST BE WHAT THE UPLOAD ACTUALLY GLOBS.** It was not. The
+#: upload below reaches for its own `data.glob(...)` per group and never reads
+#: this tuple, so adding `tlines.json` here satisfied the test while the
+#: uploader ignored it — the file was built, every test passed, and the live
+#: page 404'd on it on 2026-10-03. The same silent shape as the bug this
+#: constant was introduced to prevent, one level further out.
+#:
+#: `test_the_upload_globs_what_this_tuple_names` now reads the source below and
+#: requires every entry here to be globbed there. The groups stay separate on
+#: purpose — week files are pruned, ask briefs go to a subdirectory — so the
+#: fix is to keep the two in step, not to merge them.
+DATA_GLOBS = ("h-*.json", "hist-*.json", "tlines.json", "ask/*.json")
 
 
 def env(key: str) -> str:
@@ -249,6 +261,7 @@ reports.
     data = out / "data"
     week_files = sorted(data.glob("h-*.json")) if data.exists() else []
     hist_files = sorted(data.glob("hist-*.json")) if data.exists() else []
+    tline_files = sorted(data.glob("tlines.json")) if data.exists() else []
     ask_files = sorted((data / "ask").glob("*.json")) if data.exists() else []
     if not week_files:
         # A warning, not a failure: a season before any week is played has
@@ -302,6 +315,20 @@ reports.
             # Said out loud: "Show every week" is the only thing that reads
             # them, and with none uploaded it is a button that does nothing.
             print("  note: no data/hist-*.json to upload — \"Show every week\" "
+                  "will 404", file=sys.stderr)
+        # THE TEAM LINE RECORD, on the same footing as the player history and
+        # for the same reason: "Show every game" is the only thing that reads
+        # it, and without it that button 404s in silence.
+        if tline_files:
+            print(f"  team line record "
+                  f"({sum(f.stat().st_size for f in tline_files) / 1024:,.0f} KB)",
+                  file=sys.stderr)
+            for f in tline_files:
+                if not s.copy(str(f), f"{root}/data/{f.name}"):
+                    print(f"upload of {f.name} failed", file=sys.stderr)
+                    return 1
+        else:
+            print("  note: no data/tlines.json to upload — \"Show every game\" "
                   "will 404", file=sys.stderr)
         if ask_files:
             print(f"  {len(ask_files)} ask briefs", file=sys.stderr)

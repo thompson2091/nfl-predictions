@@ -1158,12 +1158,80 @@ button{cursor:pointer}
 .legwrap[data-swipe=open]>.row{transform:translateX(-96px)}
 .legwrap[data-swipe=dragging]>.row{transition:none}
 
+/* ---- how this one goes: the story, last on the Read tab ---- */
+.st{margin-top:20px}
+.st__h{font-size:22px;line-height:28px;margin:0 0 4px}
+/* Longer measure than a note and looser leading: this is four paragraphs to
+   be read, not a caption to be scanned. 68ch is the comfortable column the
+   footer already uses. */
+.st__p{margin:10px 0 0;font-size:15px;line-height:23px;max-width:68ch}
+/* The number the prose is about, stated by code rather than by the sentence —
+   so what a reader quotes is what the Odds tab shows. */
+.st__n{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.st__n b{font-size:19px}
+
+/* ---- against the number: two teams, three markets ---- */
+.tl__t3{margin:0 0 2px;font-size:17px;line-height:22px}
+/* ONE COLUMN ON A PHONE, TWO WHEN THERE IS ROOM. The whole use of the panel
+   is comparing the two sides, and stacked they are a scroll apart. The
+   breakpoint is the card's, not the viewport's: below 760 the five columns of
+   a row have nowhere to go. */
+.tl__g{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;
+  margin-top:12px}
+@media (min-width:760px){.tl__g{grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:0 24px}}
+/* The three records, and the money on the side each one ran. A grid rather
+   than three sentences: the whole point is reading the middle column down. */
+.tl__s{margin:6px 0 10px}
+.tl__sr{display:grid;grid-template-columns:minmax(0,1fr) auto;
+  gap:2px 10px;padding:6px 0;border-top:1px solid var(--line3)}
+.tl__sl{font-size:13px;color:var(--mut)}
+.tl__sv{font-size:15px;text-align:right;font-variant-numeric:tabular-nums}
+.tl__sm{grid-column:1/-1;font-size:12px;line-height:17px;color:var(--mut)}
+.tl__sm b{color:var(--ink)}
+.tl__sm b.pos{color:var(--good)}
+.tl__sm b.neg{color:var(--bad)}
+.tl__hd,.tl__r{display:grid;
+  grid-template-columns:48px 52px minmax(0,1fr) 52px 58px;
+  gap:6px;align-items:center}
+.tl__hd{padding:4px 0;font-size:10px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--mut2);border-bottom:1px solid var(--line)}
+.tl__r{padding:5px 0;border-top:1px solid var(--line3);font-size:13px}
+.tl__b .tl__r:first-child{border-top:0}
+.tl__w{color:var(--mut);font-variant-numeric:tabular-nums}
+.tl__o{color:var(--mut)}
+/* The line and the total in one cell: they are the two numbers the game was
+   posted at and they are read together. The total is the quieter of the two
+   because the spread is what the column is sorted by in a reader's head. */
+.tl__n{font-variant-numeric:tabular-nums}
+.tl__t{margin-left:5px;color:var(--mut2);font-size:11px}
+.tl__p{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.tl__ms{display:flex;gap:3px;justify-content:flex-end}
+/* NO COLOR THAT MEANS GOOD.
+   Every ATS split this project has measured sits under the hold, so a green
+   "covered" would be the page implying a finding it does not have. The marks
+   separate by weight and fill instead: the side came in, it did not, or it
+   pushed. `pl__m b.pos` keeps its green because a dollar figure is an amount
+   rather than a verdict. */
+.tl__m{width:17px;height:17px;border-radius:5px;font-size:10px;
+  font-weight:700;line-height:17px;text-align:center;
+  border:1px solid var(--line);color:var(--mut2);background:transparent}
+.tl__m--y{background:var(--sunk);border-color:var(--btnline);color:var(--ink)}
+.tl__m--n{color:var(--mut3)}
+.tl__m--p{border-style:dashed;color:var(--mut2)}
+.tl__m--na{border-color:var(--line3);color:var(--line)}
+
 /* ---- favorites ---- */
 .star{flex-shrink:0;width:40px;height:40px;border-radius:10px;border:0;
   background:transparent;color:var(--mut3);font-size:19px;line-height:1}
 .star[aria-pressed=true]{color:var(--star)}
 @media (max-width:380px){.h1{font-size:26px;line-height:32px}
-  .mkts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .mkts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* Five columns do not fit 340px. The score is the one that can go: it is
+     the only cell whose information is also in the marks beside it. */
+  .tl__hd,.tl__r{grid-template-columns:46px 48px minmax(0,1fr) 58px}
+  .tl__p{display:none}}
 """
 
 

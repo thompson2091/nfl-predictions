@@ -135,9 +135,13 @@ def test_the_payload_is_serialized_with_sorted_keys():
 
     from src.export import pwa, v3
 
+    # `for_page(payload)` rather than `payload`: the renderers trim the
+    # build-only keys at the dump — see `export.payload` — so the match is on
+    # the dump of a payload however it is spelled, not on one spelling of it.
     for mod in (pwa, v3):
         src = inspect.getsource(mod)
-        dumps = [ln for ln in src.splitlines() if "json.dumps(payload" in ln]
+        dumps = [ln for ln in src.splitlines()
+                 if "json.dumps(" in ln and "payload" in ln]
         assert dumps, f"{mod.__name__} no longer serializes a payload"
     assert "sort_keys=True" in inspect.getsource(v3), "v3 payload unsorted"
     assert inspect.getsource(pwa).count("sort_keys=True") >= 2, (
