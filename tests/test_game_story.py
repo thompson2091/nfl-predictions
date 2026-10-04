@@ -443,3 +443,88 @@ def test_the_story_says_when_a_line_has_not_moved(payload, card):
                                                           "now": 2.5}}}}
     b = GS._brief(GS.facts(payload, card))
     assert "has not moved from 2.5" in b
+
+
+def test_a_hyphenated_adjective_from_a_sourced_name_passes(payload, card):
+    """"the Payton-coached offense", of a brief that names Sean Payton.
+
+    The first story this check rejected in production. One token, so the whole
+    of it was looked up and none of it matched. The check is about invented
+    proper nouns; "coached" is ordinary English and claims nothing about
+    anybody, so only the capitalized parts have to be sourced.
+    """
+    card["coach_away"] = "Sean Payton"
+    card["away_coach_games_prior"] = 144
+    card["away_coach_ats_rate_prior"] = 0.52
+    card["away_coach_win_rate_prior"] = 0.56
+    f = GS.facts(payload, card)
+    b = GS._brief(f)
+    ok = "It is the Payton-coached offense that sets the tempo."
+    assert GS._claims_are_safe(ok, f, b) is None
+
+
+def test_a_hyphenated_invention_still_fails(payload, card):
+    """The hole the fix above must not open."""
+    f = GS.facts(payload, card)
+    b = GS._brief(f)
+    bad = "Cleveland will be without Wylan-Wallace on Thursday."
+    assert GS._claims_are_safe(bad, f, b) is not None
+
+
+# ── Frozen at kickoff ───────────────────────────────────────────────────
+
+def test_a_played_game_serves_what_it_kicked_off_with(payload, card, tmp_path,
+                                                      monkeypatch):
+    """Not a fresh preview of a result everybody already knows.
+
+    `game_story` runs at export time, so without the freeze a Sunday-night
+    rebuild writes fifteen new previews of fifteen finished games, in the
+    future tense, from an injury report that has moved on.
+    """
+    from src.export import story_freeze as SF
+    monkeypatch.setattr(SF, "ROOT", tmp_path)
+    SF._CACHE.clear(); SF._DIRTY.clear()
+    payload["season"], payload["week"] = 2026, 4
+
+    # Live: the story is written and recorded.
+    first = GS.build(payload, use_ai=False)
+    assert first["PIT_CLE"]["paras"]
+    kept = SF.frozen("PIT_CLE", 2026, 4)
+    assert kept and kept["paras"] == first["PIT_CLE"]["paras"]
+
+    # Played: the recorded one comes back, flagged, and nothing is rewritten.
+    card["final_home"], card["final_away"] = 27, 24
+    again = GS.build(payload, use_ai=False)
+    assert again["PIT_CLE"]["paras"] == first["PIT_CLE"]["paras"]
+    assert again["PIT_CLE"]["frozen"] is True
+
+
+def test_a_played_game_with_nothing_recorded_gets_no_story(payload, card,
+                                                           tmp_path,
+                                                           monkeypatch):
+    """A late preview is worse than none.
+
+    `projection_freeze` keeps a late NUMBER, because a number is still a
+    number. A paragraph written after the whistle is a forecast of something
+    that has happened, so this drops it instead.
+    """
+    from src.export import story_freeze as SF
+    monkeypatch.setattr(SF, "ROOT", tmp_path)
+    SF._CACHE.clear(); SF._DIRTY.clear()
+    payload["season"], payload["week"] = 2026, 4
+    card["final_home"], card["final_away"] = 27, 24
+    assert GS.build(payload, use_ai=False) == {}
+    assert SF.missing([card], 2026, 4) == ["PIT_CLE"]
+
+
+def test_the_brief_is_not_what_gets_frozen(payload, card, tmp_path,
+                                           monkeypatch):
+    """It is the model's input, three times the length, and nothing reads it
+    back. The archive is the only copy of the words, not of the workings."""
+    from src.export import story_freeze as SF
+    monkeypatch.setattr(SF, "ROOT", tmp_path)
+    SF._CACHE.clear(); SF._DIRTY.clear()
+    payload["season"], payload["week"] = 2026, 4
+    GS.build(payload, use_ai=False)
+    kept = SF.frozen("PIT_CLE", 2026, 4)
+    assert set(kept) <= {"paras", "scoreline", "written"}, kept

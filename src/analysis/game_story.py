@@ -901,15 +901,36 @@ def phrase(f: dict, use_cache: bool = True, use_ai: bool = True) -> dict:
 
 def build(payload: dict, limit: int | None = None,
           use_cache: bool = True, use_ai: bool = True) -> dict[str, dict]:
-    """A story for every game on the card, keyed by game id."""
+    """A story for every game on the card, keyed by game id.
+
+    FROZEN AT KICKOFF. A played game serves the story it kicked off with and
+    is never written about again — `story_freeze` says at length why a fresh
+    preview of a finished game is worse than no preview at all, and skipping
+    the call is also what stops a Sunday-night rebuild costing sixteen of
+    them. A played game with nothing recorded gets no story rather than a late
+    one, which is the same choice `projection_freeze` makes in reverse and for
+    the same reason: a late projection is still a number, and a late preview
+    is a forecast of something that has happened.
+    """
+    from src.export import story_freeze as SF
+
     cards = (payload.get("games") or {}).get("cards") or []
+    season, week = payload.get("season"), payload.get("week")
     out: dict[str, dict] = {}
     for card in cards[:limit]:
+        gid = card["game_id"]
+        if SF.played(card):
+            kept = SF.frozen(gid, season, week)
+            if kept:
+                out[gid] = dict(kept, frozen=True)
+            continue
         f = facts(payload, card)
         story = phrase(f, use_cache=use_cache, use_ai=use_ai)
         # THE BRIEF DOES NOT SHIP. It is the model's input and it is three
         # times the length of the story; the page needs the prose and the
         # scoreline, and nothing reads the facts it was built from.
         story.pop("brief", None)
-        out[card["game_id"]] = story
+        SF.record(gid, story, season, week)
+        out[gid] = story
+    SF.flush()
     return out

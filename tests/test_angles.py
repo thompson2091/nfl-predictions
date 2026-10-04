@@ -677,13 +677,25 @@ def test_a_mirror_pair_is_the_same_games_from_the_other_side(sched):
         # because another row is its upside down. It carries its own tag.
         assert not by[x]["whole_game"], (
             f"{x} is a whole-game condition and cannot have a mirror")
-    # THE FALSE POSITIVE THE RECORD TEST ALONE WOULD MAKE. All three are
-    # 208-208 on 416 games and only two of them are a pair.
+    # THE FALSE POSITIVE THE RECORD TEST ALONE WOULD MAKE. Three rows whose
+    # records are indistinguishable, and only two of them a pair.
+    #
+    # THE CLAIM, NOT A SNAPSHOT OF IT. This was pinned to all three being
+    # exactly 208-208 on 416 games, which they were on the day it was written
+    # and stopped being on 2026-10-04, when the ingest that graded a Thursday
+    # divisional game moved two of them by one: 209-208, 208-209, 208-208.
+    # The point survived the change untouched — the records are still within a
+    # game of each other and `pickem` is still not their mirror — so what is
+    # asserted now is that, rather than the coincidence that illustrated it.
+    # A test that fails every time a divisional game is played is a test that
+    # gets its number bumped without being read.
     same = [i for i in ("pickem", "div_home_dog", "div_road_fav") if i in by]
     if len(same) == 3:
         recs = {i: (by[i]["all"]["w"], by[i]["all"]["l"]) for i in same}
-        assert len(set(recs.values())) == 1, (
-            f"the fixture for this assertion has changed: {recs}")
+        spread = max(w for w, _ in recs.values()) - min(w for w, _ in recs.values())
+        assert spread <= 2, (
+            f"these three no longer have near-identical records, so they no "
+            f"longer demonstrate the false positive: {recs}")
         assert mir.get("div_home_dog") == "div_road_fav", mir.get("div_home_dog")
         assert "pickem" not in mir, (
             "pickem was paired on an identical record, which is the mistake "

@@ -109,6 +109,25 @@ def _names_are_sourced(text: str, brief: str) -> bool:
         return bool(bare) and (bare in have
                                or (bare.endswith("s") and bare[:-1] in have))
 
+    def sourced(w: str) -> bool:
+        """One written word, as a proper noun question.
+
+        A HYPHENATED COMPOUND IS CHECKED ON ITS CAPITALIZED PARTS ONLY. The
+        first story this rejected in production said "the Payton-coached
+        offense" of a brief that names Sean Payton — one token, so the whole
+        of it was looked up and none of it matched. This check exists to
+        catch an invented PROPER NOUN; "coached" is ordinary English and
+        carries no claim about anybody, so only the parts that are
+        capitalized have to be sourced. "Wylan-Wallace" still fails on
+        "Wylan", which is the case that matters.
+        """
+        if known(_token(w)):
+            return True
+        if "-" not in w:
+            return False
+        parts = [p for p in w.split("-") if p[:1].isupper()]
+        return bool(parts) and all(known(_token(p)) for p in parts)
+
     for run in _RUN.finditer(text):
         words = run.group(0).split()
         # THE WHOLE RUN COLLAPSED, FIRST. A book the facts write as one word
@@ -129,7 +148,7 @@ def _names_are_sourced(text: str, brief: str) -> bool:
             # fails on the rest, which is how "Tyler Wylan Wallace" is caught.
             if w in starts:
                 continue
-            if not known(_token(w)):
+            if not sourced(w):
                 return False
     return True
 

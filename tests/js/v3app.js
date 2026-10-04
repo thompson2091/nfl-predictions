@@ -1111,6 +1111,37 @@ if (cards.length) {
        h2.indexOf('rather than written up') >= 0);
     ok('and a story with no scoreline prints no number',
        h2.indexOf('Our number') < 0);
+
+    // ── A PLAYED GAME IS NOT PREVIEWED ────────────────────────────────
+    //
+    // `story_freeze` keeps the text a game kicked off with and never writes
+    // another, so after a final what is on screen IS what was said
+    // beforehand. Under Saturday's heading it would read as a forecast of a
+    // result the reader already knows.
+    //
+    // THE FLAG IS SET HERE RATHER THAN IN THE FIXTURE. The branch keys off
+    // the STORY's `frozen`, not the card's final, so a played card is not
+    // what this needs — and giving the shared fixture a third, finished game
+    // would move every count the rest of this file asserts.
+    const frozenGame = cards[0].game_id;
+    DATA.stories[frozenGame].frozen = true;
+    V.game = frozenGame; V.gameTab = 'notes'; render();
+    const h3 = app();
+    ok('a played game says what we said beforehand',
+       h3.indexOf('What we said beforehand') >= 0);
+    ok('and does not call it a preview',
+       h3.indexOf('How this one goes') < 0,
+       'a finished game is still headed as a forecast');
+    ok('the number is labeled as the one we had',
+       h3.indexOf('The number we had') >= 0
+         && h3.indexOf('>Our number<') < 0);
+    ok('and the note says it was not rewritten after the result',
+       h3.indexOf('not rewritten once a game has been played') >= 0);
+    delete DATA.stories[frozenGame].frozen;
+    V.game = frozenGame; V.gameTab = 'notes'; render();
+    ok('and an unplayed game is still a preview',
+       app().indexOf('How this one goes') >= 0);
+
     V.game = g0; V.gameTab = 'notes'; render();
   }
   // BETWEEN THE UNFOLD AND THE NOTES. The order is the argument: a

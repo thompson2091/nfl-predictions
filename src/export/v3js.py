@@ -2420,6 +2420,15 @@ function v3Story(gid) {
   const s = (DATA.stories || {})[gid];
   if (!s || !(s.paras || []).length) return '';
   const sc = s.scoreline;
+  // A PREVIEW OF A PLAYED GAME IS NOT A PREVIEW, AND IT SAYS SO.
+  //
+  // `story_freeze` keeps the text a game kicked off with and never writes
+  // another, so what is on screen after a final IS what was said beforehand.
+  // Printed under the same heading it had on Saturday it would read as a
+  // forecast of a result the reader already knows — the same trap the Odds
+  // tab avoids by letting the result lead and the projection become what was
+  // said. This is that sentence for the words.
+  const done = !!s.frozen;
   // A TEMPLATE STORY IS NOT A WRITTEN ONE AND DOES NOT PRETEND TO BE. With no
   // key, no network, or prose that failed a check, the page is plainer — the
   // standard `game_notes` sets — and the label is how a reader can tell.
@@ -2427,19 +2436,27 @@ function v3Story(gid) {
     : '<p class="help" style="margin-top:0">Built from the figures below '
       + 'rather than written up.</p>';
   return '<div class="card st">'
-    + '<h2 class="h1 st__h">How this one goes</h2>' + tag
+    + '<h2 class="h1 st__h">'
+    + (done ? 'What we said beforehand' : 'How this one goes') + '</h2>' + tag
     + s.paras.map(p => '<p class="st__p">' + esc(p) + '</p>').join('')
     + (sc && has(sc.away_pts) && has(sc.home_pts)
-       ? '<div class="st__n"><span class="eyebrow">Our number</span>'
+       ? '<div class="st__n"><span class="eyebrow">'
+         + (done ? 'The number we had' : 'Our number') + '</span>'
          + '<b class="num">' + esc(sc.away) + ' ' + sc.away_pts.toFixed(1)
          + ' – ' + esc(sc.home) + ' ' + sc.home_pts.toFixed(1) + '</b>'
          + '</div>'
        : '')
-    + '<p class="help">Written from this week’s numbers. Every figure in '
-    + 'it was computed first and checked against the facts it came from — '
-    + 'the wording is all that is written, and a projection is the middle of a '
-    + 'range rather than a call.</p>'
-    + '</div>';
+    + '<p class="help">'
+    + (done
+       ? 'Written before kickoff and kept exactly as it was. It is not '
+         + 'rewritten once a game has been played, so this is what the board '
+         + 'actually said rather than a version improved by knowing the '
+         + 'result.'
+       : 'Written from this week’s numbers. Every figure in it was '
+         + 'computed first and checked against the facts it came from — '
+         + 'the wording is all that is written, and a projection is the '
+         + 'middle of a range rather than a call.')
+    + '</p></div>';
 }
 
 function v3GameNotes(c, gid, cats, shown) {
