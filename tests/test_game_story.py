@@ -528,3 +528,36 @@ def test_the_brief_is_not_what_gets_frozen(payload, card, tmp_path,
     GS.build(payload, use_ai=False)
     kept = SF.frozen("PIT_CLE", 2026, 4)
     assert set(kept) <= {"paras", "scoreline", "written"}, kept
+
+
+def test_a_game_in_progress_is_not_rewritten(payload, card, tmp_path,
+                                             monkeypatch):
+    """A final only lands once the game is over.
+
+    Between kickoff and the whistle `played` is still False, so a Sunday
+    rebuild at 14:00 would write a fresh preview of every early game while it
+    was being played, and overwrite the frozen one with it.
+    """
+    from datetime import datetime
+
+    from src.export import story_freeze as SF
+    monkeypatch.setattr(SF, "ROOT", tmp_path)
+    SF._CACHE.clear(); SF._DIRTY.clear()
+    payload["season"], payload["week"] = 2026, 4
+    card["kick_sort"] = "2026-10-04 13:00"
+
+    before = datetime(2026, 10, 4, 12, 59)
+    after = datetime(2026, 10, 4, 13, 1)
+    assert SF.started(card, now=before) is False
+    assert SF.started(card, now=after) is True
+    # And with no final on it either way: it is kickoff that decides.
+    assert SF.played(card) is False
+
+
+def test_a_card_with_no_kickoff_time_falls_back_to_the_result(card):
+    """Never freeze a game that has not happened on a missing timestamp."""
+    from src.export import story_freeze as SF
+    card.pop("kick_sort", None)
+    assert SF.started(card) is False
+    card["final_home"], card["final_away"] = 27, 24
+    assert SF.started(card) is True

@@ -919,7 +919,10 @@ def build(payload: dict, limit: int | None = None,
     out: dict[str, dict] = {}
     for card in cards[:limit]:
         gid = card["game_id"]
-        if SF.played(card):
+        # STARTED, NOT FINISHED. A final only lands once the game is over,
+        # so between kickoff and the whistle `played` is still False and a
+        # rebuild would write a fresh preview of a game in progress.
+        if SF.started(card):
             kept = SF.frozen(gid, season, week)
             if kept:
                 out[gid] = dict(kept, frozen=True)
