@@ -182,3 +182,78 @@ def test_the_training_window_is_every_prior_season():
     assert ">= season - 2" not in inspect.getsource(G), (
         "a two-season window is back; it was measured worse on both margin "
         "and total")
+
+
+def test_kickoff_is_the_gate_not_the_final_score():
+    """THE BUG THAT COST WEEK 4 OF 2026.
+
+    A result reaches `schedules.parquet` at the next morning's rollover, so
+    on a Sunday evening every one of that afternoon's games still looks
+    unplayed. Gated on a final, the freeze therefore rewrote all fifteen
+    entries hours after the finals were known — the precise failure it was
+    written to prevent, on the one night of the week it mattered. Gated on
+    kickoff it does not need anything to have been ingested.
+    """
+    from datetime import datetime
+
+    kicked = card(kick_sort="2026-10-04 13:00")
+    cards = {"ATL_GB": kicked}
+    before = datetime(2026, 10, 4, 12, 0)
+    after = datetime(2026, 10, 4, 20, 0)
+
+    # Before kickoff it is still a forecast and still moves.
+    assert PF.settle(cards, 2026, 4, now=before) == (0, 1)
+
+    # After kickoff, with NO final attached — which is what a Sunday-evening
+    # rebuild sees — the frozen number is served and the fresh one discarded.
+    cards = {"ATL_GB": card(kick_sort="2026-10-04 13:00", model_spread=99.9)}
+    served, recorded = PF.settle(cards, 2026, 4, now=after)
+    assert (served, recorded) == (1, 0)
+    assert cards["ATL_GB"]["model_spread"] == -3.7
+    assert PF.load(2026)["4"]["ATL_GB"]["model_spread"] == -3.7
+
+
+def test_a_served_card_cannot_write_back_into_the_archive():
+    """`blend` is a dict, so `c[f] = kept[f]` hands the card a REFERENCE to
+    the stored copy. A later in-place edit anywhere downstream then mutates
+    the archive in memory, the season is marked dirty, and the next flush
+    writes the mutation to disk over the number that kicked off."""
+    PF.settle({"ATL_GB": card()}, 2026, 4)
+    PF.flush()
+
+    cards = {"ATL_GB": card(final_home=20, final_away=17, model_spread=99.9)}
+    assert PF.settle(cards, 2026, 4) == (1, 0)
+    cards["ATL_GB"]["blend"]["spread"] = 404.0
+
+    assert PF.load(2026)["4"]["ATL_GB"]["blend"]["spread"] == -5.1
+    assert not PF._DIRTY, "mutating a served card marked the season dirty"
+
+
+#: Week 4 of 2026, as every game stood when it kicked off. Pinned as a
+#: literal rather than as a diff against the commit that broke them, because
+#: a guard that depends on a hash in the history stops working at the first
+#: rebase and this one has to outlive the season.
+WEEK4_2026 = {
+    "ARI_NYG": (-3.5, 44.0), "DAL_HOU": (-1.7, 49.4), "DEN_SF": (-4.0, 45.7),
+    "DET_CAR": (-3.0, 48.2), "GB_TB": (-3.3, 50.7), "IND_WAS": (-0.2, 52.7),
+    "JAX_CIN": (-7.9, 50.5), "KC_LV": (1.5, 42.3), "LAC_SEA": (-5.4, 45.3),
+    "LA_PHI": (0.2, 44.8), "MIA_MIN": (-13.5, 39.4), "NE_BUF": (-5.7, 50.6),
+    "NYJ_CHI": (-0.1, 43.8), "PIT_CLE": (0.4, 43.4), "TEN_BAL": (-5.2, 49.8),
+}
+
+
+def test_the_real_archive_still_holds_what_week_four_kicked_off_with():
+    """These fifteen were overwritten once, by a commit of mine, with numbers
+    computed days after the finals. They were recovered from git and they are
+    the only copy; nothing regenerates them. ATL at NO is left out on
+    purpose — it was still unplayed when the rest were restored, so its entry
+    was legitimately still moving.
+    """
+    from pathlib import Path
+
+    real = Path(__file__).resolve().parents[1] / "archive" / "projections"
+    got = json.loads((real / "2026.json").read_text())["4"]
+    for gid, (spread, total) in sorted(WEEK4_2026.items()):
+        assert gid in got, f"{gid} lost its frozen projection"
+        assert (got[gid]["model_spread"], got[gid]["model_total"]) \
+            == (spread, total), f"{gid} is not the number it kicked off with"

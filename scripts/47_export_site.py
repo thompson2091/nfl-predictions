@@ -1032,7 +1032,7 @@ def _freeze_projections(cards: dict, season: int | None,
     # exact thing this exists to stop.
     late = PF.missing(cards, season, week)
     if late:
-        print(f"  week {week}: {len(late)} played games have no frozen "
+        print(f"  week {week}: {len(late)} started games have no frozen "
               f"projection and are showing a recomputed one "
               f"({', '.join(late[:4])}{'...' if len(late) > 4 else ''})",
               file=sys.stderr)
@@ -1806,6 +1806,12 @@ def _attach_finals(cards: dict, season: int | None, week: int | None) -> None:
     matched any previous meeting of those two, so the upcoming week 3 card for
     ARI @ SF carried a 15-16 "final" from an earlier season — a finished score
     on a game that has not kicked off, which is worse than showing none.
+
+    IT FAILS OUT LOUD. This used to swallow every exception and return, which
+    meant an unreadable schedule produced a whole week of cards with no final
+    on them — indistinguishable from a week that had not been played. A board
+    that thinks nothing has happened grades nothing, shows every pick as live,
+    and reports no error while doing it.
     """
     import polars as pl
 
@@ -1813,14 +1819,11 @@ def _attach_finals(cards: dict, season: int | None, week: int | None) -> None:
 
     if not (season and week):
         return
-    try:
-        s = (pl.read_parquet(get_path("raw") / "schedules.parquet")
-             .filter((pl.col("game_type") == "REG")
-                     & (pl.col("season") == season) & (pl.col("week") == week))
-             .drop_nulls(["home_score", "away_score"])
-             .select(["home_team", "away_team", "home_score", "away_score"]))
-    except Exception:                                            # noqa: BLE001
-        return
+    s = (pl.read_parquet(get_path("raw") / "schedules.parquet")
+         .filter((pl.col("game_type") == "REG")
+                 & (pl.col("season") == season) & (pl.col("week") == week))
+         .drop_nulls(["home_score", "away_score"])
+         .select(["home_team", "away_team", "home_score", "away_score"]))
     by = {(r["away_team"], r["home_team"]): r for r in s.iter_rows(named=True)}
     for c in cards.values():
         r = by.get((c["away"], c["home"]))

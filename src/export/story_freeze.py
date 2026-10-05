@@ -26,6 +26,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from src.export import projection_freeze as _PF
+
 ROOT = Path(__file__).resolve().parents[2] / "archive" / "stories"
 
 _CACHE: dict[int, dict] = {}
@@ -63,43 +65,15 @@ def flush() -> list[Path]:
     return out
 
 
-def played(card: dict) -> bool:
-    """The same test `projection_freeze` uses, so the two cannot disagree
-    about which games are over."""
-    return (card.get("final_home") is not None
-            and card.get("final_away") is not None)
-
-
-def started(card: dict, now=None) -> bool:
-    """Whether this game is past the point where a preview is still a preview.
-
-    **A FINAL IS TOO LATE.** `played` asks whether a result has landed, and
-    the schedule only carries one once the game is over — so between kickoff
-    and the whistle a rebuild would write a fresh "preview" of a game being
-    played, and overwrite the frozen one with it. On a Sunday with a rebuild
-    at 14:00 that is every early game.
-
-    So the line is KICKOFF, which is what `projection_freeze` says in words
-    and what this says in code. `kick_sort` is the card's own sortable
-    timestamp and it is in the stadium's Eastern clock, which is also what
-    this machine and every launchd slot in the project run on; a build from
-    another zone would freeze early or late by the offset, and that is worth
-    one comparison rather than a timezone database.
-    """
-    if played(card):
-        return True
-    when = str(card.get("kick_sort") or "").strip()
-    if len(when) < 16:
-        # No kickoff to compare against: fall back to the result, which is
-        # the old behavior and never freezes a game that has not happened.
-        return False
-    from datetime import datetime
-
-    try:
-        kick = datetime.strptime(when[:16], "%Y-%m-%d %H:%M")
-    except ValueError:
-        return False
-    return (now or datetime.now()) >= kick
+#: Both tests come from `projection_freeze`, so the two freezes cannot
+#: disagree about which games are over or which have begun. `started` is the
+#: one that matters: **A FINAL IS TOO LATE.** `played` asks whether a result
+#: has landed, and a result reaches the schedule at the next morning's
+#: rollover — so between kickoff and that rollover a rebuild would write a
+#: fresh "preview" of a game already decided, and overwrite the frozen one
+#: with it. On a Sunday evening that is every afternoon game.
+played = _PF.played
+started = _PF.started
 
 
 def frozen(gid: str, season: int | None, week: int | None) -> dict | None:

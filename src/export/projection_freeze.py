@@ -15,12 +15,21 @@ It is the feature matrix being rebuilt from current raw data, which moves the
 inputs for rows that are months old. Either way a board that grades a call
 against a number that changes after the fact is not grading a call.
 
-**FROZEN AT KICKOFF, NOT DAILY.**
+**FROZEN AT KICKOFF, NOT AT THE WHISTLE.**
 
 While a game is unplayed its projection SHOULD move: the line moves, the
 injury report lands, another week of form arrives. So the entry is rewritten
-on every build until the game has a final, and never again after. What
-survives is one number per game — the last one that was still a forecast.
+on every build until the game kicks off, and never again after. What survives
+is one number per game — the last one that was still a forecast.
+
+The gate used to be `played`, which asks whether a final has landed, and that
+is a gate that cannot hold on the night it matters most. Scores reach
+`schedules.parquet` at the next morning's rollover, so a Sunday-evening build
+sees all fifteen of that afternoon's games as unplayed and rewrites all
+fifteen frozen entries with numbers computed after the results were known.
+That is exactly what happened to week 4 of 2026 — fifteen entries overwritten
+hours after the finals, recovered from git. So the gate is KICKOFF, which is
+knowable from the schedule alone and needs nothing to have been ingested.
 
 **AND IT LIVES IN GIT**, next to the model registry and the fitted blend
 weight, for the reason given in `.gitignore`: what is not regenerable stays in
@@ -29,7 +38,9 @@ because nothing recorded one at the time, and nothing can now.
 """
 from __future__ import annotations
 
+import copy
 import json
+from datetime import datetime
 from pathlib import Path
 
 #: What the board shows as OUR number, and everything derived from it. The
@@ -83,10 +94,39 @@ def played(card: dict) -> bool:
     return card.get("final_home") is not None and card.get("final_away") is not None
 
 
-def settle(cards: dict, season: int | None, week: int | None) -> tuple[int, int]:
-    """Serve the frozen projection on a played game; record it on a live one.
+def started(card: dict, now: datetime | None = None) -> bool:
+    """Whether this game is past the point where its projection is a forecast.
 
-    Returns `(served, recorded)`. A played game with nothing recorded keeps
+    THE CANONICAL KICKOFF TEST for the whole project; `story_freeze.started`
+    is this function, and both freezes answer "has it begun?" the same way or
+    they will disagree about one game and nobody will notice which.
+
+    `kick_sort` is the card's own sortable timestamp and it is in the
+    stadium's Eastern clock, which is also what this machine and every
+    launchd slot run on; a build from another zone would freeze early or late
+    by the offset, and that is worth one comparison rather than a timezone
+    database.
+
+    A game with no kickoff falls back to `played`, which is the old behavior
+    and never freezes a game that has not happened.
+    """
+    if played(card):
+        return True
+    when = str(card.get("kick_sort") or "").strip()
+    if len(when) < 16:
+        return False
+    try:
+        kick = datetime.strptime(when[:16], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return False
+    return (now or datetime.now()) >= kick
+
+
+def settle(cards: dict, season: int | None, week: int | None,
+           now: datetime | None = None) -> tuple[int, int]:
+    """Serve the frozen projection on a started game; record it on a live one.
+
+    Returns `(served, recorded)`. A started game with nothing recorded keeps
     whatever was computed — the board is more useful with a late number than
     with none — and the count of those is the caller's to report.
     """
@@ -96,15 +136,23 @@ def settle(cards: dict, season: int | None, week: int | None) -> tuple[int, int]
     wk = store.setdefault(str(int(week)), {})
     served = recorded = 0
     for gid, c in cards.items():
-        if played(c):
+        if started(c, now):
             kept = wk.get(gid)
             if kept:
                 for f in FIELDS:
                     if f in kept:
-                        c[f] = kept[f]
+                        # DEEP COPY, because `blend` is a dict: assigned by
+                        # reference, a later in-place edit of the card writes
+                        # through into `_CACHE`, which then differs from the
+                        # snapshot on disk and marks the season dirty. One
+                        # unplayed game would flush the lot, rewriting every
+                        # frozen entry in the season with a mutated copy of
+                        # itself. That is the bug this module exists to stop,
+                        # reintroduced one level further in.
+                        c[f] = copy.deepcopy(kept[f])
                 served += 1
             continue
-        snap = {f: c[f] for f in FIELDS if c.get(f) is not None}
+        snap = copy.deepcopy({f: c[f] for f in FIELDS if c.get(f) is not None})
         # Nothing to record is not the same as recording nothing: a card with
         # no model block would otherwise wipe the entry it already has.
         if snap and wk.get(gid) != snap:
@@ -114,11 +162,12 @@ def settle(cards: dict, season: int | None, week: int | None) -> tuple[int, int]
     return (served, recorded)
 
 
-def missing(cards: dict, season: int | None, week: int | None) -> list[str]:
-    """Played games with no frozen projection, which are showing a late one."""
+def missing(cards: dict, season: int | None, week: int | None,
+            now: datetime | None = None) -> list[str]:
+    """Started games with no frozen projection, which are showing a late one."""
     if not (season and week):
         return []
     wk = load(int(season)).get(str(int(week)), {})
     return sorted(gid for gid, c in cards.items()
-                  if played(c) and gid not in wk
+                  if started(c, now) and gid not in wk
                   and c.get("model_win_home") is not None)
