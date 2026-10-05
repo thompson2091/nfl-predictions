@@ -121,7 +121,11 @@ def record(rows: list[dict], season: int, week: int, market: str,
                 {f: r.get(f) for f in FIELDS if r.get(f) is not None})
     live = started_games(season, week, now)
     store = load(int(season))
-    wk = store.setdefault(str(int(week)), {}).setdefault(market, {})
+    # NOT `setdefault` UNTIL THERE IS SOMETHING TO PUT IN IT. A week where
+    # every game has already kicked off would otherwise leave an empty
+    # `{"3": {"anytime_td": {}}}` behind, which reads in a diff as a week
+    # somebody froze and got nothing from.
+    wk = (store.get(str(int(week))) or {}).get(market) or {}
     wrote = 0
     for gid, got in by_game.items():
         if gid in live:
@@ -129,6 +133,9 @@ def record(rows: list[dict], season: int, week: int, market: str,
         got = sorted(got, key=lambda r: (-(r.get("probability") or 0),
                                          r.get("player_name") or ""))
         if wk.get(gid) != got:
+            if not wrote:
+                wk = store.setdefault(str(int(week)), {}).setdefault(
+                    market, wk)
             wk[gid] = got
             _DIRTY.add(int(season))
             wrote += 1

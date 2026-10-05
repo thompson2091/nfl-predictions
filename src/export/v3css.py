@@ -814,6 +814,28 @@ button{cursor:pointer}
 .note h3{margin:-6px 0 0;font-size:17px;line-height:22px;font-weight:600}
 .note p{margin:0;font-size:15px;line-height:20px;color:var(--mut)}
 .figs{display:flex;gap:8px;flex-wrap:wrap}
+/* THE SCORECARD. Five columns on a phone is three too many, so the week
+   table is a grid that keeps the label full width and lets the figures
+   share the rest — and `minmax(0,1fr)` rather than `1fr`, or a long number
+   pushes the row wider than the screen instead of ellipsing inside it. */
+.sc{display:grid;grid-template-columns:auto repeat(4,minmax(0,1fr));
+  gap:2px 8px;align-items:baseline;font-size:14px}
+.sc__h{font-size:11px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--mut);font-weight:600}
+.sc b{font-weight:600}
+.sc .r{text-align:right;font-variant-numeric:tabular-nums}
+.sc .up{color:var(--good)}
+.sc .dn{color:var(--bad)}
+.sc__s{font-size:11px;color:var(--mut)}
+/* Said against happened, as two bars on one baseline: the gap between them
+   IS the calibration error, and a number pair makes the reader subtract. */
+.cal{display:grid;grid-template-columns:auto 1fr auto;gap:4px 8px;
+  align-items:center;font-size:13px}
+.cal__t{height:8px;border-radius:4px;background:var(--inset);position:relative}
+.cal__s{position:absolute;left:0;top:0;height:8px;border-radius:4px;
+  background:var(--oursfaint)}
+.cal__a{position:absolute;top:-2px;width:2px;height:12px;
+  background:var(--ink);border-radius:1px}
 .fig{padding:8px 12px;border-radius:12px;background:var(--inset);
   display:flex;flex-direction:column}
 .fig b{font-size:20px;line-height:24px;font-weight:700}
@@ -1092,7 +1114,7 @@ button{cursor:pointer}
    targets into 56px of a bar that looked 84px tall and left a slab of empty
    white under the labels. v2 adds the inset to the height and pads by exactly
    the inset, so the targets stay full size and nothing is wasted. */
-.tabbar{flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+.tabbar{flex:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
   height:calc(56px + env(safe-area-inset-bottom,0px));
   padding-bottom:env(safe-area-inset-bottom,0px);
   padding-left:env(safe-area-inset-left,0px);

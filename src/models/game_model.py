@@ -400,3 +400,63 @@ def _save_fit(season: int, feats: list[str], model) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(pickle.dumps({"features": list(feats), "model": model,
                                    "season": season}))
+
+
+#: Where the measured comparison against the closing line is kept.
+VS_MARKET_PATH_NAME = "vs_market.json"
+
+
+def vs_market_path():
+    from src.utils.paths import get_path
+
+    return get_path("models") / "game_model" / VS_MARKET_PATH_NAME
+
+
+def vs_market(refresh: bool = False) -> dict | None:
+    """Mean absolute error against the closing line, measured not asserted.
+
+    **THIS NUMBER WAS A LITERAL ON THE PAGE.** `47_export_site.py` shipped
+    `{"margin": [10.73, 9.85], "total": [10.81, 10.37]}` as if it had been
+    measured on the day you read it. It had been measured once, and the
+    matrix has been rebuilt many times since: re-run on 2026-10-05 the same
+    walk-forward gives margin 10.667 against 9.813 and total 10.909 against
+    10.364. Not far off, which is the problem — a stale number that is
+    obviously wrong gets fixed, and one that is nearly right does not.
+
+    Cached, because the walk-forward is about half a minute and the export
+    runs several times a day. The cache carries `measured_on`, `n_games` and
+    `seasons` so the page can say how old it is instead of implying it is
+    current.
+    """
+    import json
+    from datetime import date
+
+    p = vs_market_path()
+    if not refresh and p.exists():
+        try:
+            return json.loads(p.read_text())
+        except Exception:                                        # noqa: BLE001
+            pass
+    try:
+        w = walk_forward()
+    except Exception:                                            # noqa: BLE001
+        return None
+    if w.is_empty():
+        return None
+    out: dict = {}
+    n = 0
+    for k in ("margin", "total"):
+        d = w.drop_nulls([f"{k}_model", f"{k}_market", f"{k}_actual"])
+        if d.is_empty():
+            return None
+        n = d.height
+        out[k] = [
+            round(float((d[f"{k}_model"] - d[f"{k}_actual"]).abs().mean()), 4),
+            round(float((d[f"{k}_market"] - d[f"{k}_actual"]).abs().mean()), 4),
+        ]
+    out["n_games"] = n
+    out["seasons"] = sorted({int(s) for s in w["season"].to_list()})
+    out["measured_on"] = date.today().isoformat()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(out, indent=1, sort_keys=True) + "\n")
+    return out

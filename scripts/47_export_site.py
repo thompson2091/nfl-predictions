@@ -570,6 +570,41 @@ def _history_block(payload: dict) -> None:
         print(f"  history skipped: {e}", file=sys.stderr)
 
 
+def _vs_market() -> dict | None:
+    """The game model's error against the closing line, from its cache.
+
+    Cached rather than recomputed: the walk-forward is about half a minute
+    and this script runs several times a day. `game_model.vs_market` writes
+    the cache the first time and stamps it with the date, so a reader can
+    see how old the comparison is instead of assuming it is current.
+    """
+    try:
+        from src.models.game_model import vs_market
+
+        return vs_market()
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  vs-market comparison unavailable ({e})", file=sys.stderr)
+        return None
+
+
+def _scorecard_block(payload: dict, season: int | None) -> None:
+    """How the model has done this season, against the price it was offered.
+
+    COMPUTED HERE, RENDERED THERE. `test_v3_export` forbids v3 from deriving
+    a number v1 owns, and a Brier score re-implemented in JavaScript is a
+    second definition of the project's headline metric that nothing would
+    reconcile. The page gets finished figures and arranges them.
+    """
+    if not season:
+        return
+    try:
+        from src.evaluation.season_scorecard import build
+
+        payload["scorecard"] = build(int(season))
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  scorecard skipped: {e}", file=sys.stderr)
+
+
 def _angles_block(payload: dict, season: int | None, week: int | None) -> None:
     """Every ATS angle's record, and which of them each team carries.
 
@@ -1580,7 +1615,15 @@ def model_cards() -> list[dict]:
             # Stated on the card, because a model worse than the market is the
             # honest state for one that cannot see it — and someone reading a
             # projected score deserves to know that before they use it.
-            "vs_market": {"margin": [10.73, 9.85], "total": [10.81, 10.37]},
+            #
+            # MEASURED, NOT ASSERTED. This was the literal
+            # `{"margin": [10.73, 9.85], "total": [10.81, 10.37]}`, shipped
+            # as if it had been computed on the day you read it. It had been
+            # computed once; the feature matrix has been rebuilt many times
+            # since, and the same walk-forward now gives 10.667 against
+            # 9.813. Nearly right, which is worse than plainly wrong — a
+            # number that is obviously stale gets fixed.
+            "vs_market": _vs_market(),
             "caveat": ("Worse than the closing line on both, by design — it "
                        "never sees it. Shown as a second opinion, not a pick."),
         })
@@ -2056,7 +2099,10 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     # And after that, because a row showing only an opening line is a line
     # like any other and belongs in the count.
     _angles_block(payload, s, w)
+    # AFTER the history block, because both read `week_board` and the second
+    # one wants the freeze already settled for the week.
     _history_block(payload)
+    _scorecard_block(payload, s)
     _team_form_block(payload, s, w)
     _team_lines_block(payload, s, w)
     _mark_consensus_lines(payload)

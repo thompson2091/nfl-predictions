@@ -73,12 +73,19 @@ def main() -> int:
 
     print(json.dumps(r, indent=1) if args.json else report(season))
 
-    # Written beside the backtest summary so both live in one place, and so the
-    # dashboard has something to read if the measurement ever gets expensive
-    # enough to be worth caching.
-    path = get_path("output", "receptions") / f"forward_{season}.json"
-    path.write_text(json.dumps(r, indent=1))
-    print(f"\nWrote {path}")
+    # NOTHING IS WRITTEN. This used to drop `forward_<season>.json` beside
+    # the backtest summary, "so the dashboard has something to read if the
+    # measurement ever gets expensive enough to be worth caching". The
+    # dashboard never read it: the site export calls `record()` itself and
+    # gets a fresher answer — 1,016 settled lines against the file's 789 on
+    # 2026-10-05, because the file was written by whichever rollover last
+    # ran and the export is current.
+    #
+    # So it was write-only, and a file nothing reads is a file that can go
+    # wrong with nobody to notice. Giving it a reader would be worse: the
+    # same number defined in two places, which this repository has already
+    # paid for more than once. `--json` prints the record for anyone who
+    # wants to pipe it somewhere.
     # 2 fires on the RAW model beating the market, not the served blend —
     # the blend is meant to win, so a flag on that would fire every week.
     return 2 if r["raw_beats_market"] else 0

@@ -23,7 +23,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
    'v3PublicMoney', 'v3MoneyBlock', 'v3SharpSides', 'V3RATIO_SMALL',
-   'v3GameSet',
+   'v3GameSet', 'v3RecordPage', 'v3Edge',
    'v3Ask', 'V3ASK_DEFAULT', 'v3AngleBase', 'v3Surprise', 'V3SURPRISE', 'v3Clears',
    'v3AngleSince', 'v3AngleYears',
    'v3GTab', 'v3MktLabel',
@@ -56,6 +56,11 @@ V.tab = 'picks'; render();
 ok('and the slip does not', app().indexOf('data-v3week') < 0);
 V.tab = 'angles'; render();
 ok('nor the angles board', app().indexOf('data-v3week') < 0);
+// Nor the record: it is the whole season, so a week picker on it is a
+// control that changes nothing, which is the exact fault the rule above
+// exists for.
+V.tab = 'record'; render();
+ok('nor the season record', app().indexOf('data-v3week') < 0);
 V.tab = 'props'; render();
 
 // ── Every tab ───────────────────────────────────────────────────────────
@@ -381,7 +386,7 @@ const seen = new Set();
 // were outside the only test that catches a dead one -- and two of them were
 // added after it.
 [['props', null], ['games', null], ['slip', null], ['ladder', null],
- ['angles', null]]
+ ['angles', null], ['record', null]]
   .forEach(([t]) => {
     V.tab = t;
     try { render(); } catch (e) { /* reported above */ }
@@ -2429,6 +2434,68 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // And the control is wired, or it would do nothing at all.
   ok('the handler is registered', x.V3CLICKS.indexOf('v3askdefault') >= 0,
      x.V3CLICKS.join(','));
+}
+
+
+// ── The season record ──────────────────────────────────────────────────
+//
+// Every figure here is ours against the de-vigged book on the same rows.
+// The screen has to say that out loud, because a Brier score with nothing
+// beside it reads as a grade rather than a comparison.
+{
+  const { v3RecordPage, v3Edge } = x;
+  V.tab = 'record'; V.game = null; render();
+  const h = v3RecordPage();
+
+  ok('the record screen names both markets',
+     h.indexOf('Anytime touchdown') >= 0 && h.indexOf('First touchdown') >= 0,
+     h.slice(0, 200));
+  ok('and is reachable from the nav',
+     app().indexOf('data-v3tab="record"') >= 0);
+  ok('and the nav label is short enough for a fifth column',
+     (V3TABS.filter(t => t[0] === 'record')[0] || [])[1].length <= 7,
+     JSON.stringify(V3TABS.map(t => t[1])));
+
+  // THE EDGE IS SIGNED AND IT IS THEIRS MINUS OURS. Brier is a loss, so a
+  // positive number is the model ahead; getting this backwards would print
+  // a confident green number on a market the book is beating.
+  ok('an edge in our favor is positive and marked good',
+     v3Edge(0.98).indexOf('up') >= 0 && v3Edge(0.98).indexOf('+0.98') >= 0,
+     v3Edge(0.98));
+  ok('and an edge against us is negative and marked bad',
+     v3Edge(-0.21).indexOf('dn') >= 0 && v3Edge(-0.21).indexOf('−0.21') >= 0,
+     v3Edge(-0.21));
+  ok('a missing edge is a dash, not a zero',
+     v3Edge(null).indexOf('—') >= 0, v3Edge(null));
+
+  // THE VERDICT MUST NOT OVERSELL. The fixture's anytime market is ahead by
+  // 0.37 hundredths of a point, which at 751 rows is level.
+  ok('a sub-threshold edge is reported as level, not as ahead',
+     h.indexOf('Level with the market') >= 0,
+     h.slice(h.indexOf('class="lede"'), h.indexOf('class="lede"') + 260));
+
+  // AND THE PAGE SAYS WHERE ITS WEEKS CAME FROM. A week rebuilt after the
+  // games is the model as it stands today scoring a result it has seen.
+  ok('a market with rebuilt weeks says so',
+     h.indexOf('rebuilt after the games') >= 0);
+  ok('and one frozen before kickoff says that instead',
+     h.indexOf('board that was live before') >= 0);
+
+  ok('a thin calibration band is marked thin rather than read',
+     h.indexOf('thin') >= 0);
+  ok('the level is shown per game, not only per player',
+     h.indexOf('expected a game') >= 0 && h.indexOf('actually scored') >= 0);
+  ok('and the page says what it leaves out',
+     h.indexOf('What this page leaves out') >= 0
+     && h.indexOf('return on investment') >= 0);
+
+  // NOTHING GRADED IS A SENTENCE, NOT A BLANK SCREEN.
+  const wasS = DATA.scorecard;
+  DATA.scorecard = {};
+  ok('an empty scorecard says so rather than rendering nothing',
+     v3RecordPage().indexOf('Nothing graded yet') >= 0);
+  DATA.scorecard = wasS;
+  V.tab = 'props'; render();
 }
 
 

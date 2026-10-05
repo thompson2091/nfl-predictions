@@ -46,6 +46,9 @@ const V3TABS = [
   // is the opposite: twenty splits, every one of them graded, and the
   // headline is that none of them clears.
   ['angles', 'Angles', 'M4 19h16M4 19l5-7 4 3 6-9'],
+  // "Record", not "Scorecard": a fifth column on a 375px phone has about
+  // six characters before the label wraps under its own icon.
+  ['record', 'Record', 'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5'],
 ];
 
 // key, button label, what the bet pays on, the question the screen answers.
@@ -304,7 +307,8 @@ function v3Weeks() {
   // Slip and Ladder do not vary by week, so they offer none — and because
   // this one function decides, the header hides the control and `v3Do` drops
   // a stale week on the way in, from the same answer.
-  if (V.tab === 'picks' || V.tab === 'angles') return [];
+  if (V.tab === 'picks' || V.tab === 'angles' || V.tab === 'record')
+    return [];
   if (V.tab === 'games') {
     return Object.keys(((DATA.games || {}).past) || {})
       .map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
@@ -425,6 +429,7 @@ function v3Screen() {
     case 'props': return v3Week();
     case 'picks': return v3Picks();
     case 'angles': return v3AnglesPage();
+    case 'record': return v3RecordPage();
     default: return V.game ? v3Game(V.game) : v3Games();
   }
 }
@@ -5165,6 +5170,163 @@ function v3MirrorLine(r, by, runOf, team) {
     + '<b style="color:var(--ink)">' + v3AngleRec(b) + '</b> there. Every game '
     + 'that covers for one loses for the other, so the two add to 100% and '
     + 'backing both is backing neither.</p>';
+}
+
+// ── screen: record ──────────────────────────────────────────────────────
+//
+// HOW THE MODEL HAS DONE, AGAINST THE PRICE IT WAS OFFERED. Every figure on
+// this screen is ours minus the de-vigged book's on the same rows, because
+// "we said 57% and he scored" is not a result — a coin that says 57% about
+// favorites is right most of the time too.
+//
+// Computed in Python (`src.evaluation.season_scorecard`) and arranged here.
+// A Brier score re-implemented in JavaScript is a second definition of the
+// project's headline metric that nothing would reconcile.
+
+const V3SCMKT = [['anytime_td', 'Anytime touchdown'],
+                 ['first_td', 'First touchdown']];
+
+//: Brier and log loss are LOSSES, so the edge is theirs minus ours and a
+//: positive number is the model ahead. Said here once, in the one place that
+//: colors it, rather than at each call site.
+function v3Edge(v, dp) {
+  if (!has(v)) return '<span class="r">—</span>';
+  const s = (v > 0 ? '+' : '−') + Math.abs(v).toFixed(dp == null ? 2 : dp);
+  return '<span class="r ' + (v > 0 ? 'up' : v < 0 ? 'dn' : '')
+    + '">' + s + '</span>';
+}
+
+function v3ScWeeks(m) {
+  const rows = (m.weeks || []).map(w =>
+    '<span>Week ' + w.week + '</span>'
+    + '<span class="r">' + w.n + '</span>'
+    + '<span class="r">' + (has(w.brier) ? w.brier.toFixed(4) : '—') + '</span>'
+    + '<span class="r">' + (has(w.book_brier) ? w.book_brier.toFixed(4) : '—')
+    + '</span>'
+    + v3Edge(has(w.brier_edge) ? w.brier_edge * 100 : null)).join('');
+  if (!rows) return '';
+  const p = m.pooled || {};
+  return '<div class="sc">'
+    + '<span class="sc__h"></span><span class="sc__h r">Rows</span>'
+    + '<span class="sc__h r">Ours</span><span class="sc__h r">Book</span>'
+    + '<span class="sc__h r">Edge</span>'
+    + rows
+    + '<b>All ' + (m.weeks || []).length + ' weeks</b>'
+    + '<b class="r">' + (p.n || 0) + '</b>'
+    + '<b class="r">' + (has(p.brier) ? p.brier.toFixed(4) : '—') + '</b>'
+    + '<b class="r">' + (has(p.book_brier) ? p.book_brier.toFixed(4) : '—')
+    + '</b>'
+    + v3Edge(has(p.brier_edge) ? p.brier_edge * 100 : null)
+    + '</div>'
+    + '<p class="help" style="margin-top:8px">Brier score, lower is better. '
+    + '<b style="color:var(--ink)">Edge</b> is the book’s score minus '
+    + 'ours on the same rows, in hundredths of a point — above zero is '
+    + 'the model ahead.</p>';
+}
+
+function v3ScCal(m) {
+  const bs = (m.buckets || []).filter(b => b.n);
+  if (!bs.length) return '';
+  const top = Math.max.apply(null, bs.map(
+    b => Math.max(b.said || 0, b.actual || 0))) || 1;
+  const rows = bs.map(b => {
+    const s = Math.round(100 * (b.said || 0) / top);
+    const a = Math.round(100 * (b.actual || 0) / top);
+    return '<span>' + b.lo + '–' + b.hi + '%</span>'
+      + '<span class="cal__t"><span class="cal__s" style="width:' + s
+      + '%"></span><span class="cal__a" style="left:calc(' + a
+      + '% - 1px)"></span></span>'
+      + '<span class="sc__s">' + v3Pct(b.said, 1) + ' → '
+      + v3Pct(b.actual, 1) + (b.thin ? ' · thin' : '') + '</span>';
+  }).join('');
+  return '<div class="eyebrow" style="margin-top:14px">Said against '
+    + 'happened</div><div class="cal" style="margin-top:6px">' + rows
+    + '</div>'
+    + '<p class="help" style="margin-top:8px">The bar is what the board said, '
+    + 'the line is what happened. Bands under ' + (DATA.scorecard || {}).bucket_min
+    + ' rows are marked thin and are not evidence of anything.</p>';
+}
+
+function v3ScLevel(m) {
+  const g = m.per_game || {};
+  const p = m.pooled || {};
+  if (!has(g.said) || !has(g.actual)) return '';
+  const d = g.said - g.actual;
+  return '<div class="figs" style="margin-top:14px">'
+    + '<span class="fig"><b>' + g.said.toFixed(2) + '</b>'
+    + '<span>expected a game</span></span>'
+    + '<span class="fig"><b>' + g.actual.toFixed(2) + '</b>'
+    + '<span>actually scored</span></span>'
+    + '<span class="fig"><b>' + (d > 0 ? '+' : '−')
+    + Math.abs(d).toFixed(2) + '</b><span>over ' + g.games
+    + ' games</span></span></div>'
+    + '<p class="help" style="margin-top:8px">The level, which an ordering '
+    + 'score hides: a board can rank the right players and still expect more '
+    + 'of them to score than do. Ours says ' + v3Pct(p.said, 1)
+    + ' a player where ' + v3Pct(p.actual, 1) + ' happened; the book said '
+    + v3Pct(p.book_said, 1) + '.</p>';
+}
+
+function v3ScMarket(key, label, m) {
+  if (!m || !(m.weeks || []).length) {
+    return '<div class="card"><div class="eyebrow">' + esc(label) + '</div>'
+      + '<p class="lede" style="font-size:15px;margin-top:6px">No graded '
+      + 'week yet.</p></div>';
+  }
+  const src = (m.sources || []);
+  return '<div class="card"><div class="eyebrow">' + esc(label) + '</div>'
+    + v3ScWeeks(m) + v3ScLevel(m) + v3ScCal(m)
+    + (src.length
+       ? '<p class="help" style="margin-top:8px">'
+         + (src.indexOf('rebuilt') >= 0 || src.indexOf('mixed') >= 0
+            ? 'Some weeks are scored from a board rebuilt after the games '
+              + 'rather than the one that was live — nothing froze a '
+              + 'player board before week 4, and what was lost is what a '
+              + 'bookmaker was offering at the time. Prices come from the '
+              + 'odds archive either way, which is fixed.'
+            : 'Every week is scored from the board that was live before '
+              + 'kickoff.')
+         + '</p>'
+       : '');
+}
+
+function v3RecordPage() {
+  const S = DATA.scorecard || {};
+  const mk = S.markets || {};
+  if (!Object.keys(mk).length) {
+    return '<div class="wrap"><h1 class="h1">Record</h1>'
+      + '<div class="card"><p class="lede" style="font-size:15px">Nothing '
+      + 'graded yet this season.</p></div></div>';
+  }
+  const main = mk.anytime_td || {};
+  const p = main.pooled || {};
+  // THE VERDICT IN WORDS, and it is not a flattering one. A tenth of a point
+  // of Brier over fifteen hundred rows is level, and saying "ahead" about it
+  // would be reading noise out loud.
+  const edge = has(p.brier_edge) ? p.brier_edge * 100 : null;
+  const verdict = !has(edge) ? 'Not enough graded rows to say.'
+    : Math.abs(edge) < 0.5
+      ? 'Level with the market. Over ' + p.n + ' graded rows the model and '
+        + 'the book score within half a hundredth of a point of each other, '
+        + 'which at this sample size is the same number.'
+      : edge > 0
+        ? 'Ahead of the market by ' + edge.toFixed(2) + ' hundredths of a '
+          + 'point over ' + p.n + ' rows.'
+        : 'Behind the market by ' + Math.abs(edge).toFixed(2) + ' hundredths '
+          + 'of a point over ' + p.n + ' rows.';
+  const omitted = (S.omitted || []).map(x => '<li>' + esc(x) + '</li>').join('');
+  return '<div class="wrap"><h1 class="h1">Record</h1>'
+    + '<p class="lede">' + esc(verdict) + '</p>'
+    + V3SCMKT.map(x => v3ScMarket(x[0], x[1], mk[x[0]])).join('')
+    + (omitted
+       ? '<div class="card"><details class="fold"><summary>What this page '
+         + 'leaves out</summary><ul class="help" style="margin-top:8px;'
+         + 'padding-left:18px">' + omitted + '</ul>'
+         + '<p class="help" style="margin-top:8px">Brier score and log loss '
+         + 'use every graded row, which is why they are the two that survive '
+         + 'four weeks of football.</p></details></div>'
+       : '')
+    + '</div>';
 }
 
 function v3AnglesPage() {

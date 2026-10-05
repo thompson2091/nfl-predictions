@@ -614,6 +614,67 @@ def payload_v3():
                 "paras": ["The book makes this one close."],
                 "scoreline": None, "written": False,
                 "rejected": "it names somebody the facts do not"}
+    # THE SCORECARD, with both the cases the page branches on: a market
+    # level with the book and one behind it, a thin calibration band, and a
+    # week whose board was rebuilt rather than frozen. A fixture of one
+    # healthy market would render the page and exercise none of it.
+    p["scorecard"] = {
+        "season": 2026, "bucket_min": 25,
+        "markets": {
+            "anytime_td": {
+                "sources": ["mixed", "rebuilt"],
+                "weeks": [
+                    {"week": 1, "source": "rebuilt", "n": 362,
+                     "brier": 0.1228, "book_brier": 0.1325,
+                     "brier_edge": 0.0098, "log_loss": 0.38,
+                     "book_log_loss": 0.40, "log_loss_edge": 0.02,
+                     "said": 0.182, "book_said": 0.180, "actual": 0.188,
+                     "per_game": {"games": 16, "said": 4.1, "actual": 4.2}},
+                    {"week": 2, "source": "mixed", "n": 389,
+                     "brier": 0.1011, "book_brier": 0.0989,
+                     "brier_edge": -0.0021, "log_loss": 0.33,
+                     "book_log_loss": 0.32, "log_loss_edge": -0.01,
+                     "said": 0.174, "book_said": 0.170, "actual": 0.131,
+                     "per_game": {"games": 16, "said": 4.2, "actual": 3.2}},
+                ],
+                "pooled": {"n": 751, "brier": 0.1115, "book_brier": 0.1152,
+                           "brier_edge": 0.0037, "log_loss": 0.355,
+                           "book_log_loss": 0.360, "log_loss_edge": 0.005,
+                           "said": 0.178, "book_said": 0.175,
+                           "actual": 0.158},
+                "buckets": [
+                    {"lo": 0, "hi": 5, "n": 329, "said": 0.030,
+                     "actual": 0.043, "thin": False},
+                    {"lo": 5, "hi": 10, "n": 292, "said": 0.068,
+                     "actual": 0.072, "thin": False},
+                    {"lo": 45, "hi": 100, "n": 7, "said": 0.564,
+                     "actual": 0.540, "thin": True},
+                ],
+                "per_game": {"games": 32, "said": 4.17, "actual": 3.70},
+            },
+            "first_td": {
+                "sources": ["frozen"],
+                "weeks": [
+                    {"week": 1, "source": "frozen", "n": 360,
+                     "brier": 0.0384, "book_brier": 0.0375,
+                     "brier_edge": -0.0009, "log_loss": 0.16,
+                     "book_log_loss": 0.159, "log_loss_edge": -0.001,
+                     "said": 0.040, "book_said": 0.041, "actual": 0.042,
+                     "per_game": {"games": 16, "said": 0.9, "actual": 0.95}},
+                ],
+                "pooled": {"n": 360, "brier": 0.0384, "book_brier": 0.0375,
+                           "brier_edge": -0.0009, "log_loss": 0.16,
+                           "book_log_loss": 0.159, "log_loss_edge": -0.001,
+                           "said": 0.040, "book_said": 0.041,
+                           "actual": 0.042},
+                "buckets": [{"lo": 0, "hi": 5, "n": 300, "said": 0.017,
+                             "actual": 0.022, "thin": False}],
+                "per_game": {"games": 16, "said": 0.92, "actual": 0.97},
+            },
+        },
+        "omitted": ["Weekly return on investment \u2014 at these sample "
+                    "sizes one Sunday moves it more than the model does."],
+    }
     return p
 
 
@@ -634,6 +695,17 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
     # reporting "not exercised" and passing.
     for path in ("a past week renders", "game tab notes renders",
                  "game tab bets renders",
+                 # The season record: that it rendered at all, that the sign
+                 # of the edge is the right way round, and that the two
+                 # sentences a thin sample most needs were reached.
+                 "the record screen names both markets",
+                 "an edge in our favor is positive and marked good",
+                 "and an edge against us is negative and marked bad",
+                 "a sub-threshold edge is reported as level, not as ahead",
+                 "a market with rebuilt weeks says so",
+                 "and one frozen before kickoff says that instead",
+                 "a thin calibration band is marked thin rather than read",
+                 "an empty scorecard says so rather than rendering nothing",
                  # Against the number: the panel, and the four branches a
                  # fixture of ten clean covers would never reach.
                  "the odds tab carries each side’s record "
