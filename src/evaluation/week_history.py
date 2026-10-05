@@ -52,24 +52,19 @@ def played_weeks(season: int) -> list[int]:
 def _unplayed_games(season: int, week: int) -> set[str]:
     """`game_id` for every fixture this week with no final on the schedule.
 
-    The schedule is the authority on what has finished. Read here rather than
-    inferred from the feature matrix, because the matrix is exactly what gets
-    it wrong: a row exists for a game that has not been played and its label
-    is a truthful 0 about plays that do not exist yet.
-    """
-    from src.utils.paths import get_path
+    The schedule is the authority on what has finished. Read there rather
+    than inferred from the feature matrix, because the matrix is exactly what
+    gets it wrong: a row exists for a game that has not been played and its
+    label is a truthful 0 about plays that do not exist yet.
 
-    try:
-        s = pl.read_parquet(get_path("raw") / "schedules.parquet")
-    except Exception:                                            # noqa: BLE001
-        return set()
-    if "game_id" not in s.columns:
-        return set()
-    d = s.filter((pl.col("season") == int(season))
-                 & (pl.col("week") == int(week))
-                 & (pl.col("home_score").is_null()
-                    | pl.col("away_score").is_null()))
-    return set(d["game_id"].to_list())
+    DELEGATED, not re-read. `tracked_rules.unfinished` owns the question and
+    answers it for both callers at once — this one wants `game_id`, the pick
+    log wants `"AWAY @ HOME"`, and the two reading the schedule separately is
+    how the same week came to be graded two different ways.
+    """
+    from src.evaluation.tracked_rules import unfinished
+
+    return unfinished(season, week)[0]
 
 
 def week_board(season: int, week: int, target_type: str = "anytime_td",

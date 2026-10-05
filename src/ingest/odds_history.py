@@ -468,6 +468,19 @@ def load_graded_history(target_type: str = "anytime_td") -> pl.DataFrame | None:
     if hist.height == 0:
         return None
 
+    # RESOLVED FIRST, like every other consumer of this archive. This was the
+    # one of twelve that skipped it, so every live capture — which is every
+    # row of every season from 2026 on — carried `ATL_NO` where the results
+    # carry `2026_04_ATL_NO`, matched nothing, and fell out of the join with
+    # no error and no empty frame to notice. Measured 2026-10-05: 2023, 2024
+    # and 2025 graded normally while 2026 returned exactly 0 rows.
+    #
+    # The quiet damage was downstream of the count. 2026 could never raise
+    # `eligible`, so `blend_weight_needs_fit` was permanently False and the
+    # served blend weight sat frozen at its preseason fit for the whole
+    # season, refitting never, and reporting nothing.
+    hist = resolve_game_ids(hist)
+
     # Grading below keeps one price per player-game, which is only meaningful
     # while the market has one line. Say so rather than quietly averaging a
     # player quoted at 0.5 with the same player quoted at 1.5.
@@ -525,7 +538,45 @@ def load_graded_history(target_type: str = "anytime_td") -> pl.DataFrame | None:
         .join(scorers, on=["game_id", "player_id"], how="left")
         .with_columns(pl.col("scored").fill_null(0))
     )
+    _assert_no_season_vanished(matched, played, graded, market)
     return graded
+
+
+def _assert_no_season_vanished(matched: pl.DataFrame, played: pl.DataFrame,
+                               graded: pl.DataFrame, market: str) -> None:
+    """A season with priced players AND results must grade some of them.
+
+    THE FAILURE THIS CATCHES IS A SILENT ZERO, which is why it is an
+    exception and not a warning. An id format that stops matching does not
+    raise, does not return empty, and does not shrink a number anybody is
+    watching — it removes one season from a pooled total and leaves three
+    healthy ones behind to make the result look right.
+
+    Phrased per season rather than as "the current season must be present",
+    because the archive's newest season is not always the one being asked
+    about and a guard that only watches the newest stops guarding the moment
+    a backfill lands. A season with no results yet is skipped: that is a week
+    nobody has played, not a join that failed.
+    """
+    if matched.height == 0 or "season" not in matched.columns:
+        return
+    have = set(played["game_id"].to_list())
+    ok = set(graded["season"].to_list()) if graded.height else set()
+    lost = []
+    for season in sorted({s for s in matched["season"].to_list()
+                          if s is not None}):
+        rows = matched.filter(pl.col("season") == season)
+        if not (set(rows["game_id"].to_list()) & have):
+            continue                    # no results for it yet — not a fault
+        if season not in ok:
+            lost.append((int(season), rows.height))
+    if lost:
+        raise ValueError(
+            f"{market}: " + "; ".join(
+                f"season {s} has {n} priced rows and results on disk but "
+                f"graded 0" for s, n in lost)
+            + ". A game_id format that stops matching looks exactly like "
+              "this. See resolve_game_ids.")
 
 
 def append_book_quotes(rows: list[dict], season: int, week: int,

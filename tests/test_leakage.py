@@ -3535,3 +3535,68 @@ def test_player_games_observed_counts_only_games_already_played():
     assert d.filter(pl.col("_d") < 0).height == 0, (
         "games observed decreases for some player — the frame is not ordered "
         "the way the cumulative count assumes")
+
+
+def test_the_live_season_is_actually_in_the_graded_history():
+    """THE ONE CONSUMER OF TWELVE THAT SKIPPED `resolve_game_ids`.
+
+    `scripts/07_odds.py` writes `ATL_NO`, because the team pair is all the
+    odds payload carries; the results carry `2026_04_ATL_NO`. So every live
+    capture — which is every row of every season from 2026 on — matched
+    nothing and fell out of the join with no error, no warning, and three
+    healthy seasons left behind to make the total look right. Measured
+    2026-10-05: 2023, 2024 and 2025 graded normally and 2026 returned 0 of
+    its 1,938 gradable rows.
+
+    The quiet damage was downstream of the count. 2026 could never raise
+    `eligible`, so `blend_weight_needs_fit` stayed False and the served blend
+    weight sat frozen at its preseason fit for the whole season.
+    """
+    import polars as pl
+
+    from src.ingest.odds_history import load_graded_history
+
+    g = load_graded_history("anytime_td")
+    if g is None or g.is_empty():
+        pytest.skip("no graded history on disk")
+    by = dict(g.group_by("season").len().iter_rows())
+    newest = max(by)
+    assert by.get(newest, 0) > 0, (
+        f"season {newest} graded 0 rows — a game_id format that stops "
+        f"matching looks exactly like this")
+    # And it is the live season, not a backfill that happens to be newest.
+    assert newest >= 2026, f"newest graded season is {newest}"
+
+
+def test_a_season_cannot_vanish_from_the_graded_history_without_saying_so():
+    """The guard, fired on purpose.
+
+    A silent zero is the failure mode worth an exception: it does not raise,
+    does not return empty, and does not move a number anybody is watching.
+    It removes one season from a pooled total and leaves the rest looking
+    healthy.
+    """
+    import polars as pl
+
+    from src.ingest.odds_history import _assert_no_season_vanished
+
+    matched = pl.DataFrame({"season": [2026, 2026, 2025],
+                            "game_id": ["2026_04_ATL_NO", "2026_04_KC_LV",
+                                        "2025_01_A_B"]})
+    played = pl.DataFrame({"game_id": ["2026_04_ATL_NO", "2025_01_A_B"]})
+
+    # Both seasons graded: silent.
+    both = pl.DataFrame({"season": [2026, 2025]})
+    _assert_no_season_vanished(matched, played, both, "player_anytime_td")
+
+    # 2026 has priced rows and results on disk but graded nothing.
+    with pytest.raises(ValueError, match="season 2026"):
+        _assert_no_season_vanished(matched, played,
+                                   pl.DataFrame({"season": [2025]}),
+                                   "player_anytime_td")
+
+    # A season with no results yet is a week nobody has played, not a fault.
+    _assert_no_season_vanished(
+        pl.DataFrame({"season": [2027], "game_id": ["2027_01_X_Y"]}),
+        played, pl.DataFrame({"season": []}, schema={"season": pl.Int64}),
+        "player_anytime_td")

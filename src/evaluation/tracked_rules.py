@@ -292,6 +292,47 @@ def _played_weeks(season: int) -> set[int]:
     return {int(w) for w in weeks["week"].to_list() if w is not None}
 
 
+def unfinished(season: int, week: int) -> tuple[set[str], set[str]]:
+    """Games of this week with no final yet, keyed BOTH ways callers need.
+
+    Returns `(game_ids, labels)`, a label being `"AWAY @ HOME"` — the form
+    `tracked_picks.csv` writes into its `game` column, and the only handle a
+    pick has on the fixture it was made about.
+
+    **A WEEK IS NOT A GAME.** `_played_weeks` answers at week granularity,
+    which on a Monday is true the moment Sunday ends: the week has
+    play-by-play, so every Monday-night pick grades against a target of 0 —
+    backs recorded as losses and fades as wins, on a game kicking off that
+    evening. The three ATL at NO picks of week 4 were settled that way while
+    the game was still hours off, and both rules' headline records moved in
+    their own favor because of it.
+
+    One schedule read and ONE definition of what has finished, because two
+    callers deciding that separately is how the same week came to be graded
+    two different ways. `week_history._unplayed_games` delegates here.
+    """
+    from src.utils.paths import get_path
+
+    try:
+        s = pl.read_parquet(get_path("raw") / "schedules.parquet")
+    except Exception:                                            # noqa: BLE001
+        # Unreadable schedule: nothing is known to be unfinished, which is the
+        # behavior callers had before this existed. A guard that invents a set
+        # of unplayed games would silently stop grading the season.
+        return (set(), set())
+    want = {"home_score", "away_score", "home_team", "away_team"}
+    if not want <= set(s.columns):
+        return (set(), set())
+    d = s.filter((pl.col("season") == int(season))
+                 & (pl.col("week") == int(week))
+                 & (pl.col("home_score").is_null()
+                    | pl.col("away_score").is_null()))
+    ids = (set(d["game_id"].to_list()) if "game_id" in d.columns else set())
+    labels = {f"{r[0]} @ {r[1]}"
+              for r in d.select(["away_team", "home_team"]).iter_rows()}
+    return (ids, labels)
+
+
 def _outcomes(target_type: str) -> pl.DataFrame | None:
     """Did each candidate score, by season, week and normalized name.
 
@@ -392,11 +433,23 @@ def score(target_type: str, path: Path | str = PICKS_PATH) -> dict | None:
             int(sn): _played_weeks(int(sn))
             for sn in rows["season"].unique().to_list() if sn is not None
         }
+        # AND THEN PER GAME, because the week gate above is true from the
+        # moment Sunday ends. Keyed on the `game` label the pick carries,
+        # which is the only handle it has on its own fixture.
+        pending = {
+            (int(sn), int(wk)): unfinished(int(sn), int(wk))[1]
+            for sn, wk in {(r[0], r[1]) for r in
+                           rows.select(["season", "week"]).iter_rows()
+                           if r[0] is not None and r[1] is not None}
+        }
         g = rows.join(outcomes,
                       on=["season", "week", "player_name_norm"], how="left")
         kinds = {r["name"]: r.get("kind", "back") for r in RULES}
         for r in g.iter_rows(named=True):
             if int(r["week"]) not in playable.get(int(r["season"]), set()):
+                continue
+            if (r.get("game") or "") in pending.get(
+                    (int(r["season"]), int(r["week"])), set()):
                 continue
             if r.get("scored") is None:
                 continue

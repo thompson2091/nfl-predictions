@@ -213,3 +213,60 @@ def test_a_monday_night_player_is_not_graded_on_sunday_night():
     # is not a fix, it is the board going blank.
     done = b.filter(~pl.col("game_id").is_in(list(unplayed)))
     assert done.height and done["scored"].is_not_null().all()
+
+
+def test_a_tracked_pick_is_not_settled_before_its_game_kicks_off():
+    """The same mistake as `week_board`'s, in the other grading path.
+
+    `_played_weeks` is week granularity, so from the moment Sunday ends every
+    Monday-night pick graded against a target of 0: backs as losses, fades as
+    wins. Both rules' headline records moved in their own favor — the fade
+    read 95.16% where it had earned 95.08%, and the mid-price rule −8.47%
+    where it had earned −7.39%.
+    """
+    import polars as pl
+
+    from src.evaluation import tracked_rules as TR
+
+    ids, labels = TR.unfinished(2026, 4)
+    if not labels:
+        pytest.skip("week 4 is complete; nothing left to be early about")
+    # Both keys name the same games, which is the point of returning both.
+    assert len(ids) == len(labels)
+
+    all_picks = TR.load().filter(pl.col("market") == "anytime_td")
+    pending = all_picks.filter((pl.col("season") == "2026")
+                               & (pl.col("week") == "4")
+                               & pl.col("game").is_in(list(labels)))
+    if pending.is_empty():
+        pytest.skip("no tracked pick on an unfinished week-4 game")
+
+    s = TR.score("anytime_td") or {}
+    checked = 0
+    for rule, v in s["rules"].items():
+        n_pending = pending.filter(pl.col("rule") == rule).height
+        if not n_pending:
+            continue
+        # Every pick this rule has ever made, LESS the ones whose game has
+        # not finished, is the ceiling on what can have been graded. The
+        # real count sits right on it, so an off-by-one would show.
+        total = all_picks.filter(pl.col("rule") == rule).height
+        got = (v.get("graded") or {}).get("picks", 0)
+        assert got <= total - n_pending, (
+            f"{rule} graded {got} of {total} picks with {n_pending} on a "
+            f"game still to kick off")
+        checked += 1
+    assert checked, "no rule had a pick on the unfinished game"
+
+
+def test_the_two_grading_paths_cannot_disagree_about_what_has_finished():
+    """One definition, because two readings of the schedule is how the same
+    week came to be graded two different ways."""
+    import inspect
+
+    from src.evaluation import week_history as WH
+
+    src = inspect.getsource(WH._unplayed_games)
+    assert "unfinished" in src and "read_parquet" not in src, (
+        "week_history reads the schedule itself again instead of delegating "
+        "to tracked_rules.unfinished")
