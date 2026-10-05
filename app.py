@@ -78,14 +78,29 @@ def selected_model_dir(tt: str, version_id: str | None):
     served version: a snapshot is the record of what produced a set of numbers,
     so scoring against one must not rewrite its blend weight, and must not
     overwrite the published predictions with a model nobody promoted.
+
+    **AND FALSE WHILE THE APP IS BEING RECORDED.** Looking at the board is
+    not publishing it. The HTML export runs this file against a fake
+    Streamlit, so every export was a write: on 2026-10-05 at 00:14 one
+    rewrote week 4's predictions after every Sunday game, and the live odds
+    cache — which holds nothing for a finished week — took the board from a
+    full slate to 47 priced players of 515. `src.export.capture` sets the
+    flag for the length of the recording.
     """
+    import os
+
     from src.models.versioning import market_dir
+    # Resolved exactly as it would be either way — only the permission to
+    # write changes, so a recording sees the same numbers a reader does.
     if not version_id:
-        return None, True
-    served = (served_version(tt) or {}).get("id")
-    if version_id == served:
-        return None, True
-    return market_dir(tt, version_id), False
+        where, persist = None, True
+    elif version_id == (served_version(tt) or {}).get("id"):
+        where, persist = None, True
+    else:
+        where, persist = market_dir(tt, version_id), False
+    if os.environ.get("NFL_EXPORT_READ_ONLY"):
+        persist = False
+    return where, persist
 
 
 @st.cache_data(show_spinner=False)

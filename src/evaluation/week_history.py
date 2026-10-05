@@ -26,6 +26,8 @@ in `tracked_rules` is the gate, and it asks play-by-play rather than the label.
 """
 from __future__ import annotations
 
+import sys
+
 import polars as pl
 
 #: How many rows a week keeps. `None` is all of them.
@@ -90,6 +92,12 @@ def week_board(season: int, week: int, target_type: str = "anytime_td",
     if top_n is not None:
         df = df.head(top_n)
 
+    # WHAT THE BOOK CHARGED, ATTACHED BEFORE THE FREEZE, so the frozen row
+    # carries the price it was judged against rather than one re-derived
+    # later from a deeper archive. See `_with_book` for how far that moves.
+    df = _with_book(df, season, week, target_type)
+    df = _freeze_board(df, season, week, target_type)
+
     if week not in set(played_weeks(season)):
         return df.with_columns(pl.lit(None, dtype=pl.Int8).alias("scored"))
 
@@ -143,7 +151,47 @@ def week_board(season: int, week: int, target_type: str = "anytime_td",
         out = out.with_columns([
             pl.when(agrees).then(pl.col("td_count")).alias("td_count"),
             pl.when(agrees).then(pl.col("td_order")).alias("td_order")])
-    return _with_book(out, season, week, target_type)
+    return out
+
+
+def _freeze_board(df: pl.DataFrame, season: int, week: int,
+                  target_type: str) -> pl.DataFrame:
+    """The board a game kicked off with, kept and served back.
+
+    `predictions_<season>_week<week>.csv` has one unconditional writer and
+    every later run overwrites it, so a board rebuilt after the games keeps
+    none of what it showed before them. `has_market_price` is the visible
+    casualty — it is a predict-time flag and the live odds cache has no
+    prices for a finished week — and weeks 3 and 4 of 2026 are on disk
+    listing 24 of 498 and 47 of 515 priced players because of it.
+
+    Recording is cheap and happens on every build; serving only begins once
+    a game has kicked off. See `src.export.prediction_freeze`.
+    """
+    try:
+        from src.export import prediction_freeze as PF
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  prediction freeze unavailable ({e})", file=sys.stderr)
+        return df
+    rows, served, recorded = PF.settle(df.to_dicts(), season, week,
+                                       target_type)
+    PF.flush()
+    # SAID OUT LOUD, because the fallback is invisible: a started game with
+    # nothing frozen shows a board rebuilt today, which is the exact thing
+    # this exists to stop.
+    late = PF.missing(season, week, target_type)
+    if late:
+        print(f"  week {week} {target_type}: {len(late)} started games have "
+              f"no frozen board and are showing a rebuilt one "
+              f"({', '.join(late[:4])}{'...' if len(late) > 4 else ''})",
+              file=sys.stderr)
+    if served or recorded:
+        print(f"  week {week} {target_type}: {served} boards served frozen, "
+              f"{recorded} recorded", file=sys.stderr)
+    if not rows:
+        return df
+    return pl.DataFrame(rows).select(
+        [c for c in df.columns if c in rows[0]])
 
 
 

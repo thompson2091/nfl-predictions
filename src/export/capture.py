@@ -16,6 +16,7 @@ except where `overrides` names one by label (the market selector, for instance).
 from __future__ import annotations
 
 import functools
+import os
 import runpy
 import sys
 import types
@@ -544,16 +545,36 @@ def _install(capture: Capture) -> types.ModuleType:
     return mod
 
 
+#: Set while the app is being recorded. `app.selected_model_dir` reads it and
+#: refuses to persist.
+READ_ONLY_ENV = "NFL_EXPORT_READ_ONLY"
+
+
 def run_app(app_path: str, overrides: dict[str, Any] | None = None) -> Capture:
-    """Execute app.py against the fake Streamlit and return what it drew."""
+    """Execute app.py against the fake Streamlit and return what it drew.
+
+    **READ-ONLY WHILE RECORDING.** Looking at the board is not publishing it.
+    `app.load_board` scores the week with `persist=True` on the served
+    version, which rewrites `predictions_<season>_week<week>.csv` — so an
+    export is a write, and an export run after the games rewrites the week
+    with a board the live odds cache can no longer price. That is how week 4
+    of 2026 came to list 47 priced players of 515, at 00:14 on the Monday,
+    from a page nobody was looking at.
+    """
     capture = Capture(overrides)
     real = sys.modules.get("streamlit")
+    was = os.environ.get(READ_ONLY_ENV)
+    os.environ[READ_ONLY_ENV] = "1"
     _install(capture)
     try:
         runpy.run_path(app_path, run_name="__export__")
     except _Stop:
         pass
     finally:
+        if was is None:
+            os.environ.pop(READ_ONLY_ENV, None)
+        else:
+            os.environ[READ_ONLY_ENV] = was
         if real is not None:
             sys.modules["streamlit"] = real
         else:

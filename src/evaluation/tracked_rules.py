@@ -165,35 +165,48 @@ def load(path: Path | str = PICKS_PATH) -> pl.DataFrame:
     return pl.read_csv(p, infer_schema_length=0)
 
 
-def first_kickoff(season: int, week: int):
-    """When this week's earliest game starts, or None if it cannot be read.
+def kickoffs(season: int, week: int) -> dict[str, "datetime"]:
+    """When each game of this week starts, keyed by `game_id`.
 
     Eastern clock, like `kick_sort` and every launchd slot in this project.
+    THE ONE READER OF KICKOFF TIMES, so that everything asking "has this
+    begun?" asks it of the same numbers — `first_kickoff` is the minimum of
+    this and `src.export.prediction_freeze` gates on it.
+
+    Empty when the schedule cannot be read, which is the behavior every
+    caller had before this existed: a guard that invents kickoff times is
+    worse than one that never fires.
     """
     from datetime import datetime
-
-    import polars as pl  # noqa: PLC0415
 
     from src.utils.paths import get_path  # noqa: PLC0415
 
     try:
         s = pl.read_parquet(get_path("raw") / "schedules.parquet")
     except Exception:                                            # noqa: BLE001
-        return None
+        return {}
+    want = {"gameday", "gametime", "game_id"}
+    if not want <= set(s.columns):
+        return {}
     d = s.filter((pl.col("season") == int(season))
                  & (pl.col("week") == int(week)))
-    best = None
-    for r in d.select(["gameday", "gametime"]).iter_rows():
-        if not (r[0] and r[1]):
+    out: dict = {}
+    for gid, day, clock in d.select(["game_id", "gameday",
+                                     "gametime"]).iter_rows():
+        if not (day and clock and gid):
             continue
         try:
-            t = datetime.strptime(f"{str(r[0])[:10]} {str(r[1])[:5]}",
-                                  "%Y-%m-%d %H:%M")
+            out[gid] = datetime.strptime(f"{str(day)[:10]} {str(clock)[:5]}",
+                                         "%Y-%m-%d %H:%M")
         except ValueError:
             continue
-        if best is None or t < best:
-            best = t
-    return best
+    return out
+
+
+def first_kickoff(season: int, week: int):
+    """When this week's earliest game starts, or None if it cannot be read."""
+    times = kickoffs(season, week).values()
+    return min(times) if times else None
 
 
 def week_has_started(season: int, week: int, now=None) -> bool:
