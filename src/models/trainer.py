@@ -373,6 +373,41 @@ def refit_conversion(df, train_seasons, splits, feature_cols, model_dir,
               f"seasons {covered}")
     conv = fit_conversion(priced, "_mu", unpriced=unpriced)
 
+    # AND THE THIRD POPULATION. A defense never reaches the formula above —
+    # `combine` hands it the calibrated classifier's own number — so nothing
+    # in the two parameters fitted here is about defenses, and nothing moved
+    # when the league's non-offensive touchdown rate fell from 14-16% a
+    # team-game to under 11%. Fitted on the same held-out-from-test window,
+    # against the classifier's probability rather than against `_mu`.
+    from src.models.joint import _defst_mask, fit_defst_level
+
+    # ON THE RECENT SEASONS, AND THAT IS NOT THE DEFAULT HERE. This
+    # repository has already measured that recency loses for the game model —
+    # see `test_the_training_window_is_every_prior_season` — so narrowing a
+    # window needs evidence rather than intuition. Here there is some:
+    # regressing the non-offensive touchdown rate on season over 2015-2026
+    # gives -0.657pp a year, p = 0.0008, r2 = 0.69. It is a trend, not drift.
+    #
+    # Fitted over the odds-covered seasons inside train+val, which is the
+    # same restriction `fit_conversion` applies to the unpriced population,
+    # for a different reason reaching the same window. Pooling 2015-2024 puts
+    # the level at 0.95 and the board at 12.8% a team-game while the last
+    # three covered seasons ran 9.7%.
+    dst = conv_src.filter(_defst_mask(conv_src)
+                          & pl.col("target").is_not_null())
+    window = sorted(set(covered or []) & set(dst["season"].to_list())) \
+        if covered else []
+    if window:
+        dst = dst.filter(pl.col("season").is_in(window))
+    lvl = fit_defst_level(dst, "_s") if dst.height else None
+    if lvl:
+        conv.update(lvl)
+        print(f"  DEF/ST level {lvl['defst_level']:.3f} on {lvl['defst_n']:,} "
+              f"team-games: said {lvl['defst_said']:.1%}, "
+              f"actual {lvl['defst_rate']:.1%} "
+              f"(log loss {lvl['defst_log_loss']:.4f} against "
+              f"{lvl['defst_log_loss_at_one']:.4f} at no correction)")
+
     # The floor under which a board must NOT be split, fitted rather than
     # chosen. The split serves unpriced rows at ~0.07 against ~0.94, so a week
     # whose market join has silently failed would have most of its board

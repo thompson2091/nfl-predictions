@@ -331,8 +331,18 @@ def combine(df: pl.DataFrame, share_col: str = "share",
         # of the time; the calibrated classifier already says so, and that is
         # the number to keep — including its ordering, which is the half a flat
         # constant would throw away.
+        #
+        # AT ITS OWN LEVEL, though. The classifier is fitted over every
+        # candidate, where defenses are under 2% of the rows, so nothing in
+        # it is about defenses and nothing corrects it as the league moves —
+        # and it has moved, from 14-16% a team-game in 2015-2019 to 9.4-11.0%
+        # across 2023-2025. `fit_defst_level` fits the one multiplier.
+        # Absent, the multiplier is 1.0 and this is what it always was.
+        lvl_d = float((conversion or {}).get("defst_level") or 1.0)
+        keep = (pl.col("_score_in") * lvl_d).clip(0.0, 1.0) if lvl_d != 1.0 \
+            else pl.col("_score_in")
         out = out.with_columns(
-            pl.when(pl.col("_is_defst")).then(pl.col("_score_in"))
+            pl.when(pl.col("_is_defst")).then(keep)
             .otherwise(pl.col(out_col)).alias(out_col)
         ).drop("_is_defst")
     return out.drop("_score_in") if "_score_in" in out.columns else out
@@ -538,6 +548,57 @@ def load_team_rate(path) -> dict | None:
     if not Path(path).exists():
         return None
     return json.loads(Path(path).read_text())
+
+
+def fit_defst_level(df: pl.DataFrame, p_col: str,
+                    target_col: str = "target") -> dict | None:
+    """The level a defense's published probability needs, fitted on its own.
+
+    **A DEFENSE IS A THIRD POPULATION AND IT HAD NO LEVEL.** `combine` holds
+    DEF/ST out of the offensive share denominator — a defense is not a share
+    of its own offense — and hands back the calibrated classifier's number
+    instead. That number is fitted over every candidate in the training
+    window, where defenses are 1.8% of the rows, so nothing in it is about
+    defenses specifically and nothing corrects it when the league moves.
+
+    The league has moved. Non-offensive touchdowns per team-game ran 14-16%
+    from 2015 to 2019 and 9.4-11.0% across 2023-2025; through week 4 of 2026
+    the board said 12.6% against 6.3% actual over 126 team-games. The small
+    sample is 2026's, but the direction is a decade long and the classifier
+    is anchored to the wrong end of it.
+
+    One free parameter, multiplicative on the probability and fitted by log
+    loss, which is the form `fit_conversion` already uses for the unpriced
+    population and for the same reason: too few events to fit a shape on.
+    Returns None when there is nothing to fit, so a caller cannot write a
+    level derived from no rows.
+    """
+    if df is None or df.height == 0 or p_col not in df.columns:
+        return None
+    pr = np.clip(df[p_col].to_numpy().astype(float), 1e-7, 1 - 1e-7)
+    y = df[target_col].to_numpy().astype(float)
+    if len(y) == 0 or np.isnan(y).any():
+        return None
+
+    def nll(level: float) -> float:
+        q = np.clip(level * pr, 1e-7, 1 - 1e-7)
+        return float(-np.mean(y * np.log(q) + (1 - y) * np.log(1 - q)))
+
+    grid = np.arange(0.20, 2.01, 0.01)
+    best = min((nll(float(L)), float(L)) for L in grid)
+    seasons = (sorted({int(s) for s in df["season"].to_list()})
+               if "season" in df.columns else [])
+    return {
+        "defst_level": round(best[1], 3),
+        "defst_log_loss": best[0],
+        "defst_log_loss_at_one": nll(1.0),
+        "defst_n": int(len(y)),
+        "defst_events": int(y.sum()),
+        "defst_rate": float(y.mean()),
+        "defst_said": float(pr.mean()),
+        "defst_seasons": seasons,
+        "defst_fit_date": date.today().isoformat(),
+    }
 
 
 def save_conversion(conv: dict, path) -> None:

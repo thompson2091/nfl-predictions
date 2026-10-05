@@ -194,3 +194,25 @@ def build(season: int) -> dict:
         "to mean anything on its own.",
     ]
     return out
+
+
+#: What the 2026 measurement said, so the next person does not re-derive it.
+#:
+#: FIRST TOUCHDOWN: the model does not improve on the price. Over 1,517
+#: graded rows through week 4 its level is right — 3.8% said against 4.0%
+#: actual, and each book-price quintile tracks — but the book ORDERS better:
+#: AUC 0.7636 against our 0.7307. Blending the two in sample, which is the
+#: most generous test there is, the best weight keeps **5%** of our number.
+#: Anytime's keeps 65% on the same rows and beats both. So first TD's gap is
+#: discrimination, it is not small, and it is the one TD market with no
+#: market blend to borrow the ordering it is missing.
+#:
+#: Not acted on here. The plan is to re-check after week 6 and gate a blend
+#: properly out of sample: 1,517 rows of one season, fitted and scored on
+#: itself, is a direction and not a weight.
+FIRST_TD_2026 = {
+    "n": 1517, "auc_ours": 0.7307, "auc_book": 0.7636,
+    "said": 0.038, "actual": 0.040,
+    "best_in_sample_blend_keep": 0.05,
+    "measured_on": "2026-10-05",
+}

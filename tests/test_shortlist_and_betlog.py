@@ -591,3 +591,72 @@ def test_an_unreadable_schedule_records_rather_than_going_quiet(monkeypatch):
 
     monkeypatch.setattr(T, "first_kickoff", lambda s, w: None)
     assert T.week_has_started(2026, 4) is False
+
+
+#: Every number that defines a tracked rule, pinned by the name it was
+#: recorded under. `tracked_picks.csv` keys its history on `name` and nothing
+#: else, so changing a threshold without changing the name files two
+#: different rules under one label and grades them as one record.
+TRACKED_RULE_DEFINITIONS = {
+    "fade the overpriced": {
+        "kind": "lay", "market": "anytime_td",
+        "min_book_pct": 4.26, "max_book_pct": 11.20, "max_ratio": 1 / 3,
+    },
+    "mid-price disagreement": {
+        "kind": "back", "market": "anytime_td",
+        "min_odds": 300, "max_odds": 700, "min_edge_pp": 5.0,
+    },
+}
+
+
+def test_a_tracked_rule_cannot_be_retuned_without_being_renamed():
+    """THE FAILURE A FORWARD TEST CANNOT SURVIVE, and it leaves no trace.
+
+    This module's own docstring is explicit: "A rule that keeps being
+    re-tuned can never fail that way, because every failure is absorbed into
+    the next tuning." The record in `tracked_picks.csv` is keyed on `name`
+    alone, so moving `min_edge_pp` from 5.0 to 4.0 does not start a new
+    experiment — it silently merges the new rule's picks into the old one's
+    record and reports the pair as one number.
+
+    Nothing about that is visible afterwards. The CSV keeps its rows, the
+    percentages keep updating, and the only evidence that two different
+    rules are being averaged together is a diff nobody kept.
+
+    So the numbers live here as well as in the module, and they are pinned to
+    the name. Re-tuning is allowed; re-tuning quietly is not. To change a
+    threshold: give the rule a new name carrying it, add the new entry here,
+    and leave the old one so its forward record stays readable on its own.
+    """
+    from src.evaluation.tracked_rules import RULES
+
+    by_name = {r["name"]: r for r in RULES}
+    assert set(by_name) == set(TRACKED_RULE_DEFINITIONS), (
+        f"tracked rules changed name: module has {sorted(by_name)}, this "
+        f"test pins {sorted(TRACKED_RULE_DEFINITIONS)}")
+    for name, want in TRACKED_RULE_DEFINITIONS.items():
+        got = by_name[name]
+        for k, v in want.items():
+            have = got.get(k, "back" if k == "kind" else None)
+            assert have == pytest.approx(v) if isinstance(v, float) \
+                else have == v, (
+                f"{name!r} changed {k} from {v} to {have} without changing "
+                f"its name — its forward record now mixes two rules")
+
+
+def test_a_rules_record_is_read_under_one_definition_only():
+    """And the picks on disk agree. A name in the log with no rule behind it
+    is a rule that was renamed or removed after it had recorded picks, which
+    is the same merge seen from the other side."""
+    import polars as pl
+
+    from src.evaluation.tracked_rules import RULES, load
+
+    picks = load()
+    if picks.is_empty():
+        pytest.skip("nothing recorded yet")
+    known = {r["name"] for r in RULES}
+    seen = set(picks["rule"].drop_nulls().to_list())
+    assert seen <= known, (
+        f"{sorted(seen - known)} appear in tracked_picks.csv with no rule "
+        f"defining them — their record cannot be reproduced")

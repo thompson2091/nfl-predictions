@@ -271,7 +271,21 @@ models:
     - build_game_features
     - build_goalline_features
     - build_injury_features
-    - build_market_movement_features
+    # NOT build_market_movement_features. `mkt_move_pp` is
+    # `(close_prob - open_prob) * 100` and the closing-line-value label is
+    # `market_shortened = (move > 0)` — so sign(mkt_move_pp) IS the label,
+    # and the model was being handed the answer. Ablating it through the
+    # production path cost 3.23pp of CLV (65.29% -> 62.06% on 1,550 pairs)
+    # against the +0.98pp CLV the features were promoted on, and all 19,286
+    # CLV rows carry them, so there is no uncontaminated subset to measure on.
+    #
+    # Gated 2026-10-05, paired per game against a champion re-recorded on the
+    # current matrix. Dropping them moves nothing real: Top-1 48.7% -> 48.8%
+    # (p=1.000), Top-5 +0.97pp, AUC +0.00024, Brier -0.00005. The ONLY metric
+    # that falls is CLV, 61.1% -> 60.4% — which is the metric the feature
+    # manufactures. The harness rejected on it; this is kept with
+    # justification, because gating a feature on a number derived from that
+    # feature is the circle the ablation exists to break.
     - build_matchup_interaction_features
     - build_momentum_features
     - build_opening_drive_features

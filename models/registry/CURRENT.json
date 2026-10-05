@@ -1,7 +1,7 @@
 {
   "first_td": {
-    "version": "2026.08.19-clean-matrix",
-    "promoted_at": "2026-08-19T16:03:05+00:00",
+    "version": "2026.10.05-drop-market-movement-anytime",
+    "promoted_at": "2026-10-05T22:26:50+00:00",
     "history": [
       "2026.08.12-baseline",
       "2026.08.12-baseline-remeasured",
@@ -11,12 +11,13 @@
       "2026.08.17-depth-chart-wiring",
       "2026.08.18-ngs-leak-fix",
       "2026.08.18-play-gate-fix",
-      "2026.08.19-clean-matrix"
+      "2026.08.19-clean-matrix",
+      "2026.10.05-drop-market-movement-anytime"
     ]
   },
   "anytime_td": {
-    "version": "2026.09.25-movement-and-practice-anytime-v2",
-    "promoted_at": "2026-09-25T18:22:25+00:00",
+    "version": "2026.10.05-drop-market-movement-anytime",
+    "promoted_at": "2026-10-05T22:26:50+00:00",
     "history": [
       "2026.08.12-baseline",
       "2026.08.12-baseline-remeasured",
@@ -32,7 +33,8 @@
       "2026.09.21-unpriced-conversion-level",
       "2026.09.21-unpriced-conversion-guard",
       "2026.09.21-unpriced-conversion",
-      "2026.09.25-movement-and-practice-anytime-v2"
+      "2026.09.25-movement-and-practice-anytime-v2",
+      "2026.10.05-drop-market-movement-anytime"
     ]
   }
 }

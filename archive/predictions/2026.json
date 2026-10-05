@@ -3,7 +3,7 @@
   "anytime_td": {
    "2026_04_ATL_NO": [
     {
-     "book": 0.5376189703562474,
+     "book": 0.5376189703562472,
      "has_market_price": true,
      "player_name": "Bijan Robinson",
      "prob_model": 0.5631037472136887,
@@ -12,7 +12,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.3567370512986197,
+     "book": 0.35673705129861955,
      "has_market_price": true,
      "player_name": "Chris Olave",
      "prob_model": 0.4335347244341461,
@@ -21,7 +21,7 @@
      "team": "NO"
     },
     {
-     "book": 0.3488095612697615,
+     "book": 0.34880956126976137,
      "has_market_price": true,
      "player_name": "Drake London",
      "prob_model": 0.4004661002304679,
@@ -30,7 +30,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.3567370512986197,
+     "book": 0.35673705129861955,
      "has_market_price": true,
      "player_name": "Alvin Kamara",
      "prob_model": 0.39145539571803134,
@@ -39,7 +39,7 @@
      "team": "NO"
     },
     {
-     "book": 0.2378247008657465,
+     "book": 0.2378247008657464,
      "has_market_price": true,
      "player_name": "Devaughn Vele",
      "prob_model": 0.32021385570054384,
@@ -48,7 +48,7 @@
      "team": "NO"
     },
     {
-     "book": 0.21356702087792703,
+     "book": 0.21356702087792695,
      "has_market_price": true,
      "player_name": "Tyler Shough",
      "prob_model": 0.2908741061721467,
@@ -57,7 +57,7 @@
      "team": "NO"
     },
     {
-     "book": 0.2274846670938222,
+     "book": 0.2274846670938221,
      "has_market_price": true,
      "player_name": "Juwan Johnson",
      "prob_model": 0.29087102757986616,
@@ -66,7 +66,7 @@
      "team": "NO"
     },
     {
-     "book": 0.1783689180604587,
+     "book": 0.17836891806045863,
      "has_market_price": true,
      "player_name": "Kyle Pitts",
      "prob_model": 0.2390665635037772,
@@ -75,7 +75,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.19620557441981526,
+     "book": 0.19620557441981518,
      "has_market_price": true,
      "player_name": "Brian Robinson",
      "prob_model": 0.23907780311971083,
@@ -84,7 +84,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.14533731719573395,
+     "book": 0.1453373171957339,
      "has_market_price": true,
      "player_name": "Jahan Dotson",
      "prob_model": 0.20254389492998492,
@@ -93,7 +93,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.2092862076552355,
+     "book": 0.2092862076552354,
      "has_market_price": true,
      "player_name": "Kendre Miller",
      "prob_model": 0.14050974792439375,
@@ -102,7 +102,7 @@
      "team": "NO"
     },
     {
-     "book": 0.1308039778873094,
+     "book": 0.13080397788730935,
      "has_market_price": true,
      "player_name": "Bryce Lance",
      "prob_model": 0.1561393874944721,
@@ -111,7 +111,7 @@
      "team": "NO"
     },
     {
-     "book": 0.1308039778873094,
+     "book": 0.13080397788730935,
      "has_market_price": true,
      "player_name": "Noah Fant",
      "prob_model": 0.1405107225083405,
@@ -136,7 +136,7 @@
      "team": "NO"
     },
     {
-     "book": 0.10394971332761814,
+     "book": 0.10394971332761808,
      "has_market_price": true,
      "player_name": "Olamide Zaccheaus",
      "prob_model": 0.13583631938708463,
@@ -145,7 +145,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.09810278720990763,
+     "book": 0.09810278720990759,
      "has_market_price": true,
      "player_name": "CJ Donaldson",
      "prob_model": 0.08876955981685364,
@@ -154,7 +154,7 @@
      "team": "NO"
     },
     {
-     "book": 0.10464271141646891,
+     "book": 0.10464271141646887,
      "has_market_price": true,
      "player_name": "Austin Hooper",
      "prob_model": 0.06665840432956571,
@@ -163,7 +163,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.08720239031744037,
+     "book": 0.08720239031744034,
      "has_market_price": true,
      "player_name": "Michael Penix Jr.",
      "prob_model": 0.06666479928345892,
@@ -172,7 +172,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.07134741025972395,
+     "book": 0.07134741025972391,
      "has_market_price": true,
      "player_name": "Zachariah Branch",
      "prob_model": 0.06340503262123998,
@@ -189,7 +189,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.06540159653250587,
+     "book": 0.06540159653250584,
      "has_market_price": true,
      "player_name": "Kevin Austin Jr.",
      "prob_model": 0.040647232255817345,
@@ -198,7 +198,7 @@
      "team": "NO"
     },
     {
-     "book": 0.05605907190093194,
+     "book": 0.05605907190093192,
      "has_market_price": true,
      "player_name": "Oscar Delp",
      "prob_model": 0.04064555633575928,
@@ -207,7 +207,7 @@
      "team": "NO"
     },
     {
-     "book": 0.034122503858498916,
+     "book": 0.0341225038584989,
      "has_market_price": true,
      "player_name": "Charlie Woerner",
      "prob_model": 0.06340786780172103,
@@ -216,7 +216,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.052321748119383296,
+     "book": 0.052321748119383275,
      "has_market_price": true,
      "player_name": "Chris Blair",
      "prob_model": 0.03754058262146431,
@@ -225,7 +225,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.025316797678537603,
+     "book": 0.025316797678537593,
      "has_market_price": true,
      "player_name": "Nick Muse",
      "prob_model": 0.05911186163106863,
@@ -234,7 +234,7 @@
      "team": "ATL"
     },
     {
-     "book": 0.07134741025972395,
+     "book": 0.07134741025972391,
      "has_market_price": true,
      "player_name": "Barion Brown",
      "prob_model": 0.022169423473634597,

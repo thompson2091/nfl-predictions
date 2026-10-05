@@ -1,15 +1,16 @@
 {
   "kind": "blend_weight",
   "source": "fitted",
-  "market_weight": 0.43871087572282663,
-  "log_loss": 0.3571086289029142,
-  "log_loss_model_only": 0.36071459908996123,
-  "log_loss_market_only": 0.37446642396124286,
-  "n_rows": 7057,
+  "market_weight": 0.5693149008396657,
+  "log_loss": 0.3698758905104332,
+  "log_loss_model_only": 0.37545484351002356,
+  "log_loss_market_only": 0.3741204075681333,
+  "n_rows": 8675,
   "seasons": [
-    2025
+    2025,
+    2026
   ],
-  "fit_date": "2026-08-18",
+  "fit_date": "2026-10-05",
   "min_season": 2025,
-  "eligible_rows": 10048
+  "eligible_rows": 11986
 }
