@@ -543,3 +543,56 @@ def test_the_staleness_check_clears_once_an_artifact_is_regenerated(tmp_path,
     fresh = (promoted + timedelta(minutes=1)).timestamp()
     os.utime(old, (fresh, fresh))
     assert not V.stale_derived(("anytime_td",)), "regenerated after — must clear"
+
+
+def test_the_freshness_guard_never_asks_for_a_played_week_to_be_rebuilt():
+    """A GUARD THAT PRESCRIBED THE DISEASE.
+
+    A promotion made every `predictions_<season>_week<w>.csv` look stale —
+    weeks that finished a month ago included — and the fix it printed was
+    `python scripts/06_predict.py --season <s> --week <w>`. On a played week
+    that command does not refresh anything. It overwrites the board that was
+    live with today's model scoring a game whose result is known, and the
+    live odds cache holds no prices for a finished week, so the rebuilt board
+    loses `has_market_price` for nearly everyone.
+
+    That is not hypothetical: it is how weeks 3 and 4 of 2026 came to list 24
+    and 47 priced players of about 500 each. The deploy refused to publish
+    until somebody ran it, so the guard was pointing at the loaded foot.
+    """
+    from src.models.versioning import _is_a_record
+
+    class P:
+        def __init__(self, name):
+            self.name = name
+
+    # A week long finished is a record and is never owed a rebuild.
+    assert _is_a_record(P("predictions_2026_week1.csv"))
+    assert _is_a_record(P("predictions_2025_week9.csv"))
+    # A week far in the future has not kicked off and still is.
+    assert not _is_a_record(P("predictions_2026_week18.csv"))
+    # And nothing else is exempted by accident.
+    for other in ("backtest_2025.csv", "walkforward.json", "clv.json",
+                  "rank_economics_xgb.json"):
+        assert not _is_a_record(P(other)), other
+
+
+def test_an_unreadable_schedule_does_not_advise_overwriting_a_board():
+    """Unsure is not the same as owed. If the kickoff cannot be read the
+    board counts as a record, because the cost of a wrong rebuild is a
+    week of prices nothing can bring back."""
+    import src.evaluation.tracked_rules as TR
+    from src.models.versioning import _is_a_record
+
+    class P:
+        name = "predictions_2026_week7.csv"
+
+    def boom(*a, **k):
+        raise RuntimeError("no schedule")
+
+    was = TR.week_has_started
+    TR.week_has_started = boom
+    try:
+        assert _is_a_record(P())
+    finally:
+        TR.week_has_started = was

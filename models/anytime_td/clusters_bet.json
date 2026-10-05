@@ -37,9 +37,9 @@
     "abs_spread": "log1p"
   },
   "impute": {
-    "model_edge": -0.01543471068838765,
-    "prob_calibrated": 0.10683018956181817,
-    "market_prob": 0.13035000000000002,
+    "model_edge": -0.014997949941582642,
+    "prob_calibrated": 0.10680131135407284,
+    "market_prob": 0.13013610472382064,
     "implied_team_total": 21.5,
     "total_line": 43.5,
     "abs_spread": 3.5
@@ -47,20 +47,20 @@
   "impute_method": "fit-set median",
   "scaler": {
     "mean": [
-      -0.021963306381317063,
-      0.14560816880435398,
-      0.16757147518567067,
-      3.1044869594807847,
-      3.7837303079215245,
-      1.6525706069935175
+      -0.021044656727577472,
+      0.14648022768325186,
+      0.16752488441082872,
+      3.1046162627912204,
+      3.783839606010295,
+      1.6522091645937607
     ],
     "scale": [
-      0.06074247240288617,
-      0.12370209628248413,
-      0.1273113077625658,
-      0.1706446173357213,
-      0.10316579592367192,
-      0.5205594238017777
+      0.06232456408092756,
+      0.12638266869165818,
+      0.12735856865019235,
+      0.17069641492972706,
+      0.10315547744310824,
+      0.5207255639054227
     ]
   },
   "dropped": [
@@ -80,25 +80,25 @@
   "pca_display": {
     "components": [
       [
-        -0.03569578785728586,
-        0.5867005706617976,
-        0.5870989953949102,
-        0.41809321010712314,
-        0.36695010386598814,
-        0.01920181386525006
+        0.014221949903819697,
+        0.5904578328249926,
+        0.5789736852076959,
+        0.4225354356469866,
+        0.3701890172724651,
+        0.019252343935865612
       ],
       [
-        0.2742822046650693,
-        -0.30670259649946935,
-        -0.4288726141401755,
-        0.5297421404580214,
-        0.5934758819994592,
-        0.11802843917057919
+        0.20432718839098407,
+        -0.33751805359028336,
+        -0.43492193637039683,
+        0.5301526260902388,
+        0.5992125530352783,
+        0.12270852530795559
       ]
     ],
     "explained_variance_ratio": [
-      0.3554316706560813,
-      0.22987900380067683
+      0.3544326965825787,
+      0.22813285474458703
     ]
   },
   "strata_col": null,
@@ -110,159 +110,159 @@
       "k_reason": "gap still rising at k=8, the largest k that keeps every group measurable; the elbow is outside the range we allow, so this is the biggest gap available and not a settled k",
       "centroids": [
         [
-          0.36696235135762867,
-          0.8732517195886059,
-          0.6734112570349746,
-          -0.12908583216896943,
-          -0.24683469506194564,
-          -0.4592676220782293
+          0.6392215610001205,
+          2.2421073234713065,
+          1.9121155684610849,
+          0.9797613898615126,
+          0.7258328351614444,
+          0.27549885176899264
         ],
         [
-          -2.023832405274626,
-          0.3186614548609516,
-          1.2752337309971793,
-          0.051516320786840694,
-          0.005693411763115804,
-          -0.13510965613878578
+          0.18972413015568837,
+          -0.4454317547966176,
+          -0.5348625406264551,
+          0.5632215938489565,
+          0.9147719410937626,
+          -0.5770621383441578
         ],
         [
-          0.4667074939761688,
-          2.220433547993949,
-          1.934810990466994,
-          0.9459965918426416,
-          0.7118867240575013,
-          0.21704170029204306
+          0.04772966392296348,
+          -0.6234547069053026,
+          -0.6420345409925543,
+          -0.21627084935716306,
+          -0.49665475071062803,
+          -0.5676921727797037
         ],
         [
-          0.2703337805240062,
-          -0.38063884439782997,
-          -0.49882894377332015,
-          0.6774079432415024,
-          1.0737012285338354,
-          -0.5324182753515564
+          0.07163384205378145,
+          -0.4483605266887487,
+          -0.47997985943345084,
+          -1.360371926955565,
+          -1.8192838752806904,
+          -0.28836605055630843
         ],
         [
-          0.06519839424423514,
-          -0.672944320911204,
-          -0.6849739930708865,
-          -0.08663049671807722,
-          -0.2401641314244553,
-          -0.6097686785749499
+          0.5043747920854427,
+          0.9915447805072378,
+          0.7371246193533152,
+          -0.13942275453985928,
+          -0.2389359667103071,
+          -0.4760742989120387
         ],
         [
-          0.09094527627847165,
-          -0.3561338148775091,
-          -0.38942919732163445,
-          1.330629633946633,
-          0.3640396221753113,
-          1.2362345354713786
+          0.07286258797107263,
+          -0.3741884639105213,
+          -0.4069774514984733,
+          1.3177923328422463,
+          0.3727793198187877,
+          1.2100434056203093
         ],
         [
-          0.15991749526426258,
-          -0.45736019685416823,
-          -0.5206937255996812,
-          -1.1776342432586244,
-          -1.6519021467916417,
-          -0.27493270403098546
+          0.005667404026823978,
+          -0.45817144096048423,
+          -0.45743406611567794,
+          -1.2862917720566536,
+          0.16405535734151472,
+          1.3217332178799612
         ],
         [
-          0.013280706692270739,
-          -0.4516002853628743,
-          -0.44513410424305233,
-          -1.2894723335360254,
-          0.17956267613161753,
-          1.338705410573224
+          -1.9276815992520357,
+          0.34513594479016413,
+          1.2858272424056443,
+          0.13553472717395865,
+          0.10482379763032221,
+          -0.10723563226126764
         ]
       ],
       "sizes": [
-        938,
-        598,
-        605,
-        1037,
-        1391,
-        743,
-        844,
-        818
+        564,
+        1275,
+        1354,
+        650,
+        895,
+        768,
+        832,
+        636
       ],
-      "inertia": 16290.725010579823,
-      "outlier_distance_p95": 2.5274307563490557,
+      "inertia": 16271.756902920368,
+      "outlier_distance_p95": 2.5190916979266684,
       "selection": [
         {
           "k": 2,
-          "log_wk": 10.372993471197125,
-          "gap": 1.2304405774504197,
-          "gap_se": 0.004250281113455513,
-          "silhouette": 0.27133758860758017,
+          "log_wk": 10.37474096805379,
+          "gap": 1.2956832645820135,
+          "gap_se": 0.0043757550153866315,
+          "silhouette": 0.2717886092485546,
           "silhouette_se": 0.0,
-          "split_half_ari": 0.9047082167775744,
-          "inertia": 31984.077224084107,
-          "smallest_cluster": 2009
+          "split_half_ari": 0.8729378433655193,
+          "inertia": 32040.0181625678,
+          "smallest_cluster": 1979
         },
         {
           "k": 3,
-          "log_wk": 10.18208828636021,
-          "gap": 1.3353876742574524,
-          "gap_se": 0.005188799981856737,
-          "silhouette": 0.20831964842728526,
+          "log_wk": 10.183083939141586,
+          "gap": 1.3885991649077294,
+          "gap_se": 0.005364035108306413,
+          "silhouette": 0.2090346540372115,
           "silhouette_se": 0.0,
-          "split_half_ari": 0.9455539632001221,
-          "inertia": 26425.5939249797,
-          "smallest_cluster": 1631
+          "split_half_ari": 0.8605202550806612,
+          "inertia": 26451.917743587594,
+          "smallest_cluster": 1616
         },
         {
           "k": 4,
-          "log_wk": 10.059288717583096,
-          "gap": 1.3788459863125073,
-          "gap_se": 0.005046752124857835,
-          "silhouette": 0.21306885386504862,
-          "silhouette_se": 1.3877787807814457e-17,
-          "split_half_ari": 0.9803273465117511,
-          "inertia": 23371.876453802284,
-          "smallest_cluster": 994
+          "log_wk": 10.060247963840046,
+          "gap": 1.4246027975151954,
+          "gap_se": 0.004899424522838868,
+          "silhouette": 0.21388468578259395,
+          "silhouette_se": 0.0,
+          "split_half_ari": 0.8216744612909734,
+          "inertia": 23394.306595103084,
+          "smallest_cluster": 968
         },
         {
           "k": 5,
-          "log_wk": 9.937254131462623,
-          "gap": 1.4448050960077055,
-          "gap_se": 0.005593898819873219,
-          "silhouette": 0.21981210733186005,
-          "silhouette_se": 1.3877787807814457e-17,
-          "split_half_ari": 0.8484245865315307,
-          "inertia": 20686.862821225368,
-          "smallest_cluster": 878
+          "log_wk": 9.937749743621426,
+          "gap": 1.4866408776509452,
+          "gap_se": 0.006169867818754875,
+          "silhouette": 0.22086068984714852,
+          "silhouette_se": 0.0,
+          "split_half_ari": 0.4352847139058346,
+          "inertia": 20697.118023058483,
+          "smallest_cluster": 854
         },
         {
           "k": 6,
-          "log_wk": 9.828640698629846,
-          "gap": 1.497006970962918,
-          "gap_se": 0.004437856333121154,
-          "silhouette": 0.22478908448707952,
-          "silhouette_se": 1.3877787807814457e-17,
-          "split_half_ari": 0.9481597352172514,
-          "inertia": 18557.711549990658,
-          "smallest_cluster": 799
+          "log_wk": 9.830274490783538,
+          "gap": 1.5394710487124552,
+          "gap_se": 0.00343315005267847,
+          "silhouette": 0.22395027227220807,
+          "silhouette_se": 0.0,
+          "split_half_ari": 0.879554353593564,
+          "inertia": 18588.055774839973,
+          "smallest_cluster": 789
         },
         {
           "k": 7,
-          "log_wk": 9.755109256853917,
-          "gap": 1.5212759600554069,
-          "gap_se": 0.006657527498013996,
-          "silhouette": 0.22008645033622615,
-          "silhouette_se": 1.3877787807814457e-17,
-          "split_half_ari": 0.8596482249825257,
-          "inertia": 17242.09845355022,
-          "smallest_cluster": 614
+          "log_wk": 9.75556336270881,
+          "gap": 1.5679460749927845,
+          "gap_se": 0.006410059237450014,
+          "silhouette": 0.22230617530941185,
+          "silhouette_se": 0.0,
+          "split_half_ari": 0.8127261002013972,
+          "inertia": 17249.929969442648,
+          "smallest_cluster": 589
         },
         {
           "k": 8,
-          "log_wk": 9.698351207086972,
-          "gap": 1.5306071052574133,
-          "gap_se": 0.004594926072923144,
-          "silhouette": 0.19252409533474954,
+          "log_wk": 9.697186178582372,
+          "gap": 1.5822989643521144,
+          "gap_se": 0.005779286894210222,
+          "silhouette": 0.1958430654267532,
           "silhouette_se": 0.0,
-          "split_half_ari": 0.7561093165530417,
-          "inertia": 16290.72501057982,
-          "smallest_cluster": 598
+          "split_half_ari": 0.8062502207223264,
+          "inertia": 16271.75690292037,
+          "smallest_cluster": 564
         }
       ],
       "clusters": [
@@ -273,251 +273,134 @@
           "top_features": [
             {
               "col": "prob_calibrated",
-              "z": 0.8732517195886059,
+              "z": 2.2421073234713065,
               "definition": "prob calibrated"
             },
             {
               "col": "market_prob",
-              "z": 0.6734112570349746,
+              "z": 1.9121155684610849,
               "definition": "market prob"
             },
             {
-              "col": "abs_spread",
-              "z": -0.4592676220782293,
-              "definition": "abs spread"
+              "col": "implied_team_total",
+              "z": 0.9797613898615126,
+              "definition": "Vegas-implied team points"
             }
           ],
           "examples": [
             {
-              "player_name": "Juwan Johnson",
-              "season": 2023,
-              "week": 1
-            },
-            {
-              "player_name": "Drake London",
+              "player_name": "Alexander Mattison",
               "season": 2023,
               "week": 4
             },
             {
-              "player_name": "Drake London",
+              "player_name": "A.J. Brown",
               "season": 2023,
-              "week": 5
+              "week": 15
+            },
+            {
+              "player_name": "DK Metcalf",
+              "season": 2023,
+              "week": 1
             }
           ]
         },
         {
           "id": 1,
-          "label": "short-price bets",
-          "label_source": "vocabulary",
-          "top_features": [
-            {
-              "col": "model_edge",
-              "z": -2.023832405274626,
-              "definition": "model edge"
-            },
-            {
-              "col": "market_prob",
-              "z": 1.2752337309971793,
-              "definition": "market prob"
-            },
-            {
-              "col": "prob_calibrated",
-              "z": 0.3186614548609516,
-              "definition": "prob calibrated"
-            }
-          ],
-          "examples": [
-            {
-              "player_name": "Keaton Mitchell",
-              "season": 2023,
-              "week": 15
-            },
-            {
-              "player_name": "Khalil Herbert",
-              "season": 2023,
-              "week": 16
-            },
-            {
-              "player_name": "Gus Edwards",
-              "season": 2023,
-              "week": 15
-            }
-          ]
-        },
-        {
-          "id": 2,
-          "label": "high-confidence bets, short-price",
-          "label_source": "vocabulary",
-          "top_features": [
-            {
-              "col": "prob_calibrated",
-              "z": 2.220433547993949,
-              "definition": "prob calibrated"
-            },
-            {
-              "col": "market_prob",
-              "z": 1.934810990466994,
-              "definition": "market prob"
-            },
-            {
-              "col": "implied_team_total",
-              "z": 0.9459965918426416,
-              "definition": "Vegas-implied team points"
-            }
-          ],
-          "examples": [
-            {
-              "player_name": "Cooper Kupp",
-              "season": 2023,
-              "week": 16
-            },
-            {
-              "player_name": "Ja'Marr Chase",
-              "season": 2023,
-              "week": 10
-            },
-            {
-              "player_name": "Tyler Lockett",
-              "season": 2023,
-              "week": 1
-            }
-          ]
-        },
-        {
-          "id": 3,
           "label": "high-total bets",
           "label_source": "vocabulary",
           "top_features": [
             {
               "col": "total_line",
-              "z": 1.0737012285338354,
+              "z": 0.9147719410937626,
               "definition": "Vegas over/under total points"
             },
             {
-              "col": "implied_team_total",
-              "z": 0.6774079432415024,
-              "definition": "Vegas-implied team points"
+              "col": "abs_spread",
+              "z": -0.5770621383441578,
+              "definition": "abs spread"
             },
             {
-              "col": "abs_spread",
-              "z": -0.5324182753515564,
-              "definition": "abs spread"
+              "col": "implied_team_total",
+              "z": 0.5632215938489565,
+              "definition": "Vegas-implied team points"
             }
           ],
           "examples": [
             {
-              "player_name": "Brock Wright",
+              "player_name": "DeeJay Dallas",
               "season": 2023,
-              "week": 3
+              "week": 4
             },
             {
-              "player_name": "Zonovan Knight",
+              "player_name": "Jauan Jennings",
               "season": 2023,
-              "week": 3
+              "week": 13
             },
             {
-              "player_name": "Geno Smith",
+              "player_name": "Derius Davis",
               "season": 2023,
-              "week": 18
+              "week": 12
             }
           ]
         },
         {
-          "id": 4,
+          "id": 2,
           "label": "bets \u2014 market prob low",
           "label_source": "generated",
           "top_features": [
             {
               "col": "market_prob",
-              "z": -0.6849739930708865,
+              "z": -0.6420345409925543,
               "definition": "market prob"
             },
             {
               "col": "prob_calibrated",
-              "z": -0.672944320911204,
+              "z": -0.6234547069053026,
               "definition": "prob calibrated"
             },
             {
               "col": "abs_spread",
-              "z": -0.6097686785749499,
+              "z": -0.5676921727797037,
               "definition": "abs spread"
             }
           ],
           "examples": [
             {
-              "player_name": "DeAndre Carter",
+              "player_name": "Scott Miller",
               "season": 2023,
-              "week": 1
-            },
-            {
-              "player_name": "DeAndre Carter",
-              "season": 2023,
-              "week": 6
+              "week": 2
             },
             {
               "player_name": "Ty Montgomery",
               "season": 2023,
               "week": 9
+            },
+            {
+              "player_name": "Pierre Strong",
+              "season": 2023,
+              "week": 16
             }
           ]
         },
         {
-          "id": 5,
-          "label": "high-scoring bets",
-          "label_source": "vocabulary",
-          "top_features": [
-            {
-              "col": "implied_team_total",
-              "z": 1.330629633946633,
-              "definition": "Vegas-implied team points"
-            },
-            {
-              "col": "abs_spread",
-              "z": 1.2362345354713786,
-              "definition": "abs spread"
-            },
-            {
-              "col": "market_prob",
-              "z": -0.38942919732163445,
-              "definition": "market prob"
-            }
-          ],
-          "examples": [
-            {
-              "player_name": "Jared Goff",
-              "season": 2023,
-              "week": 5
-            },
-            {
-              "player_name": "Will Dissly",
-              "season": 2023,
-              "week": 7
-            },
-            {
-              "player_name": "Derius Davis",
-              "season": 2023,
-              "week": 8
-            }
-          ]
-        },
-        {
-          "id": 6,
+          "id": 3,
           "label": "bets \u2014 Vegas over/under total points low",
           "label_source": "generated",
           "top_features": [
             {
               "col": "total_line",
-              "z": -1.6519021467916417,
+              "z": -1.8192838752806904,
               "definition": "Vegas over/under total points"
             },
             {
               "col": "implied_team_total",
-              "z": -1.1776342432586244,
+              "z": -1.360371926955565,
               "definition": "Vegas-implied team points"
             },
             {
               "col": "market_prob",
-              "z": -0.5206937255996812,
+              "z": -0.47997985943345084,
               "definition": "market prob"
             }
           ],
@@ -528,35 +411,113 @@
               "week": 12
             },
             {
-              "player_name": "Isaiah Hodgins",
+              "player_name": "Joshua Kelley",
               "season": 2023,
-              "week": 7
+              "week": 15
             },
             {
-              "player_name": "Lil'Jordan Humphrey",
+              "player_name": "Matt Breida",
               "season": 2023,
-              "week": 18
+              "week": 8
             }
           ]
         },
         {
-          "id": 7,
+          "id": 4,
+          "label": "high-confidence bets, short-price",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "prob_calibrated",
+              "z": 0.9915447805072378,
+              "definition": "prob calibrated"
+            },
+            {
+              "col": "market_prob",
+              "z": 0.7371246193533152,
+              "definition": "market prob"
+            },
+            {
+              "col": "model_edge",
+              "z": 0.5043747920854427,
+              "definition": "model edge"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Drake London",
+              "season": 2023,
+              "week": 4
+            },
+            {
+              "player_name": "Nathaniel Dell",
+              "season": 2023,
+              "week": 4
+            },
+            {
+              "player_name": "Christian Watson",
+              "season": 2023,
+              "week": 11
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "label": "high-scoring bets",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "implied_team_total",
+              "z": 1.3177923328422463,
+              "definition": "Vegas-implied team points"
+            },
+            {
+              "col": "abs_spread",
+              "z": 1.2100434056203093,
+              "definition": "abs spread"
+            },
+            {
+              "col": "market_prob",
+              "z": -0.4069774514984733,
+              "definition": "market prob"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Colby Parkinson",
+              "season": 2023,
+              "week": 7
+            },
+            {
+              "player_name": "Rashod Bateman",
+              "season": 2023,
+              "week": 8
+            },
+            {
+              "player_name": "Brock Purdy",
+              "season": 2023,
+              "week": 2
+            }
+          ]
+        },
+        {
+          "id": 6,
           "label": "lopsided bets",
           "label_source": "vocabulary",
           "top_features": [
             {
               "col": "abs_spread",
-              "z": 1.338705410573224,
+              "z": 1.3217332178799612,
               "definition": "abs spread"
             },
             {
               "col": "implied_team_total",
-              "z": -1.2894723335360254,
+              "z": -1.2862917720566536,
               "definition": "Vegas-implied team points"
             },
             {
               "col": "prob_calibrated",
-              "z": -0.4516002853628743,
+              "z": -0.45817144096048423,
               "definition": "prob calibrated"
             }
           ],
@@ -567,14 +528,53 @@
               "week": 7
             },
             {
-              "player_name": "Bryce Young",
+              "player_name": "Laviska Shenault",
               "season": 2023,
               "week": 5
             },
             {
-              "player_name": "Laviska Shenault",
+              "player_name": "Bryce Young",
               "season": 2023,
               "week": 5
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "label": "short-price bets",
+          "label_source": "vocabulary",
+          "top_features": [
+            {
+              "col": "model_edge",
+              "z": -1.9276815992520357,
+              "definition": "model edge"
+            },
+            {
+              "col": "market_prob",
+              "z": 1.2858272424056443,
+              "definition": "market prob"
+            },
+            {
+              "col": "prob_calibrated",
+              "z": 0.34513594479016413,
+              "definition": "prob calibrated"
+            }
+          ],
+          "examples": [
+            {
+              "player_name": "Javonte Williams",
+              "season": 2023,
+              "week": 1
+            },
+            {
+              "player_name": "Darren Waller",
+              "season": 2023,
+              "week": 1
+            },
+            {
+              "player_name": "Khalil Herbert",
+              "season": 2023,
+              "week": 16
             }
           ]
         }

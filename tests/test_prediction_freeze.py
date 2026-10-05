@@ -175,3 +175,4 @@ def test_the_export_cannot_republish_the_week_it_is_reading():
         else:
             os.environ[capture.READ_ONLY_ENV] = was
     assert A.selected_model_dir("anytime_td", None) == (None, True)
+

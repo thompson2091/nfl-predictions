@@ -830,6 +830,39 @@ def _is_orphan(path, market: str) -> bool:
     return False
 
 
+def _is_a_record(path) -> bool:
+    """Is this a board that was published, rather than one owed a rebuild?
+
+    **THIS GUARD USED TO DEMAND THE DISEASE.** A promotion made every
+    `predictions_<season>_week<w>.csv` look stale, including weeks that
+    finished a month ago, and the fix it printed was
+    `python scripts/06_predict.py --season <s> --week <w>`. Running that on a
+    played week does not refresh anything: it overwrites the board that was
+    live with today's model scoring a game whose result is already known, and
+    the live odds cache no longer prices a finished week, so the rebuilt
+    board loses `has_market_price` for nearly everybody. That is precisely
+    how weeks 3 and 4 of 2026 came to list 24 and 47 priced players of ~500,
+    and it is what `src.export.prediction_freeze` exists to prevent.
+
+    A past week's board is a RECORD. It is not derived from the served model
+    and it must not be regenerated from it; it should disagree with today's
+    model, because a different model produced it. Only a week that has not
+    kicked off is owed a rebuild.
+
+    A week whose kickoff cannot be read counts as a record, so the guard
+    never advises overwriting a board it is unsure about.
+    """
+    m = re.match(r"predictions_(\d{4})_week(\d+)\.csv$", path.name)
+    if not m:
+        return False
+    try:
+        from src.evaluation.tracked_rules import week_has_started
+
+        return week_has_started(int(m.group(1)), int(m.group(2)))
+    except Exception:                                            # noqa: BLE001
+        return True
+
+
 def stale_derived(markets=MARKETS) -> list[dict]:
     """Derived artifacts written before the model they claim to describe.
 
@@ -864,6 +897,8 @@ def stale_derived(markets=MARKETS) -> list[dict]:
         for pattern, fix in DERIVED_ARTIFACTS.items():
             for path in sorted(root.glob(pattern)):
                 if _is_orphan(path, market):
+                    continue
+                if _is_a_record(path):
                     continue
                 if path.stat().st_mtime < when:
                     out.append({
