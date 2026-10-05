@@ -182,3 +182,34 @@ def test_a_real_week_carries_a_multiple_touchdown_game():
     if out.is_empty():
         pytest.skip("2024 week 1 not built")
     assert out["td_count"].max() > 1, "every count capped at one"
+
+
+def test_a_monday_night_player_is_not_graded_on_sunday_night():
+    """A WEEK IS NOT A GAME, and this is the difference.
+
+    `week_board` gated grading on whether the WEEK had play-by-play, which on
+    a Monday is true the moment Sunday ends. Every Monday-night player then
+    joined a feature matrix built from plays that had not happened, his label
+    came back 0, and the board showed him as having failed to score in a game
+    kicking off that evening. On 2026-10-05 that was all 34 ATL and NO
+    players — Bijan Robinson at 57.2% among them — live on the site.
+    """
+    import polars as pl
+
+    from src.evaluation.week_history import _unplayed_games, week_board
+
+    unplayed = _unplayed_games(2026, 4)
+    if not unplayed:
+        pytest.skip("week 4 is complete; nothing left to be early about")
+    b = week_board(2026, 4)
+    if b.is_empty():
+        pytest.skip("no week-4 board on disk")
+    late = b.filter(pl.col("game_id").is_in(list(unplayed)))
+    assert late.height, "the fixture under test is not on the board"
+    assert late["scored"].is_null().all(), (
+        f"{late['scored'].is_not_null().sum()} players in an unplayed game "
+        f"carry a result")
+    # And the rest of the week is still graded: a guard that nulls everything
+    # is not a fix, it is the board going blank.
+    done = b.filter(~pl.col("game_id").is_in(list(unplayed)))
+    assert done.height and done["scored"].is_not_null().all()

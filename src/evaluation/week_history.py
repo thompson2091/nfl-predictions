@@ -49,6 +49,29 @@ def played_weeks(season: int) -> list[int]:
     return sorted(_played_weeks(season))
 
 
+def _unplayed_games(season: int, week: int) -> set[str]:
+    """`game_id` for every fixture this week with no final on the schedule.
+
+    The schedule is the authority on what has finished. Read here rather than
+    inferred from the feature matrix, because the matrix is exactly what gets
+    it wrong: a row exists for a game that has not been played and its label
+    is a truthful 0 about plays that do not exist yet.
+    """
+    from src.utils.paths import get_path
+
+    try:
+        s = pl.read_parquet(get_path("raw") / "schedules.parquet")
+    except Exception:                                            # noqa: BLE001
+        return set()
+    if "game_id" not in s.columns:
+        return set()
+    d = s.filter((pl.col("season") == int(season))
+                 & (pl.col("week") == int(week))
+                 & (pl.col("home_score").is_null()
+                    | pl.col("away_score").is_null()))
+    return set(d["game_id"].to_list())
+
+
 def week_board(season: int, week: int, target_type: str = "anytime_td",
                top_n: int | None = TOP_N) -> pl.DataFrame:
     """The top of the board for one week, with outcomes where they exist.
@@ -86,6 +109,24 @@ def week_board(season: int, week: int, target_type: str = "anytime_td",
         f"week board join fanned out: {before} -> {out.height}")
     out = out.with_columns(
         pl.col("target").cast(pl.Int8).alias("scored")).drop("target")
+
+    # A WEEK IS NOT A GAME, AND THIS FUNCTION'S WHOLE POINT IS THE DIFFERENCE.
+    #
+    # The gate above asks whether the WEEK has play-by-play, which on a Monday
+    # is true the moment Sunday is over — so every Monday-night player is
+    # joined to a feature matrix built from plays that have not happened, his
+    # label comes back 0, and the board shows him as having failed to score in
+    # a game that kicks off in five hours. On 2026-10-05 that was all 34 ATL
+    # and NO players, Bijan Robinson at 57.2% among them, live on the site.
+    #
+    # `scored` is null for a game without a final, never 0. The docstring
+    # above has always said so; it was the week-level test that did not.
+    unplayed = _unplayed_games(season, week)
+    if unplayed and "game_id" in out.columns:
+        out = out.with_columns(
+            pl.when(pl.col("game_id").is_in(list(unplayed)))
+              .then(None).otherwise(pl.col("scored"))
+              .cast(pl.Int8).alias("scored"))
 
     # WHAT THEY ACTUALLY HAD, beside the tick or the cross. A green row that
     # will not say whether it was one touchdown or three is the question the

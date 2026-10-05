@@ -2296,6 +2296,27 @@ def test_cluster_assignment_reproduces_the_persisted_sizes():
     if pop is None:
         pytest.skip("features not built")
     fit_df = pop.filter(pl.col("season") <= get_config()["splits"]["train_end"])
+
+    # IS THIS EVEN LIKE FOR LIKE? The assertion below compares cluster sizes
+    # against an artifact fit on a particular matrix, and `make features`
+    # rebuilds every season from current raw data — so a revision upstream
+    # moves rows that are years old. On 2026-10-05 the fit population had gone
+    # from 71,070 rows to 70,968, RB lost exactly the 53 the size assertion
+    # then reported, and the message blamed a scaler.
+    #
+    # NOT A SKIP. `tests/test_leakage` already learned that lesson the hard
+    # way: a parity check that disarms itself on a feature rebuild reports the
+    # skip as a pass and stops guarding the thing it was written for. This
+    # FAILS, with the diagnosis that is actually true and the command that
+    # fixes it.
+    fit_n = art.get("n_rows_fit")
+    assert fit_n is None or fit_df.height == fit_n, (
+        f"the feature matrix has changed since these clusters were fit on "
+        f"{art.get('fit_date')}: {fit_n:,} rows then, {fit_df.height:,} now. "
+        f"Nothing below is comparable until they agree — refit with "
+        f"`make clusters TARGET={TARGET}`. The grouping the app shows is not "
+        f"the one the report measured until you do.")
+
     assigned = archetypes.assign_frame(fit_df, art)
 
     for name, stratum in art["strata"].items():

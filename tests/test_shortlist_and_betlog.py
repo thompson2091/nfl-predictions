@@ -344,21 +344,27 @@ def test_a_tracked_rule_picks_on_the_pre_blend_edge():
 
 
 def test_recording_a_week_twice_does_not_double_the_record(tmp_path):
-    """A record that can be inflated by re-running the report is not a record."""
+    """A record that can be inflated by re-running the report is not a record.
+
+    `allow_late` because these are weeks that have long since been played and
+    this is a test about DEDUPLICATION. The timing guard is a separate
+    concern with its own tests below, and saying so here keeps one from
+    quietly standing in for the other.
+    """
     from src.evaluation.tracked_rules import load, record
 
     log = tmp_path / "tracked.csv"
     rows = [{"rule": "t", "player": "A", "team": "X", "game": "X @ Y",
              "odds": 400, "ours": 0.25, "book": 0.18, "edge_pp": 7.0}]
     first = record(rows, season=2026, week=1, market="anytime_td",
-                   recorded_on="2026-09-10", path=log)
+                   recorded_on="2026-09-10", path=log, allow_late=True)
     again = record(rows, season=2026, week=1, market="anytime_td",
-                   recorded_on="2026-09-11", path=log)
+                   recorded_on="2026-09-11", path=log, allow_late=True)
     assert (first, again) == (1, 0)
     assert load(log).height == 1
     # A different week is a different observation, not a duplicate.
     assert record(rows, season=2026, week=2, market="anytime_td",
-                  recorded_on="2026-09-17", path=log) == 1
+                  recorded_on="2026-09-17", path=log, allow_late=True) == 1
 
 
 def test_a_week_with_no_picks_is_part_of_the_record():
@@ -528,3 +534,60 @@ def test_a_pick_with_no_outcome_is_left_out_rather_than_counted_as_a_loss():
     assert _pnl("back", 0.10, 0.10, None) is None
     assert _pnl("lay", 0.10, None, 0) is None, (
         "a lay with no de-vigged price has no price to lay at")
+
+
+# ── A tracked pick is a forward test, and the clock starts at the open ──
+
+def test_nothing_is_recorded_once_the_week_has_kicked_off(tmp_path,
+                                                          monkeypatch):
+    """`week_rollover.sh` runs the shortlist unconditionally, which is right
+    while it only ever runs Tuesday to Thursday.
+
+    A forced rebuild on a Sunday morning breaks that assumption: on
+    2026-10-04 one wrote thirteen week-4 picks at game-day prices into a set
+    whose premise is the price you could have acted on days earlier. Every row
+    was honest — before its own kickoff, none on the game already played — and
+    still the wrong kind of row, with hours of lead time where the rest of the
+    set has days.
+    """
+    from src.evaluation import tracked_rules as T
+
+    monkeypatch.setattr(T, "week_has_started", lambda s, w, now=None: True)
+    p = tmp_path / "picks.csv"
+    rows = [{"rule": "r", "player": "A Player", "game": "A @ B", "team": "A",
+             "odds": 300, "ours": 0.3, "book": 0.25, "edge_pp": 5.0}]
+    assert T.record(rows, season=2026, week=4, market="anytime_td",
+                    recorded_on="2026-10-04", path=p) == 0
+    assert not p.exists(), "it wrote a file for a week already under way"
+
+
+def test_a_backfill_can_say_it_means_it(tmp_path, monkeypatch):
+    from src.evaluation import tracked_rules as T
+
+    monkeypatch.setattr(T, "week_has_started", lambda s, w, now=None: True)
+    p = tmp_path / "picks.csv"
+    rows = [{"rule": "r", "player": "A Player", "game": "A @ B", "team": "A",
+             "odds": 300, "ours": 0.3, "book": 0.25, "edge_pp": 5.0}]
+    assert T.record(rows, season=2026, week=4, market="anytime_td",
+                    recorded_on="2026-10-04", path=p, allow_late=True) == 1
+
+
+def test_the_clock_is_the_weeks_first_kickoff():
+    """Week 4 of 2026 opens on Thursday night, so Friday is already late."""
+    from datetime import datetime
+
+    from src.evaluation import tracked_rules as T
+
+    kick = T.first_kickoff(2026, 4)
+    assert kick == datetime(2026, 10, 1, 20, 15), kick
+    assert not T.week_has_started(2026, 4, now=datetime(2026, 9, 30, 12, 0))
+    assert T.week_has_started(2026, 4, now=datetime(2026, 10, 4, 9, 0))
+
+
+def test_an_unreadable_schedule_records_rather_than_going_quiet(monkeypatch):
+    """A guard that silently stops recording is worse than one that never
+    fires: the week would pass with an empty record and nothing said."""
+    from src.evaluation import tracked_rules as T
+
+    monkeypatch.setattr(T, "first_kickoff", lambda s, w: None)
+    assert T.week_has_started(2026, 4) is False

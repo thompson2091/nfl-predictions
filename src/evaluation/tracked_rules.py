@@ -37,6 +37,7 @@ is a sign convention rather than a second lookup.
 from __future__ import annotations
 
 import csv
+import sys
 from pathlib import Path
 
 import polars as pl
@@ -164,14 +165,76 @@ def load(path: Path | str = PICKS_PATH) -> pl.DataFrame:
     return pl.read_csv(p, infer_schema_length=0)
 
 
+def first_kickoff(season: int, week: int):
+    """When this week's earliest game starts, or None if it cannot be read.
+
+    Eastern clock, like `kick_sort` and every launchd slot in this project.
+    """
+    from datetime import datetime
+
+    import polars as pl  # noqa: PLC0415
+
+    from src.utils.paths import get_path  # noqa: PLC0415
+
+    try:
+        s = pl.read_parquet(get_path("raw") / "schedules.parquet")
+    except Exception:                                            # noqa: BLE001
+        return None
+    d = s.filter((pl.col("season") == int(season))
+                 & (pl.col("week") == int(week)))
+    best = None
+    for r in d.select(["gameday", "gametime"]).iter_rows():
+        if not (r[0] and r[1]):
+            continue
+        try:
+            t = datetime.strptime(f"{str(r[0])[:10]} {str(r[1])[:5]}",
+                                  "%Y-%m-%d %H:%M")
+        except ValueError:
+            continue
+        if best is None or t < best:
+            best = t
+    return best
+
+
+def week_has_started(season: int, week: int, now=None) -> bool:
+    """Whether this week's first game has kicked off.
+
+    **A TRACKED PICK IS A FORWARD TEST AND THE CLOCK STARTS AT THE OPEN.**
+    `week_rollover.sh` runs the shortlist unconditionally, which is right
+    while it only ever runs Tuesday to Thursday. A forced rebuild on a Sunday
+    morning breaks that assumption: on 2026-10-04 one wrote thirteen week-4
+    picks at game-day prices into a set whose whole premise is the price you
+    could have acted on days earlier. Every row was honest — before its own
+    kickoff, none on the game already played — and still the wrong kind of
+    row, with hours of lead time where the rest of the set has days.
+    """
+    from datetime import datetime
+
+    kick = first_kickoff(season, week)
+    if kick is None:
+        # Unreadable schedule: record, which is the old behavior. A guard that
+        # silently stops recording is worse than one that never fires.
+        return False
+    return (now or datetime.now()) >= kick
+
+
 def record(rows: list[dict], *, season: int, week: int, market: str,
-           recorded_on: str, path: Path | str = PICKS_PATH) -> int:
+           recorded_on: str, path: Path | str = PICKS_PATH,
+           allow_late: bool = False) -> int:
     """Append this week's picks. Returns how many were new.
 
     Idempotent on (season, week, market, rule, player): re-running the
     shortlist twice in a week must not double a rule's record, and a record
     that can be inflated by re-running it is not a record.
+
+    NOTHING IS RECORDED ONCE THE WEEK HAS KICKED OFF — see `week_has_started`.
+    `allow_late=True` overrides it, for a backfill that knows what it is doing.
     """
+    if rows and not allow_late and week_has_started(season, week):
+        print(f"  tracked picks: week {week} has already kicked off — "
+              f"{len(rows)} not recorded. A pick found after the week starts "
+              f"is not the forward test this file holds.", file=sys.stderr)
+        return 0
     p = Path(path)
     existing = load(p)
     seen = set()
