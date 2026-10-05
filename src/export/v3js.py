@@ -2155,24 +2155,47 @@ function v3PublicMoney(gid) {
     const x = L.h2h, oo = x && x.open_odds, no = x && x.now_odds;
     if (!oo || !no || !has(oo[0]) || !has(no[0]) || !has(oo[1]) || !has(no[1]))
       return '';
-    const d = (1 / amToDec(no[1]) - 1 / amToDec(oo[1])) * 100;
-    const i = d > 0 ? 1 : 0;
+    // INDEX 0 IS HOME AND 1 IS AWAY, which is the order
+    // `public_money.line_view` builds the pair in. Read the other way round
+    // this named the opponent on every game in the season, and it named it
+    // confidently: ATL at NO in week 4 took 87% of the moneyline money on
+    // ATL, ATL shortened from +114 to +100, the spread moved a point toward
+    // ATL — and the panel said NO was the side getting more expensive, under
+    // bars that said the opposite.
+    const d = (1 / amToDec(no[0]) - 1 / amToDec(oo[0])) * 100;
+    const i = d > 0 ? 0 : 1;
     const team = d > 0 ? c.home : c.away;
+    // THROUGH `american`, like every other price on the site. Printed raw, a
+    // +114 underdog reads as "114" — no sign, and a reader who assumes the
+    // minus everybody else omits gets the direction backwards too.
+    const px = v => esc(v3Dash(american(v)));
     if (Math.abs(d) < 1)
-      return 'The price opened at ' + esc(v3Dash(oo[1])) + ' on '
+      return 'The price opened at ' + px(oo[0]) + ' on '
         + esc(c.home) + ' and has barely moved.';
-    return esc(team) + ' opened at ' + esc(v3Dash(oo[i])) + ' and is now '
-      + esc(v3Dash(no[i])) + ' \u2014 more expensive to back than it was.';
+    return esc(team) + ' opened at ' + px(oo[i]) + ' and is now '
+      + px(no[i]) + ' \u2014 more expensive to back than it was.';
   };
 
+  // THE HEADER AND THE SENTENCE UNDER IT NAME THE SAME NUMBER. The note used
+  // to come from the card, which is The Odds API's main line, while the move
+  // underneath came from this feed's consensus — two definitions of "the
+  // current spread" a few pixels apart, and on ATL at NO they disagreed by a
+  // full point: the header said NO by 2.5 directly above "now NO by 1.5".
+  // The feed wins where it has a number, because it is the one the sentence
+  // is about; the card is the fallback.
+  const nowPt = (k, fb) => {
+    const v = (L[k] || {}).now;
+    return has(v) ? v : fb;
+  };
   const blocks = sp
     ? [v3MoneyBlock('Who wins', 'straight up, no points', sp.moneyline,
                     moveWin()),
        v3MoneyBlock('The spread',
-                    has(c.spread) ? v3SpreadTxt(c.spread, c) : '',
+                    v3SpreadTxt(nowPt('spreads', c.spread), c),
                     sp.spread, moveSpread()),
        v3MoneyBlock('Total points',
-                    has(c.total) ? 'over or under ' + c.total : '',
+                    has(nowPt('totals', c.total))
+                      ? 'over or under ' + nowPt('totals', c.total) : '',
                     sp.total, moveTotal())].join('')
     : '';
   if (!blocks) return '';

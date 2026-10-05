@@ -23,6 +23,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
    'v3PublicMoney', 'v3MoneyBlock', 'v3SharpSides', 'V3RATIO_SMALL',
+   'v3GameSet',
    'v3Ask', 'V3ASK_DEFAULT', 'v3AngleBase', 'v3Surprise', 'V3SURPRISE', 'v3Clears',
    'v3AngleSince', 'v3AngleYears',
    'v3GTab', 'v3MktLabel',
@@ -2494,6 +2495,93 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('the card refuses to call itself a tip',
      html.indexOf('None of this is a tip') >= 0
      && html.indexOf('not measured') >= 0);
+  // THE SIDE THAT SHORTENED IS THE SIDE THAT GETS NAMED. `open_odds` and
+  // `now_odds` are built `[home, away]` by `public_money.line_view`, and
+  // this sentence used to read them `[away, home]` — so it printed the right
+  // two prices under the wrong team's name, on every game of the season.
+  // ATL at NO in week 4 is the case that showed it: 87% of the moneyline
+  // money on ATL, ATL in from +114 to +100, the spread a point toward ATL,
+  // and the card announcing that NO was the side getting expensive.
+  //
+  // Checked against every game in the payload rather than one fixture,
+  // because the bug is a constant index and a single game can agree with it
+  // by luck half the time.
+  const impl = o => (o > 0 ? 100 / (o + 100) : -o / (-o + 100));
+  let checked = 0;
+  Object.keys((DATA.games || {}).lines || {}).forEach(gid => {
+    const h = (((DATA.games || {}).lines || {})[gid] || {}).h2h || {};
+    const oo = h.open_odds, no = h.now_odds;
+    if (!oo || !no || !has(oo[0]) || !has(oo[1]) || !has(no[0]) || !has(no[1]))
+      return;
+    const card = (x.v3GameSet ? (x.v3GameSet().cards || []) : [])
+      .filter(g => g.game_id === gid)[0];
+    const body = v3PublicMoney(gid);
+    if (!card || body.indexOf('more expensive to back') < 0) return;
+    checked += 1;
+    // Whose implied chance went UP is whose price got more expensive.
+    const dHome = impl(no[0]) - impl(oo[0]);
+    const team = dHome > 0 ? card.home : card.away;
+    const i = dHome > 0 ? 0 : 1;
+    const sent = body.slice(0, body.indexOf('more expensive to back'));
+    const tail = sent.slice(sent.lastIndexOf('<p'));
+    ok(gid + ': the side that shortened is the side the sentence names',
+       tail.indexOf(team) >= 0, tail);
+    // AND THE PRICES ARE THAT SIDE'S, with a sign. Printed raw a +114
+    // underdog reads as "114", which a reader takes for a favorite.
+    const sgn = v => (v > 0 ? '+' : '\u2212') + Math.abs(v);
+    ok(gid + ': and quotes that side\u2019s two prices, signed',
+       tail.indexOf(sgn(oo[i])) >= 0 && tail.indexOf(sgn(no[i])) >= 0,
+       tail + ' | want ' + sgn(oo[i]) + ' and ' + sgn(no[i]));
+  });
+  // AND THE CASE ITSELF, injected, because the fixture ships no moneyline
+  // with both ends and the sweep above then proves nothing. These are the
+  // real numbers from ATL at NO, week 4: NO (home) -135 to -120, ATL (away)
+  // +114 to +100. ATL is the side whose chance rose.
+  {
+    const gid = (x.v3GameSet().cards || []).filter(
+      g => v3PublicMoney(g.game_id).indexOf('Who wins') >= 0)[0];
+    ok('a game with a moneyline split to hang the check on', !!gid);
+    if (gid) {
+      DATA.games = DATA.games || {};
+      DATA.games.lines = DATA.games.lines || {};
+      const L = DATA.games.lines;
+      const was = L[gid.game_id];
+      L[gid.game_id] = Object.assign({}, was, {
+        h2h: { open_odds: [-135, 114], now_odds: [-120, 100] } });
+      const body = v3PublicMoney(gid.game_id);
+      const s = body.slice(0, body.indexOf('more expensive to back'));
+      const tail = s.slice(s.lastIndexOf('<p'));
+      ok('the away side shortening is reported as the away side',
+         tail.indexOf(gid.away) >= 0 && tail.indexOf(gid.home) < 0, tail);
+      ok('and its prices are quoted with their signs',
+         tail.indexOf('+114') >= 0 && tail.indexOf('+100') >= 0, tail);
+      // THE MIRROR, so the check cannot pass on a constant.
+      L[gid.game_id] = Object.assign({}, was, {
+        h2h: { open_odds: [114, -135], now_odds: [100, -120] } });
+      const flip = v3PublicMoney(gid.game_id);
+      const fs = flip.slice(0, flip.indexOf('more expensive to back'));
+      const ft = fs.slice(fs.lastIndexOf('<p'));
+      ok('and swapping the two sides swaps the team named',
+         ft.indexOf(gid.home) >= 0 && ft.indexOf(gid.away) < 0, ft);
+      if (was === undefined) delete L[gid.game_id]; else L[gid.game_id] = was;
+    }
+  }
+
+  // ONE NUMBER PER HEADER. The note beside "The spread" used to come from
+  // the card while the sentence under it came from this feed, so ATL at NO
+  // read "NO by 2.5" directly above "now NO by 1.5".
+  Object.keys((DATA.games || {}).lines || {}).forEach(gid => {
+    const L = ((DATA.games || {}).lines || {})[gid] || {};
+    const body = v3PublicMoney(gid);
+    if (!body || body.indexOf('The spread') < 0) return;
+    const nowPt = (L.spreads || {}).now;
+    if (!has(nowPt) || nowPt === 0) return;
+    const head = body.slice(body.indexOf('The spread'),
+                            body.indexOf('The spread') + 400);
+    ok(gid + ': the spread header names the same line the move ends at',
+       head.indexOf('by ' + Math.abs(nowPt)) >= 0, head.slice(0, 200));
+  });
+
   ok('a game with no split shows no card',
      v3PublicMoney('NOPE_NOPE') === '', v3PublicMoney('NOPE_NOPE'));
   ok('and it is on the game screen',
