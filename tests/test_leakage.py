@@ -3625,7 +3625,10 @@ def test_every_reader_of_the_game_line_archive_filters_on_market():
         if p.name == "game_lines.py":
             continue
         src = p.read_text()
-        if "LINES_PATH" not in src and "game_lines.parquet" not in src:
+        # READERS only. The backfill writes to this archive and selects on
+        # `not in FULL_GAME_MARKETS` before it ever does, which is the same
+        # discipline from the other side.
+        if not re.search(r'(read|scan)_parquet\(\s*(LINES_PATH|[^)]*game_lines\.parquet)', src):
             continue
         if not re.search(r'col\("market"\)|\["market"\]\s*==|market\s*==', src):
             offenders.append(str(p.relative_to(repo)))

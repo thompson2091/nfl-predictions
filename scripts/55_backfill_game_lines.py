@@ -35,7 +35,8 @@ sys.path.insert(0, ".")
 import polars as pl
 import requests
 
-from src.ingest.game_lines import GAME_MARKETS, LINES_PATH, append_snapshot
+from src.ingest.game_lines import (FULL_GAME_MARKETS, LINES_PATH,
+                                   append_snapshot)
 from src.ingest.odds_api import API_BASE, SPORT, _american_to_implied, _get_api_key
 from src.features.odds_features import TEAM_ABBREV
 from src.utils.paths import get_path
@@ -101,9 +102,15 @@ def _kickoff(day: str, tm: str | None) -> datetime | None:
 def _already(season: int, week: int, snapshot: str) -> bool:
     if not LINES_PATH.exists():
         return False
+    # FILTERED ON THE FULL-GAME MARKETS, because the archive stopped being
+    # one market on 2026-10-06. A week that a live capture had written half
+    # or quarter lines for, and that this backfill had never touched, would
+    # otherwise report as already covered and be skipped forever.
     d = pl.scan_parquet(LINES_PATH).filter(
         (pl.col("season") == season) & (pl.col("week") == week)
-        & (pl.col("snapshot") == snapshot)).select(pl.len()).collect().item()
+        & (pl.col("snapshot") == snapshot)
+        & pl.col("market").is_in(list(FULL_GAME_MARKETS))
+    ).select(pl.len()).collect().item()
     return d > 0
 
 
@@ -131,7 +138,7 @@ def _rows_from(payload, season, week, allowed, snapshot) -> list[dict]:
             continue
         for bk in ev.get("bookmakers", []):
             for m in bk.get("markets", []):
-                if m.get("key") not in GAME_MARKETS:
+                if m.get("key") not in FULL_GAME_MARKETS:
                     continue
                 for o in m.get("outcomes", []):
                     price = o.get("price")
@@ -185,9 +192,9 @@ def main() -> int:
     calls = sum(len(set(v)) for v in by_week.values()) * len(
         [x for x in a.snapshots if x == "close"]) + len(by_week) * len(
         [x for x in a.snapshots if x == "open"])
-    cost = calls * len(GAME_MARKETS) * len(a.regions.split(","))
+    cost = calls * len(FULL_GAME_MARKETS) * len(a.regions.split(","))
     print(f"{len(by_week)} season-weeks, {calls} snapshot calls, "
-          f"~{cost:,} credits at {len(GAME_MARKETS)} markets x "
+          f"~{cost:,} credits at {len(FULL_GAME_MARKETS)} markets x "
           f"{len(a.regions.split(','))} regions")
     if a.dry_run:
         return 0
@@ -206,7 +213,7 @@ def main() -> int:
                 at = (k - CLOSE_OFFSET) if snap == "close" else (k - OPEN_OFFSET)
                 data = _get(f"/historical/sports/{SPORT}/odds",
                             {"apiKey": key, "regions": a.regions,
-                             "markets": ",".join(GAME_MARKETS),
+                             "markets": ",".join(FULL_GAME_MARKETS),
                              "oddsFormat": "american",
                              "date": at.strftime("%Y-%m-%dT%H:%M:%SZ")}, budget)
                 time.sleep(a.sleep)
