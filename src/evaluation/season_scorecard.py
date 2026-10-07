@@ -101,13 +101,32 @@ def _implied(odds: float) -> float:
 # ── the games: what was frozen before kickoff ────────────────────────────
 
 def _book_lines(season: int) -> dict:
-    """The book's consensus spread, total and de-vigged home win chance."""
+    """The book's consensus spread, total and de-vigged home win chance.
+
+    **IN-PLAY QUOTES ARE DROPPED FIRST.** The number this page grades against
+    has to be one somebody could have taken, and the live capture slots
+    cannot all be pre-kickoff at once — the Sunday firing that catches the
+    late window is two hours into the early one. Over 2026 that is 1,750 of
+    41,000 rows, 4.27%, and the three backfilled seasons hold none at all,
+    which is what asking the historical endpoint for a pre-kickoff instant
+    should look like.
+
+    It moves one spread and three totals of 79 games, which is small; it was
+    worth finding anyway, because an in-play price is the one every
+    newest-wins rule in this project selects (pipeline trap 8) and the share
+    grows with every live week.
+    """
+    from src.ingest.odds_history import drop_in_play
+
     out: dict = {}
     try:
         gl = pl.read_parquet("data/archive/game_lines.parquet").filter(
             pl.col("season") == season)
     except Exception:                                            # noqa: BLE001
         return out
+    if gl.is_empty():
+        return out
+    gl = drop_in_play(gl)
     if gl.is_empty():
         return out
     gl = gl.with_columns(

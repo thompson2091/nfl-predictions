@@ -204,3 +204,63 @@ def test_resolving_a_player_id_binds_to_the_frame_it_was_built_from():
     with pytest.raises(Exception):
         # The shape of the bug: a mapping built over `df`, attached to `shorter`.
         shorter.with_columns(_resolve_player_id(df))
+
+
+def test_a_frame_with_its_own_kickoff_needs_no_schedule_join(tmp_path,
+                                                             monkeypatch):
+    """THE SILENT NO-OP. A filter that matches nothing reports nothing.
+
+    `game_lines.parquet` files its rows as `ATL_GB`; the schedule keys on
+    `2026_03_ATL_GB`. So the join found no kickoff, every `_kick` came back
+    null, and `drop_in_play` handed the frame straight back — measured
+    2026-10-07 it dropped 0 of 41,000 2026 rows while 1,750 of them, 4.27%,
+    had been quoted after kickoff.
+
+    Nothing could have caught that from the outside: dropping nothing is
+    exactly what a clean archive looks like, and the three backfilled
+    seasons really do hold no in-play rows.
+
+    So a frame carrying `commence_time` is filtered on its own row. The API
+    puts the kickoff there, it cannot drift from the id format, and there is
+    no join to match.
+    """
+    import src.ingest.odds_history as oh
+
+    # A schedule that CANNOT match, which is the live archive's situation.
+    pl.DataFrame({"game_id": ["2026_03_ATL_GB"], "gameday": ["2026-09-27"],
+                  "gametime": ["13:00"]}).write_parquet(
+                      tmp_path / "schedules.parquet")
+    monkeypatch.setattr(oh, "get_path", lambda *a: tmp_path)
+
+    df = pl.DataFrame({
+        "game_id": ["ATL_GB"] * 3,
+        "market": ["spreads"] * 3,
+        "point": [-6.0, -5.5, -6.5],
+        "commence_time": ["2026-09-27T17:00:00Z"] * 3,
+        "book_last_update": [
+            "2026-09-27T16:40:00Z",     # twenty minutes before kickoff
+            "2026-09-27T19:12:00Z",     # second half
+            "2026-09-27T16:59:30Z",     # thirty seconds before, still a bet
+        ],
+    })
+    kept = drop_in_play(df)
+    assert kept["point"].to_list() == [-6.0, -6.5], (
+        "the in-play quote survived, which means the row's own kickoff was "
+        "not used and the schedule join matched nothing")
+    assert kept.columns == df.columns, "the filter must not reshape the frame"
+
+
+def test_the_graded_line_is_one_somebody_could_have_taken():
+    """`season_scorecard` grades against a consensus of archived quotes, so
+    an in-play price in that median is a number nobody could have bet."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1]
+           / "src/evaluation/season_scorecard.py").read_text()
+    i = src.index("def _book_lines(")
+    body = src[i:src.index("\ndef ", i + 10)]
+    assert "drop_in_play(gl)" in body, (
+        "the book's consensus is taken over every archived quote, in-play "
+        "ones included")
+    assert body.index("drop_in_play(gl)") < body.index('"spreads"'), (
+        "the in-play rows must go before any median is taken over them")

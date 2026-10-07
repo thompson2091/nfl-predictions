@@ -424,8 +424,28 @@ def drop_in_play(df: pl.DataFrame) -> pl.DataFrame:
     to `captured_at`, bounded by `LIVE_LAG_HOURS`. The bound is what keeps a
     backfill safe: its rows carry an August 2026 write time for a 2023 kickoff,
     which is months past, not hours.
+
+    **A FRAME CARRYING ITS OWN `commence_time` IS NOT JOINED TO THE SCHEDULE.**
+    The kickoff then comes off the row, where the API put it, and the game id
+    never has to match anything. That is not a shortcut, it is the fix for a
+    silent no-op: `game_lines.parquet` files its rows as `ATL_GB` while the
+    schedule keys on `2026_03_ATL_GB`, so the join below matched nothing, every
+    `_kick` came back null, and this returned the frame untouched. Measured
+    2026-10-07 it dropped 0 of 41,000 2026 rows while 1,750 of them (4.27%)
+    were quoted after kickoff.
     """
-    if df.height == 0 or "game_id" not in df.columns:
+    if df.height == 0:
+        return df
+
+    # The row's own kickoff first, because it needs no join to be right.
+    if "commence_time" in df.columns and "book_last_update" in df.columns:
+        fmt = "%Y-%m-%dT%H:%M:%SZ"
+        kick = pl.col("commence_time").str.to_datetime(fmt, strict=False)
+        moved = pl.col("book_last_update").str.to_datetime(fmt, strict=False)
+        return df.filter(~(kick.is_not_null() & moved.is_not_null()
+                           & (moved > kick)).fill_null(False))
+
+    if "game_id" not in df.columns:
         return df
     kicks = _kickoffs()
     if kicks is None or kicks.height == 0:
