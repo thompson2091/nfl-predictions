@@ -368,6 +368,22 @@ def payload_v3():
                                [2026, 2, "CHI", 1, 5.5, -110, 7.0]],
             },
         },
+        # WHO IS ON A STREAK, AS THE PAYLOAD SHIPS IT.
+        #
+        # `src/evaluation/streaks.py` owns the rule and the page is now a
+        # lookup, so this is shipped data and is written out rather than
+        # derived here. It is written out for a second reason worth stating:
+        # run the real rule over this fixture and it flags NOBODY, correctly
+        # — two players is not a population, so the one who went 4 of 5
+        # under IS 100% of the eligible unders and the market's own default
+        # gets suppressed. Asserting the page draws nothing would test the
+        # fixture's size, not the page.
+        #
+        # Alpha Back's receptions really are 4 of his last 5 under
+        # (`tests/test_streaks.py` checks the rule against the same rows), so
+        # the figures here are his and not invented.
+        "streaks": {"receptions": {"Alpha Back": ["under", 4, 5]}},
+        "streak_of": 5, "streak_min": 4,
     }
     p["angles"] = {
         "break_even": 0.5238,
@@ -1470,6 +1486,44 @@ def payload_v3():
             },
         },
 }
+    # ── THE BOARD'S FOUR VIEWS, ADDED HERE RATHER THAN IN THE LITERAL ────
+    #
+    # `players_block` carries Everyone, Shortlist, Fades and Streaks, each
+    # scored on its OWN bets — the shortlist picks its own line and its own
+    # side, so it is not a filter on one set. Built from the literal above so
+    # `views.all` really is the same numbers the top-level keys carry, which
+    # is the compatibility the page relies on; the other three are given
+    # distinct returns so a page that drew the wrong one would show it.
+    #
+    # `sides: 1` on Shortlist and Fades is the rule picking the side, so
+    # those views have no "our model" against "adjusted" to draw.
+    for _rng in p["scorecard"]["ranges"].values():
+        _pl = _rng.get("players")
+        if not _pl:
+            continue
+        _pl["views"] = {
+            "all": {"sides": 2, "ou": _pl["ou"], "all": _pl["all"],
+                    "model": _pl["model"], "model_all": _pl["model_all"]},
+            "short": {"sides": 1,
+                      "ou": [dict(r, bets=max(1, r["bets"] // 4),
+                                  roi=0.0731) for r in _pl["ou"]],
+                      "all": {"bets": 97, "roi": 0.0731, "lo": -0.04,
+                              "hi": 0.19}},
+            "fade": {"sides": 1,
+                     "ou": [dict(r, bets=max(1, r["bets"] // 8),
+                                 roi=-0.0219) for r in _pl["ou"]],
+                     "all": {"bets": 48, "roi": -0.0219, "lo": -0.17,
+                             "hi": 0.13}},
+            "streak": {"sides": 2,
+                       "ou": [dict(r, bets=max(1, r["bets"] // 3),
+                                   roi=-0.0812) for r in _pl["ou"]],
+                       "all": {"bets": 131, "roi": -0.0812, "lo": -0.21,
+                               "hi": 0.05},
+                       "model": [dict(r, bets=max(1, r["bets"] // 3),
+                                      roi=0.0144) for r in _pl["model"]],
+                       "model_all": {"bets": 131, "roi": 0.0144,
+                                     "lo": -0.11, "hi": 0.14}},
+        }
     return p
 
 
@@ -1548,6 +1602,33 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "and the search narrows it to one player",
                  "a payload with no per-leg bets drops section 06 rather "
                  "than throwing",
+                 # Streaks is a lookup now, and the page must not keep a
+                 # rule of its own.
+                 "the payload carries who is on a streak",
+                 "and the streak filter shows exactly the flagged players",
+                 "and the tag reads its count off the flag rather than "
+                 "recounting",
+                 "with nothing flagged the filter is empty rather than the "
+                 "whole board",
+                 # Section 04's four views, each on its own bets.
+                 "section 04 offers the board’s four filters",
+                 "each filter draws its own numbers",
+                 "and the shortlist return is the shortlist’s, not "
+                 "everyone’s",
+                 "a filter that picks its own side draws one series, not two",
+                 "and the fades say they are also in the shortlist",
+                 "the streak filter keeps our model and the adjusted one "
+                 "apart",
+                 "and says the count is as of that week rather than as of "
+                 "today",
+                 "the shortlist says the bands were fitted before these "
+                 "weeks",
+                 # And a player row that opens to show what the bets were.
+                 "a player name is a control rather than plain text",
+                 "and opening one spells out what each of his bets was",
+                 "only the player asked for is open",
+                 "the price-gap grading is not called an edge rule",
+                 "and says in words that it is not the shortlist",
                  "and it opens on the payload\u2019s own default range",
                  "a range whose weeks were never frozen says so rather than "
                  "showing zeros",
@@ -1943,6 +2024,40 @@ def test_v3_keeps_every_calculation_and_rewrites_none():
         assert fn not in src, f"{fn} is v1's and must not be rewritten here"
     assert src.count("function render(") == 1, (
         "v3 takes over v1's render and must declare it exactly once")
+
+
+def test_the_streak_rule_lives_in_python():
+    """The page looks the answer up; it does not work it out.
+
+    `v3Streak` used to count a player's last five weeks in the browser, out
+    of whatever history the payload inlined and from whatever "now" happened
+    to be. That made the rule unaskable about the past — "how did the streak
+    picks do in week 3" returned today's answer and moved every time a later
+    week landed — so the Record page could not score it, and nothing anywhere
+    recorded which players the filter had shown.
+
+    Parity was measured before the JavaScript went, on the live payload of
+    2026-10-07 across all six markets: 277 flagged players, identical sets,
+    identical directions, identical baselines.
+
+    Falsified by putting any of it back: a second copy of the rule would let
+    the board and the Record page disagree about the same player, with
+    nothing failing.
+    """
+    from src.export import v3js
+
+    src = v3js.js()
+    for gone in ("v3StreakBase", "V3STREAKBASE", "V3STREAK_OF = 5",
+                 "V3STREAK_MIN = 4"):
+        assert gone not in src, (
+            f"{gone} is the rule, or its constants, written in the page again")
+    # It reads the flag the payload carries...
+    assert "streaks || {})[mk]" in src or "streaks || {})" in src, (
+        "the page must read pastlines.streaks rather than recount")
+    # ...and quotes the window from the payload rather than from a literal.
+    assert "streak_of" in src and "streak_min" in src, (
+        "the window the prose quotes must come from the payload, or the "
+        "sentence keeps the old numbers after the rule changes")
 
 
 def test_the_week_picker_is_global_rather_than_per_market():
@@ -2528,36 +2643,22 @@ def test_the_last_ten_chart_says_what_its_colors_mean():
         "the count is printed under the chart again rather than above it"
 
 
-def test_a_streak_is_counted_against_the_line_he_was_quoted_that_week():
-    """Not against this week's line, which he never played against.
-
-    A player's number moves week to week — three catches against 1.5 and three
-    against 3.5 are not the same week — so counting past games against today's
-    line reports a run the player never had. The row's tag and the chart above
-    it have to be answering one question.
-    """
-    src = _v3js()
-    i = src.index("function v3Streak(row)")
-    body = src[i:i + 1800]
-    assert "recent[i][4]" in body and "recent[i][6]" in body, \
-        "the streak no longer reads the archived line and result per week"
-    assert "did > line" in body, "the streak is not compared to that week's line"
-    assert "row.line" not in body and "row.book" not in body, \
-        "the streak reached for this week's line"
-
-
-def test_a_short_or_ragged_record_is_silent_rather_than_flagged():
-    """Five weeks with a line AND a result, or no tag at all.
-
-    A flag built on three weeks would appear most often on exactly the players
-    with the least behind them.
-    """
-    src = _v3js()
-    i = src.index("function v3Streak(row)")
-    body = src[i:i + 1800]
-    assert "rows.length < V3STREAK_OF" in body, "a short record is now flagged"
-    assert "known < V3STREAK_OF" in body, \
-        "weeks with no line or no result are counted toward the streak"
+# THE THREE TESTS THAT USED TO SIT HERE NOW LIVE IN
+# `tests/test_streaks.py`, because what they pin moved out of the page:
+#
+#   * a streak is counted against the line he was quoted THAT WEEK, not
+#     against this week's — three catches against 1.5 and three against 3.5
+#     are not the same week, and counting past games against today's number
+#     reports a run the player never had;
+#   * five weeks with a line AND a result or no flag at all, since a flag
+#     built on three weeks would appear most often on exactly the players
+#     with the least behind them;
+#   * and whichever direction covers most of a market is that market's own
+#     default and is not drawn — "did not score in 4 of his last 5" was true
+#     of 385 of the 398 players eligible on first touchdown.
+#
+# What is left to check in the page is that it does not keep a second copy of
+# any of it: `test_the_streak_rule_lives_in_python`.
 
 
 def test_the_streak_tag_is_not_colored_like_a_recommendation():
@@ -2581,31 +2682,6 @@ def test_the_streak_filter_is_reachable_and_has_an_empty_state():
     assert "V.filter === 'streak'" in src, "the Streaks segment filters nothing"
     assert "Nobody on this market went one way in" in src, \
         "the Streaks filter has no empty state"
-
-
-def test_a_streak_that_describes_the_whole_market_is_not_drawn():
-    """A tag on 97% of the board is a label for the market, not the player.
-
-    Measured on the week this was written: "did not score in 4 of his last 5"
-    was true of 385 of the 398 players eligible on first TD and 325 of 398 on
-    anytime TD — most players do not score most weeks. The other direction on
-    those markets is 0 and 8 players, and that is the fact worth seeing.
-
-    The cut is read off the board rather than written per market, so a season
-    where unders stop being the norm on receptions starts showing them with no
-    edit here.
-    """
-    src = _v3js()
-    i = src.index("function v3Streak(row)")
-    body = src[i:i + 2600]
-    assert "v3StreakBase(mk)" in body, "the base-rate gate is gone"
-    assert "> 0.5) return null" in body, \
-        "a direction covering most of the board is drawn again"
-    j = src.index("function v3StreakBase(mk)")
-    base = src[j:j + 1400]
-    assert "V3STREAKBASE[mk]" in base, "the base rate is recomputed per row"
-    assert "{ over: 1, under: 1 }" in base, \
-        "a market with nothing to measure now flags everything"
 
 
 def test_the_player_detail_pairs_are_sized_by_fit_not_by_handset():

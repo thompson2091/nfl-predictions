@@ -22,6 +22,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'V3BETTYPES',
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
+   'v3Streak', 'v3StreakTag', 'V3STREAK_OF', 'V3STREAK_MIN',
    'v3PublicMoney', 'v3MoneyBlock', 'v3SharpSides', 'V3RATIO_SMALL',
    'v3GameSet', 'v3RecordPage', 'v3RecRange', 'v3Money',
    'v3Ask', 'V3ASK_DEFAULT', 'v3AngleBase', 'v3Surprise', 'V3SURPRISE', 'v3Clears',
@@ -1309,6 +1310,56 @@ if (cards.length) {
      h.indexOf('to win</span>') < 0);
 }
 V.filter = 'all'; V.tab = 'props';
+
+// ── Streaks is a lookup now, not a rule ─────────────────────────────────
+//
+// `v3Streak` used to count a player's last five weeks here, out of whatever
+// history the payload inlined and from whatever "now" happened to be — so it
+// could only ever answer as of today, and nothing recorded which players it
+// had shown. `src/evaluation/streaks.py` owns it and the payload carries the
+// answer; what is left to check is that the page READS it and does not
+// quietly keep a rule of its own.
+{
+  V.tab = 'props'; V.game = null; V.q = ''; V.week = null;
+  const S = (DATA.pastlines || {}).streaks || {};
+  // The board market whose history key the flag is filed under.
+  const mkt = Object.keys(V3HIST).filter(k => S[V3HIST[k]])[0];
+  ok('the payload carries who is on a streak', !!mkt,
+     'no market in pastlines.streaks: ' + JSON.stringify(Object.keys(S)));
+  if (mkt) {
+    const hk = V3HIST[mkt];
+    V.market = mkt; V.filter = 'streak'; render();
+    const flagged = Object.keys(S[hk]);
+    const shown = flagged.filter(n => pane().indexOf(n) >= 0);
+    ok('and the streak filter shows exactly the flagged players',
+       shown.length === flagged.length, 'flagged ' + flagged.join(', ')
+       + '; drawn ' + shown.join(', '));
+    // THE COUNT ON THE TAG COMES FROM THE FLAG TOO. It used to be counted
+    // in the page, which is the same rule written twice.
+    const f = S[hk][flagged[0]];
+    ok('and the tag reads its count off the flag rather than recounting',
+       pane().indexOf(f[1] + ' of ' + f[2]) >= 0,
+       'wanted "' + f[1] + ' of ' + f[2] + '"');
+    // NOBODY FLAGGED IS AN EMPTY FILTER, NOT THE WHOLE BOARD. `fade` once
+    // fell through to returning every row under the word "Fades".
+    const was = DATA.pastlines.streaks;
+    DATA.pastlines.streaks = {};
+    render();
+    ok('with nothing flagged the filter is empty rather than the whole board',
+       flagged.every(n => pane().indexOf(n) < 0), pane().slice(0, 200));
+    DATA.pastlines.streaks = was;
+    // AND THE PROSE QUOTES THE SHIPPED WINDOW. Whether it is READ from the
+    // payload rather than written in the page is a source question — these
+    // are `const`, bound once at load — so it is checked in
+    // `test_the_streak_rule_lives_in_python` instead of by mutating DATA
+    // here, which could not tell a payload read from a literal 5.
+    ok('the filter names the window it used',
+       x.V3STREAK_OF === (DATA.pastlines.streak_of || 5)
+       && x.V3STREAK_MIN === (DATA.pastlines.streak_min || 4),
+       x.V3STREAK_OF + '/' + x.V3STREAK_MIN);
+    V.filter = 'all'; V.market = 'any'; render();
+  }
+}
 
 // ── The games filters, and their own state ──────────────────────────────
 //
@@ -2679,6 +2730,73 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('and names the margin each market has to clear',
      /by catches [\d.]+pp/.test(h), h);
 
+  // ── 04 · THE BOARD'S FOUR VIEWS ──────────────────────────────────────
+  //
+  // Everyone, Shortlist, Fades and Streaks are the tabs on the players
+  // board, and until now none of them could be scored. Each is its OWN set
+  // of bets: the shortlist picks its own line and its own side, so showing
+  // our result under its name would report the board's record as the
+  // rule's.
+  {
+    V.recView = 'all'; V.scFrom = null; V.scTo = null; render();
+    const base = v3RecordPage();
+    ok('section 04 offers the board’s four filters',
+       ['Everyone', 'Shortlist', 'Fades', 'Streaks']
+         .every(s => base.indexOf('>' + s + '<') >= 0), base);
+    const seen = {};
+    for (const k of ['all', 'short', 'fade', 'streak']) {
+      V.recView = k;
+      const h2 = v3RecordPage();
+      seen[k] = h2;
+      ok('the ' + k + ' filter renders', h2.indexOf('Player bets') >= 0);
+      ok('and says what it is before the table',
+         h2.indexOf('</p>') > 0 && h2.length > 500);
+    }
+    // THE NUMBERS MOVE. A selector that redraws the same figures is a
+    // selector that is reading the wrong key, which is exactly what a
+    // fallback to the top-level `ou` would do.
+    ok('each filter draws its own numbers',
+       new Set(['all', 'short', 'fade', 'streak'].map(k => seen[k])).size === 4,
+       'two filters rendered identically');
+    ok('and the shortlist return is the shortlist’s, not everyone’s',
+       seen.short.indexOf('+$7.31') >= 0, 'wanted the fixture shortlist roi');
+    // SHORTLIST AND FADES CARRY ONE SERIES, because the rule picks the side.
+    // Scoped to section 04: the game sections above it name the adjusted
+    // model too, and the first version of this check read the whole page
+    // and failed on those.
+    const sec04 = h2 => {
+      const a = h2.indexOf('Player bets: profit per $100');
+      const b = h2.indexOf('only where the price was wrong enough');
+      return h2.slice(a, b > a ? b : undefined);
+    };
+    ok('a filter that picks its own side draws one series, not two',
+       sec04(seen.short).indexOf('The rule’s own side') >= 0
+       && sec04(seen.short).indexOf('Adjusted model') < 0,
+       sec04(seen.short).slice(0, 300));
+    // AND FADES IS A SUBSET, not a fourth disjoint group. On a two-sided
+    // line a fade is the shortlist's under picks.
+    ok('and the fades say they are also in the shortlist',
+       seen.fade.indexOf('also in Shortlist') >= 0);
+    // STREAKS KEEPS BOTH SIDES, because there the side is still ours.
+    V.recFull = true;
+    V.recView = 'streak';
+    const st = v3RecordPage();
+    V.recFull = false;
+    ok('the streak filter keeps our model and the adjusted one apart',
+       sec04(st).indexOf('Our model') >= 0
+       && sec04(st).indexOf('Adjusted model') > sec04(st).indexOf('Our model'),
+       sec04(st).slice(0, 300));
+    ok('and says the count is as of that week rather than as of today',
+       seen.streak.indexOf('as of that week') >= 0);
+    ok('and that it is form rather than an edge',
+       seen.streak.indexOf('not an edge') >= 0);
+    // THE SHORTLIST'S PROVENANCE. Fitted on 2024 with 2025 and 2026 held
+    // out, so these weeks are a test of it and not a replay of the fit.
+    ok('the shortlist says the bands were fitted before these weeks',
+       seen.short.indexOf('held out') >= 0);
+    V.recView = 'all'; render();
+  }
+
   // ── 06 · BETS BY PLAYER ──────────────────────────────────────────────
   ok('there is a per-player section',
      h.indexOf('Bets by player') >= 0, h);
@@ -2752,6 +2870,38 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
        v3RecordPage().indexOf('No player matching') >= 0);
     V.recQ = ''; V.recWho = 'top'; V.scFrom = null; V.scTo = null;
   }
+  // WHAT THE BET WAS, FROM A PLAYER ROW. The three player-level cuts said
+  // how a man did and never which bets those were — "6 bets, 6 won" with no
+  // way to see the six — so the name opens.
+  {
+    V.recWho = 'top'; V.recSeries = 'model'; V.scFrom = 3; V.scTo = 4;
+    V.recOpen = null;
+    const shut = v3RecordPage();
+    ok('a player name is a control rather than plain text',
+       shut.indexOf('data-v3recopen=') >= 0, shut.slice(0, 200));
+    const m = /data-v3recopen="([^"]+)"/.exec(shut);
+    V.recOpen = m && m[1];
+    const open = v3RecordPage();
+    ok('and opening one spells out what each of his bets was',
+       open.indexOf('class="pgleg') >= 0
+       && /(Catches|Receiving yards|Rushing yards|Passing yards) (over|under) /
+            .test(open), open.slice(0, 300));
+    ok('and names the game and week each bet was in',
+       /class="pgwk"> · week \d/.test(open), 'no week on the opened legs');
+    ok('only the player asked for is open',
+       (open.match(/class="pgopen"/g) || []).length === 1);
+    V.recOpen = null;
+    // THE THIRD GRADING IS NAMED FOR WHAT IT DOES. "Edge rule only" said
+    // nothing and was read as the shortlist, which is a different rule.
+    ok('the price-gap grading is not called an edge rule',
+       shut.indexOf('Edge rule only') < 0
+       && shut.indexOf('>Big price gaps<') >= 0, shut.slice(0, 200));
+    V.recSeries = 'edge';
+    ok('and says in words that it is not the shortlist',
+       v3RecordPage().indexOf('NOT the Shortlist') >= 0);
+    V.recSeries = 'model'; V.scFrom = null; V.scTo = null;
+  }
+
   // A SCORECARD WITH NO LEGS STILL RENDERS. `bets` is new, so a payload
   // built before it has to fall through rather than throw.
   {

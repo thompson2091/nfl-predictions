@@ -345,8 +345,56 @@ def _model_only_side(rows: list[dict]) -> list[dict]:
     return out
 
 
+def _rule_side(rows: list[dict], sides: dict, want: str | None = None
+               ) -> list[dict]:
+    """The rows the shortlist takes, on the side IT takes rather than ours.
+
+    `want` narrows to one side, which is what Fades is: on a two-sided line a
+    fade is not a separate population but the shortlist's under picks, so it
+    is a SUBSET of the shortlist and the card says so.
+
+    `won` is re-derived here because the side changed. A line the rule bets
+    under and we bet over is one bet with two possible results, and carrying
+    our result under the rule's name is how a filter starts reporting the
+    board's record.
+    """
+    out = []
+    for r in rows:
+        side = sides.get((r.get("player_name"), r.get("line")))
+        if side is None or (want is not None and side != want):
+            continue
+        r = dict(r)
+        r["side"] = side
+        got, line = r.get("actual"), r.get("line")
+        r["won"] = (None if got is None or line is None
+                    or float(got) == float(line)
+                    else (float(got) > float(line)) == (side == "over"))
+        out.append(r)
+    return out
+
+
+def _with_streak(rows: list[dict], flags: dict, week: int,
+                 market: str) -> list[dict]:
+    """Only the bets on a player the streak rule flagged that week.
+
+    A FILTER ON PLAYERS, NOT ON LINES, which is why it narrows the bets
+    already chosen rather than picking its own. A streak is not a side until
+    something bets one — the board flags the player and the bet is still
+    whichever side our number took — so the shape here is the board's shape
+    and the return is our return on a flagged man.
+    """
+    return [r for r in rows
+            if flags.get((week, market, r.get("player_name"))) is not None]
+
+
 def ou_rows(season: int, weeks) -> dict:
-    """One bet per player-game per market, for each week. Cached by caller."""
+    """One bet per player-game per market, for each week. Cached by caller.
+
+    Carries every view the players board offers, each as its own set of bets
+    rather than as a flag on one set, because two of them do not bet the same
+    line or the same side. See `board_views`.
+    """
+    from src.evaluation import board_views as BV
     from src.evaluation.prop_edge import qualifying
     from src.evaluation.prop_settlement import (participation, settle_rows,
                                                 side_prices)
@@ -360,10 +408,27 @@ def ou_rows(season: int, weeks) -> dict:
     # did not play is void.
     prices, played = side_prices(season), participation(season)
     out: dict = {}
+    # The streak flags for every week at once, because the baseline each one
+    # is judged against is a pass over the whole population and there is no
+    # reason to make it four.
+    boards: dict = {}
     for mk, _ in OU_MARKETS:
         for wk in weeks:
             try:
-                raw = ou_week(season, wk, mk) or []
+                boards[(mk, wk)] = ou_week(season, wk, mk) or []
+            except Exception:                                    # noqa: BLE001
+                boards[(mk, wk)] = []
+    try:
+        streak = BV.streak_flags(
+            season, weeks,
+            {r.get("player_name") for v in boards.values() for r in v},
+            [mk for mk, _ in OU_MARKETS])
+    except Exception:                                            # noqa: BLE001
+        streak = {}
+    for mk, _ in OU_MARKETS:
+        for wk in weeks:
+            try:
+                raw = boards[(mk, wk)]
                 got = settle_rows(season, mk, raw, prices=prices, played=played)
                 # AND THE RAW MODEL'S OWN SIDE. `ou_week` picks its side from
                 # `ours`, which is the SERVED number — already blended toward
@@ -385,6 +450,35 @@ def ou_rows(season: int, weeks) -> dict:
                                          if r.get("won") is not None]
             except Exception:                                    # noqa: BLE001
                 out[("edge", mk, wk)] = []
+            # THE SHORTLIST, ON ALL ITS LINES AND THEN REDUCED TO ONE.
+            #
+            # The rule is applied to every line, which is the population it
+            # was fitted on — `_attach_ou_shortlists` is explicit that a
+            # board already narrowed to one line per player is a different
+            # population. Only after it has picked are the picks reduced to
+            # one bet per player-game, because passing yards had the rule
+            # taking EIGHT lines on one quarterback in week 3 and counting
+            # those as eight bets is the same inflation that once turned a
+            # +0.30% player edge into +6.89%.
+            try:
+                sides = BV.shortlist_sides(raw, mk)
+            except Exception:                                    # noqa: BLE001
+                sides = {}
+            for key, want in (("short", None), ("fade", "under")):
+                picks = settle_rows(season, mk, _rule_side(raw, sides, want),
+                                    prices=prices, played=played)
+                out[(key, mk, wk)] = _one_per_player(picks)
+            # Streaks narrows the bets already chosen, on both sides, so the
+            # filter is comparable with the unfiltered rows above it.
+            out[("streak", mk, wk)] = _with_streak(out[(mk, wk)], streak,
+                                                   wk, mk)
+            out[("streak_model", mk, wk)] = _with_streak(
+                out[("model", mk, wk)], streak, wk, mk)
+            # And stamped on the rows the per-leg table reads, so section 06
+            # can mark a flagged player without a second lookup in the page.
+            for key in ((mk, wk), ("model", mk, wk)):
+                for r in out[key]:
+                    r["streak"] = streak.get((wk, mk, r.get("player_name")))
     return out
 
 
@@ -449,7 +543,40 @@ def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
                    "said_model": (sum(x["said_model"] * x["n"] for x in sm) / n
                                   if sm else None),
                    "actual": sum(x["actual"] * x["n"] for x in got) / n})
-    return {"weeks": sorted(weeks), "ou": ou, "td": td,
+    # ── THE BOARD'S OWN FOUR VIEWS ──────────────────────────────────────
+    #
+    # Everyone, Shortlist, Fades and Streaks, each scored on ITS OWN BETS.
+    # Not a flag on one set of bets: the shortlist picks its own line and its
+    # own side, so a flag would report our record under the rule's name. See
+    # `board_views`.
+    #
+    # Shortlist and Fades carry one series, because the rule picks the side.
+    # Everyone and Streaks carry two, ours and the adjusted one, since there
+    # the side is still ours to take.
+    views: dict = {"all": {"ou": ou, "all": {
+                       "bets": sum(len(v) for v in grand.values()),
+                       "roi": roi, "lo": lo, "hi": hi},
+                   "model": model, "model_all": {
+                       "bets": sum(len(v) for v in mgrand.values()),
+                       "roi": mroi, "lo": mlo, "hi": mhi},
+                   "sides": 2}}
+    for key, kinds in (("short", ("short", None)),
+                       ("fade", ("fade", None)),
+                       ("streak", ("streak", "streak_model"))):
+        blk: dict = {"sides": 2 if kinds[1] else 1}
+        s, g = _series(cache, weeks, kinds[0])
+        r2, l2, h2 = _cluster_ci(g)
+        blk["ou"] = s
+        blk["all"] = {"bets": sum(len(v) for v in g.values()),
+                      "roi": r2, "lo": l2, "hi": h2}
+        if kinds[1]:
+            s2, g2 = _series(cache, weeks, kinds[1])
+            r3, l3, h3 = _cluster_ci(g2)
+            blk["model"] = s2
+            blk["model_all"] = {"bets": sum(len(v) for v in g2.values()),
+                                "roi": r3, "lo": l3, "hi": h3}
+        views[key] = blk
+    return {"weeks": sorted(weeks), "ou": ou, "td": td, "views": views,
             # `ou` is the ADJUSTED model — `ou_week` sides on the served
             # number — and `model` is the same bets sided on the unblended
             # one. Named for what they are rather than for which came first.
@@ -485,15 +612,23 @@ def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
 #:
 #: A leg is:
 #:
-#:     [market, line, actual, adj_side, adj_ret, model_side, model_ret, edge_ret]
+#:     [market, line, actual, adj_side, adj_ret, model_side, model_ret,
+#:      edge_ret, streak]
 #:
 #: where `market` indexes `markets`, a side is 1 for over and 0 for under,
 #: and a return is per $1 staked — positive means it won, so `won` is not
 #: stored twice. `edge_ret` is null unless the pre-registered rule took this
 #: leg, and is priced at that side's own price, which is why it is not
 #: `adj_ret` with a flag.
+#:
+#: `streak` is 1 where the player was running over, 2 under, null otherwise,
+#: as of THAT WEEK — see `streaks`. It is a flag rather than a return because
+#: a streak is a filter on players and bets no line of its own. The
+#: shortlist and the fades are NOT flags here for the opposite reason: they
+#: pick their own line and their own side, so they are separate bets and live
+#: in `players_block`'s `views`.
 BET_FIELDS = ("market", "line", "actual", "adj_side", "adj_ret",
-              "model_side", "model_ret", "edge_ret")
+              "model_side", "model_ret", "edge_ret", "streak")
 
 
 def _ret(row, price_key="odds"):
@@ -552,6 +687,7 @@ def bets_block(cache: dict, weeks) -> dict:
                 r, m, e = got.get("adj"), got.get("model"), got.get("edge")
                 any_ = r or m or e
                 names.setdefault(shown[k], len(names))
+                st = (r or m or {}).get("streak")
                 acc[(w,) + k][mi] = [
                     mi,
                     (r or e or m).get("line", (e or {}).get("point")),
@@ -561,6 +697,7 @@ def bets_block(cache: dict, weeks) -> dict:
                     None if not m else (1 if m.get("side") == "over" else 0),
                     _ret(m),
                     _ret(e, "price"),
+                    1 if st == "over" else 2 if st == "under" else None,
                 ]
     out: dict = defaultdict(list)
     for (w, gid, key), legs in sorted(acc.items()):

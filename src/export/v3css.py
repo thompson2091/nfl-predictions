@@ -902,6 +902,18 @@ button{cursor:pointer}
 .pgall{display:block;font-size:11px;line-height:15px;color:var(--mut);
   margin-top:2px}
 .pgwk{font-size:11.5px;color:var(--mut);font-weight:400}
+/* The player name as a control. It reads as text until you notice the sign,
+   which is the point: the table is still a table, and the detail is one tap
+   under whichever row you want it for. */
+.pname{display:inline-flex;align-items:baseline;gap:6px;background:none;
+  border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;
+  text-align:left;min-width:0}
+.pname__c{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+.pname--on{font-weight:700}
+.pname--on .pname__c{color:var(--ours)}
+/* One player's games, under his own row and spanning the whole grid. */
+.pgopen{display:block;padding:2px 0 8px}
+.pgrow{display:block;margin-top:4px;font-size:12px;line-height:17px}
 /* The leg column is prose, not a figure, so it wraps and is not pushed
    right with the numbers. */
 .rec .p{text-align:left;white-space:normal;min-width:0}

@@ -532,6 +532,36 @@ def _team_lines_block(payload: dict, season: int | None,
         print(f"  team lines skipped: {e}", file=sys.stderr)
 
 
+from src.evaluation.streaks import MIN as ST_MIN
+from src.evaluation.streaks import OF as ST_OF
+
+
+def _streak_flags(full: dict, season, week) -> dict:
+    """`{market: {player: [direction, ran, of]}}` for the flagged players.
+
+    `ran` and `of` are what the board's tag says — "4 of 5 over" — so the
+    page needs no counting of its own. Players absent from the mapping are
+    not on a streak, which is the flag.
+    """
+    from src.evaluation import streaks as ST
+
+    if not season or not week:
+        return {}
+    by_market: dict = {}
+    for player, per in full.items():
+        for mk, rows in per.items():
+            by_market.setdefault(mk, {})[player] = rows
+    flags = ST.flags(by_market, int(season), [int(week)])
+    out: dict = {}
+    for (_w, mk, player), _d in flags.items():
+        got = ST.detail(by_market[mk][player], int(season), int(week),
+                        ST.is_yesno(mk))
+        if got:
+            out.setdefault(mk, {})[player] = [got["dir"], got["ran"],
+                                              got["of"]]
+    return out
+
+
 def _history_block(payload: dict) -> None:
     """What each player's line has done before.
 
@@ -562,6 +592,29 @@ def _history_block(payload: dict) -> None:
             "inline": HISTORY_INLINE,
             "players": {n: {m: r[:HISTORY_INLINE] for m, r in d.items()}
                         for n, d in full.items()},
+            # WHO IS ON A STREAK, DECIDED HERE RATHER THAN IN THE PAGE.
+            #
+            # `v3Streak` counted back from whatever history the payload
+            # happened to carry, so the rule could only ever answer "as of
+            # now" — a question about week 3 got today's answer and changed
+            # every time a later week landed. Nothing recorded which players
+            # the filter had shown, so the Record page could not score it.
+            #
+            # As of THIS week: the window is the player's last five graded
+            # weeks strictly before it, which is what the board means by
+            # "his last five". Same rule, same two constants, same
+            # suppression of whichever direction is the market's own norm —
+            # parity with the JavaScript was measured on the live payload of
+            # 2026-10-07 across all six markets: 277 flagged players,
+            # identical sets and directions, identical baselines.
+            "streaks": _streak_flags(full, payload.get("season"),
+                                     payload.get("week")),
+            # SHIPPED SO THE PAGE'S PROSE CANNOT LIE. The page says "one way
+            # in 4 of their last 5 weeks", and once the rule left the
+            # JavaScript those two numbers existed in two places — change
+            # `streaks.MIN` and the sentence keeps the old figure with
+            # nothing failing.
+            "streak_of": ST_OF, "streak_min": ST_MIN,
         }
         # Carried out of the payload by `52_export_v3`, which writes it to the
         # data folder. It must never reach the page: that is the 1.6 MB.

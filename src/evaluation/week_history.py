@@ -522,6 +522,14 @@ def ou_week(season: int, week: int, market: str,
             "lo": r.get("lo"), "hi": r.get("hi"),
             "odds": r.get("odds"), "edge": r.get("edge_pp"),
             "actual": got, "won": won,
+            # CARRIED SO THE SHORTLIST RULE CAN BE ASKED ABOUT THIS WEEK.
+            # `ou_shortlist.apply_to_board` gates on `MIN_BOOKS` before it
+            # looks at any disagreement — it is the gate the floors were
+            # fitted under — so a row without the book count cannot be put
+            # to the rule at all, only to a different rule that looks like
+            # it. Pass-through, from the same board row as everything else
+            # here.
+            "n_books": r.get("n_books"),
         })
     # By how far our number sits from the book's, which is what a week view is
     # read for — the disagreements, not the alphabet.
