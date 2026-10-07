@@ -292,10 +292,10 @@
   },
   "BUF_LA": {
    "paras": [
-    "The market sees a tight game in Los Angeles, with the Rams favored by 3.0 points and a total set at 54.5. Our adjusted number has it even closer: LA 27.6, Buffalo 25.6, with a margin of 2.0 points. Both offenses have outperformed expectations lately, with Buffalo scoring 28.9 a game over its last 10 against an expected 25.9, while the Rams have put up 26.4 against an expected 25.2. Both defenses, though, have struggled\u2014each allowing more than the market asked of them.",
-    "The Bills bring an offense that holds clear edges where it matters most. Buffalo is better than the Rams' defense by 0.231 in EPA per play and by 0.288 in two-minute EPA, suggesting they can move the ball and finish drives when they need to. The Rams counter with a slight edge on plays per game\u2014their offense runs 1.0 more than Buffalo's defense\u2014but the matchup numbers tilt toward the visitors.",
-    "In 119 past games priced like this one, the underdog won outright 42.0% of the time and 60.5% finished within one score, reinforcing what the spread already tells us: this should be close. The totals line has climbed from 54.0 to 54.5, with 71.6% of tickets landing on the over, though our model on its own would set the total at 49.4 before blending with the book. Both teams have seen the over land seven times in their last 10 games.",
-    "Buffalo's script-dependent pieces tell a familiar story. If the Bills fall behind by much\u2014a scenario with a 19.3% chance\u2014their running back rush drops by 27.2% and their quarterback's passing yards fall by 22.4%. That makes staying competitive early the key for Sean McDermott's team, which has won seven of its last 10. Sean McVay's Rams, at five and five in that stretch, are healthier than they've been in weeks, with nobody missing practice on either side heading into prime time."
+    "The book makes LA favored by 3.0 on a total of 54.5. Our own number is BUF 25.6, LA 27.6.",
+    "In 119 games priced like this one, BUF won outright 42.0% of the time and 60.5% finished within one score. 35.3% turned into shootouts against 30.3% that became grinds. Those are the games that have happened, not a forecast of this one.",
+    "BUF has scored 28.9 a game over its last 10 against an expected 25.9, and allowed 23.6 against an expected 21.3.",
+    "LA has scored 26.4 a game over its last 10 against an expected 25.2, and allowed 24.7 against an expected 20.9."
    ],
    "scoreline": {
     "away": "BUF",
@@ -306,7 +306,7 @@
     "spread": -2.0,
     "total": 53.2
    },
-   "written": true
+   "written": false
   },
   "CHI_GB": {
    "paras": [
@@ -400,10 +400,10 @@
   },
   "HOU_TEN": {
    "paras": [
-    "Houston travels to Tennessee as a seven-point favorite in a division matchup that the model sees finishing 22.8 to 16.0. Both teams have struggled defensively over their last ten games, Houston allowing 23.0 points per game against an expected 19.0, Tennessee giving up 25.8 against an expected 23.1. The difference is that Houston's offense has delivered, scoring 25.1 per game against an expected 22.9, while Tennessee has managed just 17.2 against an expected 17.1. That gap in firepower shapes everything here.",
-    "Tennessee's offense presents minimal resistance across the board. On EPA per play, the Titans are worse than Houston's defense by 0.148. On plays per game, they trail by 13.2. On two-minute EPA, they lag by 0.305. The script dependency tells the rest: if Tennessee falls behind and loses big, a scenario with roughly a 27.3 percent chance of happening, the running back's rushing output drops about 27.2 percent and the quarterback's passing yardage falls about 22.4 percent. This offense needs to stay close to function, and staying close requires stops it has not been getting.",
-    "In 77 past games priced like this one, the underdog won outright 28.6 percent of the time and 53.2 percent finished within one score, so Tennessee has a path if the defense can find something it has not shown lately. But the Titans have won just two of their last ten and covered only four times, while Houston has gone five and five with three covers. DeMeco Ryans has won 58.2 percent across 54 games as a head coach, Robert Saleh 31.9 percent across 71. The line has moved from 6.5 to 7.5, the total from 38.0 to 37.5.",
-    "Houston can control this game if it protects the ball and forces Tennessee into obvious passing situations, where the Titans have no answers. Tennessee needs turnovers and short fields to stay within range, because asking this offense to sustain long drives against even a struggling Houston defense is asking for something the numbers say it cannot do. Both teams are healthy coming in, so what happens depends on whether Tennessee's defense can create the chaos its offense requires to keep pace."
+    "The book makes HOU favored by 7.0 on a total of 38.5. Our own number is HOU 22.8, TEN 16.0.",
+    "In 77 games priced like this one, TEN won outright 28.6% of the time and 53.2% finished within one score. 44.2% turned into shootouts against 24.7% that became grinds. Those are the games that have happened, not a forecast of this one.",
+    "HOU has scored 25.1 a game over its last 10 against an expected 22.9, and allowed 23.0 against an expected 19.0.",
+    "TEN has scored 17.2 a game over its last 10 against an expected 17.1, and allowed 25.8 against an expected 23.1."
    ],
    "scoreline": {
     "away": "HOU",
@@ -414,7 +414,7 @@
     "spread": 6.8,
     "total": 38.8
    },
-   "written": true
+   "written": false
   },
   "IND_PIT": {
    "paras": [
@@ -436,10 +436,10 @@
   },
   "LV_NE": {
    "paras": [
-    "New England brings the league's stingier defense into this one, having allowed 15.2 points per game over its last ten against an expected 21.0. That gap tells the story of a unit playing well above what the market anticipated. Las Vegas, meanwhile, has allowed 23.9 against an expected 23.7, essentially meeting a less demanding standard. The Patriots have won seven of their last ten games, and Mike Vrabel's team will look to control this one on the strength of that defensive performance.",
-    "The Raiders' offense has quietly outperformed, scoring 19.1 per game against an expected 17.3 in that same stretch, though they've won only four times. The challenge is that New England has been harder to score on than almost anyone, and the adjusted total of 43.8 reflects a game that figures to stay compact. In comparable past matchups priced like this, 60.7% finished within one score and 32.1% were grinds, which gives a sense of the typical shape.",
-    "The model sees this finishing around 23.3 to 20.4 in New England's favor, a margin of 2.9 points that suggests the Patriots edge a close contest without pulling away. Las Vegas has covered seven of its last ten spreads, so they've been competitive even when falling short. The total has drifted up to 45.0 from an opening 44.5, though the model on its own would set it at 40.3, lower-scoring than the book.",
-    "Both sides come in healthy, with nobody missing practice for either team. New England's offense has underperformed expectations lately, scoring 21.2 against an expected 23.4, which means Vrabel's group will lean on that defense to create short fields and keep possessions manageable. Las Vegas will need its recent offensive form to continue, particularly if the game script stays within reach and doesn't force them into a lost big scenario where their rushing output drops by 27.2%. This one should turn on whether the Raiders can solve a Patriots defense that has been the difference all season."
+    "New England comes in as the favorite by 3.5 points, backed by a defense that has allowed just 15.2 points per game over its last ten, well below the 21.0 the market expected. The Patriots have won seven of those ten, though their offense has underperformed, scoring 21.2 against an expected 23.4. Las Vegas has been the opposite: an offense that has exceeded expectations at 19.1 per game against 17.3, but a defense that has given up 23.9 when it was asked to hold teams to 23.7. The adjusted number sees this finishing New England 23.3, Las Vegas 20.4.",
+    "The model on its own would set the total at 40.3, lower-scoring than the book's 45.0, and New England's recent games bear that out\u2014six of their last ten have gone under. Las Vegas has seen the over land more often, six times in ten, but this figures to turn on whether the Patriots can generate enough offense to pull away or whether their defense keeps it a grind. In past games priced like this one, 60.7% finished within one score, while 32.1% were grinds and 30.0% were shootouts.",
+    "New England holds edges in situational football, with its offense worse than Las Vegas's defense both in late-half scoring drives by 0.18 and in two-minute success by 0.161. Las Vegas counters where it can generate volume: its offense is better than New England's defense by 10.8 plays per game. The Raiders have covered seven of their last ten, the Patriots six of ten, but neither side carries a pattern that clears break-even.",
+    "Mike Vrabel has won 58.3% and covered 54.8% across 115 games coaching New England, a solid record that doesn't beat the bookmaker's cut by itself. Klint Kubliak has too few previous games for a meaningful record with Las Vegas. This comes down to whether New England's defense can contain a Raiders offense that has been productive, and whether the Patriots can find enough points to justify laying the number at home."
    ],
    "scoreline": {
     "away": "LV",
@@ -454,10 +454,10 @@
   },
   "MIN_NO": {
    "paras": [
-    "Minnesota arrives as a 2.5-point favorite in a game the model sees tight all afternoon. The Vikings have won nine of their last ten while their defense has carried them, allowing just 12.9 points a game against an expected 21.7. New Orleans has split its last ten, scoring more than the market expected but giving up 23.7 a game when it was built to allow less. The total opened at 44.5 and has dropped to 42.0, suggesting the sharps see this one playing out in a phone booth.",
-    "The Vikings want to lean on that defense and control tempo, but they face a Saints offense that has outperformed expectations recently, scoring 24.6 a game over the last ten. New Orleans moves the ball better than Minnesota defends it on plays per game by 15.0 and by 0.377 on two-minute EPA. The Saints need their offense to keep pace, because their defense has been the weak link, playing worse than what was asked of it while the Vikings have stayed under the total eight times in ten games.",
-    "In past games priced like this one, 55.9% finished within one score, and the model's adjusted number puts Minnesota at 22.2 and New Orleans at 20.1, a margin of 2.1 points. That lines up with a game that stays close enough to turn on a handful of possessions. Minnesota's offense has struggled to meet expectations, scoring below its expected 21.4, and the Vikings are worse than New Orleans on second down conversion by 0.306, which could matter when drives stall.",
-    "Kevin O'Connell has won 65.3% across 67 games as Minnesota's coach, while Kellen Moore is 33.3% in 21 games leading New Orleans, though neither record clears the bookmaker's cut on its own. The Vikings head into their bye week next, a pattern that has gone 193-154 but does not clear break-even. The game likely comes down to whether Minnesota's defense can frustrate a Saints offense that has been New Orleans' only reliable piece, and whether the Vikings can manufacture enough points when they've needed their defense to do the heavy lifting all season."
+    "Minnesota arrives as a 2.5-point favorite in a game the market expects to stay low-scoring, with a total set at 42.0. The adjusted number has the Vikings at 22.2 and the Saints at 20.1, a margin of 2.1 points. In 376 past games priced like this one, 55.9% finished within one score, which suggests this figures to be decided late. Both teams are healthy, with nobody missing practice on either side.",
+    "The Vikings have been defined by their defense over their last 10 games, allowing just 12.9 points per game against an expected 21.7, well below what the market asked of them. Their offense has been quieter, scoring 20.6 against an expected 21.4. New Orleans has flipped that script: its offense has delivered 24.6 per game against an expected 20.5, but the defense has allowed 23.7 against an expected 22.8, playing worse than the market anticipated. The game turns on whether Minnesota can keep that Saints offense in check.",
+    "New Orleans has some edges in tempo and late-game situations, running 15.0 more plays per game than Minnesota's defense typically faces and holding a 0.377 advantage in two-minute EPA. But the Vikings have won 9 of their last 10 and covered 8 times, while the Saints have gone 5-5 over the same stretch. The totals line has dropped from 44.5 to 42.0, a signal the market expects both defenses to have their say.",
+    "Kevin O'Connell's Vikings head into the week before their bye, a pattern that has gone 193-154 but does not clear break-even at the lower bound. Kellen Moore's Saints are coming off a loss by more than 20, trying to bounce back in a spot where that pattern has gone 264-233 in past games. Minnesota's defense will try to slow New Orleans down, while the Saints need their offense to keep producing the way it has lately to stay in what should be a close, low-scoring game."
    ],
    "scoreline": {
     "away": "MIN",
