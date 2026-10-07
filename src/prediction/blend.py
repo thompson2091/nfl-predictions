@@ -407,3 +407,140 @@ def load_blend_weight(path: Path, bootstrap: float | None = None) -> dict:
             "once enough graded player-games accumulate in odds_history.parquet."
         ),
     }
+
+
+# --------------------------------------------------------------------------
+# First TD: a blend WITHIN the game
+# --------------------------------------------------------------------------
+#
+# Anytime TD blends each player on his own, in log-odds, because each player's
+# question has its own yes and no. First TD has one answer per game, so a
+# per-player blend has to be renormalised afterwards and the thing actually
+# being scored is a categorical distribution over the game's players. The
+# blend is therefore GEOMETRIC over the priced players' shares,
+#
+#     p_i  ∝  m_i^(1-w) * k_i^w
+#
+# renormalised to the probability mass the MODEL gave those same players. The
+# mass the model gave the unpriced players is left exactly where it was: the
+# book has no opinion about them, and moving them would let a thin price list
+# deflate or inflate everyone else — the failure the anytime priced-share
+# guard exists for, which this construction cannot reach. A game with fewer
+# than two priced players keeps the model's numbers untouched.
+#
+# Geometric, logit-then-renormalise and linear were all gated out of sample
+# on 2026-10-06 (walk-forward backtests, fit on earlier seasons, scored on
+# the next). Geometric and logit were indistinguishable; linear trailed both
+# on every fold. Geometric is the one whose fitted parameter is the parameter
+# served, since it renormalises by construction.
+
+FIRST_TD_MIN_PRICED = 2
+
+
+def first_td_blend_frame(seasons, model_name: str = "xgb",
+                         output_dir=None) -> pl.DataFrame | None:
+    """Walk-forward first-TD rows (model share, market share, scored) to fit on.
+
+    Read from `output/first_td/backtest_<model>_<season>.csv`, which are
+    produced by models that never trained on the season they score — the same
+    honesty `build_blend_training_frame` buys for anytime by replaying only
+    clean seasons. Kept to games whose first scorer was priced, because the
+    categorical likelihood is the probability placed on the actual winner.
+    """
+    from src.utils.paths import get_path
+
+    out_dir = Path(output_dir) if output_dir else get_path("output", "first_td")
+    parts = []
+    for s in seasons:
+        path = out_dir / f"backtest_{model_name}_{s}.csv"
+        if not path.exists():
+            continue
+        d = (pl.read_csv(path)
+             .select(["game_id", "scored", "prob_calibrated", "market_prob"])
+             .rename({"prob_calibrated": "model_prob"})
+             .filter((pl.col("model_prob") > 0) & (pl.col("market_prob") > 0))
+             .with_columns(pl.lit(int(s)).alias("season")))
+        parts.append(d)
+    if not parts:
+        return None
+    d = pl.concat(parts)
+    return d.filter(pl.col("scored").sum().over("game_id") == 1)
+
+
+def _first_td_shares(model_p: np.ndarray, market_p: np.ndarray,
+                     game: np.ndarray, w: float) -> np.ndarray:
+    """Geometric blend of within-game shares, normalised per game."""
+    _, inv = np.unique(game, return_inverse=True)
+    m = model_p / np.bincount(inv, model_p)[inv]
+    k = market_p / np.bincount(inv, market_p)[inv]
+    raw = np.exp((1 - w) * np.log(np.clip(m, EPS, 1))
+                 + w * np.log(np.clip(k, EPS, 1)))
+    return raw / np.bincount(inv, raw)[inv]
+
+
+def fit_first_td_blend(history: pl.DataFrame | None,
+                       min_games: int = 200) -> dict | None:
+    """The market weight minimising -log p(first scorer), over priced games."""
+    if history is None or history.height == 0:
+        return None
+    n_games = history["game_id"].n_unique()
+    if n_games < min_games:
+        return None
+    m = history["model_prob"].to_numpy().astype(float)
+    k = history["market_prob"].to_numpy().astype(float)
+    g = history["game_id"].to_numpy()
+    y = history["scored"].to_numpy().astype(int) == 1
+
+    def nll(w: float) -> float:
+        p = _first_td_shares(m, k, g, w)
+        return float(-np.log(np.clip(p[y], EPS, 1)).mean())
+
+    from scipy.optimize import minimize_scalar
+    res = minimize_scalar(nll, bounds=(0.0, 1.0), method="bounded")
+    w = float(np.clip(res.x, 0.0, 1.0))
+    return {
+        "kind": "first_td_blend",
+        "method": "geometric_within_game",
+        "source": "fitted",
+        "market_weight": w,
+        "nll_winner": nll(w),
+        "nll_winner_model_only": nll(0.0),
+        "nll_winner_market_only": nll(1.0),
+        "n_games": int(n_games),
+        "n_rows": int(history.height),
+        "seasons": sorted(set(history["season"].to_list())),
+        "fit_date": date.today().isoformat(),
+    }
+
+
+def blend_first_td(df: pl.DataFrame, model_col: str, market_col: str,
+                   weight: dict, out_col: str = "probability") -> pl.DataFrame:
+    """Serve the within-game blend; unpriced players keep the model's number.
+
+    `model_col` must already sum to one per game. The priced players' total is
+    held at the model's own total for them, so the game still sums to one and
+    the unpriced players are untouched.
+    """
+    w = float(weight["market_weight"])
+    model_p = df[model_col].to_numpy().astype(float)
+    market_p = (df[market_col].to_numpy().astype(float)
+                if market_col in df.columns else np.full(len(model_p), np.nan))
+    priced = np.isfinite(market_p) & (market_p > 0)
+    game = df["game_id"].to_numpy()
+
+    out = model_p.copy()
+    gids, inv = np.unique(game, return_inverse=True)
+    n_priced = np.bincount(inv, priced.astype(float))
+    use = priced & (n_priced[inv] >= FIRST_TD_MIN_PRICED)
+    if use.any():
+        idx = np.where(use)[0]
+        shares = _first_td_shares(model_p[idx], market_p[idx], game[idx], w)
+        _, sub_inv = np.unique(game[idx], return_inverse=True)
+        mass = np.bincount(sub_inv, model_p[idx])[sub_inv]
+        out[idx] = shares * mass
+    return df.with_columns([
+        pl.Series(out_col, out),
+        pl.Series("has_market_price", priced),
+        pl.lit(w).alias("market_weight"),
+        pl.lit(weight.get("source", "unknown")).alias("blend_source"),
+    ])

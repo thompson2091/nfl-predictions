@@ -329,6 +329,59 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
     return result
 
 
+def _first_td_market_blend(result: pl.DataFrame, week_df: pl.DataFrame,
+                           model_dir, cfg: dict, season: int, week: int,
+                           model_name: str, persist: bool) -> pl.DataFrame:
+    """First TD: the model's within-game number, moved toward the book's.
+
+    The model's own number is kept as `prob_model` (it becomes the
+    `prob_calibrated` the shared select below exports under that name) and
+    `probability` becomes the blend, the same split anytime TD serves. See
+    `blend.blend_first_td` for why the blend is geometric within the game and
+    why unpriced players cannot be moved by it.
+
+    The weight is fitted from walk-forward backtests on the odds-covered
+    seasons and written once; delete `blend_weight.json` to refit it.
+    """
+    from src.prediction.blend import (blend_first_td, first_td_blend_frame,
+                                      fit_first_td_blend, load_blend_weight,
+                                      save_blend_weight)
+
+    result = result.with_columns(pl.col("probability").alias("prob_calibrated"))
+    weight_path = model_dir / "blend_weight.json"
+    if not weight_path.exists() and persist:
+        from src.models.trainer import _odds_covered_seasons
+        seasons = [s for s in _odds_covered_seasons("first_td") if s < season]
+        fitted = fit_first_td_blend(first_td_blend_frame(seasons, model_name))
+        if fitted is not None:
+            save_blend_weight(fitted, weight_path)
+            print(f"  First-TD blend weight FITTED on {fitted['n_games']:,} "
+                  f"walk-forward games: market={fitted['market_weight']:.2f}")
+    if not weight_path.exists():
+        print("  No first-TD blend weight — publishing the model's number.")
+        return result
+    weight = load_blend_weight(weight_path)
+
+    # One first scorer a game. The level is irrelevant to the blend, which
+    # uses only each side's within-game shares, but `devig_market` needs one.
+    expected = week_df.select("game_id").unique().with_columns(
+        pl.lit(1.0).alias("expected_scorers"))
+    market = _load_market(week_df, expected, season, week, "first_td")
+    if market is None or market.height == 0:
+        print("  No cached first-TD prices — publishing the model's number.")
+        return result
+    result = result.with_columns(
+        _norm_name_expr("player_name").alias("player_name_norm")
+    ).join(market.select(["game_id", "player_name_norm", "market_prob"])
+           .unique(subset=["game_id", "player_name_norm"], keep="first"),
+           on=["game_id", "player_name_norm"], how="left")
+    result = blend_first_td(result, "prob_calibrated", "market_prob", weight,
+                            out_col="probability")
+    print(f"  First-TD blend: market weight {weight['market_weight']:.2f}, "
+          f"{int(result['has_market_price'].sum())} of {result.height} priced")
+    return result
+
+
 def _norm_name_expr(col: str) -> pl.Expr:
     e = pl.col(col).str.to_lowercase().str.strip_chars()
     for suffix in [" jr.", " sr.", " ii", " iii", " iv", " jr", " sr"]:
@@ -701,6 +754,9 @@ def predict(season: int, week: int, model_name: str = None,
             (pl.col("raw_prob") / pl.col("raw_prob").sum().over("game_id"))
             .alias("probability")
         )
+        if cfg.get("first_td", {}).get("use_market_blend", False):
+            result = _first_td_market_blend(result, week_df, model_dir, cfg,
+                                            season, week, model_name, persist)
     else:
         result = _anchor_to_market(result, week_df, model_dir, cfg,
                                    season=season, week=week,

@@ -614,6 +614,18 @@ first_td:
   # decides.
   use_joint_path: false
 
+  # Serve the first-TD number moved toward the book's, as anytime TD does:
+  # `probability` becomes the blend and `prob_model` keeps the model's own.
+  # Geometric within the game, priced players only, renormalised to the mass
+  # the model gave them — see `blend.blend_first_td`. The weight is fitted on
+  # walk-forward backtests and written to models/first_td/blend_weight.json.
+  #
+  # Gated out of sample 2026-10-06 on -log p(first scorer): fit on earlier
+  # seasons, scored on the next, the blend beat both the model and the book
+  # in 2024 and 2025 and beat the model in 2026 weeks 1-4, where it trailed
+  # the book by 0.026 +/- 0.031 over 61 games. Off until promoted.
+  use_market_blend: false
+
 # App-only settings. Nothing here reaches the model.
 app:
   # Adds a "Model version" control to the sidebar, letting you price a week
