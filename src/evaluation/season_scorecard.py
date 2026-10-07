@@ -483,10 +483,23 @@ def ou_rows(season: int, weeks) -> dict:
                 sides = BV.shortlist_sides(raw, mk)
             except Exception:                                    # noqa: BLE001
                 sides = {}
-            for key, want in (("short", None), ("fade", "under")):
-                picks = settle_rows(season, mk, _rule_side(raw, sides, want),
-                                    prices=prices, played=played)
-                out[(key, mk, wk)] = _one_per_player(picks)
+            # FADES ARE THE UNDERS AMONG THE SHORTLIST'S OWN BETS, which
+            # means filtering AFTER the reduction to one bet per
+            # player-game and not before.
+            #
+            # Before, they were not a subset of the shortlist at all, and
+            # the card says they are. Where the rule clears its band on
+            # both an over line and an under line for the same man, the
+            # shortlist keeps whichever is nearest his median and a
+            # separately-reduced fade set keeps the nearest UNDER — a
+            # different bet, counted under a heading that calls itself a
+            # subset. One bet of 192 over weeks 3-4, and a claim that was
+            # false rather than imprecise.
+            picks = settle_rows(season, mk, _rule_side(raw, sides),
+                                prices=prices, played=played)
+            out[("short", mk, wk)] = _one_per_player(picks)
+            out[("fade", mk, wk)] = [r for r in out[("short", mk, wk)]
+                                     if r.get("side") == "under"]
             # Streaks narrows the bets already chosen, on both sides, so the
             # filter is comparable with the unfiltered rows above it.
             out[("streak", mk, wk)] = _with_streak(out[(mk, wk)], streak,
@@ -579,17 +592,22 @@ def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
                        "bets": sum(len(v) for v in mgrand.values()),
                        "roi": mroi, "lo": mlo, "hi": mhi},
                    "sides": 2}}
-    for key, kinds in (("short", ("short", None)),
-                       ("fade", ("fade", None)),
-                       ("streak", ("streak", "streak_model"))):
+    # `gap` is the pre-registered price rule — the same bets `edge` above
+    # carries, given a name in the one vocabulary the page uses for "which
+    # bets". It had a section of its own, which made one value of this axis
+    # look like a different kind of thing.
+    for key, kinds, price in (("short", ("short", None), "odds"),
+                              ("fade", ("fade", None), "odds"),
+                              ("gap", ("edge", None), "price"),
+                              ("streak", ("streak", "streak_model"), "odds")):
         blk: dict = {"sides": 2 if kinds[1] else 1}
-        s, g = _series(cache, weeks, kinds[0])
+        s, g = _series(cache, weeks, kinds[0], price_key=price)
         r2, l2, h2 = _cluster_ci(g)
         blk["ou"] = s
         blk["all"] = {"bets": sum(len(v) for v in g.values()),
                       "roi": r2, "lo": l2, "hi": h2}
         if kinds[1]:
-            s2, g2 = _series(cache, weeks, kinds[1])
+            s2, g2 = _series(cache, weeks, kinds[1], price_key=price)
             r3, l3, h3 = _cluster_ci(g2)
             blk["model"] = s2
             blk["model_all"] = {"bets": sum(len(v) for v in g2.values()),
@@ -703,6 +721,7 @@ def bets_block(cache: dict, weeks) -> dict:
                       (("adj", (mk, w)), ("model", ("model", mk, w)),
                        ("edge", ("edge", mk, w)))}
             keyed: dict = {}
+            series["short"] = cache.get(("short", mk, w), [])
             for which, rows in series.items():
                 raw = [r.get("player_name") or "" for r in rows]
                 for r, n in zip(rows, _norm(raw)):
@@ -743,11 +762,48 @@ def bets_block(cache: dict, weeks) -> dict:
         out[str(w)].append([names[shown[(gid, key)]], gid,
                             [legs[i] for i in sorted(legs)],
                             teams.get(tm) if tm else None])
+    # ── THE SHORTLIST'S OWN BETS, IN THEIR OWN GROUP ────────────────────
+    #
+    # They cannot ride on the legs above. The rule picks whichever line
+    # clears its band and the legs above are the line nearest that player's
+    # median — over 2026 weeks 1-4 those disagree on 350 of 676 picks, so a
+    # shortlist "filter" over the shipped legs would be reporting a bet the
+    # rule did not make.
+    #
+    # A short leg is [market, line, actual, side, ret, fade, price], where
+    # `fade` is 1 on an under. Fades are the shortlist's under picks and not
+    # a fourth population, so they are a flag here rather than a third copy
+    # of the same bets.
+    short: dict = defaultdict(dict)
+    for mi, mk in enumerate(mkeys):
+        for w in weeks:
+            rows = cache.get(("short", mk, w), [])
+            raw = [r.get("player_name") or "" for r in rows]
+            for r, n in zip(rows, _norm(raw) if rows else []):
+                if r.get("won") is None:
+                    continue
+                k = (w, r["game_id"], n)
+                names.setdefault(r.get("player_name") or n, len(names))
+                if r.get("team") and r["team"] not in teams:
+                    teams[r["team"]] = len(teams)
+                short[k][mi] = [mi, r.get("line"), r.get("actual"),
+                                1 if r.get("side") == "over" else 0, _ret(r),
+                                1 if r.get("side") == "under" else 0,
+                                r.get("odds")]
+    sout: dict = defaultdict(list)
+    for (w, gid, key), legs in sorted(short.items()):
+        nm = shown.get((gid, key))
+        if nm is None:
+            continue
+        tm = team_of.get((gid, key))
+        sout[str(w)].append([names[nm], gid, [legs[i] for i in sorted(legs)],
+                             teams.get(tm) if tm else None])
     return {"players": [n for n, _ in sorted(names.items(), key=lambda x: x[1])],
             "teams": [n for n, _ in sorted(teams.items(), key=lambda x: x[1])],
             "markets": [lb for _, lb in OU_MARKETS],
             "market_keys": mkeys,
-            "weeks": dict(out)}
+            "weeks": dict(out),
+            "short": dict(sout)}
 
 
 def _td_week(season: int, week: int, market: str) -> dict | None:

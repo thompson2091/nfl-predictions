@@ -132,7 +132,7 @@ if (cards.length) {
     ok('game tab ' + gt + ' says something',
        textOf({ _html: html }).join('').trim().length > 40);
   });
-  // A coaching note must arrive labeled. Unlabelled, a 69% prime-time
+  // A coaching note must arrive labeled. Unlabeled, a 69% prime-time
   // record beside a priced pick reads as a reason to bet, and
   // `situational_features` measured thirteen of these without one clearing
   // the vig.
@@ -2596,9 +2596,18 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // THE THREE GAME MARKETS SHARE ONE CARD. They were three, each holding a
   // two-row table and a sentence, which is a lot of chrome around six
   // numbers for one subject.
+  // TWO SECTIONS, NOT FOUR. The price rule had a card of its own, which
+  // made one value of the "which bets" axis look like a different kind of
+  // thing; the per-player table had a card of its own, which drew the same
+  // two controls a second time.
   ok('all four sections are numbered and named',
-     ['Picking the game', 'Player bets: profit per $100 staked',
-      'Bets by player and club'].every(s => h.indexOf(s) >= 0), h);
+     ['Picking the game', 'Player bets: profit per $100 staked']
+       .every(s => h.indexOf(s) >= 0)
+     && h.indexOf('>By market<') >= 0
+     && h.indexOf('>The same bets, by player and club<') >= 0, h);
+  ok('and there are two numbered cards, not four',
+     (h.match(/class="rec__n"/g) || []).length === 2,
+     (h.match(/class="rec__n">\d+/g) || []).join(' '));
   ok('and the three game markets are sub-headings inside one card',
      ['The winning team', 'The point spread', 'Over or under the total']
        .every(s => h.indexOf('>' + s + '<') >= 0)
@@ -2806,14 +2815,26 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // Asked directly whether section 05 was the shortlist, the fades and the
   // streaks. It is none of them — it is a price rule — and the old heading
   // ("Only where our edge cleared the bar") left a reader to guess.
-  ok('the edge rule has its own section after every player bet',
-     h.indexOf('only where the price was wrong enough')
-       > h.indexOf('Player bets: profit per $100 staked'));
-  ok('and says in so many words that it is not the board’s filters',
-     h.indexOf('This is a price rule, not the board’s filters') >= 0
-     && h.indexOf('Shortlist, Fades and Streaks') >= 0, h);
-  ok('and names the margin each market has to clear',
-     /by catches [\d.]+pp/.test(h), h);
+  // ── ONE VOCABULARY FOR "WHICH BETS" ──────────────────────────────────
+  ok('the two axes are labeled and separate',
+     h.indexOf('>Which bets<') >= 0 && h.indexOf('>Whose side<') >= 0, h);
+  ok('and the price rule is one of the five, not a section',
+     h.indexOf('data-v3recview="gap"') >= 0
+     && h.indexOf('only where the price was wrong enough') < 0, h);
+  {
+    V.recView = 'gap';
+    const gp = v3RecordPage();
+    ok('and names the margin each market has to clear',
+       /catches [\d.]+pp/.test(gp), gp);
+    ok('and points at the board’s filter that shows this week’s',
+       gp.indexOf('Big gaps') >= 0);
+    // A CUT THAT PICKS ITS OWN SIDE OFFERS NO SIDE CONTROL, rather than a
+    // choice that does nothing.
+    ok('a rule that picks its own side drops the side control',
+       gp.indexOf('>Whose side<') < 0
+       && gp.indexOf('no model-or-adjusted') >= 0, gp.slice(0, 400));
+    V.recView = 'all';
+  }
 
   // ── 04 · THE BOARD'S FOUR VIEWS ──────────────────────────────────────
   //
@@ -2884,16 +2905,18 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
 
   // ── 06 · BETS BY PLAYER ──────────────────────────────────────────────
   ok('there is a per-player section',
-     h.indexOf('Bets by player and club') >= 0, h);
+     h.indexOf('The same bets, by player and club') >= 0, h);
   ok('and it says a player’s bets are not independent',
      h.indexOf('not independent') >= 0
      && h.indexOf('land the same way') >= 0);
   ok('and offers all four cuts',
      ['Best and worst', 'Every player', 'By team', 'By game', 'Most bet']
        .every(s => h.indexOf('>' + s + '<') >= 0), h);
-  ok('and names which of the three gradings it is reading',
-     h.indexOf('data-v3recseries="model"') >= 0
-     && h.indexOf('data-v3recseries="edge"') >= 0);
+  ok('and it reads the page’s own two controls, not a third vocabulary',
+     h.indexOf('data-v3recseries') < 0
+     && h.indexOf('data-v3recside="model"') >= 0
+     && (h.match(/data-v3recview="all"/g) || []).length === 1,
+     'the controls are drawn twice or a third control survives');
 
   // THE PAGE'S ONLY ARITHMETIC IS ADDITION, and this checks it against the
   // legs it was handed. That the legs and the pooled rows are the SAME
@@ -2901,12 +2924,21 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // rather than against a fixture trimmed to agree with itself.
   {
     const B = DATA.scorecard.bets;
-    const RI = {model: 6, adj: 4, edge: 7};
-    for (const [key, ri] of Object.entries(RI)) {
-      V.recSeries = key; V.recWho = 'all'; V.scFrom = 3; V.scTo = 4;
+    // Each cut names the group its legs live in and the slot it reads, so
+    // this walks the same shipped arrays the page does. Shortlist and Fades
+    // live in their OWN group: the rule picks whichever line clears its
+    // band, which over 2026 weeks 1-4 is a different line from the median
+    // one on 350 of 676 picks.
+    const CUTS = [['all', 'model', 'weeks', 6], ['all', 'adj', 'weeks', 4],
+                  ['gap', 'model', 'weeks', 7],
+                  ['short', 'model', 'short', 4]];
+    for (const [cut, side, grp, ri] of CUTS) {
+      const key = cut + '/' + side;
+      V.recView = cut; V.recSide = side; V.recWho = 'all';
+      V.scFrom = 3; V.scTo = 4;
       const by = {};
       for (const w of ['3', '4']) {
-        for (const [pi, , legs] of B.weeks[w]) {
+        for (const [pi, , legs] of (B[grp] || {})[w] || []) {
           for (const l of legs) {
             if (l[ri] === null || l[ri] === undefined) continue;
             const n = B.players[pi];
@@ -2934,7 +2966,8 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
       ok('the ' + key + ' per-player totals are the sum of its own legs',
          every, why);
     }
-    V.recSeries = 'model'; V.recWho = 'top'; V.scFrom = null; V.scTo = null;
+    V.recView = 'all'; V.recSide = 'model'; V.recWho = 'top';
+    V.scFrom = null; V.scTo = null;
   }
   // THE CORRELATION, MADE VISIBLE RATHER THAN ONLY STATED. A player-game
   // whose legs all landed the same way is one opinion drawn three times.
@@ -2985,10 +3018,10 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
     ok('the price-gap grading is not called an edge rule',
        shut.indexOf('Edge rule only') < 0
        && shut.indexOf('>Big price gaps<') >= 0, shut.slice(0, 200));
-    V.recSeries = 'edge';
-    ok('and says in words that it is not the shortlist',
-       v3RecordPage().indexOf('NOT the Shortlist') >= 0);
-    V.recSeries = 'model'; V.scFrom = null; V.scTo = null;
+    V.recView = 'gap';
+    ok('and the shortlist is a different cut with its own bets',
+       v3RecordPage().indexOf('data-v3recview="short"') >= 0);
+    V.recView = 'all'; V.scFrom = null; V.scTo = null;
   }
 
   // A SCORECARD WITH NO LEGS STILL RENDERS. `bets` is new, so a payload

@@ -1544,6 +1544,14 @@ def payload_v3():
                                  roi=-0.0219) for r in _pl["ou"]],
                      "all": {"bets": 48, "roi": -0.0219, "lo": -0.17,
                              "hi": 0.13}},
+            # The pre-registered price rule, with the fitted margin each
+            # market has to clear — which the card quotes, so the fixture
+            # has to carry it.
+            "gap": {"sides": 1,
+                    "ou": [dict(r, bets=max(1, r["bets"] // 16), roi=0.1336,
+                                threshold_pp=5.5) for r in _pl["ou"]],
+                    "all": {"bets": 69, "roi": 0.1336, "lo": -0.13,
+                            "hi": 0.39}},
             "streak": {"sides": 2,
                        "ou": [dict(r, bets=max(1, r["bets"] // 3),
                                    roi=-0.0812) for r in _pl["ou"]],
@@ -1618,8 +1626,12 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "the player table says what one bet is",
                  "and the break-even column is named in words a reader "
                  "uses",
-                 "and says in so many words that it is not the board’s "
-                 "filters",
+                 "the two axes are labeled and separate",
+                 "and the price rule is one of the five, not a section",
+                 "and points at the board’s filter that shows this "
+                 "week’s",
+                 "a rule that picks its own side drops the side control",
+                 "and there are two numbered cards, not four",
                  # Section 06, and the arithmetic it does.
                  "there is a per-player section",
                  "and it says a player’s bets are not independent",
@@ -1627,9 +1639,13 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "and the three game markets are sub-headings inside one "
                  "card",
                  "and what each leg was paid at",
-                 "the model per-player totals are the sum of its own legs",
-                 "the adj per-player totals are the sum of its own legs",
-                 "the edge per-player totals are the sum of its own legs",
+                 "the all/model per-player totals are the sum of its "
+                 "own legs",
+                 "the all/adj per-player totals are the sum of its own legs",
+                 "the gap/model per-player totals are the sum of its own "
+                 "legs",
+                 "the short/model per-player totals are the sum of its own "
+                 "legs",
                  "the by-game cut spells out each leg",
                  "and flags the player-games whose legs all landed together",
                  "and the search narrows it to one player",
@@ -1673,7 +1689,9 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "and opening one spells out what each of his bets was",
                  "only the player asked for is open",
                  "the price-gap grading is not called an edge rule",
-                 "and says in words that it is not the shortlist",
+                 "and the shortlist is a different cut with its own bets",
+                 "and it reads the page’s own two controls, not a third "
+                 "vocabulary",
                  "and it opens on the payload\u2019s own default range",
                  "a range whose weeks were never frozen says so rather than "
                  "showing zeros",

@@ -213,8 +213,8 @@ const V = Object.assign({
   //: only thing that decides which rows a section draws — every number is
   //: still computed, so turning it on cannot change a figure, only reveal
   //: one. `recWho` picks which cut of the per-player table is showing and
-  //: `recSeries` which of the three gradings it reads.
-  recFull: false, recWho: 'top', recSeries: 'model', recQ: '', recShown: 40,
+  //: `recSide` whose side it grades — the two axes the page kept mixing.
+  recFull: false, recWho: 'top', recSide: 'model', recQ: '', recShown: 40,
   //: Which of the players board's four filters section 04 is scoring.
   recView: 'all',
   //: Whose legs are open in the per-player table. One at a time.
@@ -5734,24 +5734,103 @@ function v3RecBetRow(x) {
 // "Edge rule only" said nothing — asked directly whether it was the
 // shortlist, which is a DIFFERENT rule on a different page of this card. So
 // each one is named for what it does and says so under the control.
-// [key, label, return index, side index, what it is, price index].
-// The price is per series because the three do not always take the same
-// side, and an under is paid at the under's own number.
-const V3RECSERIES = [
-  ['model', 'Our model', 6, 5,
-   'Every bet, on the side our raw model leaned.', 10],
-  ['adj', 'Adjusted model', 4, 3,
-   'The same bets, on the side the card actually served — our number already '
-   + 'pulled toward the price.', 9],
-  ['edge', 'Big price gaps', 7, 3,
-   'Only the bets where our number beat the sportsbook’s own fair price by a '
-   + 'margin fitted on earlier seasons — section 03 above. This is a price '
-   + 'test and NOT the Shortlist, which is the fitted band rule in section '
-   + '02 and picks its own lines.', 11],
+// ── ONE VOCABULARY FOR "WHICH BETS", AND ONE FOR "WHOSE SIDE" ──────────
+//
+// The page had three controls over two axes and the axes were mixed. Player
+// bets offered Everyone / Shortlist / Fades / Streaks — a SELECTION — with
+// our model and the adjusted one as row groups, which is right. Then the
+// price rule had a section of its own, which made one value of that same
+// selection axis look like a different kind of thing. Then the per-player
+// table offered "Our model / Adjusted model / Big price gaps", which is two
+// values of one axis and one of the other in a single control.
+//
+// So: two controls, used by both sections, meaning the same thing in both.
+//
+//   WHICH BETS   Everyone · Shortlist · Fades · Big price gaps · Streaks
+//   WHOSE SIDE   Our model · Adjusted model
+//
+// The side control only applies where the side is ours to take. Shortlist,
+// Fades and Big price gaps each pick their own, so they carry one series
+// and the control goes away rather than offering a choice that does nothing.
+const V3RECCUTS = [
+  ['all', 'Everyone', 2,
+   'Every player-game the model had a number for, on the side it leaned.'],
+  ['short', 'Shortlist', 1,
+   'The lines the fitted rule would take — book depth first, then a '
+   + 'disagreement whose size falls in the band that market has come our '
+   + 'way in. The bands were fitted on 2024 with 2025 and 2026 held out, so '
+   + 'these weeks are a real test of it. Priced at the side the rule takes, '
+   + 'and reduced to one bet a player-game: it picked eight passing-yards '
+   + 'lines on one quarterback in week 3.'],
+  ['fade', 'Fades', 1,
+   'The shortlist’s under picks — the lines where our number says the '
+   + 'posted over is too expensive. Every one of these is also in Shortlist '
+   + 'above; a fade is not a separate group on a two-sided line.'],
+  ['gap', 'Big price gaps', 1,
+   'Only the bets where our number beat the sportsbook’s own fair price by '
+   + 'a margin fitted on earlier seasons, taken at the price of the side '
+   + 'bet. This is the rule the Players board’s "Big gaps" filter shows, so '
+   + 'you can see this week’s before they are graded.'],
+  ['streak', 'Streaks', 2,
+   'Our bets on players who went one way in four of their last five graded '
+   + 'weeks, against the line they were quoted each week, counted as of '
+   + 'that week and not as of today. Recent form, not an edge — nothing '
+   + 'here is filtered on price. The side bet is still ours.'],
 ];
-function v3RecSeries() {
-  const k = V.recSeries || 'model';
-  return V3RECSERIES.filter(s => s[0] === k)[0] || V3RECSERIES[0];
+const V3RECSIDES = [['model', 'Our model'], ['adj', 'Adjusted model']];
+
+//: THE TWO CONTROLS, drawn once and used by both sections. The side
+//: control is absent where the rule picks the side rather than offering a
+//: choice that does nothing.
+function v3RecControls() {
+  const cut = v3RecCut();
+  const seg = (attr, opts, cur, n) => '<div class="seg seg--' + n + '">'
+    + opts.map(o => '<button data-' + attr + '="' + o[0]
+      + '" aria-pressed="' + (o[0] === cur) + '">' + esc(o[1])
+      + '</button>').join('') + '</div>';
+  return '<div class="reccx"><span class="reccx__l">Which bets</span>'
+    + seg('v3recview', V3RECCUTS.map(c => [c[0], c[1]]), cut[0], 5) + '</div>'
+    + (cut[2] === 2
+       ? '<div class="reccx"><span class="reccx__l">Whose side</span>'
+         + seg('v3recside', V3RECSIDES, v3RecSide(), 2) + '</div>'
+       : '')
+    + '<p class="help" style="margin-top:6px">' + esc(cut[3])
+    + (cut[2] === 1
+       ? ' The rule picks the side here, so there is no model-or-adjusted '
+         + 'choice to make.' : '')
+    + '</p>';
+}
+
+function v3RecCut() {
+  const k = V.recView || 'all';
+  return V3RECCUTS.filter(c => c[0] === k)[0] || V3RECCUTS[0];
+}
+function v3RecSide() {
+  return (v3RecCut()[2] === 1) ? 'rule'
+    : (V.recSide === 'adj' ? 'adj' : 'model');
+}
+
+//: WHERE A CUT'S LEGS LIVE, and which slots in them it reads.
+//
+//: `weeks` holds one bet per player-game-market on the line nearest that
+//: player's median, carrying the adjusted, the model's and the price rule's
+//: returns for it. `short` is a SEPARATE group because the shortlist picks
+//: whichever line clears its band, and over 2026 weeks 1-4 that is a
+//: different line from the median one on 350 of its 676 picks — a
+//: "shortlist filter" over the first group would be reporting bets the rule
+//: never made.
+function v3RecLegSpec() {
+  const cut = v3RecCut()[0], side = v3RecSide();
+  if (cut === 'short' || cut === 'fade') {
+    return {group: 'short', ri: 4, si: 3, pi: 6,
+            keep: cut === 'fade' ? (l => l[5] === 1) : null};
+  }
+  if (cut === 'gap') return {group: 'weeks', ri: 7, si: 3, pi: 11, keep: null};
+  const m = side === 'adj'
+    ? {group: 'weeks', ri: 4, si: 3, pi: 9}
+    : {group: 'weeks', ri: 6, si: 5, pi: 10};
+  m.keep = cut === 'streak' ? (l => has(l[8])) : null;
+  return m;
 }
 
 //: `2026_03_ARI_SF` as `ARI @ SF`. The season and week are already on the
@@ -5773,14 +5852,17 @@ function v3RecGameLabel(id) {
 // by the same code the pooled rows use, so nothing here is a second
 // implementation of the accounting. `tests/js/v3app.js` adds the legs back
 // up and checks the total against `players.model_all.roi`.
-function v3RecLegs(S, a, b) {
-  const B = S.bets || {};
+function v3RecLegs(S, a, b, spec) {
+  const B = S.bets || {}, sp = spec || v3RecLegSpec();
   const out = [];
   for (let w = a; w <= b; w++) {
-    const rows = (B.weeks || {})[String(w)];
+    const rows = (B[sp.group] || {})[String(w)];
     if (!rows) continue;
-    for (const r of rows) out.push({p: r[0], g: r[1], w: w, legs: r[2],
-                                    t: r[3]});
+    for (const r of rows) {
+      const legs = sp.keep ? r[2].filter(sp.keep) : r[2];
+      if (!legs.length) continue;
+      out.push({p: r[0], g: r[1], w: w, legs: legs, t: r[3]});
+    }
   }
   return out;
 }
@@ -5792,9 +5874,9 @@ function v3RecLegs(S, a, b) {
 //: implementations of that would be free to drift. `pick` names the thing
 //: being counted and `label` turns it into a name.
 function v3RecGroupRows(S, a, b, pick, label) {
-  const s = v3RecSeries(), ri = s[2];
+  const sp = v3RecLegSpec(), ri = sp.ri;
   const by = {};
-  for (const pg of v3RecLegs(S, a, b)) {
+  for (const pg of v3RecLegs(S, a, b, sp)) {
     const k = pick(pg);
     if (k === null || k === undefined) continue;
     for (const l of pg.legs) {
@@ -5829,10 +5911,10 @@ function v3RecTeamRows(S, a, b) {
 
 //: One player-game, with its legs and whether they all landed together.
 function v3RecPgRows(S, a, b) {
-  const s = v3RecSeries(), ri = s[2], si = s[3], pi = s[5];
+  const sp = v3RecLegSpec(), ri = sp.ri, si = sp.si, pi = sp.pi;
   const names = (S.bets || {}).players || [];
   const out = [];
-  for (const pg of v3RecLegs(S, a, b)) {
+  for (const pg of v3RecLegs(S, a, b, sp)) {
     const legs = pg.legs.filter(l => has(l[ri]));
     if (!legs.length) continue;
     const won = legs.filter(l => l[ri] > 0).length;
@@ -5842,7 +5924,7 @@ function v3RecPgRows(S, a, b) {
               // The streak direction is a fact about the PLAYER that week,
               // so it is the same on every leg of a player-game; read off
               // the first rather than repeated under each line.
-              streak: legs[0][8],
+              streak: sp.group === 'weeks' ? legs[0][8] : null,
               bets: legs.length, won: won,
               same: won === 0 || won === legs.length,
               ret: legs.reduce((t, l) => t + l[ri], 0)});
@@ -6018,7 +6100,6 @@ function v3RecPgTable(rows, S) {
 function v3RecByPlayer(p, S, a, b) {
   const B = S.bets || {};
   if (!B.weeks || !(B.players || []).length) return '';
-  const s = v3RecSeries();
   const who = V.recWho || 'top';
   const rows = v3RecPlayerRows(S, a, b);
   if (!rows.length) return '';
@@ -6089,13 +6170,13 @@ function v3RecByPlayer(p, S, a, b) {
            + '</button>' : '');
     note = 'Every player we bet in these weeks, best return first.';
   }
-  return '<div class="card" id="sb6">'
-    + v3RecHead('04', 'Bets by player and club',
-                'One bet is one player, in one game, in one category — so a '
-                + 'receiver is usually two bets in a game and a back who '
-                + 'catches is three.')
-    + seg('v3recseries', V3RECSERIES.map(x => [x[0], x[1]]), s[0])
-    + '<p class="help" style="margin-top:6px">' + esc(s[4]) + '</p>'
+  // A BLOCK INSIDE PLAYER BETS, not a card of its own. It answers "which
+  // players" where the table above answers "which markets", about the same
+  // bets under the same two controls — and drawn as a separate card it drew
+  // those controls a second time, which is the duplication this page was
+  // asked to lose.
+  return '<div class="recsec" id="sb6">'
+    + '<h3 class="recsec__t">The same bets, by player and club</h3>'
     + seg('v3recwho', [['top', 'Best and worst'], ['all', 'Every player'],
                        ['team', 'By team'], ['games', 'By game'],
                        ['most', 'Most bet']], who)
@@ -6135,32 +6216,7 @@ function v3RecSearch() {
 // EACH ONE IS ITS OWN SET OF BETS, not a filter on one set. The shortlist
 // picks its own line and its own side, so showing our result under its name
 // would report the board's record as the rule's.
-const V3RECVIEWS = [
-  ['all', 'Everyone',
-   'Every player-game the model had a number for, on the side it leaned.'],
-  ['short', 'Shortlist',
-   'The lines the fitted rule would take — book depth first, then a '
-   + 'disagreement whose size falls in the band that market has come our '
-   + 'way in. The bands were fitted on 2024 with 2025 and 2026 held out, so '
-   + 'these weeks are a real test of it. Priced at the side the rule takes, '
-   + 'and reduced to one bet a player-game: it picked eight passing-yards '
-   + 'lines on one quarterback in week 3.'],
-  ['fade', 'Fades',
-   'The shortlist’s under picks — the lines where our number says the '
-   + 'posted over is too expensive. On a two-sided line a fade is not a '
-   + 'separate group, so these bets are also in Shortlist above.'],
-  ['streak', 'Streaks',
-   'Our bets on players who went one way in four of their last five graded '
-   + 'weeks, against the line they were quoted each week, counted as of that '
-   + 'week and not as of today. Recent form, not an edge — nothing here is '
-   + 'filtered on price. The side bet is still ours.'],
-];
-function v3RecView() {
-  const k = V.recView || 'all';
-  return V3RECVIEWS.filter(v => v[0] === k)[0] || V3RECVIEWS[0];
-}
-
-function v3RecPlayers(p, S) {
+function v3RecPlayers(p, S, span) {
   if (!p || !(p.ou || []).length) return '';
   const full = v3RecFull();
   // OUR MODEL AND THE ADJUSTED MODEL, ON THE SAME BETS. `ou_week` picks its
@@ -6181,43 +6237,51 @@ function v3RecPlayers(p, S) {
   // WHICHEVER VIEW IS SHOWING, ON ITS OWN BETS. `views.all` is the same
   // numbers the top-level keys carry, kept so a payload built before the
   // views existed still draws.
-  const vw = v3RecView();
-  const V_ = ((p.views || {})[vw[0]]) || {ou: p.ou, all: p.all,
-                                          model: p.model,
-                                          model_all: p.model_all, sides: 2};
-  // Shortlist and Fades carry ONE series, because the rule picks the side.
-  // Everyone and Streaks carry two, ours and the adjusted one, since there
-  // the side is still ours to take.
+  const cut = v3RecCut();
+  // THE FALLBACK IS FOR `all` ALONE. A payload built before the views
+  // existed still draws Everyone from the top-level keys — but letting any
+  // OTHER cut fall back to them put Everyone's 1,062 bets under the heading
+  // "Big price gaps", which is 69 bets, and said nothing. A cut with no
+  // block of its own is missing, not empty, and the card says which.
+  const V_ = (p.views || {})[cut[0]]
+    || (cut[0] === 'all' ? {ou: p.ou, all: p.all, model: p.model,
+                            model_all: p.model_all, sides: 2} : null);
+  if (!V_) {
+    return '<div class="card" id="sb4">'
+      + v3RecHead('02', 'Player bets: profit per $100 staked')
+      + v3RecControls()
+      + '<div class="empty">This payload was built before “' + esc(cut[1])
+      + '” was scored. Rebuild the site to fill it in.</div></div>';
+  }
+  // Shortlist, Fades and Big price gaps carry ONE series, because the rule
+  // picks the side. Everyone and Streaks carry two, ours and the adjusted
+  // one, since there the side is still ours to take.
   const two = V_.sides !== 1 && (V_.model || []).length;
+  // THE SIDE CONTROL DECIDES WHICH ONE LEADS, so the table and the
+  // per-player section below it are reading the same thing. In the full
+  // view both are drawn whichever is chosen, which is what "full" means.
+  const first = v3RecSide() === 'adj'
+    ? [V_.ou, V_.all, 'Adjusted model'] : [V_.model, V_.model_all,
+                                           'Our model'];
+  const second = v3RecSide() === 'adj'
+    ? [V_.model, V_.model_all, 'Our model'] : [V_.ou, V_.all,
+                                               'Adjusted model'];
   const rows = two
-    ? (full ? mkRows(V_.model, V_.model_all, 'Our model')
-                .concat(mkRows(V_.ou, V_.all, 'Adjusted model'))
-            : mkRows(V_.model, V_.model_all, 'Our model'))
+    ? (full ? mkRows(first[0], first[1], first[2])
+                .concat(mkRows(second[0], second[1], second[2]))
+            : mkRows(first[0], first[1], first[2]))
     : mkRows(V_.ou, V_.all, 'The rule’s own side');
-  const a = (two ? V_.all : V_.all) || {};
+  const a = V_.all || {};
   const mo = (two ? V_.model_all : V_.all) || {};
-  const viewSeg = '<div class="seg seg--4" style="margin-top:8px">'
-    + V3RECVIEWS.map(v => '<button data-v3recview="' + v[0]
-        + '" aria-pressed="' + (v[0] === vw[0]) + '">' + esc(v[1])
-        + '</button>').join('') + '</div>';
   const td = (p.td || []).map(x => esc(x.label) + ' ' + v3Pct(x.said, 1)
     + ' said'
     + (has(x.said_model) && Math.abs(x.said_model - x.said) >= 0.0005
        ? ' (model alone ' + v3Pct(x.said_model, 1) + ')' : '')
     + ' against ' + v3Pct(x.actual, 1) + ' actual (' + x.rows + ' rows)');
-  // THE PRE-REGISTERED EDGE RULE, which is NOT the board's filters. Asked
-  // directly whether this section was the shortlist, the fades and the
-  // streaks, and it is none of them: those three are filters on the players
-  // board — what the project would place, what is priced above our number,
-  // and who has gone one way five weeks running — and this is a PRICE rule,
-  // a bet only where the number beats the book's fair price by a fitted
-  // margin. The heading said "our edge cleared the bar" and left a reader
-  // to guess which edge.
-  const edge = (p.edge || []).filter(x => x.bets).map(v3RecBetRow);
-  const ea = p.edge_all || {};
-  if (ea.bets) edge.push(['<b>All four</b>', '<b>' + v3RecN(ea.bets) + '</b>',
-    '—', '—', v3RecCash(ea.roi)]);
-  const thr = (p.edge || []).filter(x => x.bets && has(x.threshold_pp))
+  // THE FITTED MARGIN PER MARKET, said on the cut it belongs to. The
+  // price rule had a SECTION of its own, which made one value of the
+  // "which bets" axis look like a different kind of thing.
+  const thr = (V_.ou || []).filter(x => x.bets && has(x.threshold_pp))
     .map(x => esc(x.label).toLowerCase() + ' ' + x.threshold_pp + 'pp');
   return '<div class="card" id="sb4">'
     + v3RecHead('02', 'Player bets: profit per $100 staked',
@@ -6225,8 +6289,8 @@ function v3RecPlayers(p, S) {
                 + 'archive quotes alternate lines and counting each as its '
                 + 'own bet turns one opinion into seventeen, so only the '
                 + 'line nearest that player’s median counts.')
-    + viewSeg
-    + '<p class="help" style="margin-top:8px">' + esc(vw[2]) + '</p>'
+    + v3RecControls()
+    + '<div class="recsec"><h3 class="recsec__t">By market</h3>'
     + (rows.length
        ? v3RecTable(['Category', 'Bets', 'Correct', 'Needed to profit',
                      'Per $100'], rows)
@@ -6259,35 +6323,15 @@ function v3RecPlayers(p, S) {
        : '')
     + (full && td.length ? '<p class="help" style="margin-top:6px">Touchdowns, '
        + 'predicted against actual: ' + td.join(' · ') + '.</p>' : '')
+    + (cut[0] === 'gap' && thr.length
+       ? '<p class="help" style="margin-top:6px">The margin each market has '
+         + 'to clear: ' + thr.join(', ') + '. These are the bets the Players '
+         + 'board shows under <b style="color:var(--ink)">Big gaps</b>, so '
+         + 'this week’s are visible before they are graded.</p>'
+       : '')
     + '</div>'
-    + (edge.length
-       ? '<div class="card" id="sb5">'
-         + v3RecHead('03', 'The same bets, only where the price was wrong '
-                     + 'enough',
-                     'A bet only where our number beats the sportsbook’s own '
-                     + 'fair price by a margin fitted on earlier seasons, '
-                     + 'taken at the price of the side bet.')
-         + v3RecTable(['Category', 'Bets', 'Correct', 'Needed to profit',
-                       'Per $100'], edge)
-         + '<p class="help" style="margin-top:8px"><b style="color:'
-         + 'var(--ink)">This is a price rule, not the board’s filters.</b> '
-         + 'Shortlist, Fades and Streaks on the Players tab are different '
-         + 'things — what this project would place, what is priced above our '
-         + 'number, and who has gone one way five weeks running. This is '
-         + 'none of them: it bets any player whose price is far enough off '
-         + 'our number'
-         + (thr.length ? ', by ' + thr.join(', ') : '') + '.</p>'
-         + (full
-            ? '<p class="help" style="margin-top:6px">Ranges: '
-              + (p.edge || []).filter(x => x.bets).map(x =>
-                  esc(x.label).toLowerCase() + ' ' + v3Money(x.lo) + ' to '
-                  + v3Money(x.hi)).join('; ')
-              + (ea.bets ? '; all four ' + v3Money(ea.lo) + ' to '
-                 + v3Money(ea.hi) : '')
-              + '.</p>'
-            : '')
-         + '</div>'
-       : '');
+    + v3RecByPlayer(p, S, span[0], span[1])
+    + '</div>';
 }
 
 function v3RecordPage() {
@@ -6332,7 +6376,7 @@ function v3RecordPage() {
          + ' have no game record: ' + esc(S.missing[0].why) + '.'
        : '')
     + '</p></div>'
-    + v3RecGames(g, S) + v3RecPlayers(p, S) + v3RecByPlayer(p, S, r[0], r[1])
+    + v3RecGames(g, S) + v3RecPlayers(p, S, r)
     + '</div>';
 }
 
@@ -6867,7 +6911,8 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
                   'v3sortpick',
                   'v3recfull', 'v3recwho', 'v3recseries', 'v3recmore',
-                  'v3recqx', 'v3recview', 'v3recopen', 'v3recsort'];
+                  'v3recqx', 'v3recview', 'v3recside', 'v3recopen',
+                  'v3recsort'];
 
 document.addEventListener('click', ev => {
   let node = ev.target;
@@ -7100,10 +7145,14 @@ function v3Do(kind, v) {
     // first page, because a reader who has paged forty rows into one cut did
     // not ask to land forty rows into another.
     case 'v3recwho': V.recWho = v; V.recShown = 40; break;
-    case 'v3recseries': V.recSeries = v; V.recShown = 40; break;
+    case 'v3recside': V.recSide = v; V.recShown = 40; break;
     case 'v3recmore': V.recShown = Number(v); break;
     case 'v3recqx': V.recQ = ''; V.recShown = 40; break;
-    case 'v3recview': V.recView = v; break;
+    // A CUT THAT PICKS ITS OWN SIDE LEAVES THE SIDE CONTROL BEHIND, so
+    // the open player and the page position go back to the top of the cut
+    // rather than pointing at a row the new one may not have.
+    case 'v3recview': V.recView = v; V.recShown = 40; V.recOpen = null;
+      break;
     // Tapping the open player closes him, which is what the board's own
     // row-opener does.
     case 'v3recopen': V.recOpen = V.recOpen === v ? null : v; break;

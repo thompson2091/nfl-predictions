@@ -948,6 +948,17 @@ button{cursor:pointer}
 .recr__n{display:flex;align-items:baseline;gap:6px;min-width:0}
 .recr__c{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
 .recr__s{font-size:11.5px;color:var(--mut);font-weight:400}
+/* The two controls, labeled, because "which bets" and "whose side" are
+   different questions and a reader meeting two unlabeled segment bars has
+   to work out which is which. */
+.reccx{display:flex;align-items:center;gap:10px;margin-top:8px}
+.reccx__l{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--mut);font-weight:700;white-space:nowrap;flex:none}
+.reccx .seg{margin-top:0;flex:1;min-width:0}
+@media (max-width:560px){
+  .reccx{display:block}
+  .reccx__l{display:block;margin-bottom:3px}
+}
 .recr--open .recr__c{color:var(--ours)}
 .recg .n{text-align:right;font-variant-numeric:tabular-nums;
   white-space:nowrap}
