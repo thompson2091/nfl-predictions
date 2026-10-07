@@ -553,14 +553,39 @@ test:
 clean:
 	rm -rf data/raw/*.parquet data/processed/*.parquet models/*.pkl output/*.json output/*.csv output/plots/*.png
 
-# Timestamped copy of the irreplaceable odds archive. Run before anything risky.
+# Timestamped copies of everything that cannot be bought or rebuilt. Run
+# before anything risky.
+#
+# IT USED TO COPY ONE FILE OF THREE. An audit on 2026-10-06 found the two it
+# left out were the two worth most:
+#
+#   odds_books.parquet    32 MB, 2.2M rows, and the ONLY file carrying a
+#                         `side` column — every under price we hold is in
+#                         here and nowhere else
+#   tracked_picks.csv     the only append-only record of what a rule said
+#                         BEFORE kickoff, with the price available at the
+#                         time. 284 rows that no rerun can reproduce
+#
+# Both are gitignored (`data/`), so a timestamped sibling is the only copy
+# that exists. That protects against a bad write, NOT against losing the
+# disk — see `nfl-predictions-moving-off-the-laptop`.
+BACKUP_FILES := data/archive/odds_history.parquet \
+                data/archive/odds_books.parquet \
+                data/tracked_picks.csv
+
 backup-odds:
 	@mkdir -p data/archive/backups
-	@test -f data/archive/odds_history.parquet \
-		&& cp data/archive/odds_history.parquet \
-		   "data/archive/backups/odds_history_$$(date +%Y%m%d_%H%M%S).parquet" \
-		&& echo "Backed up to data/archive/backups/" \
-		|| echo "No archive yet — nothing to back up."
+	@stamp=$$(date +%Y%m%d_%H%M%S); n=0; \
+	for f in $(BACKUP_FILES); do \
+		if [ -f "$$f" ]; then \
+			base=$$(basename "$$f"); name=$${base%.*}; ext=$${base##*.}; \
+			cp -p "$$f" "data/archive/backups/$${name}_$${stamp}.$${ext}"; \
+			n=$$((n+1)); \
+		else \
+			echo "  missing, not backed up: $$f"; \
+		fi; \
+	done; \
+	echo "Backed up $$n file(s) to data/archive/backups/ at $$stamp"
 
 test-ingest:
 	$(PYTHON) scripts/01_ingest.py --test-mode
