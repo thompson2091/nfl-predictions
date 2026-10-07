@@ -613,7 +613,7 @@ def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
 #: A leg is:
 #:
 #:     [market, line, actual, adj_side, adj_ret, model_side, model_ret,
-#:      edge_ret, streak]
+#:      edge_ret, streak, adj_price, model_price, edge_price]
 #:
 #: where `market` indexes `markets`, a side is 1 for over and 0 for under,
 #: and a return is per $1 staked — positive means it won, so `won` is not
@@ -627,8 +627,16 @@ def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
 #: shortlist and the fades are NOT flags here for the opposite reason: they
 #: pick their own line and their own side, so they are separate bets and live
 #: in `players_block`'s `views`.
+#: THE PRICE PAID, PER SERIES, rather than one price per leg. The three
+#: series do not always take the same side — over weeks 3-4 the model and
+#: the card disagreed on 9 of the edge rule's 77 picks — and an under is
+#: paid at the under's own number, so one price would be the wrong one for
+#: whichever series took the other side. Not derived from the return
+#: either: a loser returns exactly -1 whatever it was priced at, so the
+#: price is simply gone unless it is carried.
 BET_FIELDS = ("market", "line", "actual", "adj_side", "adj_ret",
-              "model_side", "model_ret", "edge_ret", "streak")
+              "model_side", "model_ret", "edge_ret", "streak",
+              "adj_price", "model_price", "edge_price")
 
 
 def _ret(row, price_key="odds"):
@@ -669,6 +677,7 @@ def bets_block(cache: dict, weeks) -> dict:
     # Walker III" and "kenneth walker" each failed to meet.
     acc: dict = defaultdict(dict)
     shown: dict = {}
+    team_of: dict = {}
     for mi, mk in enumerate(mkeys):
         for w in weeks:
             series = {k: cache.get(key, []) for k, key in
@@ -683,6 +692,8 @@ def bets_block(cache: dict, weeks) -> dict:
                     k = (r["game_id"], n)
                     keyed.setdefault(k, {})[which] = r
                     shown.setdefault(k, r.get("player_name") or n)
+                    if r.get("team"):
+                        team_of.setdefault(k, r["team"])
             for k, got in keyed.items():
                 r, m, e = got.get("adj"), got.get("model"), got.get("edge")
                 any_ = r or m or e
@@ -698,12 +709,23 @@ def bets_block(cache: dict, weeks) -> dict:
                     _ret(m),
                     _ret(e, "price"),
                     1 if st == "over" else 2 if st == "under" else None,
+                    None if not r else r.get("odds"),
+                    None if not m else m.get("odds"),
+                    None if not e else e.get("price"),
                 ]
     out: dict = defaultdict(list)
+    teams: dict = {}
     for (w, gid, key), legs in sorted(acc.items()):
+        # The club is a fact about the player-game, not about a leg, so it
+        # rides on the entry rather than on each of its three lines.
+        tm = team_of.get((gid, key))
+        if tm and tm not in teams:
+            teams[tm] = len(teams)
         out[str(w)].append([names[shown[(gid, key)]], gid,
-                            [legs[i] for i in sorted(legs)]])
+                            [legs[i] for i in sorted(legs)],
+                            teams.get(tm) if tm else None])
     return {"players": [n for n, _ in sorted(names.items(), key=lambda x: x[1])],
+            "teams": [n for n, _ in sorted(teams.items(), key=lambda x: x[1])],
             "markets": [lb for _, lb in OU_MARKETS],
             "market_keys": mkeys,
             "weeks": dict(out)}

@@ -920,6 +920,47 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
 #: Where each over/under board lives in the payload, and which fitted artifact
 #: belongs to it. Receptions is a block of its own; the three yardage boards
 #: are entries under one.
+def _attach_ou_edge(payload: dict, season) -> None:
+    """What the pre-registered price rule takes from each over/under board.
+
+    THE SAME FUNCTION THE RECORD PAGE IS SCORED WITH, so the board's filter
+    and section 05 cannot disagree about which bets the rule took. See
+    `board_views.edge_picks`; the page is a membership test and owns none of
+    the rule.
+
+    Runs where `_attach_ou_shortlists` runs and for the same reason: after
+    the opening-line fallback, because a row showing only an opening line is
+    a bet the rule can take and has no probabilities to take it on until the
+    fallback has priced it.
+
+    A board the rule cannot run on gets an empty `picks` carrying the reason,
+    never a missing key — the page reads the reason and says so, which is the
+    difference between "the rule found nothing" and "the rule was never run".
+    """
+    from src.evaluation import board_views as BV
+
+    if not season:
+        raise ValueError("the price rule needs a season to price its sides")
+    for market, path in OU_BLOCKS:
+        blk = payload
+        for k in path:
+            blk = (blk or {}).get(k) or {}
+        if not isinstance(blk, dict):
+            continue
+        blk["edge"] = BV.edge_picks(blk.get("rows") or [], int(season),
+                                    market)
+    n = sum(len((_dig(payload, path).get("edge") or {}).get("picks") or [])
+            for _m, path in OU_BLOCKS)
+    print(f"  price rule: {n} pick(s) across the four over/under boards")
+
+
+def _dig(d: dict, path):
+    """Walk a payload path, returning {} rather than raising on a gap."""
+    for k in path:
+        d = (d or {}).get(k) or {}
+    return d
+
+
 OU_BLOCKS = (("receptions", ("receptions",)),
              ("rushing_yards", ("yards", "rushing_yards")),
              ("receiving_yards", ("yards", "receiving_yards")),
@@ -2166,6 +2207,8 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     # rule can take, and it has no probabilities to take it on until the
     # fallback has priced it.
     _attach_ou_shortlists(payload)
+    # And beside it, on the same boards and for the same reason.
+    _attach_ou_edge(payload, s)
     # And after that, because a row showing only an opening line is a line
     # like any other and belongs in the count.
     _angles_block(payload, s, w)

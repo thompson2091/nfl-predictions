@@ -530,6 +530,11 @@ def ou_week(season: int, week: int, market: str,
             # it. Pass-through, from the same board row as everything else
             # here.
             "n_books": r.get("n_books"),
+            # And the club, which the board has had all along and this
+            # dropped. Nothing graded on it, so nothing missed it until the
+            # Record page wanted to ask whether the model reads some
+            # offenses better than others.
+            "team": r.get("team"),
         })
     # By how far our number sits from the book's, which is what a week view is
     # read for — the disagreements, not the alphabet.

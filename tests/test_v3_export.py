@@ -1594,6 +1594,9 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "there is a per-player section",
                  "and it says a player’s bets are not independent",
                  "and offers all four cuts",
+                 "and the three game markets are sub-headings inside one "
+                 "card",
+                 "and what each leg was paid at",
                  "the model per-player totals are the sum of its own legs",
                  "the adj per-player totals are the sum of its own legs",
                  "the edge per-player totals are the sum of its own legs",

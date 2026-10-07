@@ -84,6 +84,43 @@ def _legs(block, weeks, idx):
             for l in pg[2] if l[idx] is not None]
 
 
+def test_the_price_paid_is_carried_per_series():
+    """A loser returns exactly -1 whatever it was priced at.
+
+    So the price cannot be recovered from the return, and the drawer that
+    shows what each bet was paid at would have nothing to show. Carried per
+    SERIES because the three do not always take the same side, and an under
+    is paid at the under's own number.
+    """
+    rec, ry = OU_MARKETS[0][0], OU_MARKETS[1][0]
+    c = {(rec, 1): [_row("A", "G1", 4.5, "over", False, -110)],
+         ("model", rec, 1): [_row("A", "G1", 4.5, "under", True, 125)],
+         ("edge", rec, 1): []}
+    for mk, _ in OU_MARKETS:
+        for w in (1,):
+            c.setdefault((mk, w), [])
+            c.setdefault(("model", mk, w), [])
+            c.setdefault(("edge", mk, w), [])
+    leg = bets_block(c, [1])["weeks"]["1"][0][2][0]
+    assert leg[4] == -1.0, "the fixture's adjusted leg is a loser"
+    assert leg[9] == -110, "the losing side's price was not carried"
+    assert leg[10] == 125, "the other series took the other side's price"
+
+
+def test_the_club_rides_on_the_player_game_not_the_leg():
+    """It is a fact about the player-game, so it is stored once."""
+    rec = OU_MARKETS[0][0]
+    c = {(rec, 1): [dict(_row("A", "G1", 4.5, "over", True, -110), team="SF")],
+         ("model", rec, 1): [], ("edge", rec, 1): []}
+    for mk, _ in OU_MARKETS:
+        c.setdefault((mk, 1), [])
+        c.setdefault(("model", mk, 1), [])
+        c.setdefault(("edge", mk, 1), [])
+    b = bets_block(c, [1])
+    assert b["teams"] == ["SF"]
+    assert b["weeks"]["1"][0][3] == 0, "the entry does not name its club"
+
+
 @pytest.mark.parametrize("idx,key", [(4, "all"), (6, "model_all"),
                                      (7, "edge_all")])
 def test_the_legs_add_up_to_the_pooled_return(cache, idx, key):
@@ -149,7 +186,7 @@ def test_a_return_is_positive_exactly_when_the_bet_won(cache):
     sign has to carry it."""
     b = bets_block(cache, [1, 2])
     for w in ("1", "2"):
-        for _, _, legs in b["weeks"].get(w, []):
+        for _, _, legs, _team in b["weeks"].get(w, []):
             for l in legs:
                 for i in (4, 6, 7):
                     if l[i] is not None:
@@ -159,7 +196,7 @@ def test_a_return_is_positive_exactly_when_the_bet_won(cache):
 def test_both_sides_are_kept_where_the_model_and_the_card_disagree(cache):
     """One leg with two sides, not two rows a reader would count twice."""
     b = bets_block(cache, [1])
-    legs = [l for _, _, ls in b["weeks"]["1"] for l in ls]
+    legs = [l for _, _, ls, _t in b["weeks"]["1"] for l in ls]
     split = [l for l in legs if l[3] is not None and l[5] is not None
              and l[3] != l[5]]
     assert split, "the fixture's disagreeing row collapsed into one side"

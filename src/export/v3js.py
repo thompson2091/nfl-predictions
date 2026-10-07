@@ -219,6 +219,9 @@ const V = Object.assign({
   recView: 'all',
   //: Whose legs are open in the per-player table. One at a time.
   recOpen: null,
+  //: How the per-player table is ordered. Total profit by default, not the
+  //: rate: a player bet six times moves the season more than one bet twice.
+  recSort: 'ret', recSortDesc: true,
 }, v3Load());
 
 function v3Load() {
@@ -486,6 +489,9 @@ function v3MarketControls(after) {
     // The same caution the tag carries, said once at the top rather than on
     // every row: a lopsided five weeks is a fact about the past, and this
     // project has not measured it into an edge.
+    // The thresholds and the measured return, read off the payload — see
+    // `v3EdgeNote`. Said here rather than on every row, like the others.
+    gap: v3EdgeNote(),
     streak: 'Players who went one way in ' + V3STREAK_MIN + ' of their last '
       + V3STREAK_OF + ' weeks, against the line they were quoted each week. '
       + 'Recent form, not an edge \u2014 nothing here is filtered on price.',
@@ -510,9 +516,14 @@ function v3MarketControls(after) {
   // still on the page.
   return '<div class="pbar">'
     + '<div class="seg seg--' + served_.length + '">' + mkts + '</div>'
-    + '<div class="seg seg--5">'
+    + '<div class="seg seg--6">'
     + v3Seg('v3filter', [['all', 'Everyone'], ['short', 'Shortlist'],
                          ['fade', 'Fades'], ['streak', 'Streaks'],
+                         // THE ONE FILTER WITH A MEASURED RETURN BEHIND IT,
+                         // which is why it is on the bar rather than buried:
+                         // every other filter here is a description of the
+                         // board and this one is a pre-registered bet.
+                         ['gap', 'Big gaps'],
                          ['fav', 'Starred']], V.filter)
     + '</div>'
     + '<div class="pbar__row">' + v3Search() + v3SortBar() + '</div>'
@@ -738,6 +749,31 @@ function v3Rows() {
   let rows = rowsFor(V.market, view).filter(r => r.priced && !r.blocked);
   if (V.filter === 'fav') rows = rows.filter(r => isFav(r.id));
   if (V.filter === 'streak') rows = rows.filter(r => v3Streak(r));
+  // THE RULE'S SIDE AND THE RULE'S PRICE, not the board's default.
+  //
+  // `v3Line` renders "Over" on any row without `take`, and `v3Row` shows
+  // `odds`, which is the OVER's price. Both are right for a board that
+  // displays the over and our chance of it, and both are wrong here: over
+  // 2026 weeks 3-4 NINE of the rule's 77 picks were unders, so one pick in
+  // eight would have been drawn as the opposite bet at the wrong price.
+  //
+  // `underOdds` rather than the rule's own `price`: the archived median is
+  // what the measured return was priced at, and this is a bet you are about
+  // to place, so the number on the row is the one the book is showing. The
+  // help line says the return was measured at the median across books.
+  if (V.filter === 'gap') {
+    const m = marketOf(V.market);
+    rows = rows.map(r => {
+      const hit = v3EdgeHit(m, r);
+      if (!hit) return null;
+      const und = hit.side === 'under';
+      return Object.assign({}, r, {
+        take: hit.side, takeGap: hit.edge_pp,
+        odds: und ? (has(r.underOdds) ? r.underOdds : null) : r.odds,
+        dec: und ? (has(r.underDec) ? r.underDec : null) : r.dec,
+      });
+    }).filter(Boolean);
+  }
   if (V.game) rows = rows.filter(r => v3Same(r.gameId, V.game));
   rows = v3Match(rows);
   if (!rows.length) {
@@ -751,6 +787,16 @@ function v3Rows() {
       ? 'Nobody on this market went one way in ' + V3STREAK_MIN + ' of their '
         + 'last ' + V3STREAK_OF + ' weeks. A player needs five weeks with a '
         + 'line and a result to be counted at all.'
+      : V.filter === 'gap'
+      ? (KIND[V.market] !== 'ou'
+         ? 'The price rule is fitted on the over/under markets only. Pick '
+           + 'catches, receiving, rushing or passing yards.'
+         : ((marketOf(V.market) || {}).edge || {}).note
+         ? 'The price rule could not run on this market: '
+           + esc(((marketOf(V.market) || {}).edge || {}).note)
+         : 'No line on this market is far enough off our number this week. '
+           + 'Most weeks it takes a handful, and early in the week it takes '
+           + 'fewer \u2014 the closing prices have not landed yet.')
       : V.filter === 'fav'
       ? 'Nothing starred on this market. Tap the star beside a player to '
         + 'keep them here.'
@@ -927,6 +973,52 @@ const V3STREAK_MIN = ((DATA.pastlines || {}).streak_min) || 4;
 //
 // Returns null unless the last five weeks all carry a line and a result, so a
 // player with a short or ragged record is silent rather than flagged on three.
+// ── The price rule, on this week's board ────────────────────────────────
+//
+// A MEMBERSHIP TEST, NOT A RULE. `prop_edge.qualifying` picks the bets — the
+// same function the Record page's section 05 is scored with — and the
+// payload carries them, so the board's filter and the card's return are
+// about the same bets by construction rather than by agreement.
+//
+// Written in the page it would have to reproduce two things to be the same
+// rule, and both are easy to get subtly wrong: the fitted threshold per
+// market, and the reduction to ONE LINE PER PLAYER-GAME before the gap is
+// read. Week 5 was carrying four rushing-yards lines for Jalon Daniels and
+// five passing-yards lines for one quarterback; a filter that kept whichever
+// of them cleared would be shopping among them, which is the inflation that
+// once turned a +0.30% player edge into +6.89%.
+function v3EdgeKeys(m) {
+  const e = (m || {}).edge || {};
+  return new Set((e.picks || []).map(r => ouKey(r.player_name, r.point)));
+}
+//: What the rule decided about a row: the side it took and how far our
+//: number sat from the price, or null where it took nothing.
+function v3EdgeHit(m, row) {
+  const e = (m || {}).edge || {};
+  return (e.picks || []).find(r => ouKey(r.player_name, r.point)
+                                   === ouKey(row.player, row.line)) || null;
+}
+function v3IsEdge(row) {
+  return KIND[V.market] === 'ou'
+    && !!v3EdgeHit(marketOf(V.market), row);
+}
+//: The four fitted margins, in the words the help line uses.
+function v3EdgeNote() {
+  const e = (marketOf(V.market) || {}).edge || {};
+  if (e.note) return 'The price rule could not run on this market: ' + e.note;
+  return 'Only the lines where our number beats the sportsbook\u2019s own '
+    + 'fair price by '
+    + (has(e.threshold_pp) ? e.threshold_pp + ' points' : 'the fitted margin')
+    + ', fitted on earlier seasons and taken at the price of the side bet. '
+    + 'One bet per player, and the side shown is the rule\u2019s \u2014 on '
+    + 'weeks 3-4 nine of its 77 picks were unders. Measured over those '
+    + 'weeks it returned +$13.36 per $100 on 69 bets, with a range of '
+    + '\u2212$12.70 to +$39.42 \u2014 which spans zero, so it is the best '
+    + 'thing on the card and still 69 bets. That return was priced at the '
+    + 'median across books at capture; the price here is the one on offer '
+    + 'now.';
+}
+
 // A LOOKUP NOW, NOT A RULE. `src/evaluation/streaks.py` decides who is on
 // one and the payload carries the answer under `pastlines.streaks`.
 //
@@ -5523,8 +5615,19 @@ function v3RecGames(g, S) {
                  v3RecPts(to.mae_blend_centered)]);
   }
   const spm = v3RecMoney110(sp.model), tom = v3RecMoney110(to.model);
+  // ── ONE CARD, THREE MARKETS ─────────────────────────────────────────
+  //
+  // These were three cards, each holding a two-row table, a reference line
+  // and a sentence. That is a great deal of chrome around six numbers, and
+  // they are one subject: how the model did on the game itself. Asked
+  // directly whether they could be a single card, and they can.
+  //
+  // The sub-headings keep their own names, so a reader still knows which
+  // market they are reading; what goes is two card borders and two blocks
+  // of padding.
   return '<div class="card" id="sb1">'
-    + v3RecHead('01', 'Picking the winning team')
+    + v3RecHead('01', 'Picking the game')
+    + '<div class="recsec"><h3 class="recsec__t">The winning team</h3>'
     + v3RecTable(['Pick', 'Wins / losses', 'Correct'], mlRows)
     + v3RecBar(m.ours.pct, (m.book || {}).pct, null)
     + '<p class="help" style="margin-top:8px">'
@@ -5550,10 +5653,10 @@ function v3RecGames(g, S) {
             : ' The blended win chance is recorded from week 5.')
          + '</p>'
        : '')
-    + '</div><div class="card" id="sb2">'
-    + v3RecHead('02', 'Picking the point spread',
-                'Average error is how many points the number missed the '
-                + 'final winning margin by.')
+    + '</div><div class="recsec" id="sb2">'
+    + '<h3 class="recsec__t">The point spread</h3>'
+    + '<p class="help">Average error is how many points the number missed '
+    + 'the final winning margin by.</p>'
     + v3RecTable(['Prediction', 'W / L / push', 'Correct', 'Avg error'], spRows)
     + v3RecBar(sp.model.pct, null, be)
     + '<p class="help" style="margin-top:8px">'
@@ -5564,10 +5667,10 @@ function v3RecGames(g, S) {
     + (full ? v3RecRangeNote(sp.model.n, [['Our model', sp.model],
                                           ['the adjusted model', sp.blend]])
             : '')
-    + '</div><div class="card" id="sb3">'
-    + v3RecHead('03', 'Picking over or under the total',
-                'Average error is how many points the number missed the '
-                + 'combined final score by.')
+    + '</div><div class="recsec" id="sb3">'
+    + '<h3 class="recsec__t">Over or under the total</h3>'
+    + '<p class="help">Average error is how many points the number missed '
+    + 'the combined final score by.</p>'
     + v3RecTable(['Prediction', 'Wins / losses', 'Correct', 'Avg error'], toRows)
     + v3RecBar(to.model.pct, null, be)
     + '<p class="help" style="margin-top:8px">'
@@ -5611,17 +5714,20 @@ function v3RecBetRow(x) {
 // "Edge rule only" said nothing — asked directly whether it was the
 // shortlist, which is a DIFFERENT rule on a different page of this card. So
 // each one is named for what it does and says so under the control.
+// [key, label, return index, side index, what it is, price index].
+// The price is per series because the three do not always take the same
+// side, and an under is paid at the under's own number.
 const V3RECSERIES = [
   ['model', 'Our model', 6, 5,
-   'Every bet, on the side our raw model leaned.'],
+   'Every bet, on the side our raw model leaned.', 10],
   ['adj', 'Adjusted model', 4, 3,
    'The same bets, on the side the card actually served — our number already '
-   + 'pulled toward the price.'],
+   + 'pulled toward the price.', 9],
   ['edge', 'Big price gaps', 7, 3,
    'Only the bets where our number beat the sportsbook’s own fair price by a '
-   + 'margin fitted on earlier seasons — section 05 above. This is a price '
+   + 'margin fitted on earlier seasons — section 03 above. This is a price '
    + 'test and NOT the Shortlist, which is the fitted band rule in section '
-   + '04 and picks its own lines.'],
+   + '02 and picks its own lines.', 11],
 ];
 function v3RecSeries() {
   const k = V.recSeries || 'model';
@@ -5653,39 +5759,57 @@ function v3RecLegs(S, a, b) {
   for (let w = a; w <= b; w++) {
     const rows = (B.weeks || {})[String(w)];
     if (!rows) continue;
-    for (const r of rows) out.push({p: r[0], g: r[1], w: w, legs: r[2]});
+    for (const r of rows) out.push({p: r[0], g: r[1], w: w, legs: r[2],
+                                    t: r[3]});
   }
   return out;
 }
 
-//: One player's totals over the chosen weeks, for whichever series.
-function v3RecPlayerRows(S, a, b) {
+//: Totals over the chosen weeks, grouped by player or by club.
+//
+//: ONE FUNCTION FOR BOTH, because a club's row means exactly what a
+//: player's row means — these bets, this many, this return — and two
+//: implementations of that would be free to drift. `pick` names the thing
+//: being counted and `label` turns it into a name.
+function v3RecGroupRows(S, a, b, pick, label) {
   const s = v3RecSeries(), ri = s[2];
-  const B = S.bets || {}, names = B.players || [];
   const by = {};
   for (const pg of v3RecLegs(S, a, b)) {
+    const k = pick(pg);
+    if (k === null || k === undefined) continue;
     for (const l of pg.legs) {
       if (!has(l[ri])) continue;
-      const k = pg.p;
-      const r = by[k] || (by[k] = {p: k, name: names[k] || '?', bets: 0,
-                                   won: 0, ret: 0, games: {}});
+      const r = by[k] || (by[k] = {key: k, name: label(k), bets: 0, won: 0,
+                                   ret: 0, games: {}, players: {}});
       r.bets++; r.ret += l[ri];
       if (l[ri] > 0) r.won++;
       r.games[pg.g] = 1;
+      r.players[pg.p] = 1;
     }
   }
   return Object.keys(by).map(k => {
     const r = by[k];
     r.games = Object.keys(r.games).length;
+    r.players = Object.keys(r.players).length;
     r.hit = r.bets ? r.won / r.bets : null;
     r.roi = r.bets ? r.ret / r.bets : null;
     return r;
   });
 }
 
+function v3RecPlayerRows(S, a, b) {
+  const names = (S.bets || {}).players || [];
+  return v3RecGroupRows(S, a, b, pg => pg.p, k => names[k] || '?');
+}
+
+function v3RecTeamRows(S, a, b) {
+  const tm = (S.bets || {}).teams || [];
+  return v3RecGroupRows(S, a, b, pg => pg.t, k => tm[k] || '?');
+}
+
 //: One player-game, with its legs and whether they all landed together.
 function v3RecPgRows(S, a, b) {
-  const s = v3RecSeries(), ri = s[2], si = s[3];
+  const s = v3RecSeries(), ri = s[2], si = s[3], pi = s[5];
   const names = (S.bets || {}).players || [];
   const out = [];
   for (const pg of v3RecLegs(S, a, b)) {
@@ -5693,53 +5817,134 @@ function v3RecPgRows(S, a, b) {
     if (!legs.length) continue;
     const won = legs.filter(l => l[ri] > 0).length;
     out.push({name: names[pg.p] || '?', g: pg.g, w: pg.w, legs: legs,
-              si: si, ri: ri, bets: legs.length, won: won,
+              team: (((S.bets || {}).teams) || [])[pg.t],
+              si: si, ri: ri, pi: pi,
+              // The streak direction is a fact about the PLAYER that week,
+              // so it is the same on every leg of a player-game; read off
+              // the first rather than repeated under each line.
+              streak: legs[0][8],
+              bets: legs.length, won: won,
               same: won === 0 || won === legs.length,
               ret: legs.reduce((t, l) => t + l[ri], 0)});
   }
   return out;
 }
 
-// A PLAYER TABLE WHOSE ROWS OPEN. The three player-level cuts said how a
-// man did and never what the bet was — "Ashton Jeanty 6 bets, 6 won" with no
-// way to see which six — so the name is a control and the legs are one tap
-// under it. Only one open at a time, like the board: a wall of detail panels
-// you have to close individually is the thing that pattern exists to avoid.
-function v3RecPlayerTable(rows, S, pg) {
-  const cols = ['Player', 'Bets', 'Won', 'Hit rate', 'Per $100'];
-  const out = [];
-  for (const r of rows) {
-    const open = V.recOpen === r.name;
-    out.push([
-      '<button class="pname' + (open ? ' pname--on' : '')
-        + '" data-v3recopen="' + esc(r.name) + '">' + esc(r.name)
-        + '<span class="pname__c">' + (open ? '\u2212' : '+')
-        + '</span></button>',
-      String(r.bets), String(r.won),
-      has(r.hit) ? (r.hit * 100).toFixed(0) + '%' : '—',
-      v3RecCash(r.roi)]);
-    if (!open) continue;
-    // His own player-games, spelled out in the same words the By game cut
-    // uses — one rendering of a leg, so the two cannot disagree about it.
-    const mine = (pg || []).filter(g => g.name === r.name);
-    out.push(['<span class="pgopen">'
-      + (mine.length ? v3RecPgLegs(mine, S)
-         : 'No leg detail for this grading.') + '</span>',
-      '', '', '', '']);
+// ── The per-player table ────────────────────────────────────────────────
+//
+// NOT `v3RecTable`. That is a grid of loose spans, which cannot carry a
+// clickable row and gives its label column all the slack — at 880px the
+// name sat at one edge of the card and the figures at the other, a hand's
+// width apart, which is unreadable and was asked about directly.
+//
+// So a row is one button with a shared column template, the way the players
+// board's own rows work. Fixed figure columns and a capped measure keep the
+// name and its numbers together at every width.
+const V3RECSORTS = [['ret', 'Per $100'], ['hit', 'Hit rate'],
+                    ['bets', 'Bets'], ['won', 'Won'], ['name', 'Player']];
+
+function v3RecSortRows(rows) {
+  const k = V.recSort || 'ret';
+  const d = V.recSortDesc === false ? -1 : 1;
+  const by = {
+    // THE COLUMN SORTS BY WHAT THE COLUMN SAYS. It sorted by total profit
+    // while showing per $100, so the figures came out looking unordered —
+    // 38 bets at +$32.79 above 30 at +$24.50 is right by total and wrong
+    // by the only number on screen.
+    //
+    // Ties break on the number of bets, so where two rows return the same
+    // the one with more behind it is first. That does not stop a single
+    // lucky bet topping the money column, which is what the note under
+    // the table is for.
+    ret: r => r.roi,
+    hit: r => (has(r.hit) ? r.hit : -1),
+    bets: r => r.bets, won: r => r.won,
+  }[k];
+  const out = rows.slice();
+  if (k === 'name') {
+    out.sort((a, b) => a.name.localeCompare(b.name) * d);
+  } else {
+    out.sort((a, b) => (by(b) - by(a)) * d || b.bets - a.bets
+                       || b.ret - a.ret);
   }
-  return v3RecTable(cols, out, {prose: [0]});
+  return out;
 }
 
-//: One player's games, each with its legs. Shares `v3RecPgLeg` with the By
-//: game cut so a leg reads the same wherever it is drawn.
-function v3RecPgLegs(rows, S) {
-  return rows.map(r =>
-    '<span class="pgrow"><b>' + esc(v3RecGameLabel(r.g)) + '</b>'
-    + '<span class="pgwk"> · week ' + r.w + '</span> '
-    + r.legs.map(l => v3RecPgLeg(l, r, S)).join(' ')
-    + (r.bets > 1 && r.same
-       ? '<span class="pgall">all ' + r.bets + ' landed the same way</span>'
-       : '') + '</span>').join('');
+//: A sortable heading. Tapping the column already sorted flips it, which is
+//: what a table does and saves a second control for direction.
+function v3RecSortHead(what) {
+  const k = V.recSort || 'ret';
+  const d = V.recSortDesc === false ? ' ↑' : ' ↓';
+  const cell = (key, label, cls) =>
+    '<button class="rech' + (cls ? ' ' + cls : '')
+    + (key === k ? ' rech--on' : '') + '" data-v3recsort="' + key + '">'
+    + esc(label) + (key === k ? d : '') + '</button>';
+  return '<div class="recg rech__r">'
+    + cell('name', what || 'Player')
+    + cell('bets', 'Bets', 'n') + cell('won', 'Won', 'n')
+    + cell('hit', 'Hit rate', 'n') + cell('ret', 'Per $100', 'n')
+    + '</div>';
+}
+
+//: One player's games, laid out as a record rather than a sentence: the
+//: game, then a line per leg carrying the category, the side, the number,
+//: what he did, the price he was paid at and what the leg returned.
+function v3RecDrawer(rows, S) {
+  const mk = (S.bets || {}).markets || [];
+  return '<div class="pgd">' + rows.map(r => {
+    const legs = r.legs.map(l => {
+      const side = l[r.si] === 1 ? 'over' : l[r.si] === 0 ? 'under' : '';
+      const price = l[r.pi];
+      return '<div class="pgd__l">'
+        + '<span class="pgd__m">' + esc(mk[l[0]] || '?') + '</span>'
+        + '<span class="pgd__b">' + side + ' ' + l[1] + '</span>'
+        + '<span class="pgd__a">had ' + l[2] + '</span>'
+        + '<span class="pgd__p n">' + (has(price) ? v3Dash(american(price))
+            : '—') + '</span>'
+        + '<span class="pgd__r n ' + (l[r.ri] > 0 ? 'up' : 'dn') + '">'
+        + v3Money(l[r.ri]) + '</span></div>';
+    }).join('');
+    return '<div class="pgd__g">'
+      + '<div class="pgd__h"><b>'
+      + esc(V.recWho === 'team' ? r.name : v3RecGameLabel(r.g)) + '</b>'
+      + '<span class="pgwk">'
+      + (V.recWho === 'team' ? esc(v3RecGameLabel(r.g)) + ' \u00b7 ' : '')
+      + 'week ' + r.w + '</span>'
+      + (r.streak ? '<span class="pgwk">had been going '
+         + (r.streak === 1 ? 'over' : 'under') + '</span>' : '')
+      + '</div>' + legs
+      + (r.bets > 1 && r.same
+         ? '<div class="pgall">all ' + r.bets + ' landed the same way</div>'
+         : '')
+      + '</div>';
+  }).join('') + '</div>';
+}
+
+function v3RecPlayerTable(rows, S, pg, match, what) {
+  const m = match || ((g, r) => g.name === r.name);
+  const sorted = v3RecSortRows(rows);
+  return '<div class="recwrap">' + v3RecSortHead(what)
+    + sorted.map(r => {
+      const open = V.recOpen === r.name;
+      const mine = (pg || []).filter(g => m(g, r));
+      return '<div class="recr' + (open ? ' recr--open' : '') + '">'
+        + '<button class="recg recr__b" data-v3recopen="' + esc(r.name)
+        + '" aria-expanded="' + open + '">'
+        + '<span class="recr__n">' + esc(r.name)
+        + (has(r.players) && r.players > 1 && V.recWho === 'team'
+           ? '<span class="recr__s">' + r.players + ' players</span>' : '')
+        + '<span class="recr__c">' + (open ? '−' : '+') + '</span></span>'
+        + '<span class="n">' + r.bets + '</span>'
+        + '<span class="n">' + r.won + '</span>'
+        + '<span class="n">'
+        + (has(r.hit) ? (r.hit * 100).toFixed(0) + '%' : '—') + '</span>'
+        + '<span class="n">' + v3RecCash(r.roi) + '</span>'
+        + '</button>'
+        + (open ? (mine.length ? v3RecDrawer(mine, S)
+                   : '<div class="pgd pgd--none">No leg detail for this '
+                     + 'grading.</div>') : '')
+        + '</div>';
+    }).join('') + '</div>';
 }
 
 //: WHAT THE BET WAS: the category, the side, the number, and what he did.
@@ -5812,8 +6017,22 @@ function v3RecByPlayer(p, S, a, b) {
       + v3RecPlayerTable(by.slice(0, n), S, pg)
       + '<div class="recsub">Worst ' + n + '</div>'
       + v3RecPlayerTable(by.slice(-n).reverse(), S, pg);
-    note = 'Ranked by total profit, not by rate — a player we bet six times '
-      + 'moves the season more than one we bet twice.';
+    note = 'The ten best and ten worst by TOTAL profit, so a player we bet '
+      + 'six times counts for more than one we bet twice. Inside each ten '
+      + 'the order follows whichever column you sorted — and a single lucky '
+      + 'bet can top the money column, so read the bet count beside it.';
+  } else if (who === 'team') {
+    // BY CLUB, asked for after the player table landed. The same question
+    // one level up: does the model read some offenses better than others?
+    //
+    // The caveat is STRONGER here, not weaker. A club's bets share a game
+    // script as well as a player, so thirty bets on one offense is nearer a
+    // handful of opinions than thirty.
+    body = v3RecPlayerTable(v3RecTeamRows(S, a, b), S, pg,
+                            (g, r) => g.team === r.name, 'Team');
+    note = 'Every bet on a player from that club. A club’s bets share a '
+      + 'game script as well as a player, so these move together even '
+      + 'harder than one man’s do.';
   } else if (who === 'most') {
     const by = rows.slice().sort((x, y) => y.bets - x.bets || y.ret - x.ret);
     body = v3RecPlayerTable(by.slice(0, 25), S, pg);
@@ -5851,14 +6070,15 @@ function v3RecByPlayer(p, S, a, b) {
     note = 'Every player we bet in these weeks, best return first.';
   }
   return '<div class="card" id="sb6">'
-    + v3RecHead('06', 'Bets by player',
+    + v3RecHead('04', 'Bets by player and club',
                 'One bet is one player, in one game, in one category — so a '
                 + 'receiver is usually two bets in a game and a back who '
                 + 'catches is three.')
     + seg('v3recseries', V3RECSERIES.map(x => [x[0], x[1]]), s[0])
     + '<p class="help" style="margin-top:6px">' + esc(s[4]) + '</p>'
     + seg('v3recwho', [['top', 'Best and worst'], ['all', 'Every player'],
-                       ['games', 'By game'], ['most', 'Most bet']], who)
+                       ['team', 'By team'], ['games', 'By game'],
+                       ['most', 'Most bet']], who)
     + body
     + (note ? '<p class="help" style="margin-top:8px">' + esc(note) + '</p>'
             : '')
@@ -5866,7 +6086,7 @@ function v3RecByPlayer(p, S, a, b) {
     + '“had been going over” or “under”</b> marks a leg '
     + 'where that player had run one way in ' + V3STREAK_MIN + ' of his last '
     + V3STREAK_OF + ' graded weeks going INTO that week — the Streaks filter '
-    + 'in section 04. Recent form, not an edge; the side bet is still '
+    + 'in section 02. Recent form, not an edge; the side bet is still '
     + 'ours.</p>'
     + '<p class="help" style="margin-top:6px">A player’s bets are '
     + '<b style="color:var(--ink)">not independent</b>: ' + same + ' of the '
@@ -5980,7 +6200,7 @@ function v3RecPlayers(p, S) {
   const thr = (p.edge || []).filter(x => x.bets && has(x.threshold_pp))
     .map(x => esc(x.label).toLowerCase() + ' ' + x.threshold_pp + 'pp');
   return '<div class="card" id="sb4">'
-    + v3RecHead('04', 'Player bets: profit per $100 staked',
+    + v3RecHead('02', 'Player bets: profit per $100 staked',
                 'One bet is one player, in one game, in one category. The '
                 + 'archive quotes alternate lines and counting each as its '
                 + 'own bet turns one opinion into seventeen, so only the '
@@ -6022,7 +6242,7 @@ function v3RecPlayers(p, S) {
     + '</div>'
     + (edge.length
        ? '<div class="card" id="sb5">'
-         + v3RecHead('05', 'The same bets, only where the price was wrong '
+         + v3RecHead('03', 'The same bets, only where the price was wrong '
                      + 'enough',
                      'A bet only where our number beats the sportsbook’s own '
                      + 'fair price by a margin fitted on earlier seasons, '
@@ -6627,7 +6847,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
                   'v3sortpick',
                   'v3recfull', 'v3recwho', 'v3recseries', 'v3recmore',
-                  'v3recqx', 'v3recview', 'v3recopen'];
+                  'v3recqx', 'v3recview', 'v3recopen', 'v3recsort'];
 
 document.addEventListener('click', ev => {
   let node = ev.target;
@@ -6867,6 +7087,13 @@ function v3Do(kind, v) {
     // Tapping the open player closes him, which is what the board's own
     // row-opener does.
     case 'v3recopen': V.recOpen = V.recOpen === v ? null : v; break;
+    // A column header. Tapping the one already sorted flips it, which is
+    // what a table does; a new column starts descending except the name,
+    // where A-Z is what anybody means by sorting it.
+    case 'v3recsort':
+      if (V.recSort === v) V.recSortDesc = !V.recSortDesc;
+      else { V.recSort = v; V.recSortDesc = (v !== 'name'); }
+      break;
     // FETCHED ON THE TAP, not on the render: the full record for a market is
     // most of a megabyte and almost nobody opens it. The re-render is the
     // callback's job because the file may already be cached, in which case

@@ -2514,10 +2514,16 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('and the nav label is short enough for a fifth column',
      (V3TABS.filter(t => t[0] === 'record')[0] || [])[1].length <= 7);
 
+  // THE THREE GAME MARKETS SHARE ONE CARD. They were three, each holding a
+  // two-row table and a sentence, which is a lot of chrome around six
+  // numbers for one subject.
   ok('all four sections are numbered and named',
-     ['Picking the winning team', 'Picking the point spread',
-      'Picking over or under the total',
-      'Player bets: profit per $100 staked'].every(s => h.indexOf(s) >= 0), h);
+     ['Picking the game', 'Player bets: profit per $100 staked',
+      'Bets by player and club'].every(s => h.indexOf(s) >= 0), h);
+  ok('and the three game markets are sub-headings inside one card',
+     ['The winning team', 'The point spread', 'Over or under the total']
+       .every(s => h.indexOf('>' + s + '<') >= 0)
+     && (h.match(/class="recsec/g) || []).length >= 3, h);
 
   // ── THE SCOREBOARD ───────────────────────────────────────────────────
   // The whole point of the rethink: the verdict before the working. A
@@ -2525,7 +2531,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // learning whether any of it was good.
   ok('a scoreboard states the verdict before the first table',
      h.indexOf('How the model has done') >= 0
-     && h.indexOf('How the model has done') < h.indexOf('Picking the winning team'),
+     && h.indexOf('How the model has done') < h.indexOf('Picking the game'),
      h.slice(0, 600));
   ok('and it carries one tile per thing the model claims to do',
      ['Winning team', 'Point spread', 'Over / under', 'Player bets']
@@ -2548,7 +2554,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   {
     // The headline rate for the winning team, read out of each render.
     const grab = s => {
-      const i = s.indexOf('Picking the winning team');
+      const i = s.indexOf('The winning team');
       const m = /Our model<\/span><span class="n">([^<]*)<\/span><span class="n">([^<]*)</
         .exec(s.slice(i));
       return m ? m[1] + '|' + m[2] : null;
@@ -2586,7 +2592,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      h.indexOf('rebuilt afterwards') >= 0
      && h.indexOf('not a record of bets anyone could') >= 0);
   ok('and both say so before the first table',
-     h.indexOf('rebuilt afterwards') < h.indexOf('Picking the winning team'));
+     h.indexOf('rebuilt afterwards') < h.indexOf('Picking the game'));
   ok('and the weeks with no game record say why',
      h.indexOf('have no game record') >= 0
      && h.indexOf('nothing recorded a projection') >= 0);
@@ -2706,8 +2712,8 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
        .test(hf), hf.slice(hf.indexOf('luck alone'), hf.indexOf('luck alone')
                            + 240));
   ok('and the winning-team table has no Range column left',
-     h.indexOf('Picking the winning team') >= 0
-     && !/Picking the winning team[\s\S]{0,400}>Range</.test(h), h);
+     h.indexOf('The winning team') >= 0
+     && !/The winning team[\s\S]{0,400}>Range</.test(h), h);
   ok('the player section draws our model and the adjusted model separately',
      hf.indexOf('Our model') < hf.indexOf('Adjusted model'),
      'player series not split');
@@ -2799,12 +2805,12 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
 
   // ── 06 · BETS BY PLAYER ──────────────────────────────────────────────
   ok('there is a per-player section',
-     h.indexOf('Bets by player') >= 0, h);
+     h.indexOf('Bets by player and club') >= 0, h);
   ok('and it says a player’s bets are not independent',
      h.indexOf('not independent') >= 0
      && h.indexOf('land the same way') >= 0);
   ok('and offers all four cuts',
-     ['Best and worst', 'Every player', 'By game', 'Most bet']
+     ['Best and worst', 'Every player', 'By team', 'By game', 'Most bet']
        .every(s => h.indexOf('>' + s + '<') >= 0), h);
   ok('and names which of the three gradings it is reading',
      h.indexOf('data-v3recseries="model"') >= 0
@@ -2883,13 +2889,17 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
     V.recOpen = m && m[1];
     const open = v3RecordPage();
     ok('and opening one spells out what each of his bets was',
-       open.indexOf('class="pgleg') >= 0
-       && /(Catches|Receiving yards|Rushing yards|Passing yards) (over|under) /
-            .test(open), open.slice(0, 300));
+       open.indexOf('class="pgd__l"') >= 0
+       && /(Catches|Receiving yards|Rushing yards|Passing yards)<\/span>/
+            .test(open)
+       && /(over|under) [\d.]+/.test(open), open.slice(0, 400));
     ok('and names the game and week each bet was in',
-       /class="pgwk"> · week \d/.test(open), 'no week on the opened legs');
+       /class="pgwk">week \d/.test(open) && /class="pgd__h"/.test(open),
+       'no game or week on the opened legs');
+    ok('and what each leg was paid at',
+       /class="pgd__p n"/.test(open), 'no price on the opened legs');
     ok('only the player asked for is open',
-       (open.match(/class="pgopen"/g) || []).length === 1);
+       (open.match(/class="pgd"/g) || []).length === 1);
     V.recOpen = null;
     // THE THIRD GRADING IS NAMED FOR WHAT IT DOES. "Edge rule only" said
     // nothing and was read as the shortlist, which is a different rule.
@@ -2910,7 +2920,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
     render();
     ok('a payload with no per-leg bets drops section 06 rather than throwing',
        v3RecordPage().indexOf('Bets by player') < 0
-       && v3RecordPage().indexOf('Picking the winning team') >= 0);
+       && v3RecordPage().indexOf('Picking the game') >= 0);
     DATA.scorecard.bets = was;
   }
 

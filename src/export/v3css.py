@@ -822,8 +822,15 @@ button{cursor:pointer}
    string pushes the row wider than its own scroller and the label clips. */
 .recwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:8px -2px 0;
   padding:0 2px}
+/* CAPPED, because `1fr` on the label column gives it every spare pixel.
+   At 880px that put "Our model" against one edge of the card and "18 / 14"
+   against the other with a hand's width of nothing between them, which is
+   unreadable and was asked about directly. The slack now falls after the
+   last column, where slack belongs. */
 .rec{display:grid;gap:3px 12px;align-items:baseline;font-size:13.5px;
-  line-height:19px;min-width:min-content}
+  line-height:19px;min-width:min-content;max-width:640px}
+/* The leg table is prose in its widest column and wants the room. */
+.rec--pg{max-width:none}
 .rec--4{grid-template-columns:minmax(92px,1fr) repeat(3,minmax(0,auto))}
 .rec--5{grid-template-columns:minmax(84px,1fr) repeat(4,minmax(0,auto))}
 .rec__h{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
@@ -844,6 +851,12 @@ button{cursor:pointer}
    team": four intervals each wide enough to contain every other row read as
    the page declining to say anything. */
 .rec--3{grid-template-columns:minmax(104px,1fr) repeat(2,minmax(0,auto))}
+/* A market inside the game card. A rule rather than a card border: the
+   three are one subject and three cards said they were three. */
+.recsec+.recsec{margin-top:18px;padding-top:16px;
+  border-top:1px solid var(--line)}
+.recsec__t{font-size:15px;line-height:20px;font-weight:700;margin:0}
+.recsec__t+.help{margin-top:3px}
 .recpick{margin:10px 0 2px;gap:8px}
 .recpick .seg{margin-top:0}
 .recnote{background:var(--inset)}
@@ -873,7 +886,7 @@ button{cursor:pointer}
    arithmetic. Scale is fixed at 35-70% so the marks do not move between
    sections and a reader can carry the picture down the page. */
 .rbar{position:relative;height:8px;margin:10px 0 0;border-radius:4px;
-  background:var(--inset)}
+  background:var(--inset);max-width:640px}
 .rbar i,.rbar b{position:absolute;top:-2px;height:12px;width:2px;
   border-radius:1px;transform:translateX(-1px)}
 .rbar__flip{background:var(--line)}
@@ -905,15 +918,62 @@ button{cursor:pointer}
 /* The player name as a control. It reads as text until you notice the sign,
    which is the point: the table is still a table, and the detail is one tap
    under whichever row you want it for. */
-.pname{display:inline-flex;align-items:baseline;gap:6px;background:none;
-  border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;
-  text-align:left;min-width:0}
-.pname__c{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
-.pname--on{font-weight:700}
-.pname--on .pname__c{color:var(--ours)}
-/* One player's games, under his own row and spanning the whole grid. */
-.pgopen{display:block;padding:2px 0 8px}
-.pgrow{display:block;margin-top:4px;font-size:12px;line-height:17px}
+/* ── The per-player table ───────────────────────────────────────────────
+   ONE SHARED COLUMN TEMPLATE AND FIXED FIGURE COLUMNS. The first version
+   was a grid of loose spans whose label column took `1fr`, so at 880px the
+   name sat against one edge of the card and its figures against the other,
+   a hand's width apart with nothing between them. Fixed widths on the four
+   number columns keep them beside the name at every size, and the slack
+   goes where slack should go — after the last column. */
+.recg{display:grid;
+  grid-template-columns:minmax(0,1fr) 52px 52px 76px 92px;
+  gap:0 10px;align-items:baseline;width:100%;max-width:640px}
+.rech__r{padding-bottom:4px;border-bottom:1px solid var(--line);
+  margin-bottom:2px}
+.rech{background:none;border:0;padding:0;margin:0;cursor:pointer;
+  font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--mut);font-weight:700;white-space:nowrap;text-align:left}
+.rech.n{text-align:right}
+.rech--on{color:var(--ink)}
+/* THE WHOLE ROW IS THE CONTROL, not a plus sign beside the name. The board's
+   own rows work this way and a reader who has learned it there should not
+   have to find a different target here. */
+.recr{border-radius:10px}
+.recr--open{background:var(--inset)}
+.recr__b{background:none;border:0;margin:0;cursor:pointer;font:inherit;
+  color:inherit;text-align:left;padding:5px 8px;border-radius:10px;
+  font-size:13.5px;line-height:19px}
+.recr__b:hover{background:var(--inset)}
+.recr--open .recr__b{font-weight:700}
+.recr__n{display:flex;align-items:baseline;gap:6px;min-width:0}
+.recr__c{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+.recr__s{font-size:11.5px;color:var(--mut);font-weight:400}
+.recr--open .recr__c{color:var(--ours)}
+.recg .n{text-align:right;font-variant-numeric:tabular-nums;
+  white-space:nowrap}
+.recg .up{color:var(--good)}
+.recg .dn{color:var(--bad)}
+/* ── The drawer ─────────────────────────────────────────────────────────
+   One block per game, one line per leg: what the bet was, what he did, the
+   price it was paid at and what it returned. A record, not a sentence. */
+.pgd{padding:2px 8px 10px;max-width:640px}
+.pgd--none{font-size:12px;color:var(--mut)}
+.pgd__g{margin-top:6px}
+.pgd__h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+  font-size:12.5px;line-height:18px}
+.pgd__l{display:grid;
+  grid-template-columns:minmax(0,1fr) 104px 74px 56px 62px;
+  gap:0 8px;align-items:baseline;font-size:12.5px;line-height:19px}
+.pgd__m{color:var(--mut)}
+.pgd__a{color:var(--mut);text-align:right}
+.pgd__p{color:var(--mut)}
+.pgd .up{color:var(--good)}
+.pgd .dn{color:var(--bad)}
+@media (max-width:460px){
+  .pgd__l{grid-template-columns:minmax(0,1fr) 62px 56px;
+    grid-auto-flow:row dense}
+  .pgd__p{display:none}
+}
 /* The leg column is prose, not a figure, so it wraps and is not pushed
    right with the numbers. */
 .rec .p{text-align:left;white-space:normal;min-width:0}

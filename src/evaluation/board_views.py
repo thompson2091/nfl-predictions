@@ -108,3 +108,63 @@ def tag(rows: list[dict], sides: dict, streak: dict, week: int,
         r["streak"] = d
         r["streak_with"] = None if d is None or not r.get("side") \
             else (d == r.get("side"))
+
+
+def edge_picks(board_rows: list[dict], season: int, market: str) -> dict:
+    """What the pre-registered price rule takes from a LIVE board.
+
+    `{"threshold_pp": t, "picks": [{player_name, point, side, edge_pp,
+    price}]}`, or an empty `picks` with the reason where the rule cannot run.
+
+    **THE SELECTION IS DECIDED HERE AND NOT IN THE PAGE**, for the reason
+    `streaks` gives at length: a rule evaluated in the browser is a second
+    copy of it, and the board and the Record page would be free to disagree
+    about which bets the rule took. `prop_edge.qualifying` is the function
+    section 05 is scored with, so the filter shows exactly the bets the card
+    reports a return on.
+
+    **ONE LINE PER PLAYER-GAME, CHOSEN BEFORE THE GAP IS READ.** `qualifying`
+    owns that too. It matters more on a live board than in the archive: week
+    5 was carrying four rushing-yards lines for Jalon Daniels and five
+    passing-yards lines for one quarterback, and a filter that kept whichever
+    cleared would be shopping among them — the same inflation that once
+    turned a +0.30% player edge into +6.89%.
+
+    Rows arrive in the board's own names and are mapped to `ou_week`'s, the
+    same adaptation `shortlist_sides` makes and for the same reason.
+    """
+    from src.evaluation.prop_edge import load_threshold, qualifying
+
+    t = load_threshold(market)
+    out: dict = {"threshold_pp": t, "picks": [], "note": ""}
+    if t is None:
+        out["note"] = f"no fitted threshold for {market}"
+        return out
+    mapped = []
+    for r in board_rows:
+        point = r.get("point") if r.get("point") is not None \
+            else r.get("open_point")
+        mapped.append({
+            "player_name": r.get("player_name"), "game_id": r.get("game_id"),
+            "line": point, "side": None,
+            # `ours` is the blend, which is what the rule thresholds — see
+            # `prop_edge`'s docstring on why the pre-blend number is the
+            # wrong one to measure a disagreement with the price from.
+            "ours": r.get("ours"), "model": r.get("model_only"),
+            "book": r.get("fair_prob"), "odds": r.get("odds"),
+            # No result on an unplayed week, which is the point of a forward
+            # filter. `qualifying` grades `won` as None and still selects.
+            "actual": None,
+        })
+    try:
+        got = qualifying(season, market, mapped, threshold_pp=t)
+    except Exception as e:                                       # noqa: BLE001
+        out["note"] = f"could not price the sides: {str(e)[:120]}"
+        return out
+    out["picks"] = [{"player_name": r.get("player_name"),
+                     "point": r.get("point"),
+                     "side": r.get("side"),
+                     "edge_pp": r.get("edge_pp"),
+                     "price": r.get("price")}
+                    for r in got if r.get("side")]
+    return out
