@@ -106,3 +106,70 @@ def test_the_served_blend_sits_between_live_and_validation(tmp_path):
     (tmp_path / "market_blend_live.json").write_text(json.dumps({"weight": 0.30}))
     assert load_blend("rushing_yards", tmp_path) == 0.30
     assert receptions_blend(tmp_path) == 0.30
+
+
+# ── the prop edge rule, recorded and graded ─────────────────────────────
+
+def test_a_void_is_not_a_loss():
+    """A player who did not play is money back, not a lost bet. Graded as a
+    loss he drags a rule's return down by his full stake, which is how a
+    rule that never fired on him comes to look worse than it was."""
+    from src.evaluation.prop_settlement import settle_rows
+
+    rows = [{"player_name": "Did Not Play", "game_id": "2026_05_A_B",
+             "line": 3.5, "side": "under", "odds": -110,
+             "actual": None, "won": True}]
+    got = settle_rows(2026, "receptions", rows, prices=None,
+                      played={})[0]
+    assert got["void"] is True
+    assert got["won"] is None, "a void must not settle either way"
+
+
+def test_an_under_is_paid_at_the_under_s_own_price():
+    """The archive's one price is the OVER's. Paid at it, an under is
+    settled at a number nobody offered — the defect this module exists for."""
+    import polars as pl
+
+    from src.evaluation.prop_settlement import settle_rows
+
+    prices = pl.DataFrame({
+        "game_id": ["2026_05_A_B"], "player_name_norm": ["real player"],
+        "market": ["receptions"], "side": ["no"], "point": [3.5],
+        "odds": [-145.0]})
+    rows = [{"player_name": "Real Player", "game_id": "2026_05_A_B",
+             "line": 3.5, "side": "under", "odds": -110,
+             "actual": 2.0, "won": True}]
+    got = settle_rows(2026, "receptions", rows, prices=prices,
+                      played={("2026_05_A_B", "real player"): True})[0]
+    assert got["odds"] == -145.0, "the under took the over's price"
+    assert got["odds_over"] == -110, "the over's price is kept, not lost"
+    # And with no archived under price the bet drops out rather than
+    # borrowing the over's number.
+    bare = settle_rows(2026, "receptions", rows, prices=prices.clear(),
+                       played={("2026_05_A_B", "real player"): True})[0]
+    assert bare["odds"] is None
+
+
+def test_a_pick_on_a_game_that_has_not_finished_is_not_graded():
+    """The Monday-night trap, in the market that just gained a rule. A week
+    is not a game: `tracked_rules.unfinished` is the one definition of what
+    has finished and the prop rule has to read it too."""
+    import polars as pl
+
+    from src.evaluation import tracked_rules as TR
+
+    ids, labels = TR.unfinished(2026, 5)
+    if not labels:
+        pytest.skip("week 5 is complete")
+    picks = TR.load().filter((pl.col("season") == "2026")
+                             & (pl.col("week") == "5")
+                             & (pl.col("rule") == "prop edge over threshold"))
+    if picks.is_empty():
+        pytest.skip("no prop picks recorded for week 5 yet")
+    # Every week-5 pick sits on a game that has not kicked off, so none of
+    # them can be settled yet — and the label on the pick has to be the same
+    # shape `unfinished` returns, or the check silently matches nothing.
+    games = set(picks["game"].to_list())
+    assert games <= labels, (
+        f"{sorted(games - labels)} are not labels `unfinished` would "
+        f"produce — a pick whose game cannot be matched grades early")

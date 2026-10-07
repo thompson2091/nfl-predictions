@@ -50,8 +50,16 @@ from src.utils.paths import records_dir
 #: re-deriving it later would quietly use today's model on last week's board.
 PICKS_PATH = records_dir() / "tracked_picks.csv"
 
+#: `side` and `line` were added 2026-10-06 for the prop edge rule, which bets
+#: a two-sided market and so needs to say WHICH side at WHAT number — a
+#: touchdown pick needs neither. Existing rows were padded with empty values
+#: and none of their other cells touched; `test_the_picks_file_header_matches`
+#: pins the header to this tuple, because `record` appends with a fixed
+#: fieldname list and a column added here without migrating the file writes
+#: rows wider than its own header.
 COLUMNS = ("recorded_on", "season", "week", "market", "rule", "player",
-           "team", "game", "odds", "ours", "book", "edge_pp")
+           "team", "game", "odds", "ours", "book", "edge_pp",
+           "side", "line")
 
 #: The rules under observation. Each carries what it is, where it came from and
 #: what it has done out of sample, because a band with no provenance reads as a
@@ -99,6 +107,51 @@ RULES = (
                          "8.3% in 2025 [-19.0, +36.9]. One and one.",
         "expected_per_week": 12,
     },
+) + tuple(
+    # ── THE PROP EDGE RULE, one entry per market ────────────────────────
+    #
+    # One name across four markets on purpose: `tracked_picks.csv` keys on
+    # (season, week, MARKET, rule, player), so the market already separates
+    # them and four near-identical names would only make the record harder
+    # to read. The threshold differs per market and is FITTED — walk-forward,
+    # by return, on the seasons before the one scored, with a floor of 150
+    # bets so a cut that finds twelve lucky ones cannot win. It lives in
+    # `models/<market>/edge_threshold.json` with its provenance, and
+    # `prop_edge.load_threshold` is the only reader.
+    #
+    # Unlike the two rules above this one bets a TWO-SIDED market, so a pick
+    # has to say which side at what number — hence `side` and `line` in
+    # COLUMNS, and `kind: "prop_edge"`.
+    {
+        "name": "prop edge over threshold",
+        "market": mkt,
+        "kind": "prop_edge",
+        "threshold_pp": thr,
+        "status": "unproven — one clean season and a quarter of another, "
+                  "recorded weekly, not a recommendation",
+        "found": f"on {mkt.replace('_', ' ')}, betting only where the blended "
+                 f"number beats the de-vigged price by {thr}pp returned "
+                 f"{roi:+.1%} over {n:,} bets across 2024 and 2025, at the "
+                 f"price of the side actually taken",
+        "control": "the threshold is fitted walk-forward on earlier seasons "
+                   "only, with a 150-bet floor, and one line per player-game "
+                   "chosen before the edge is read — so it cannot shop among "
+                   "the seventeen alternates a passing-yards player carries",
+        "out_of_sample": "pooled across the four markets: 2025 returned "
+                         "+10.0% [+3.8, +15.7] on 1,260 bets and 2026 weeks "
+                         "1-4 returned +11.0% [-4.5, +26.5] on 182. The "
+                         "second interval straddles zero. The 2024-25 "
+                         "backtests also omit a player who played and "
+                         "recorded nothing, which flatters overs by up to "
+                         "about 5 points and is not yet fixed in the fit.",
+        "expected_per_week": 4,
+    }
+    for mkt, thr, roi, n in (
+        ("receptions", 5.5, 0.0851, 451),
+        ("receiving_yards", 6.0, 0.1324, 296),
+        ("rushing_yards", 2.5, 0.0630, 609),
+        ("passing_yards", 9.0, 0.2936, 159),
+    )
 )
 
 

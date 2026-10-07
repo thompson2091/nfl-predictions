@@ -185,6 +185,19 @@ for TT in anytime_td first_td; do
         || say "     (expected before the open capture archives prices)"
 done
 
+# AND THE FOUR OVER/UNDER MARKETS, which never had a recording step at all.
+# The prop edge rule is tracked from week 5; nothing in tracked_picks.csv can
+# say what these markets would have bet before that, because nothing asked.
+#
+# Run on EVERY rollover, not once. The over/under board is thin early — week
+# 5 held 29 receptions rows on the Tuesday against the hundreds it carries by
+# Sunday — so a single early run would record a fraction of the week.
+# `record` is idempotent on (season, week, market, rule, player), so the
+# first sighting of a player is the one kept and later runs only add players
+# the board did not hold before.
+run "prop_picks" "$PY" scripts/64_prop_picks.py --week "$WEEK" \
+    || say "     (expected before the open capture archives prices)"
+
 # Re-measure receptions against the closes now that another week has settled.
 # Not fatal either way, and deliberately loud on the GOOD result: exit 2 means
 # the count model is ahead of the market, which on this market has meant a leak

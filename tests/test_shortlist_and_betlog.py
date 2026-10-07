@@ -307,6 +307,7 @@ def test_a_tracked_rule_carries_where_it_came_from():
         # number and a ratio, a back by the posted price and a points gap.
         shape = (("min_book_pct", "max_book_pct", "max_ratio")
                  if r.get("kind") == "lay"
+                 else ("threshold_pp",) if r.get("kind") == "prop_edge"
                  else ("min_odds", "max_odds", "min_edge_pp"))
         for k in ("name", "market", "status", "found", "control",
                   "out_of_sample") + shape:
@@ -597,15 +598,26 @@ def test_an_unreadable_schedule_records_rather_than_going_quiet(monkeypatch):
 #: recorded under. `tracked_picks.csv` keys its history on `name` and nothing
 #: else, so changing a threshold without changing the name files two
 #: different rules under one label and grades them as one record.
+#: Keyed on (name, market), because the prop edge rule carries ONE name
+#: across four markets — `tracked_picks.csv` keys on the market too, so the
+#: pair is what identifies a rule's record.
 TRACKED_RULE_DEFINITIONS = {
-    "fade the overpriced": {
-        "kind": "lay", "market": "anytime_td",
+    ("fade the overpriced", "anytime_td"): {
+        "kind": "lay",
         "min_book_pct": 4.26, "max_book_pct": 11.20, "max_ratio": 1 / 3,
     },
-    "mid-price disagreement": {
-        "kind": "back", "market": "anytime_td",
+    ("mid-price disagreement", "anytime_td"): {
+        "kind": "back",
         "min_odds": 300, "max_odds": 700, "min_edge_pp": 5.0,
     },
+    ("prop edge over threshold", "receptions"): {
+        "kind": "prop_edge", "threshold_pp": 5.5},
+    ("prop edge over threshold", "receiving_yards"): {
+        "kind": "prop_edge", "threshold_pp": 6.0},
+    ("prop edge over threshold", "rushing_yards"): {
+        "kind": "prop_edge", "threshold_pp": 2.5},
+    ("prop edge over threshold", "passing_yards"): {
+        "kind": "prop_edge", "threshold_pp": 9.0},
 }
 
 
@@ -630,7 +642,7 @@ def test_a_tracked_rule_cannot_be_retuned_without_being_renamed():
     """
     from src.evaluation.tracked_rules import RULES
 
-    by_name = {r["name"]: r for r in RULES}
+    by_name = {(r["name"], r["market"]): r for r in RULES}
     assert set(by_name) == set(TRACKED_RULE_DEFINITIONS), (
         f"tracked rules changed name: module has {sorted(by_name)}, this "
         f"test pins {sorted(TRACKED_RULE_DEFINITIONS)}")
@@ -657,6 +669,35 @@ def test_a_rules_record_is_read_under_one_definition_only():
         pytest.skip("nothing recorded yet")
     known = {r["name"] for r in RULES}
     seen = set(picks["rule"].drop_nulls().to_list())
+    # The threshold a prop pick was taken under has to be recoverable from
+    # the rule that took it, or its record cannot be reproduced.
+    assert all(r.get("threshold_pp") is not None
+               for r in RULES if r.get("kind") == "prop_edge")
     assert seen <= known, (
         f"{sorted(seen - known)} appear in tracked_picks.csv with no rule "
         f"defining them — their record cannot be reproduced")
+
+
+def test_the_picks_file_header_matches_the_columns_that_write_it():
+    """`record` appends with a FIXED fieldname list and writes the header
+    only when the file does not exist. So a column added to `COLUMNS`
+    without migrating the file produces rows wider than the header already
+    on disk, and every reader silently misaligns from that row on.
+
+    `side` and `line` were added on 2026-10-06 for the prop edge rule, which
+    bets a two-sided market and so has to say which side at what number. The
+    284 existing rows were padded with empty values and no other cell was
+    touched.
+    """
+    import csv
+    from pathlib import Path
+
+    from src.evaluation.tracked_rules import COLUMNS, PICKS_PATH
+
+    p = Path(PICKS_PATH)
+    if not p.exists():
+        pytest.skip("nothing recorded yet")
+    header = next(csv.reader(p.open()))
+    assert header == list(COLUMNS), (
+        f"the file's header is {header} but `record` writes {list(COLUMNS)} "
+        f"— migrate the file before changing COLUMNS")
