@@ -245,6 +245,14 @@ def main() -> int:
         if r:
             results.append(r)
 
+    # The SERVED weight, refitted on both backtests just written. The
+    # validation-only `blend` above stays what the summary reports.
+    from src.evaluation.prop_blend import refit_served
+    served = refit_served("receptions")
+    if served:
+        print(f"Served blend on {served['fitted_on']}: keep "
+              f"{served['weight']:.0%} of our number ({served['n']:,} lines)")
+
     summary = {
         "kind": "receptions_summary",
         "fit_date": date.today().isoformat(),

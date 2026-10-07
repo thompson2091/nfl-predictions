@@ -437,6 +437,13 @@ def run(market: str, skip_train: bool) -> dict:
                (backtest(m, df, fcols, s, market, blend)
                 for s in (cfg["splits"]["val_season"], cfg["splits"]["test_season"]))
                if r]
+    # The SERVED weight, refitted on both backtests just written. The
+    # validation-only `blend` above stays what the summary reports.
+    from src.evaluation.prop_blend import refit_served
+    served = refit_served(market)
+    if served:
+        print(f"  served blend on {served['fitted_on']}: keep "
+              f"{served['weight']:.0%} of our number ({served['n']:,} lines)")
 
     summary = {
         "kind": "yards_summary", "market": market,

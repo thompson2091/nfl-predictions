@@ -63,9 +63,13 @@ def load_blend(market: str, model_dir=None) -> float | None:
     Fitted by `scripts/49_yards.py` on the validation season and saved beside
     the model. Absent, the board serves the raw model — which is worse, so its
     absence is reported by `board_for_week` rather than passed over.
+
+    The season being played first, then the fit on every out-of-tree season
+    (`evaluation.prop_blend`), then the validation-only fit.
     """
     root = model_dir or get_path("models", market)
-    for name in ("market_blend_live.json", "market_blend.json"):
+    for name in ("market_blend_live.json", "market_blend_served.json",
+                 "market_blend.json"):
         path = root / name
         if not path.exists():
             continue

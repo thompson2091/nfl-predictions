@@ -87,8 +87,10 @@ def load_blend(model_dir=None) -> float | None:
     # otherwise. The live file only appears once enough of this season has
     # settled to carry it (`receptions_forward.MIN_BLEND_LINES`), and it is
     # fitted on weeks already played, so it is out of sample for the week it
-    # is about to serve.
-    for name in ("market_blend_live.json", "market_blend.json"):
+    # is about to serve. Between the two, the fit on every season the trees
+    # never saw (`evaluation.prop_blend`), which is what serves until then.
+    for name in ("market_blend_live.json", "market_blend_served.json",
+                 "market_blend.json"):
         path = root / name
         if not path.exists():
             continue
