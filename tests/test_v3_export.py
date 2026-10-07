@@ -617,666 +617,815 @@ def payload_v3():
     # THE SCORECARD, as `season_scorecard.build` really shapes it, trimmed
     # to three ranges that between them hit every branch the page has: one
     # with frozen games, one with none at all, and one spanning both.
+    # THE SCORECARD, as `season_scorecard.build` really shapes it, trimmed
+    # to three ranges that between them hit every branch the page has: one
+    # with frozen games, one with none at all, and one spanning both.
+    # Regenerated from a real build rather than hand-written, so the JS runs
+    # against the shape Python emits.
     p["scorecard"] = {
-            "season": 2026,
-            "played": [
-                    1,
-                    2,
-                    3,
-                    4
-            ],
-            "game_weeks": [
-                    3,
-                    4
-            ],
-            "player_weeks": [
-                    1,
-                    2,
-                    3,
-                    4
-            ],
-            "ranges": {
-                    "1-2": {
-                            "weeks": [
-                                    1,
-                                    2
-                            ],
-                            "games": None,
-                            "players": {
-                                    "weeks": [
-                                            1,
-                                            2
-                                    ],
-                                    "ou": [
-                                            {
-                                                    "key": "receptions",
-                                                    "label": "Catches",
-                                                    "bets": 420,
-                                                    "hit": 0.5357142857142857,
-                                                    "be": 0.5993345799119623,
-                                                    "roi": -0.10452471303072326,
-                                                    "lo": -0.20460089959290811,
-                                                    "hi": -0.004448526468538411
-                                            },
-                                            {
-                                                    "key": "receiving_yards",
-                                                    "label": "Receiving yards",
-                                                    "bets": 408,
-                                                    "hit": 0.5147058823529411,
-                                                    "be": 0.5380262914909304,
-                                                    "roi": -0.04367099561360404,
-                                                    "lo": -0.12967853359291134,
-                                                    "hi": 0.04233654236570327
-                                            },
-                                            {
-                                                    "key": "rushing_yards",
-                                                    "label": "Rushing yards",
-                                                    "bets": 191,
-                                                    "hit": 0.5235602094240838,
-                                                    "be": 0.5411049993275648,
-                                                    "roi": -0.03274413387461186,
-                                                    "lo": -0.15286196910303376,
-                                                    "hi": 0.08737370135381006
-                                            },
-                                            {
-                                                    "key": "passing_yards",
-                                                    "label": "Passing yards",
-                                                    "bets": 64,
-                                                    "hit": 0.5625,
-                                                    "be": 0.5349613922545149,
-                                                    "roi": 0.05058476861896298,
-                                                    "lo": -0.16270900916194653,
-                                                    "hi": 0.2638785463998725
-                                            }
-                                    ],
-                                    "td": [
-                                            {
-                                                    "key": "anytime_td",
-                                                    "label": "Any touchdown",
-                                                    "rows": 751,
-                                                    "said": 0.1778163122329035,
-                                                    "said_model": 0.17969169711431238,
-                                                    "actual": 0.1584553928095872
-                                            },
-                                            {
-                                                    "key": "first_td",
-                                                    "label": "First touchdown",
-                                                    "rows": 748,
-                                                    "said": 0.03920851801203208,
-                                                    "said_model": None,
-                                                    "actual": 0.040106951871657755
-                                            }
-                                    ],
-                                    "all": {
-                                            "bets": 1083,
-                                            "roi": -0.05977363809943819,
-                                            "lo": -0.1257777650270279,
-                                            "hi": 0.006230488828151505
-                                    },
-                                    "edge": [
-                                            {
-                                                    "key": "receptions",
-                                                    "label": "Catches",
-                                                    "bets": 34,
-                                                    "hit": 0.47058823529411764,
-                                                    "be": 0.5266880740147449,
-                                                    "threshold_pp": 5.5,
-                                                    "roi": -0.0699333552819016,
-                                                    "lo": -0.41946808898170773,
-                                                    "hi": 0.27960137841790456
-                                            },
-                                            {
-                                                    "key": "receiving_yards",
-                                                    "label": "Receiving yards",
-                                                    "bets": 21,
-                                                    "hit": 0.47619047619047616,
-                                                    "be": 0.5285923342525926,
-                                                    "threshold_pp": 6.0,
-                                                    "roi": -0.11270158347186239,
-                                                    "lo": -0.46376267681247035,
-                                                    "hi": 0.2383595098687456
-                                            },
-                                            {
-                                                    "key": "rushing_yards",
-                                                    "label": "Rushing yards",
-                                                    "bets": 47,
-                                                    "hit": 0.6382978723404256,
-                                                    "be": 0.5311258577298608,
-                                                    "threshold_pp": 2.5,
-                                                    "roi": 0.20473448813035047,
-                                                    "lo": -0.04084575000669932,
-                                                    "hi": 0.45031472626740027
-                                            },
-                                            {
-                                                    "key": "passing_yards",
-                                                    "label": "Passing yards",
-                                                    "bets": 11,
-                                                    "hit": 0.8181818181818182,
-                                                    "be": 0.5324996817742707,
-                                                    "threshold_pp": 9.0,
-                                                    "roi": 0.535959135131894,
-                                                    "lo": 0.07567699600764083,
-                                                    "hi": 0.9962412742561471
-                                            }
-                                    ],
-                                    "edge_all": {
-                                            "bets": 113,
-                                            "roi": 0.09534162916888093,
-                                            "lo": -0.10824283234529862,
-                                            "hi": 0.2989260906830605
-                                    }
-                            }
-                    },
-                    "3-4": {
-                            "weeks": [
-                                    3,
-                                    4
-                            ],
-                            "games": {
-                                    "n": 32,
-                                    "weeks": [
-                                            3,
-                                            4
-                                    ],
-                                    "moneyline": {
-                                            "ours": {
-                                                    "w": 18,
-                                                    "l": 14,
-                                                    "n": 32,
-                                                    "pct": 0.5625,
-                                                    "lo": 0.3932530203122613,
-                                                    "hi": 0.7183491403055682
-                                            },
-                                            "book": {
-                                                    "w": 17,
-                                                    "l": 15,
-                                                    "n": 32,
-                                                    "pct": 0.53125,
-                                                    "lo": 0.3644923793257382,
-                                                    "hi": 0.6913087009831766
-                                            },
-                                            "disagree": {
-                                                    "w": 4,
-                                                    "l": 3,
-                                                    "n": 7,
-                                                    "pct": 0.5714285714285714,
-                                                    "lo": 0.2504542304090258,
-                                                    "hi": 0.8417830777373732
-                                            },
-                                            "brier_ours": 0.25340099125,
-                                            "brier_book": 0.23774958668566137,
-                                            "blend": {
-                                                    "w": 0,
-                                                    "l": 0,
-                                                    "n": 0,
-                                                    "pct": None,
-                                                    "lo": 0.0,
-                                                    "hi": 0.0
-                                            },
-                                            "brier_blend": None,
-                                            "brier_book_blend": None
-                                    },
-                                    "spread": {
-                                            "model": {
-                                                    "w": 18,
-                                                    "l": 13,
-                                                    "push": 1,
-                                                    "n": 31,
-                                                    "pct": 0.5806451612903226,
-                                                    "lo": 0.40765964352020967,
-                                                    "hi": 0.7358469692645074
-                                            },
-                                            "blend": {
-                                                    "w": 16,
-                                                    "l": 14,
-                                                    "push": 1,
-                                                    "n": 30,
-                                                    "pct": 0.5333333333333333,
-                                                    "lo": 0.3614201328152505,
-                                                    "hi": 0.6976787277587178
-                                            },
-                                            "mae_model": 8.165624999999999,
-                                            "mae_blend": 7.245161290322581,
-                                            "mae_book": 7.90625,
-                                            "mae_book_blend": 7.306451612903226
-                                    },
-                                    "total": {
-                                            "model": {
-                                                    "w": 14,
-                                                    "l": 18,
-                                                    "push": 0,
-                                                    "n": 32,
-                                                    "pct": 0.4375,
-                                                    "lo": 0.2816508596944317,
-                                                    "hi": 0.6067469796877387
-                                            },
-                                            "blend": {
-                                                    "w": 14,
-                                                    "l": 17,
-                                                    "push": 0,
-                                                    "n": 31,
-                                                    "pct": 0.45161290322580644,
-                                                    "lo": 0.29161482836586106,
-                                                    "hi": 0.6222812039633085
-                                            },
-                                            "mae_model": 11.2875,
-                                            "mae_blend": 10.82258064516129,
-                                            "mae_book": 10.453125,
-                                            "mae_book_blend": 10.612903225806452,
-                                            "over": 21,
-                                            "centered": {
-                                                    "w": 0,
-                                                    "l": 0,
-                                                    "push": 0,
-                                                    "n": 0,
-                                                    "pct": None,
-                                                    "lo": 0.0,
-                                                    "hi": 0.0
-                                            },
-                                            "blend_centered": {
-                                                    "w": 0,
-                                                    "l": 0,
-                                                    "push": 0,
-                                                    "n": 0,
-                                                    "pct": None,
-                                                    "lo": 0.0,
-                                                    "hi": 0.0
-                                            },
-                                            "mae_centered": None,
-                                            "mae_blend_centered": None,
-                                            "mae_book_centered": None,
-                                            "over_centered": 0
-                                    }
-                            },
-                            "players": {
-                                    "weeks": [
-                                            3,
-                                            4
-                                    ],
-                                    "ou": [
-                                            {
-                                                    "key": "receptions",
-                                                    "label": "Catches",
-                                                    "bets": 401,
-                                                    "hit": 0.5411471321695761,
-                                                    "be": 0.5965906199200415,
-                                                    "roi": -0.09106227858398702,
-                                                    "lo": -0.17606430275669455,
-                                                    "hi": -0.0060602544112795115
-                                            },
-                                            {
-                                                    "key": "receiving_yards",
-                                                    "label": "Receiving yards",
-                                                    "bets": 404,
-                                                    "hit": 0.49504950495049505,
-                                                    "be": 0.5358569554863092,
-                                                    "roi": -0.07572013845129813,
-                                                    "lo": -0.15186668456409053,
-                                                    "hi": 0.00042640766149427967
-                                            },
-                                            {
-                                                    "key": "rushing_yards",
-                                                    "label": "Rushing yards",
-                                                    "bets": 193,
-                                                    "hit": 0.533678756476684,
-                                                    "be": 0.5389317908285878,
-                                                    "roi": -0.00640512811913429,
-                                                    "lo": -0.1309621618995095,
-                                                    "hi": 0.1181519056612409
-                                            },
-                                            {
-                                                    "key": "passing_yards",
-                                                    "label": "Passing yards",
-                                                    "bets": 64,
-                                                    "hit": 0.53125,
-                                                    "be": 0.5342749098878149,
-                                                    "roi": -0.005146005748660592,
-                                                    "lo": -0.187557025161171,
-                                                    "hi": 0.17726501366384984
-                                            }
-                                    ],
-                                    "td": [
-                                            {
-                                                    "key": "anytime_td",
-                                                    "label": "Any touchdown",
-                                                    "rows": 794,
-                                                    "said": 0.17144230599356786,
-                                                    "said_model": 0.1715111017875782,
-                                                    "actual": 0.17002518891687657
-                                            },
-                                            {
-                                                    "key": "first_td",
-                                                    "label": "First touchdown",
-                                                    "rows": 793,
-                                                    "said": 0.03739539355132408,
-                                                    "said_model": None,
-                                                    "actual": 0.0403530895334174
-                                            }
-                                    ],
-                                    "all": {
-                                            "bets": 1062,
-                                            "roi": -0.06466331802392718,
-                                            "lo": -0.12819513477204453,
-                                            "hi": -0.0011315012758098125
-                                    },
-                                    "edge": [
-                                            {
-                                                    "key": "receptions",
-                                                    "label": "Catches",
-                                                    "bets": 22,
-                                                    "hit": 0.5454545454545454,
-                                                    "be": 0.5011505889086515,
-                                                    "threshold_pp": 5.5,
-                                                    "roi": 0.08237379641634958,
-                                                    "lo": -0.3540433031135629,
-                                                    "hi": 0.518790895946262
-                                            },
-                                            {
-                                                    "key": "receiving_yards",
-                                                    "label": "Receiving yards",
-                                                    "bets": 13,
-                                                    "hit": 0.46153846153846156,
-                                                    "be": 0.5284871727487069,
-                                                    "threshold_pp": 6.0,
-                                                    "roi": -0.13519714070464567,
-                                                    "lo": -0.5787803307800263,
-                                                    "hi": 0.30838604937073505
-                                            },
-                                            {
-                                                    "key": "rushing_yards",
-                                                    "label": "Rushing yards",
-                                                    "bets": 26,
-                                                    "hit": 0.6538461538461539,
-                                                    "be": 0.5343995333363512,
-                                                    "threshold_pp": 2.5,
-                                                    "roi": 0.22755827877183574,
-                                                    "lo": -0.159998047361099,
-                                                    "hi": 0.6151146049047704
-                                            },
-                                            {
-                                                    "key": "passing_yards",
-                                                    "label": "Passing yards",
-                                                    "bets": 8,
-                                                    "hit": 0.75,
-                                                    "be": 0.5348441226614526,
-                                                    "threshold_pp": 9.0,
-                                                    "roi": 0.40600467116232286,
-                                                    "lo": -0.19536467933182944,
-                                                    "hi": 1.0073740216564753
-                                            }
-                                    ],
-                                    "edge_all": {
-                                            "bets": 69,
-                                            "roi": 0.13361178709225524,
-                                            "lo": -0.1270104192086846,
-                                            "hi": 0.3942339933931951
-                                    }
-                            }
-                    },
-                    "1-4": {
-                            "weeks": [
-                                    1,
-                                    2,
-                                    3,
-                                    4
-                            ],
-                            "games": {
-                                    "n": 32,
-                                    "weeks": [
-                                            3,
-                                            4
-                                    ],
-                                    "moneyline": {
-                                            "ours": {
-                                                    "w": 18,
-                                                    "l": 14,
-                                                    "n": 32,
-                                                    "pct": 0.5625,
-                                                    "lo": 0.3932530203122613,
-                                                    "hi": 0.7183491403055682
-                                            },
-                                            "book": {
-                                                    "w": 17,
-                                                    "l": 15,
-                                                    "n": 32,
-                                                    "pct": 0.53125,
-                                                    "lo": 0.3644923793257382,
-                                                    "hi": 0.6913087009831766
-                                            },
-                                            "disagree": {
-                                                    "w": 4,
-                                                    "l": 3,
-                                                    "n": 7,
-                                                    "pct": 0.5714285714285714,
-                                                    "lo": 0.2504542304090258,
-                                                    "hi": 0.8417830777373732
-                                            },
-                                            "brier_ours": 0.25340099125,
-                                            "brier_book": 0.23774958668566137,
-                                            "blend": {
-                                                    "w": 0,
-                                                    "l": 0,
-                                                    "n": 0,
-                                                    "pct": None,
-                                                    "lo": 0.0,
-                                                    "hi": 0.0
-                                            },
-                                            "brier_blend": None,
-                                            "brier_book_blend": None
-                                    },
-                                    "spread": {
-                                            "model": {
-                                                    "w": 18,
-                                                    "l": 13,
-                                                    "push": 1,
-                                                    "n": 31,
-                                                    "pct": 0.5806451612903226,
-                                                    "lo": 0.40765964352020967,
-                                                    "hi": 0.7358469692645074
-                                            },
-                                            "blend": {
-                                                    "w": 16,
-                                                    "l": 14,
-                                                    "push": 1,
-                                                    "n": 30,
-                                                    "pct": 0.5333333333333333,
-                                                    "lo": 0.3614201328152505,
-                                                    "hi": 0.6976787277587178
-                                            },
-                                            "mae_model": 8.165624999999999,
-                                            "mae_blend": 7.245161290322581,
-                                            "mae_book": 7.90625,
-                                            "mae_book_blend": 7.306451612903226
-                                    },
-                                    "total": {
-                                            "model": {
-                                                    "w": 14,
-                                                    "l": 18,
-                                                    "push": 0,
-                                                    "n": 32,
-                                                    "pct": 0.4375,
-                                                    "lo": 0.2816508596944317,
-                                                    "hi": 0.6067469796877387
-                                            },
-                                            "blend": {
-                                                    "w": 14,
-                                                    "l": 17,
-                                                    "push": 0,
-                                                    "n": 31,
-                                                    "pct": 0.45161290322580644,
-                                                    "lo": 0.29161482836586106,
-                                                    "hi": 0.6222812039633085
-                                            },
-                                            "mae_model": 11.2875,
-                                            "mae_blend": 10.82258064516129,
-                                            "mae_book": 10.453125,
-                                            "mae_book_blend": 10.612903225806452,
-                                            "over": 21,
-                                            "centered": {
-                                                    "w": 0,
-                                                    "l": 0,
-                                                    "push": 0,
-                                                    "n": 0,
-                                                    "pct": None,
-                                                    "lo": 0.0,
-                                                    "hi": 0.0
-                                            },
-                                            "blend_centered": {
-                                                    "w": 0,
-                                                    "l": 0,
-                                                    "push": 0,
-                                                    "n": 0,
-                                                    "pct": None,
-                                                    "lo": 0.0,
-                                                    "hi": 0.0
-                                            },
-                                            "mae_centered": None,
-                                            "mae_blend_centered": None,
-                                            "mae_book_centered": None,
-                                            "over_centered": 0
-                                    }
-                            },
-                            "players": {
-                                    "weeks": [
-                                            1,
-                                            2,
-                                            3,
-                                            4
-                                    ],
-                                    "ou": [
-                                            {
-                                                    "key": "receptions",
-                                                    "label": "Catches",
-                                                    "bets": 821,
-                                                    "hit": 0.53836784409257,
-                                                    "be": 0.5979943509755917,
-                                                    "roi": -0.097949273063438,
-                                                    "lo": -0.16333136745318932,
-                                                    "hi": -0.032567178673686664
-                                            },
-                                            {
-                                                    "key": "receiving_yards",
-                                                    "label": "Receiving yards",
-                                                    "bets": 812,
-                                                    "hit": 0.5049261083743842,
-                                                    "be": 0.5369469666807494,
-                                                    "roi": -0.059616628256988796,
-                                                    "lo": -0.11675795735106878,
-                                                    "hi": -0.0024752991629088117
-                                            },
-                                            {
-                                                    "key": "rushing_yards",
-                                                    "label": "Rushing yards",
-                                                    "bets": 384,
-                                                    "hit": 0.5286458333333334,
-                                                    "be": 0.5400127356809435,
-                                                    "roi": -0.01950603983605148,
-                                                    "lo": -0.10538136628718386,
-                                                    "hi": 0.0663692866150809
-                                            },
-                                            {
-                                                    "key": "passing_yards",
-                                                    "label": "Passing yards",
-                                                    "bets": 128,
-                                                    "hit": 0.546875,
-                                                    "be": 0.534618151071165,
-                                                    "roi": 0.022719381435151224,
-                                                    "lo": -0.11666060433401779,
-                                                    "hi": 0.16209936720432025
-                                            }
-                                    ],
-                                    "td": [
-                                            {
-                                                    "key": "anytime_td",
-                                                    "label": "Any touchdown",
-                                                    "rows": 1545,
-                                                    "said": 0.17454060935003457,
-                                                    "said_model": 0.17548755945125286,
-                                                    "actual": 0.16440129449838187
-                                            },
-                                            {
-                                                    "key": "first_td",
-                                                    "label": "First touchdown",
-                                                    "rows": 1541,
-                                                    "said": 0.03827548251732641,
-                                                    "said_model": None,
-                                                    "actual": 0.04023361453601557
-                                            }
-                                    ],
-                                    "all": {
-                                            "bets": 2145,
-                                            "roi": -0.06219454256554914,
-                                            "lo": -0.10766898995310042,
-                                            "hi": -0.016720095177997857
-                                    },
-                                    "edge": [
-                                            {
-                                                    "key": "receptions",
-                                                    "label": "Catches",
-                                                    "bets": 56,
-                                                    "hit": 0.5,
-                                                    "be": 0.5166554905802082,
-                                                    "threshold_pp": 5.5,
-                                                    "roi": -0.01009840282901721,
-                                                    "lo": -0.2847470915606812,
-                                                    "hi": 0.2645502859026468
-                                            },
-                                            {
-                                                    "key": "receiving_yards",
-                                                    "label": "Receiving yards",
-                                                    "bets": 34,
-                                                    "hit": 0.47058823529411764,
-                                                    "be": 0.5285521254422834,
-                                                    "threshold_pp": 6.0,
-                                                    "roi": -0.12130282594322071,
-                                                    "lo": -0.39125517746760835,
-                                                    "hi": 0.1486495255811669
-                                            },
-                                            {
-                                                    "key": "rushing_yards",
-                                                    "label": "Rushing yards",
-                                                    "bets": 73,
-                                                    "hit": 0.6438356164383562,
-                                                    "be": 0.5322918243842272,
-                                                    "threshold_pp": 2.5,
-                                                    "roi": 0.21286350945471513,
-                                                    "lo": 0.005247838119696063,
-                                                    "hi": 0.42047918078973423
-                                            },
-                                            {
-                                                    "key": "passing_yards",
-                                                    "label": "Passing yards",
-                                                    "bets": 19,
-                                                    "hit": 0.7894736842105263,
-                                                    "be": 0.5334868147794,
-                                                    "threshold_pp": 9.0,
-                                                    "roi": 0.48124146609207463,
-                                                    "lo": 0.12225714507640556,
-                                                    "hi": 0.8402257871077436
-                                            }
-                                    ],
-                                    "edge_all": {
-                                            "bets": 182,
-                                            "roi": 0.10985064508488548,
-                                            "lo": -0.04981702511737515,
-                                            "hi": 0.2695183152871461
-                                    }
-                            }
-                    }
-            },
-            "default": "3-4",
-            "missing": [
-                    {
-                            "week": 1,
-                            "why": "nothing recorded a projection before these games, and the feature matrix is rebuilt from current data, so there is no honest way to reconstruct one"
-                    },
-                    {
-                            "week": 2,
-                            "why": "nothing recorded a projection before these games, and the feature matrix is rebuilt from current data, so there is no honest way to reconstruct one"
-                    }
-            ],
-            "break_even": 0.5238
-    }
+        "season": 2026,
+        "played": [
+                1,
+                2,
+                3,
+                4
+        ],
+        "game_weeks": [
+                3,
+                4
+        ],
+        "player_weeks": [
+                1,
+                2,
+                3,
+                4
+        ],
+        "ranges": {
+                "1-2": {
+                        "weeks": [
+                                1,
+                                2
+                        ],
+                        "games": None,
+                        "players": {
+                                "weeks": [
+                                        1,
+                                        2
+                                ],
+                                "ou": [
+                                        {
+                                                "key": "receptions",
+                                                "label": "Catches",
+                                                "bets": 420,
+                                                "hit": 0.5357142857142857,
+                                                "be": 0.5993345799119623,
+                                                "roi": -0.10452471303072326,
+                                                "lo": -0.20460089959290811,
+                                                "hi": -0.004448526468538411
+                                        },
+                                        {
+                                                "key": "receiving_yards",
+                                                "label": "Receiving yards",
+                                                "bets": 408,
+                                                "hit": 0.5147058823529411,
+                                                "be": 0.5380262914909304,
+                                                "roi": -0.04367099561360404,
+                                                "lo": -0.12967853359291134,
+                                                "hi": 0.04233654236570327
+                                        },
+                                        {
+                                                "key": "rushing_yards",
+                                                "label": "Rushing yards",
+                                                "bets": 191,
+                                                "hit": 0.5235602094240838,
+                                                "be": 0.5411049993275648,
+                                                "roi": -0.03274413387461186,
+                                                "lo": -0.15286196910303376,
+                                                "hi": 0.08737370135381006
+                                        },
+                                        {
+                                                "key": "passing_yards",
+                                                "label": "Passing yards",
+                                                "bets": 64,
+                                                "hit": 0.5625,
+                                                "be": 0.5349613922545149,
+                                                "roi": 0.05058476861896298,
+                                                "lo": -0.16270900916194653,
+                                                "hi": 0.2638785463998725
+                                        }
+                                ],
+                                "td": [
+                                        {
+                                                "key": "anytime_td",
+                                                "label": "Any touchdown",
+                                                "rows": 751,
+                                                "said": 0.1778163122329035,
+                                                "said_model": 0.17969169711431238,
+                                                "actual": 0.1584553928095872
+                                        },
+                                        {
+                                                "key": "first_td",
+                                                "label": "First touchdown",
+                                                "rows": 748,
+                                                "said": 0.03920851801203208,
+                                                "said_model": None,
+                                                "actual": 0.040106951871657755
+                                        }
+                                ],
+                                "all": {
+                                        "bets": 1083,
+                                        "roi": -0.05977363809943819,
+                                        "lo": -0.1257777650270279,
+                                        "hi": 0.006230488828151505
+                                },
+                                "model": [
+                                        {
+                                                "key": "receptions",
+                                                "label": "Catches",
+                                                "bets": 420,
+                                                "hit": 0.5166666666666667,
+                                                "be": 0.5623252712042782,
+                                                "roi": -0.0730873027580408,
+                                                "lo": -0.16585134937656643,
+                                                "hi": 0.019676743860484805
+                                        },
+                                        {
+                                                "key": "receiving_yards",
+                                                "label": "Receiving yards",
+                                                "bets": 408,
+                                                "hit": 0.5049019607843137,
+                                                "be": 0.5346716566793003,
+                                                "roi": -0.05776374882616067,
+                                                "lo": -0.13841199979706303,
+                                                "hi": 0.022884502144741692
+                                        },
+                                        {
+                                                "key": "rushing_yards",
+                                                "label": "Rushing yards",
+                                                "bets": 191,
+                                                "hit": 0.5026178010471204,
+                                                "be": 0.5343054889551179,
+                                                "roi": -0.060701690765765516,
+                                                "lo": -0.17265621714452947,
+                                                "hi": 0.05125283561299843
+                                        },
+                                        {
+                                                "key": "passing_yards",
+                                                "label": "Passing yards",
+                                                "bets": 64,
+                                                "hit": 0.5625,
+                                                "be": 0.5349613922545149,
+                                                "roi": 0.05058476861896298,
+                                                "lo": -0.16270900916194653,
+                                                "hi": 0.2638785463998725
+                                        }
+                                ],
+                                "model_all": {
+                                        "bets": 1083,
+                                        "roi": -0.05782167536851213,
+                                        "lo": -0.11892855376332978,
+                                        "hi": 0.0032852030263055138
+                                },
+                                "edge": [
+                                        {
+                                                "key": "receptions",
+                                                "label": "Catches",
+                                                "bets": 34,
+                                                "hit": 0.47058823529411764,
+                                                "be": 0.5266880740147449,
+                                                "roi": -0.0699333552819016,
+                                                "lo": -0.41946808898170773,
+                                                "hi": 0.27960137841790456,
+                                                "threshold_pp": 5.5
+                                        },
+                                        {
+                                                "key": "receiving_yards",
+                                                "label": "Receiving yards",
+                                                "bets": 21,
+                                                "hit": 0.47619047619047616,
+                                                "be": 0.5285923342525926,
+                                                "roi": -0.11270158347186239,
+                                                "lo": -0.46376267681247035,
+                                                "hi": 0.2383595098687456,
+                                                "threshold_pp": 6.0
+                                        },
+                                        {
+                                                "key": "rushing_yards",
+                                                "label": "Rushing yards",
+                                                "bets": 47,
+                                                "hit": 0.6382978723404256,
+                                                "be": 0.5311258577298608,
+                                                "roi": 0.20473448813035053,
+                                                "lo": -0.04084575000669921,
+                                                "hi": 0.45031472626740027,
+                                                "threshold_pp": 2.5
+                                        },
+                                        {
+                                                "key": "passing_yards",
+                                                "label": "Passing yards",
+                                                "bets": 11,
+                                                "hit": 0.8181818181818182,
+                                                "be": 0.5324996817742707,
+                                                "roi": 0.535959135131894,
+                                                "lo": 0.07567699600764083,
+                                                "hi": 0.9962412742561471,
+                                                "threshold_pp": 9.0
+                                        }
+                                ],
+                                "edge_all": {
+                                        "bets": 113,
+                                        "roi": 0.09534162916888092,
+                                        "lo": -0.1082428323452986,
+                                        "hi": 0.2989260906830604
+                                }
+                        }
+                },
+                "3-4": {
+                        "weeks": [
+                                3,
+                                4
+                        ],
+                        "games": {
+                                "n": 32,
+                                "weeks": [
+                                        3,
+                                        4
+                                ],
+                                "moneyline": {
+                                        "ours": {
+                                                "w": 18,
+                                                "l": 14,
+                                                "n": 32,
+                                                "pct": 0.5625,
+                                                "lo": 0.3932530203122613,
+                                                "hi": 0.7183491403055682
+                                        },
+                                        "book": {
+                                                "w": 17,
+                                                "l": 15,
+                                                "n": 32,
+                                                "pct": 0.53125,
+                                                "lo": 0.3644923793257382,
+                                                "hi": 0.6913087009831766
+                                        },
+                                        "disagree": {
+                                                "w": 4,
+                                                "l": 3,
+                                                "n": 7,
+                                                "pct": 0.5714285714285714,
+                                                "lo": 0.2504542304090258,
+                                                "hi": 0.8417830777373732
+                                        },
+                                        "brier_ours": 0.25340099125,
+                                        "brier_book": 0.23774958668566137,
+                                        "blend": {
+                                                "w": 0,
+                                                "l": 0,
+                                                "n": 0,
+                                                "pct": None,
+                                                "lo": 0.0,
+                                                "hi": 0.0
+                                        },
+                                        "brier_blend": None,
+                                        "brier_book_blend": None
+                                },
+                                "spread": {
+                                        "model": {
+                                                "w": 18,
+                                                "l": 13,
+                                                "push": 1,
+                                                "n": 31,
+                                                "pct": 0.5806451612903226,
+                                                "lo": 0.40765964352020967,
+                                                "hi": 0.7358469692645074
+                                        },
+                                        "blend": {
+                                                "w": 16,
+                                                "l": 14,
+                                                "push": 1,
+                                                "n": 30,
+                                                "pct": 0.5333333333333333,
+                                                "lo": 0.3614201328152505,
+                                                "hi": 0.6976787277587178
+                                        },
+                                        "mae_model": 8.165624999999999,
+                                        "mae_blend": 7.245161290322581,
+                                        "mae_book": 7.90625,
+                                        "mae_book_blend": 7.306451612903226
+                                },
+                                "total": {
+                                        "model": {
+                                                "w": 14,
+                                                "l": 18,
+                                                "push": 0,
+                                                "n": 32,
+                                                "pct": 0.4375,
+                                                "lo": 0.2816508596944317,
+                                                "hi": 0.6067469796877387
+                                        },
+                                        "blend": {
+                                                "w": 14,
+                                                "l": 17,
+                                                "push": 0,
+                                                "n": 31,
+                                                "pct": 0.45161290322580644,
+                                                "lo": 0.29161482836586106,
+                                                "hi": 0.6222812039633085
+                                        },
+                                        "mae_model": 11.2875,
+                                        "mae_blend": 10.82258064516129,
+                                        "mae_book": 10.453125,
+                                        "mae_book_blend": 10.612903225806452,
+                                        "over": 21,
+                                        "centered": {
+                                                "w": 0,
+                                                "l": 0,
+                                                "push": 0,
+                                                "n": 0,
+                                                "pct": None,
+                                                "lo": 0.0,
+                                                "hi": 0.0
+                                        },
+                                        "blend_centered": {
+                                                "w": 0,
+                                                "l": 0,
+                                                "push": 0,
+                                                "n": 0,
+                                                "pct": None,
+                                                "lo": 0.0,
+                                                "hi": 0.0
+                                        },
+                                        "mae_centered": None,
+                                        "mae_blend_centered": None,
+                                        "mae_book_centered": None,
+                                        "over_centered": 0
+                                }
+                        },
+                        "players": {
+                                "weeks": [
+                                        3,
+                                        4
+                                ],
+                                "ou": [
+                                        {
+                                                "key": "receptions",
+                                                "label": "Catches",
+                                                "bets": 401,
+                                                "hit": 0.5411471321695761,
+                                                "be": 0.5965906199200415,
+                                                "roi": -0.09106227858398702,
+                                                "lo": -0.17606430275669455,
+                                                "hi": -0.0060602544112795115
+                                        },
+                                        {
+                                                "key": "receiving_yards",
+                                                "label": "Receiving yards",
+                                                "bets": 404,
+                                                "hit": 0.49504950495049505,
+                                                "be": 0.5358569554863092,
+                                                "roi": -0.07572013845129813,
+                                                "lo": -0.15186668456409053,
+                                                "hi": 0.00042640766149427967
+                                        },
+                                        {
+                                                "key": "rushing_yards",
+                                                "label": "Rushing yards",
+                                                "bets": 193,
+                                                "hit": 0.533678756476684,
+                                                "be": 0.5389317908285878,
+                                                "roi": -0.00640512811913429,
+                                                "lo": -0.1309621618995095,
+                                                "hi": 0.1181519056612409
+                                        },
+                                        {
+                                                "key": "passing_yards",
+                                                "label": "Passing yards",
+                                                "bets": 64,
+                                                "hit": 0.53125,
+                                                "be": 0.5342749098878149,
+                                                "roi": -0.005146005748660592,
+                                                "lo": -0.187557025161171,
+                                                "hi": 0.17726501366384984
+                                        }
+                                ],
+                                "td": [
+                                        {
+                                                "key": "anytime_td",
+                                                "label": "Any touchdown",
+                                                "rows": 794,
+                                                "said": 0.17144230599356786,
+                                                "said_model": 0.1715111017875782,
+                                                "actual": 0.17002518891687657
+                                        },
+                                        {
+                                                "key": "first_td",
+                                                "label": "First touchdown",
+                                                "rows": 793,
+                                                "said": 0.03739539355132408,
+                                                "said_model": None,
+                                                "actual": 0.0403530895334174
+                                        }
+                                ],
+                                "all": {
+                                        "bets": 1062,
+                                        "roi": -0.06466331802392718,
+                                        "lo": -0.12819513477204453,
+                                        "hi": -0.0011315012758098125
+                                },
+                                "model": [
+                                        {
+                                                "key": "receptions",
+                                                "label": "Catches",
+                                                "bets": 401,
+                                                "hit": 0.5511221945137157,
+                                                "be": 0.5635266910368182,
+                                                "roi": -0.012499188745007087,
+                                                "lo": -0.09592006205419776,
+                                                "hi": 0.07092168456418357
+                                        },
+                                        {
+                                                "key": "receiving_yards",
+                                                "label": "Receiving yards",
+                                                "bets": 404,
+                                                "hit": 0.5024752475247525,
+                                                "be": 0.533782374408799,
+                                                "roi": -0.05867767305400875,
+                                                "lo": -0.13899849833579653,
+                                                "hi": 0.021643152227779038
+                                        },
+                                        {
+                                                "key": "rushing_yards",
+                                                "label": "Rushing yards",
+                                                "bets": 193,
+                                                "hit": 0.5647668393782384,
+                                                "be": 0.5340667552304101,
+                                                "roi": 0.060402368795091664,
+                                                "lo": -0.0704097787864019,
+                                                "hi": 0.19121451637658524
+                                        },
+                                        {
+                                                "key": "passing_yards",
+                                                "label": "Passing yards",
+                                                "bets": 64,
+                                                "hit": 0.53125,
+                                                "be": 0.5342749098878149,
+                                                "roi": -0.005146005748660592,
+                                                "lo": -0.187557025161171,
+                                                "hi": 0.17726501366384984
+                                        }
+                                ],
+                                "model_all": {
+                                        "bets": 1062,
+                                        "roi": -0.016374427298520657,
+                                        "lo": -0.08017074796386447,
+                                        "hi": 0.047421893366823155
+                                },
+                                "edge": [
+                                        {
+                                                "key": "receptions",
+                                                "label": "Catches",
+                                                "bets": 22,
+                                                "hit": 0.5454545454545454,
+                                                "be": 0.5011505889086515,
+                                                "roi": 0.08237379641634959,
+                                                "lo": -0.3540433031135629,
+                                                "hi": 0.518790895946262,
+                                                "threshold_pp": 5.5
+                                        },
+                                        {
+                                                "key": "receiving_yards",
+                                                "label": "Receiving yards",
+                                                "bets": 13,
+                                                "hit": 0.46153846153846156,
+                                                "be": 0.5284871727487069,
+                                                "roi": -0.13519714070464567,
+                                                "lo": -0.5787803307800263,
+                                                "hi": 0.30838604937073505,
+                                                "threshold_pp": 6.0
+                                        },
+                                        {
+                                                "key": "rushing_yards",
+                                                "label": "Rushing yards",
+                                                "bets": 26,
+                                                "hit": 0.6538461538461539,
+                                                "be": 0.5343995333363512,
+                                                "roi": 0.2275582787718358,
+                                                "lo": -0.15999804736109893,
+                                                "hi": 0.6151146049047705,
+                                                "threshold_pp": 2.5
+                                        },
+                                        {
+                                                "key": "passing_yards",
+                                                "label": "Passing yards",
+                                                "bets": 8,
+                                                "hit": 0.75,
+                                                "be": 0.5348441226614526,
+                                                "roi": 0.40600467116232286,
+                                                "lo": -0.19536467933182933,
+                                                "hi": 1.007374021656475,
+                                                "threshold_pp": 9.0
+                                        }
+                                ],
+                                "edge_all": {
+                                        "bets": 69,
+                                        "roi": 0.1336117870922552,
+                                        "lo": -0.12701041920868464,
+                                        "hi": 0.3942339933931951
+                                }
+                        }
+                },
+                "1-4": {
+                        "weeks": [
+                                1,
+                                2,
+                                3,
+                                4
+                        ],
+                        "games": {
+                                "n": 32,
+                                "weeks": [
+                                        3,
+                                        4
+                                ],
+                                "moneyline": {
+                                        "ours": {
+                                                "w": 18,
+                                                "l": 14,
+                                                "n": 32,
+                                                "pct": 0.5625,
+                                                "lo": 0.3932530203122613,
+                                                "hi": 0.7183491403055682
+                                        },
+                                        "book": {
+                                                "w": 17,
+                                                "l": 15,
+                                                "n": 32,
+                                                "pct": 0.53125,
+                                                "lo": 0.3644923793257382,
+                                                "hi": 0.6913087009831766
+                                        },
+                                        "disagree": {
+                                                "w": 4,
+                                                "l": 3,
+                                                "n": 7,
+                                                "pct": 0.5714285714285714,
+                                                "lo": 0.2504542304090258,
+                                                "hi": 0.8417830777373732
+                                        },
+                                        "brier_ours": 0.25340099125,
+                                        "brier_book": 0.23774958668566137,
+                                        "blend": {
+                                                "w": 0,
+                                                "l": 0,
+                                                "n": 0,
+                                                "pct": None,
+                                                "lo": 0.0,
+                                                "hi": 0.0
+                                        },
+                                        "brier_blend": None,
+                                        "brier_book_blend": None
+                                },
+                                "spread": {
+                                        "model": {
+                                                "w": 18,
+                                                "l": 13,
+                                                "push": 1,
+                                                "n": 31,
+                                                "pct": 0.5806451612903226,
+                                                "lo": 0.40765964352020967,
+                                                "hi": 0.7358469692645074
+                                        },
+                                        "blend": {
+                                                "w": 16,
+                                                "l": 14,
+                                                "push": 1,
+                                                "n": 30,
+                                                "pct": 0.5333333333333333,
+                                                "lo": 0.3614201328152505,
+                                                "hi": 0.6976787277587178
+                                        },
+                                        "mae_model": 8.165624999999999,
+                                        "mae_blend": 7.245161290322581,
+                                        "mae_book": 7.90625,
+                                        "mae_book_blend": 7.306451612903226
+                                },
+                                "total": {
+                                        "model": {
+                                                "w": 14,
+                                                "l": 18,
+                                                "push": 0,
+                                                "n": 32,
+                                                "pct": 0.4375,
+                                                "lo": 0.2816508596944317,
+                                                "hi": 0.6067469796877387
+                                        },
+                                        "blend": {
+                                                "w": 14,
+                                                "l": 17,
+                                                "push": 0,
+                                                "n": 31,
+                                                "pct": 0.45161290322580644,
+                                                "lo": 0.29161482836586106,
+                                                "hi": 0.6222812039633085
+                                        },
+                                        "mae_model": 11.2875,
+                                        "mae_blend": 10.82258064516129,
+                                        "mae_book": 10.453125,
+                                        "mae_book_blend": 10.612903225806452,
+                                        "over": 21,
+                                        "centered": {
+                                                "w": 0,
+                                                "l": 0,
+                                                "push": 0,
+                                                "n": 0,
+                                                "pct": None,
+                                                "lo": 0.0,
+                                                "hi": 0.0
+                                        },
+                                        "blend_centered": {
+                                                "w": 0,
+                                                "l": 0,
+                                                "push": 0,
+                                                "n": 0,
+                                                "pct": None,
+                                                "lo": 0.0,
+                                                "hi": 0.0
+                                        },
+                                        "mae_centered": None,
+                                        "mae_blend_centered": None,
+                                        "mae_book_centered": None,
+                                        "over_centered": 0
+                                }
+                        },
+                        "players": {
+                                "weeks": [
+                                        1,
+                                        2,
+                                        3,
+                                        4
+                                ],
+                                "ou": [
+                                        {
+                                                "key": "receptions",
+                                                "label": "Catches",
+                                                "bets": 821,
+                                                "hit": 0.53836784409257,
+                                                "be": 0.5979943509755917,
+                                                "roi": -0.097949273063438,
+                                                "lo": -0.16333136745318932,
+                                                "hi": -0.032567178673686664
+                                        },
+                                        {
+                                                "key": "receiving_yards",
+                                                "label": "Receiving yards",
+                                                "bets": 812,
+                                                "hit": 0.5049261083743842,
+                                                "be": 0.5369469666807494,
+                                                "roi": -0.059616628256988796,
+                                                "lo": -0.11675795735106878,
+                                                "hi": -0.0024752991629088117
+                                        },
+                                        {
+                                                "key": "rushing_yards",
+                                                "label": "Rushing yards",
+                                                "bets": 384,
+                                                "hit": 0.5286458333333334,
+                                                "be": 0.5400127356809435,
+                                                "roi": -0.01950603983605148,
+                                                "lo": -0.10538136628718386,
+                                                "hi": 0.0663692866150809
+                                        },
+                                        {
+                                                "key": "passing_yards",
+                                                "label": "Passing yards",
+                                                "bets": 128,
+                                                "hit": 0.546875,
+                                                "be": 0.534618151071165,
+                                                "roi": 0.022719381435151224,
+                                                "lo": -0.11666060433401779,
+                                                "hi": 0.16209936720432025
+                                        }
+                                ],
+                                "td": [
+                                        {
+                                                "key": "anytime_td",
+                                                "label": "Any touchdown",
+                                                "rows": 1545,
+                                                "said": 0.17454060935003457,
+                                                "said_model": 0.17548755945125286,
+                                                "actual": 0.16440129449838187
+                                        },
+                                        {
+                                                "key": "first_td",
+                                                "label": "First touchdown",
+                                                "rows": 1541,
+                                                "said": 0.03827548251732641,
+                                                "said_model": None,
+                                                "actual": 0.04023361453601557
+                                        }
+                                ],
+                                "all": {
+                                        "bets": 2145,
+                                        "roi": -0.06219454256554914,
+                                        "lo": -0.10766898995310042,
+                                        "hi": -0.016720095177997857
+                                },
+                                "model": [
+                                        {
+                                                "key": "receptions",
+                                                "label": "Catches",
+                                                "bets": 821,
+                                                "hit": 0.5334957369062119,
+                                                "be": 0.5629120791858233,
+                                                "roi": -0.04349432624253954,
+                                                "lo": -0.10597896263229513,
+                                                "hi": 0.018990310147216055
+                                        },
+                                        {
+                                                "key": "receiving_yards",
+                                                "label": "Receiving yards",
+                                                "bets": 812,
+                                                "hit": 0.5036945812807881,
+                                                "be": 0.5342292058944696,
+                                                "roi": -0.05821845989518856,
+                                                "lo": -0.11467729685117226,
+                                                "hi": -0.001759622939204869
+                                        },
+                                        {
+                                                "key": "rushing_yards",
+                                                "label": "Rushing yards",
+                                                "bets": 384,
+                                                "hit": 0.5338541666666666,
+                                                "be": 0.534185500390356,
+                                                "roi": 0.00016571416976951208,
+                                                "lo": -0.08660019792312947,
+                                                "hi": 0.0869316262626685
+                                        },
+                                        {
+                                                "key": "passing_yards",
+                                                "label": "Passing yards",
+                                                "bets": 128,
+                                                "hit": 0.546875,
+                                                "be": 0.534618151071165,
+                                                "roi": 0.022719381435151224,
+                                                "lo": -0.11666060433401779,
+                                                "hi": 0.16209936720432025
+                                        }
+                                ],
+                                "model_all": {
+                                        "bets": 2145,
+                                        "roi": -0.03730093996043293,
+                                        "lo": -0.0813732352028093,
+                                        "hi": 0.006771355281943434
+                                },
+                                "edge": [
+                                        {
+                                                "key": "receptions",
+                                                "label": "Catches",
+                                                "bets": 56,
+                                                "hit": 0.5,
+                                                "be": 0.5166554905802082,
+                                                "roi": -0.010098402829017222,
+                                                "lo": -0.28474709156068123,
+                                                "hi": 0.26455028590264673,
+                                                "threshold_pp": 5.5
+                                        },
+                                        {
+                                                "key": "receiving_yards",
+                                                "label": "Receiving yards",
+                                                "bets": 34,
+                                                "hit": 0.47058823529411764,
+                                                "be": 0.5285521254422834,
+                                                "roi": -0.12130282594322071,
+                                                "lo": -0.39125517746760835,
+                                                "hi": 0.1486495255811669,
+                                                "threshold_pp": 6.0
+                                        },
+                                        {
+                                                "key": "rushing_yards",
+                                                "label": "Rushing yards",
+                                                "bets": 73,
+                                                "hit": 0.6438356164383562,
+                                                "be": 0.5322918243842272,
+                                                "roi": 0.21286350945471516,
+                                                "lo": 0.005247838119696091,
+                                                "hi": 0.42047918078973423,
+                                                "threshold_pp": 2.5
+                                        },
+                                        {
+                                                "key": "passing_yards",
+                                                "label": "Passing yards",
+                                                "bets": 19,
+                                                "hit": 0.7894736842105263,
+                                                "be": 0.5334868147794,
+                                                "roi": 0.48124146609207463,
+                                                "lo": 0.12225714507640556,
+                                                "hi": 0.8402257871077436,
+                                                "threshold_pp": 9.0
+                                        }
+                                ],
+                                "edge_all": {
+                                        "bets": 182,
+                                        "roi": 0.10985064508488547,
+                                        "lo": -0.049817025117375166,
+                                        "hi": 0.2695183152871461
+                                }
+                        }
+                }
+        },
+        "default": "3-4",
+        "missing": [
+                {
+                        "week": 1,
+                        "why": "nothing recorded a projection before these games, and the feature matrix is rebuilt from current data, so there is no honest way to reconstruct one"
+                },
+                {
+                        "week": 2,
+                        "why": "nothing recorded a projection before these games, and the feature matrix is rebuilt from current data, so there is no honest way to reconstruct one"
+                }
+        ],
+        "break_even": 0.5238
+}
     return p
 
 
@@ -1306,6 +1455,18 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "and that the player results were rebuilt afterwards",
                  "and the weeks with no game record say why",
                  "the range picker is on the page",
+                 "moving only the start moves the range",
+                 "and moving only the end moves it too",
+                 "an end chosen below the default start pulls the start "
+                 "down with it",
+                 "every section names our model, the adjusted model and "
+                 "the book",
+                 "and the adjusted row comes between ours and the book",
+                 "the old vocabulary is gone",
+                 "the range column is explained in words, not named after "
+                 "a statistic",
+                 "the player section draws our model and the adjusted "
+                 "model separately",
                  "and it opens on the payload\u2019s own default range",
                  "a range whose weeks were never frozen says so rather than "
                  "showing zeros",

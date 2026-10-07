@@ -299,6 +299,52 @@ def games_block(rows: list[dict]) -> dict | None:
 
 # ── the players: rebuilt, and labeled as such ───────────────────────────
 
+def _one_per_player(rows: list[dict]) -> list[dict]:
+    """The line nearest that player's median, so one opinion is one bet.
+
+    The archive quotes alternates — passing yards carried seventeen lines per
+    player-game in 2026 — and counting each as its own bet turned one view of
+    one quarterback into seventeen wins. Chosen on the line alone, before any
+    edge is read, so a threshold cannot shop among them.
+    """
+    per: dict = defaultdict(list)
+    for r in rows:
+        if r.get("won") is None or r.get("odds") is None:
+            continue
+        per[(r.get("game_id"), r.get("player_name"))].append(r)
+    keep = []
+    for rs in per.values():
+        med = st.median([x["line"] for x in rs])
+        keep.append(min(rs, key=lambda x: (abs(x["line"] - med),
+                                           -abs(x.get("edge") or 0))))
+    return keep
+
+
+def _model_only_side(rows: list[dict]) -> list[dict]:
+    """The same rows with the side the UNBLENDED model would have taken.
+
+    `ou_week` sets `side` from `ours` — the served number, which on these
+    markets is already pulled toward the price. `model` on the same row is
+    `model_only`. Re-deriving `side` and `won` from it is the only way to put
+    the model and the card's adjusted number side by side on one set of
+    games; settlement then runs over it unchanged, so the under still pays at
+    the under's price and a man who did not play is still void.
+    """
+    out = []
+    for r in rows:
+        r = dict(r)
+        m, line, got = r.get("model"), r.get("line"), r.get("actual")
+        if m is None or line is None:
+            r["side"] = None
+            r["won"] = None
+        else:
+            r["side"] = "over" if m >= 0.5 else "under"
+            r["won"] = (None if got is None or float(got) == float(line)
+                        else (float(got) > float(line)) == (r["side"] == "over"))
+        out.append(r)
+    return out
+
+
 def ou_rows(season: int, weeks) -> dict:
     """One bet per player-game per market, for each week. Cached by caller."""
     from src.evaluation.prop_edge import qualifying
@@ -319,19 +365,19 @@ def ou_rows(season: int, weeks) -> dict:
             try:
                 raw = ou_week(season, wk, mk) or []
                 got = settle_rows(season, mk, raw, prices=prices, played=played)
+                # AND THE RAW MODEL'S OWN SIDE. `ou_week` picks its side from
+                # `ours`, which is the SERVED number — already blended toward
+                # the market. So the row the card has always shown is the
+                # adjusted model, not the model, and there was no way to see
+                # what the model alone would have done. `model_only` is the
+                # unblended number; re-deriving the side and the result from
+                # it gives the two a like-for-like comparison.
+                mo = settle_rows(season, mk, _model_only_side(raw),
+                                 prices=prices, played=played)
             except Exception:                                    # noqa: BLE001
-                raw, got = [], []
-            per: dict = defaultdict(list)
-            for r in got:
-                if r.get("won") is None or r.get("odds") is None:
-                    continue
-                per[(r.get("game_id"), r.get("player_name"))].append(r)
-            keep = []
-            for rs in per.values():
-                med = st.median([x["line"] for x in rs])
-                keep.append(min(rs, key=lambda x: (abs(x["line"] - med),
-                                                   -abs(x.get("edge") or 0))))
-            out[(mk, wk)] = keep
+                raw, got, mo = [], [], []
+            out[(mk, wk)] = _one_per_player(got)
+            out[("model", mk, wk)] = _one_per_player(mo)
             # The pre-registered edge rule (`prop_edge`): only the bets whose
             # blended edge clears the fitted threshold, at the side's own price.
             try:
@@ -342,42 +388,51 @@ def ou_rows(season: int, weeks) -> dict:
     return out
 
 
-def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
-    ou, grand = [], defaultdict(list)
+def _series(cache: dict, weeks, kind: str | None,
+            price_key: str = "odds") -> tuple[list, dict]:
+    """One set of bets per market, pooled over a week range.
+
+    `kind` picks which set: None is the card's adjusted number, "model" the
+    unblended one, "edge" the pre-registered rule. All three are settled the
+    same way and priced at the side actually taken, so the three rows on the
+    card are a like-for-like comparison rather than three different
+    accountings.
+    """
+    out, grand = [], defaultdict(list)
     for mk, label in OU_MARKETS:
-        rows = [r for wk in weeks for r in cache.get((mk, wk), [])]
+        key = (lambda w: (mk, w)) if kind is None else (lambda w: (kind, mk, w))
+        rows = [r for w in weeks for r in cache.get(key(w), [])]
         if not rows:
-            ou.append({"key": mk, "label": label, "bets": 0})
+            out.append({"key": mk, "label": label, "bets": 0})
             continue
         by_game = defaultdict(list)
         for r in rows:
-            ret = _payout(r["odds"]) if r["won"] else -1.0
+            ret = _payout(r[price_key]) if r["won"] else -1.0
             by_game[r["game_id"]].append(ret)
             grand[r["game_id"]].append(ret)
         roi, lo, hi = _cluster_ci(by_game)
-        k = sum(1 for r in rows if r["won"])
-        ou.append({"key": mk, "label": label, "bets": len(rows),
-                   "hit": k / len(rows),
-                   "be": st.mean([_implied(r["odds"]) for r in rows]),
-                   "roi": roi, "lo": lo, "hi": hi})
+        row = {"key": mk, "label": label, "bets": len(rows),
+               "hit": sum(1 for r in rows if r["won"]) / len(rows),
+               "be": st.mean([_implied(r[price_key]) for r in rows]),
+               "roi": roi, "lo": lo, "hi": hi}
+        if kind == "edge":
+            row["threshold_pp"] = rows[0].get("threshold_pp")
+        out.append(row)
+    return out, grand
+
+
+def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
+    # THREE ROWS, ONE SET OF GAMES. `ou_week` picks its side from the SERVED
+    # number, so what the card has always shown under "player bets" is the
+    # adjusted model. The model's own side is a separate series, and the
+    # book is the break-even column rather than a row — a sportsbook does
+    # not pick a side, and grading "always take the favorite" would be a
+    # strategy nobody runs.
+    ou, grand = _series(cache, weeks, None)
+    model, mgrand = _series(cache, weeks, "model")
+    edge, egrand = _series(cache, weeks, "edge", price_key="price")
     roi, lo, hi = _cluster_ci(grand)
-    edge, egrand = [], defaultdict(list)
-    for mk, label in OU_MARKETS:
-        rows = [r for wk in weeks for r in cache.get(("edge", mk, wk), [])]
-        if not rows:
-            edge.append({"key": mk, "label": label, "bets": 0})
-            continue
-        by_game = defaultdict(list)
-        for r in rows:
-            ret = _payout(r["price"]) if r["won"] else -1.0
-            by_game[r["game_id"]].append(ret)
-            egrand[r["game_id"]].append(ret)
-        eroi, elo, ehi = _cluster_ci(by_game)
-        edge.append({"key": mk, "label": label, "bets": len(rows),
-                     "hit": sum(1 for r in rows if r["won"]) / len(rows),
-                     "be": st.mean([_implied(r["price"]) for r in rows]),
-                     "threshold_pp": rows[0].get("threshold_pp"),
-                     "roi": eroi, "lo": elo, "hi": ehi})
+    mroi, mlo, mhi = _cluster_ci(mgrand)
     eroi, elo, ehi = _cluster_ci(egrand)
     td = []
     for mk, label in TD_MARKETS:
@@ -395,8 +450,14 @@ def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
                                   if sm else None),
                    "actual": sum(x["actual"] * x["n"] for x in got) / n})
     return {"weeks": sorted(weeks), "ou": ou, "td": td,
+            # `ou` is the ADJUSTED model — `ou_week` sides on the served
+            # number — and `model` is the same bets sided on the unblended
+            # one. Named for what they are rather than for which came first.
             "all": {"bets": sum(len(v) for v in grand.values()),
                     "roi": roi, "lo": lo, "hi": hi},
+            "model": model,
+            "model_all": {"bets": sum(len(v) for v in mgrand.values()),
+                          "roi": mroi, "lo": mlo, "hi": mhi},
             "edge": edge,
             "edge_all": {"bets": sum(len(v) for v in egrand.values()),
                          "roi": eroi, "lo": elo, "hi": ehi}}

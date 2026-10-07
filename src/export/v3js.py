@@ -5235,6 +5235,18 @@ function v3RecTable(cols, rows) {
     + head + body + '</div></div>';
 }
 
+//: WHAT THE RANGE IS, IN WORDS. It was labeled "95% range" and nothing
+//: said what that meant — a confidence interval is a term of art, and the
+//: number it describes is the one most likely to be over-read on a page
+//: reporting thirty-two games.
+function v3RecRangeNote(n) {
+  return '<p class="help" style="margin-top:8px">Over '
+    + (has(n) ? n + ' games' : 'this few games')
+    + ', luck alone moves these numbers a long way. <b style="color:'
+    + 'var(--ink)">Range</b> is where the real rate most likely sits — '
+    + 'not how much it might vary. It narrows every week.</p>';
+}
+
 function v3RecHead(n, title, sub) {
   return '<div class="rec__t"><span class="rec__n">' + n + '</span>'
     + '<h2 class="rec__ttl">' + esc(title) + '</h2></div>'
@@ -5265,16 +5277,27 @@ function v3RecPicker(S) {
 function v3RecRange(S) {
   const ws = S.played || [];
   if (!ws.length) return [0, 0];
-  let a = has(V.scFrom) ? V.scFrom : null;
-  let b = has(V.scTo) ? V.scTo : null;
-  if (a === null || b === null) {
-    const d = String(S.default || '').split('-');
-    a = Number(d[0]) || ws[0];
-    b = Number(d[1]) || ws[ws.length - 1];
-  }
+  const d = String(S.default || '').split('-');
+  const da = Number(d[0]) || ws[0];
+  const db = Number(d[1]) || ws[ws.length - 1];
+  // EACH END FALLS BACK ON ITS OWN, and that is the whole bug fix. This used
+  // to resolve both ends or neither: `if (a === null || b === null)` threw
+  // away a chosen end because the OTHER one was still unset. Since each
+  // handler only sets the end you touched, the first move of either dropdown
+  // was discarded and the page redrew identically — the picker did nothing
+  // until you had moved both. The JS test passed because it set both at
+  // once, which is a test written around the bug rather than at it.
+  let a = has(V.scFrom) ? V.scFrom : da;
+  let b = has(V.scTo) ? V.scTo : db;
   if (ws.indexOf(a) < 0) a = ws[0];
   if (ws.indexOf(b) < 0) b = ws[ws.length - 1];
-  if (a > b) b = a;
+  // THE END THE READER ACTUALLY MOVED WINS. Choosing "to week 2" while the
+  // start still sits on its default means the weeks up to there, not an
+  // empty range and not a silent jump back to the default.
+  if (a > b) {
+    if (!has(V.scFrom)) a = b;
+    else b = a;
+  }
   return [a, b];
 }
 
@@ -5291,15 +5314,21 @@ function v3RecGames(g, S) {
   const m = g.moneyline, sp = g.spread, to = g.total;
   return '<div class="card">'
     + v3RecHead('01', 'Picking the winning team')
-    + v3RecTable(['Pick', 'Wins / losses', 'Correct', '95% range'], [
-        ['Our pick', v3Rec(m.ours), v3RecPct(m.ours), v3RecBand(m.ours)],
-        ['Sportsbook favorite', v3Rec(m.book), v3RecPct(m.book), v3RecBand(m.book)],
-        ['Where we disagreed', v3Rec(m.disagree), v3RecPct(m.disagree),
-         v3RecBand(m.disagree)],
+    // THE SAME THREE ROWS IN THE SAME ORDER ON EVERY SECTION: what the model
+    // said, what the card actually showed after blending, and what the book
+    // said. Asked for directly — the sections had grown three different
+    // vocabularies for one idea ("Our pick" here, "Model alone" below,
+    // nothing at all on the player rows).
+    + v3RecTable(['Pick', 'Wins / losses', 'Correct', 'Range'], [
+        ['Our model', v3Rec(m.ours), v3RecPct(m.ours), v3RecBand(m.ours)],
         // Recorded from week 5. Earlier frozen games never held it, so the
         // row reads "—" for them rather than a number computed today.
-        ['Blended win chance', v3Rec(m.blend), v3RecPct(m.blend),
-         v3RecBand(m.blend)]])
+        ['Adjusted model', v3Rec(m.blend), v3RecPct(m.blend),
+         v3RecBand(m.blend)],
+        ['Sportsbook', v3Rec(m.book), v3RecPct(m.book), v3RecBand(m.book)],
+        ['Where we disagreed', v3Rec(m.disagree), v3RecPct(m.disagree),
+         v3RecBand(m.disagree)]])
+    + v3RecRangeNote(g.n)
     + '<p class="help" style="margin-top:8px">Accuracy of the win chances '
     + 'themselves: our error score ' + (has(m.brier_ours)
         ? m.brier_ours.toFixed(4) : '—') + ', the sportsbook’s '
@@ -5316,8 +5345,9 @@ function v3RecGames(g, S) {
                 'Average error is how many points the number missed the '
                 + 'final winning margin by.')
     + v3RecTable(['Prediction', 'W / L / push', 'Correct', 'Avg error'], [
-        ['Model alone', v3Rec(sp.model), v3RecPct(sp.model), v3RecPts(sp.mae_model)],
-        ['Shown on the card', v3Rec(sp.blend), v3RecPct(sp.blend),
+        ['Our model', v3Rec(sp.model), v3RecPct(sp.model),
+         v3RecPts(sp.mae_model)],
+        ['Adjusted model', v3Rec(sp.blend), v3RecPct(sp.blend),
          v3RecPts(sp.mae_blend)],
         ['Sportsbook', '—', '—',
          v3RecBook(sp.mae_book, sp.mae_book_blend)]])
@@ -5326,17 +5356,18 @@ function v3RecGames(g, S) {
                 'Average error is how many points the number missed the '
                 + 'combined final score by.')
     + v3RecTable(['Prediction', 'Wins / losses', 'Correct', 'Avg error'], [
-        ['Model alone', v3Rec(to.model), v3RecPct(to.model), v3RecPts(to.mae_model)],
-        ['Shown on the card', v3Rec(to.blend), v3RecPct(to.blend),
+        ['Our model', v3Rec(to.model), v3RecPct(to.model),
+         v3RecPts(to.mae_model)],
+        ['Adjusted model', v3Rec(to.blend), v3RecPct(to.blend),
          v3RecPts(to.mae_blend)],
-        // The model with its weekly scoring level removed. Recorded from
-        // week 5; "—" before that, never recomputed.
-        ['Model, level removed', v3Rec(to.centered), v3RecPct(to.centered),
-         v3RecPts(to.mae_centered)],
-        ['Card, level removed', v3Rec(to.blend_centered),
-         v3RecPct(to.blend_centered), v3RecPts(to.mae_blend_centered)],
         ['Sportsbook', '—', '—',
-         v3RecBook(to.mae_book, to.mae_book_blend)]])
+         v3RecBook(to.mae_book, to.mae_book_blend)],
+        // The same two with the week's scoring level taken out. Recorded
+        // from week 5; "—" before that, never recomputed.
+        ['Our model, level removed', v3Rec(to.centered), v3RecPct(to.centered),
+         v3RecPts(to.mae_centered)],
+        ['Adjusted, level removed', v3Rec(to.blend_centered),
+         v3RecPct(to.blend_centered), v3RecPts(to.mae_blend_centered)]])
     + '<p class="help" style="margin-top:8px">The over was the pick in '
     + to.over + ' of ' + g.n + ' games'
     + (to.centered && to.centered.n
@@ -5347,18 +5378,38 @@ function v3RecGames(g, S) {
     + 'and drops how high it rates the week as a whole.</p></div>';
 }
 
+//: A money cell, coloured by its sign.
+function v3RecCash(v) {
+  return '<b class="' + (v > 0 ? 'up' : v < 0 ? 'dn' : '') + '">'
+    + v3Money(v) + '</b>';
+}
+
+//: One market's five cells, for whichever series is being drawn.
+function v3RecBetRow(x) {
+  return [esc(x.label), v3RecN(x.bets), v3RecPct({pct: x.hit, n: x.bets}),
+          (x.be * 100).toFixed(1) + '%', v3RecCash(x.roi)];
+}
+
 function v3RecPlayers(p, S) {
   if (!p || !(p.ou || []).length) return '';
-  const rows = (p.ou || []).filter(x => x.bets).map(x => [
-    esc(x.label), v3RecN(x.bets), v3RecPct({pct: x.hit, n: x.bets}),
-    (x.be * 100).toFixed(1) + '%',
-    '<b class="' + (x.roi > 0 ? 'up' : x.roi < 0 ? 'dn' : '') + '">'
-      + v3Money(x.roi) + '</b>']);
-  const a = p.all || {};
-  if (a.bets) rows.push(['<b>All four</b>', '<b>' + v3RecN(a.bets) + '</b>',
-    '—', '—',
-    '<b class="' + (a.roi > 0 ? 'up' : a.roi < 0 ? 'dn' : '') + '">'
-      + v3Money(a.roi) + '</b>']);
+  // OUR MODEL AND THE ADJUSTED MODEL, ON THE SAME BETS. `ou_week` picks its
+  // side from the SERVED number, which on these markets is already pulled
+  // toward the price — so the row this card has always shown was the
+  // adjusted model wearing the model's name. Both are drawn now, and the
+  // sportsbook stays the "to break even" COLUMN rather than becoming a row:
+  // a book does not pick a side, and grading "always take the favorite"
+  // would be a strategy nobody runs.
+  const mkRows = (series, all, title) => {
+    const r = (series || []).filter(x => x.bets).map(v3RecBetRow);
+    if (!r.length) return [];
+    r.unshift(['<b>' + title + '</b>', '', '', '', '']);
+    if (all && all.bets) r.push(['All four', v3RecN(all.bets), '—', '—',
+                                 v3RecCash(all.roi)]);
+    return r;
+  };
+  const rows = mkRows(p.model, p.model_all, 'Our model')
+    .concat(mkRows(p.ou, p.all, 'Adjusted model'));
+  const a = p.all || {}, mo = p.model_all || {};
   const td = (p.td || []).map(x => esc(x.label) + ' ' + v3Pct(x.said, 1)
     + ' said'
     + (has(x.said_model) && Math.abs(x.said_model - x.said) >= 0.0005
@@ -5366,16 +5417,10 @@ function v3RecPlayers(p, S) {
     + ' against ' + v3Pct(x.actual, 1) + ' actual (' + x.rows + ' rows)');
   // THE PRE-REGISTERED EDGE RULE. A bet only where the blended number beats
   // the de-vigged price by the fitted threshold, at the price of that side.
-  const edge = (p.edge || []).filter(x => x.bets).map(x => [
-    esc(x.label), v3RecN(x.bets), v3RecPct({pct: x.hit, n: x.bets}),
-    (x.be * 100).toFixed(1) + '%',
-    '<b class="' + (x.roi > 0 ? 'up' : x.roi < 0 ? 'dn' : '') + '">'
-      + v3Money(x.roi) + '</b>']);
+  const edge = (p.edge || []).filter(x => x.bets).map(v3RecBetRow);
   const ea = p.edge_all || {};
   if (ea.bets) edge.push(['<b>All four</b>', '<b>' + v3RecN(ea.bets) + '</b>',
-    '—', '—',
-    '<b class="' + (ea.roi > 0 ? 'up' : ea.roi < 0 ? 'dn' : '') + '">'
-      + v3Money(ea.roi) + '</b>']);
+    '—', '—', v3RecCash(ea.roi)]);
   return '<div class="card">'
     + v3RecHead('04', 'Player bets: profit per $100 staked',
                 'One bet per player, game and category — the archive '
@@ -5391,6 +5436,12 @@ function v3RecPlayers(p, S) {
         + ' ' + v3Money(x.lo) + ' to ' + v3Money(x.hi)).join('; ')
     + (a.bets ? '; all four ' + v3Money(a.lo) + ' to ' + v3Money(a.hi) : '')
     + '.</p>'
+    + (mo.bets && a.bets
+       ? '<p class="help" style="margin-top:6px">Over these bets the model '
+         + 'alone returned ' + v3Money(mo.roi) + ' per $100 against the '
+         + 'adjusted number’s ' + v3Money(a.roi) + '. Blending toward the '
+         + 'price helps the touchdown markets and has not helped here.</p>'
+       : '')
     + '<p class="help" style="margin-top:6px">Settled the way a book '
     + 'settles: an under is paid at the under’s own price, a player who '
     + 'did not play is void, and one who played and recorded nothing is '
@@ -6114,16 +6165,21 @@ document.addEventListener('change', ev => {
     // and this one sits in the same bar.
     V.gaCat = t.value; V.gaOpen = null; render();
   } else if (t.getAttribute('data-v3scfrom') != null) {
-    // A `<select>`, so `change`. Both ends are kept in order here rather
-    // than in the renderer: a reader who drags the start past the end means
-    // one week, not an empty range.
+    // A `<select>`, so `change`. Both ends are kept in order here as well as
+    // in the renderer: a reader who drags the start past the end means one
+    // week, not an empty range.
+    //
+    // NO `V.top` HERE. The Record page has no `.gtabs` or `.pbar--free`, so
+    // that branch measures nothing, falls back to zero and scrolls the pane
+    // to the heading — which, on a page whose tables are below the fold,
+    // looks exactly like the picker having done nothing.
     V.scFrom = Number(t.value);
     if (has(V.scTo) && V.scTo < V.scFrom) V.scTo = V.scFrom;
-    V.top = 'section'; render();
+    render();
   } else if (t.getAttribute('data-v3scto') != null) {
     V.scTo = Number(t.value);
     if (has(V.scFrom) && V.scFrom > V.scTo) V.scFrom = V.scTo;
-    V.top = 'section'; render();
+    render();
   } else if (t.getAttribute('data-v3sortsel') != null) {
     V.sort = t.value; render();
   } else if (t.getAttribute('data-v3gameto') != null) {

@@ -2484,6 +2484,34 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      && v3RecRange(DATA.scorecard)[1] === def[1],
      JSON.stringify(v3RecRange(DATA.scorecard)));
 
+  // ONE DROPDOWN AT A TIME, WHICH IS THE TEST THAT WAS MISSING. `v3RecRange`
+  // used to resolve both ends or neither, so moving one and leaving the
+  // other unset threw the chosen end away and redrew the default. Every
+  // check here set both at once, which is a test written around the bug
+  // rather than at it — the picker was dead on the live site and the suite
+  // was green.
+  V.scFrom = 4; V.scTo = null;
+  ok('moving only the start moves the range',
+     v3RecRange(DATA.scorecard)[0] === 4,
+     JSON.stringify(v3RecRange(DATA.scorecard)));
+  V.scFrom = null; V.scTo = 3;
+  ok('and moving only the end moves it too',
+     v3RecRange(DATA.scorecard)[1] === 3,
+     JSON.stringify(v3RecRange(DATA.scorecard)));
+  // The end the reader actually moved wins: choosing "to week 2" while the
+  // start sits on its default means the weeks up to there, not an empty
+  // range and not a silent jump back to the default.
+  V.scFrom = null; V.scTo = 2;
+  ok('an end chosen below the default start pulls the start down with it',
+     v3RecRange(DATA.scorecard)[1] === 2
+     && v3RecRange(DATA.scorecard)[0] <= 2,
+     JSON.stringify(v3RecRange(DATA.scorecard)));
+  // And a single week is a legal range.
+  V.scFrom = 4; V.scTo = 4; render();
+  ok('one week on its own renders its own block',
+     v3RecordPage().indexOf('Week 4') >= 0
+     && v3RecordPage() !== h, 'single-week range matched the default');
+
   V.scFrom = 1; V.scTo = 2; render();
   const none = v3RecordPage();
   ok('a range whose weeks were never frozen says so rather than showing zeros',
@@ -2515,12 +2543,38 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // THE ADDED ROWS SIT BESIDE THE RAW ONES. Weeks 3-4 were frozen before
   // the blended win chance and the level-removed total existed, so they read
   // "—" there and are never recomputed.
-  ok('the blended win chance is a row of its own, beside our pick',
-     h.indexOf('Blended win chance') > h.indexOf('Our pick'));
-  ok('and before week 5 it says when it starts rather than inventing one',
+  // ONE VOCABULARY ON EVERY SECTION. The sections had grown three names for
+  // one idea — "Our pick", "Model alone", and nothing at all on the player
+  // rows. Asked for directly: our model, the adjusted model, the book, in
+  // that order, everywhere.
+  ok('every section names our model, the adjusted model and the book',
+     (h.match(/Our model/g) || []).length >= 3
+     && (h.match(/Adjusted model/g) || []).length >= 3
+     && (h.match(/Sportsbook/g) || []).length >= 3, h.slice(0, 400));
+  ok('and the adjusted row comes between ours and the book',
+     h.indexOf('Our model') < h.indexOf('Adjusted model')
+     && h.indexOf('Adjusted model') < h.indexOf('Sportsbook'));
+  ok('the old vocabulary is gone',
+     h.indexOf('Model alone') < 0 && h.indexOf('Shown on the card') < 0
+     && h.indexOf('Blended win chance') < 0, h);
+  ok('before week 5 a new row says when it starts rather than inventing one',
      h.indexOf('recorded from week 5') >= 0);
-  ok('the level-removed total sits beside the raw model',
-     h.indexOf('Model, level removed') > h.indexOf('Model alone'));
+  ok('the level-removed total sits below the three it is a variant of',
+     h.indexOf('Our model, level removed') > h.indexOf('Adjusted model'));
+  // THE RANGE IS EXPLAINED, because "95% range" is a term of art and the
+  // number most likely to be over-read on a page reporting 32 games.
+  ok('the range column is explained in words, not named after a statistic',
+     h.indexOf('95% range') < 0
+     && h.indexOf('luck alone moves these numbers') >= 0
+     && h.indexOf('where the real rate most likely sits') >= 0);
+  // AND THE PLAYER ROWS SHOW BOTH. `ou_week` sides on the served number, so
+  // what the card showed was always the adjusted model under the model's
+  // name; the unblended side is its own series now.
+  ok('the player section draws our model and the adjusted model separately',
+     h.indexOf('Our model') < h.indexOf('Adjusted model'),
+     'player series not split');
+  ok('and compares the two in words',
+     h.indexOf('the model alone returned') >= 0);
   ok('the player bets say how they are settled',
      h.indexOf('paid at the under’s own price') >= 0
      && h.indexOf('did not play is void') >= 0);
