@@ -1,218 +1,380 @@
-"""How the model has actually done this season, against the price it was offered.
+"""How the model has actually done, week by week, against the price offered.
 
 **AGAINST THE BOOK, NOT AGAINST ZERO.** "We said 57% and he scored" is not a
 result; a coin that says 57% about favorites is right most of the time too.
-Every number here is the model's score minus the de-vigged book's score on
-the same rows, so the question it answers is the only one worth asking: did
-knowing our number beat knowing theirs.
+Everything here is scored beside the book's own number on the same games.
 
-**FILTERED ON `book`, NEVER ON `has_market_price`.** The flag is a
-predict-time artifact and a board rebuilt after the games loses it — weeks 3
-and 4 of 2026 are on disk claiming 24 and 47 priced players. `book` comes
-from the odds archive, which is fixed, so it is the one that still means
-something about a week nobody froze. See `src.export.prediction_freeze` for
-why those two weeks cannot be repaired.
+**TWO KINDS OF EVIDENCE, NEVER POOLED.** The game markets come from
+`archive/projections`, which freezes at kickoff — those rows are a record of
+what was on the card. The player markets have no frozen board before week 5,
+so they are rebuilt from today's model against archived prices: a backtest on
+weeks the model did not serve, not a betting record. The page says which is
+which on every section, because averaging them would quietly upgrade the
+weaker claim.
 
-**AND IT SAYS WHERE EACH WEEK CAME FROM.** A week served from a frozen board
-is the board that was live; a week rebuilt is the model as it stands today
-scoring a game it has already seen the result of. They are different claims
-and the page prints which is which rather than pooling them silently.
+**WEEKS 1 AND 2 HAVE NO GAME RECORD AND CANNOT GET ONE.** Nothing wrote a
+projection before those games and the number cannot be reconstructed: the
+feature matrix is rebuilt from current raw data, so recomputing a past week
+gives today's model, which is a different model. Measured 2026-10-06, week 3
+recomputed today disagrees with the book by 3.60 points a game where the
+frozen copy disagreed by 2.32.
 
-**WHAT IS DELIBERATELY NOT HERE.** Weekly ROI, top-1 hit rate and position
-splits. At four weeks and a few hundred graded rows those are noise with a
-decimal point: a single Sunday moves top-1 by double digits, and a reader
-cannot tell that from a trend. Brier and log loss use every row, which is
-why they are the two that survive the sample size.
+**ONE BET PER PLAYER-GAME.** The archive quotes alternate lines — passing
+yards carried SEVENTEEN per player-game in 2026 — and counting each as a bet
+turns one opinion about one quarterback into seventeen wins. Pooled over
+weeks 1-4 that inflated the player edge from +0.30% to +6.89%. Only the line
+closest to the player's own median survives.
+
+**EVERY CONTIGUOUS WEEK RANGE IS PRECOMPUTED.** The page has a picker and no
+arithmetic: it looks up `ranges["3-4"]`. Intervals are closed form — Wilson
+for a win rate, cluster-robust by game for a return — so a range costs
+nothing to add and no number on the page is computed twice in two languages.
 """
 from __future__ import annotations
 
 import math
+import re
+import statistics as st
+from collections import defaultdict
 
 import polars as pl
 
-#: Markets with a player board and a de-vigged book price to grade against.
-MARKETS: tuple[str, ...] = ("anytime_td", "first_td")
-
-#: Calibration bands, as probability percents. Wider at the top because the
-#: board thins out there: one bucket of 40%+ says more than four empty ones.
-BANDS: tuple[tuple[int, int], ...] = (
-    (0, 5), (5, 10), (10, 20), (20, 30), (30, 45), (45, 100),
+#: Touchdown markets, which have a de-vigged book price per player.
+TD_MARKETS: tuple[tuple[str, str], ...] = (
+    ("anytime_td", "Any touchdown"), ("first_td", "First touchdown"),
 )
 
-#: Below this a bucket is reported but not read as calibration evidence.
-BUCKET_MIN = 25
+#: Over/under player markets, in the words a reader uses.
+OU_MARKETS: tuple[tuple[str, str], ...] = (
+    ("receptions", "Catches"), ("receiving_yards", "Receiving yards"),
+    ("rushing_yards", "Rushing yards"), ("passing_yards", "Passing yards"),
+)
+
+#: A coin flip priced at -110 needs this to break even.
+BREAK_EVEN = 0.5238
 
 
-def _brier(p: list[float], y: list[int]) -> float | None:
-    if not p:
-        return None
-    return sum((a - b) ** 2 for a, b in zip(p, y)) / len(p)
+def _wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """A win rate's interval. Wilson rather than normal, because at 16 games
+    the normal approximation runs off both ends of the scale."""
+    if n <= 0:
+        return (0.0, 0.0)
+    p = k / n
+    den = 1 + z * z / n
+    ctr = (p + z * z / (2 * n)) / den
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den
+    return (max(0.0, ctr - half), min(1.0, ctr + half))
 
 
-def _log_loss(p: list[float], y: list[int]) -> float | None:
-    """Clipped, because one confident miss at p=0 is otherwise infinite and
-    takes the whole season's number with it."""
-    if not p:
-        return None
-    eps = 1e-6
-    tot = 0.0
-    for a, b in zip(p, y):
-        a = min(max(a, eps), 1 - eps)
-        tot += -(math.log(a) if b else math.log(1 - a))
-    return tot / len(p)
+def _cluster_ci(by_game: dict, z: float = 1.96) -> tuple[float, float, float]:
+    """Mean return and its interval, with games as the cluster.
+
+    **THESE ARE NOT INDEPENDENT BETS.** Every receiver in one game shares a
+    game script; if it turns into a shootout they all go over together. Taken
+    as independent, a thousand player bets over sixteen games claim the
+    precision of a thousand coin flips and have roughly the precision of
+    sixteen. Cluster-robust rather than bootstrapped so a range costs nothing
+    to add and the same inputs always give the same interval.
+    """
+    rows = [x for v in by_game.values() for x in v]
+    n = len(rows)
+    if n == 0:
+        return (0.0, 0.0, 0.0)
+    mean = sum(rows) / n
+    if len(by_game) < 2:
+        return (mean, mean, mean)
+    # CR0: the variance of the per-game sums of the centered returns.
+    ss = sum((sum(v) - len(v) * mean) ** 2 for v in by_game.values())
+    g = len(by_game)
+    se = math.sqrt(ss * (g / max(g - 1, 1))) / n
+    return (mean, mean - z * se, mean + z * se)
 
 
-def _rows(season: int, week: int, market: str) -> pl.DataFrame:
-    """One week's gradable rows: ours, theirs, and what happened."""
-    from src.evaluation.week_history import week_board
-
-    b = week_board(season, week, market)
-    if b.is_empty():
-        return pl.DataFrame()
-    need = {"probability", "book", "scored"}
-    if not need <= set(b.columns):
-        return pl.DataFrame()
-    return b.filter(pl.col("book").is_not_null()
-                    & pl.col("scored").is_not_null()
-                    & pl.col("probability").is_not_null())
+def _payout(odds: float) -> float:
+    return (odds / 100.0) if odds > 0 else (100.0 / abs(odds))
 
 
-def _source(season: int, week: int, market: str) -> str:
-    """Whether this week's board is the one that was live or a rebuild."""
+def _implied(odds: float) -> float:
+    return (100 / (odds + 100)) if odds > 0 else (abs(odds) / (abs(odds) + 100))
+
+
+# ── the games: what was frozen before kickoff ────────────────────────────
+
+def _book_lines(season: int) -> dict:
+    """The book's consensus spread, total and de-vigged home win chance."""
+    out: dict = {}
     try:
-        from src.export import prediction_freeze as PF
-
-        kept = PF.frozen(season, week, market)
-        started = PF.started_games(season, week)
-        if started and started <= set(kept):
-            return "frozen"
-        return "mixed" if kept else "rebuilt"
+        gl = pl.read_parquet("data/archive/game_lines.parquet").filter(
+            pl.col("season") == season)
     except Exception:                                            # noqa: BLE001
-        return "rebuilt"
-
-
-def _score(d: pl.DataFrame) -> dict:
-    """Ours and theirs on the same rows, and the gap between them."""
-    ours = [float(x) for x in d["probability"].to_list()]
-    book = [float(x) for x in d["book"].to_list()]
-    y = [int(x) for x in d["scored"].to_list()]
-    ob, bb = _brier(ours, y), _brier(book, y)
-    ol, bl = _log_loss(ours, y), _log_loss(book, y)
-    return {
-        "n": len(y),
-        "brier": ob, "book_brier": bb,
-        # Positive is the model ahead. Brier is a LOSS, so the sign flips.
-        "brier_edge": None if (ob is None or bb is None) else bb - ob,
-        "log_loss": ol, "book_log_loss": bl,
-        "log_loss_edge": None if (ol is None or bl is None) else bl - ol,
-        # The level, which is the failure a Brier score hides: a board can be
-        # well ordered and still say 12.6% where 6.3% happens.
-        "said": sum(ours) / len(ours) if ours else None,
-        "book_said": sum(book) / len(book) if book else None,
-        "actual": sum(y) / len(y) if y else None,
-    }
-
-
-def _buckets(d: pl.DataFrame) -> list[dict]:
-    """Said against happened, in bands, which is where a level error shows."""
-    out = []
-    for lo, hi in BANDS:
-        s = d.filter((pl.col("probability") >= lo / 100)
-                     & (pl.col("probability") < hi / 100))
-        if s.is_empty():
-            out.append({"lo": lo, "hi": hi, "n": 0, "said": None,
-                        "actual": None, "thin": True})
-            continue
-        said = float(s["probability"].mean())
-        actual = float(s["scored"].mean())
-        out.append({"lo": lo, "hi": hi, "n": s.height, "said": said,
-                    "actual": actual, "thin": s.height < BUCKET_MIN})
+        return out
+    if gl.is_empty():
+        return out
+    gl = gl.with_columns(
+        pl.when(pl.col("game_id").str.contains(r"^\d{4}_"))
+        .then(pl.col("game_id").str.replace(r"^\d{4}_\d{2}_", ""))
+        .otherwise(pl.col("game_id")).alias("pair"))
+    sp = (gl.filter(pl.col("market") == "spreads")
+          .with_columns(pl.when(pl.col("outcome") == pl.col("home_team"))
+                        .then(pl.col("point")).otherwise(-pl.col("point"))
+                        .alias("hs"))
+          .group_by("pair").agg(pl.col("hs").median().alias("spread")))
+    to = (gl.filter(pl.col("market") == "totals")
+          .group_by("pair").agg(pl.col("point").median().alias("total")))
+    h = (gl.filter((pl.col("market") == "h2h")
+                   & pl.col("implied_prob").is_not_null())
+         .with_columns((pl.col("outcome") == pl.col("home_team")).alias("ih"))
+         .group_by(["pair", "ih"]).agg(pl.col("implied_prob").median().alias("p")))
+    hw = h.filter(pl.col("ih")).select(["pair", pl.col("p").alias("a")])
+    aw = h.filter(~pl.col("ih")).select(["pair", pl.col("p").alias("b")])
+    ml = (hw.join(aw, on="pair", how="inner")
+          .with_columns((pl.col("a") / (pl.col("a") + pl.col("b"))).alias("win")))
+    for df, key in ((sp, "spread"), (to, "total"), (ml, "win")):
+        for r in df.iter_rows(named=True):
+            out.setdefault(r["pair"], {})[key] = r[key]
     return out
 
 
-def _per_game(season: int, week: int, d: pl.DataFrame) -> dict:
-    """Expected scorers against actual, per game.
+def game_rows(season: int) -> list[dict]:
+    """One row per played game that has a FROZEN pre-kickoff projection."""
+    from src.export import projection_freeze as PF
+    from src.utils.paths import get_path
 
-    The one number that catches a level error a bucket chart can hide: the
-    board can rank the right players and still expect six scorers in a game
-    that produces four, every week, and nothing about the ordering says so.
-    """
-    if d.is_empty() or "game_id" not in d.columns:
-        return {}
-    g = d.group_by("game_id").agg([
-        pl.col("probability").sum().alias("said"),
-        pl.col("scored").sum().alias("actual")])
-    return {"games": g.height,
-            "said": float(g["said"].mean()),
-            "actual": float(g["actual"].mean())}
+    store = PF.load(season)
+    if not store:
+        return []
+    try:
+        sched = (pl.read_parquet(get_path("raw") / "schedules.parquet")
+                 .filter((pl.col("game_type") == "REG")
+                         & (pl.col("season") == season)
+                         & pl.col("home_score").is_not_null()))
+    except Exception:                                            # noqa: BLE001
+        return []
+    fin = {f"{r['away_team']}_{r['home_team']}":
+           (r["week"], r["home_score"] - r["away_score"],
+            r["home_score"] + r["away_score"])
+           for r in sched.iter_rows(named=True)}
+    book = _book_lines(season)
+    out = []
+    for wk, games in store.items():
+        for gid, snap in games.items():
+            got, bk = fin.get(gid), book.get(gid)
+            if not got or not bk:
+                continue
+            if bk.get("spread") is None or bk.get("total") is None:
+                continue
+            out.append({
+                "week": int(wk), "game_id": gid,
+                "margin": got[1], "total_actual": got[2],
+                "book_spread": bk["spread"], "book_total": bk["total"],
+                "book_win": bk.get("win"),
+                "model_spread": snap.get("model_spread"),
+                "model_total": snap.get("model_total"),
+                "model_win": snap.get("model_win_home"),
+                "blend_spread": (snap.get("blend") or {}).get("spread"),
+                "blend_total": (snap.get("blend") or {}).get("total"),
+            })
+    return out
 
 
-def for_market(season: int, market: str) -> dict:
-    """Every played week of this market, weekly and pooled."""
-    from src.evaluation.week_history import played_weeks
-
-    weeks, frames = [], []
-    for w in played_weeks(season):
-        d = _rows(season, w, market)
-        if d.is_empty():
+def _side_record(rows, pick_key, line_key, result_key, sign=1):
+    """Wins, losses and pushes for the side a number picks against a line."""
+    w = l = push = 0
+    for r in rows:
+        if r.get(pick_key) is None:
             continue
-        row = {"week": w, "source": _source(season, w, market)}
-        row.update(_score(d))
-        row["per_game"] = _per_game(season, w, d)
-        weeks.append(row)
-        frames.append(d)
-    if not frames:
-        return {"weeks": [], "pooled": None, "buckets": [], "per_game": {}}
-    allrows = pl.concat(frames, how="diagonal")
-    return {
-        "weeks": weeks,
-        "pooled": _score(allrows),
-        "buckets": _buckets(allrows),
-        "per_game": _per_game(season, None, allrows),
-        # Said plainly, because "pooled over four weeks" and "pooled over a
-        # season" are different amounts of evidence and the number looks the
-        # same either way.
-        "sources": sorted({w["source"] for w in weeks}),
+        edge = sign * (r[pick_key] - r[line_key])
+        res = sign * (r[result_key] - r[line_key])
+        if abs(edge) < 1e-9:
+            continue
+        if abs(res) < 1e-9:
+            push += 1
+            continue
+        if (edge > 0) == (res > 0):
+            w += 1
+        else:
+            l += 1
+    lo, hi = _wilson(w, w + l)
+    return {"w": w, "l": l, "push": push, "n": w + l,
+            "pct": (w / (w + l)) if (w + l) else None, "lo": lo, "hi": hi}
+
+
+def _mae(rows, key, actual_key, sign=1):
+    vals = [abs(sign * r[key] - r[actual_key]) for r in rows
+            if r.get(key) is not None]
+    return (sum(vals) / len(vals)) if vals else None
+
+
+def games_block(rows: list[dict]) -> dict | None:
+    if not rows:
+        return None
+    n = len(rows)
+    ml_rows = [r for r in rows if r.get("model_win") is not None
+               and r.get("book_win") is not None]
+
+    def straight(key):
+        w = sum(1 for r in ml_rows if (r[key] > 0.5) == (r["margin"] > 0))
+        lo, hi = _wilson(w, len(ml_rows))
+        return {"w": w, "l": len(ml_rows) - w, "n": len(ml_rows),
+                "pct": (w / len(ml_rows)) if ml_rows else None,
+                "lo": lo, "hi": hi}
+
+    dis = [r for r in ml_rows if (r["model_win"] > 0.5) != (r["book_win"] > 0.5)]
+    dw = sum(1 for r in dis if (r["model_win"] > 0.5) == (r["margin"] > 0))
+    dlo, dhi = _wilson(dw, len(dis))
+    brier = lambda k: (sum((r[k] - (1 if r["margin"] > 0 else 0)) ** 2
+                           for r in ml_rows) / len(ml_rows)) if ml_rows else None
+
+    # Spread: a home-signed number against a home-signed line, so the side
+    # picked is whichever way the two disagree. `-margin` is the result in
+    # the same frame as the line.
+    for r in rows:
+        r["_res_spread"] = -r["margin"]
+    spread = {
+        "model": _side_record(rows, "model_spread", "book_spread", "_res_spread", -1),
+        "blend": _side_record(rows, "blend_spread", "book_spread", "_res_spread", -1),
+        "mae_model": _mae(rows, "model_spread", "_res_spread"),
+        "mae_blend": _mae(rows, "blend_spread", "_res_spread"),
+        "mae_book": _mae(rows, "book_spread", "_res_spread"),
+        "mae_book_blend": _mae([r for r in rows if r.get("blend_spread") is not None],
+                               "book_spread", "_res_spread"),
     }
+    total = {
+        "model": _side_record(rows, "model_total", "book_total", "total_actual"),
+        "blend": _side_record(rows, "blend_total", "book_total", "total_actual"),
+        "mae_model": _mae(rows, "model_total", "total_actual"),
+        "mae_blend": _mae(rows, "blend_total", "total_actual"),
+        "mae_book": _mae(rows, "book_total", "total_actual"),
+        "mae_book_blend": _mae([r for r in rows if r.get("blend_total") is not None],
+                               "book_total", "total_actual"),
+        "over": sum(1 for r in rows if r.get("model_total") is not None
+                    and r["model_total"] > r["book_total"]),
+    }
+    return {
+        "n": n, "weeks": sorted({r["week"] for r in rows}),
+        "moneyline": {
+            "ours": straight("model_win"), "book": straight("book_win"),
+            "disagree": {"w": dw, "l": len(dis) - dw, "n": len(dis),
+                         "pct": (dw / len(dis)) if dis else None,
+                         "lo": dlo, "hi": dhi},
+            "brier_ours": brier("model_win"), "brier_book": brier("book_win"),
+        },
+        "spread": spread, "total": total,
+    }
+
+
+# ── the players: rebuilt, and labeled as such ───────────────────────────
+
+def ou_rows(season: int, weeks) -> dict:
+    """One bet per player-game per market, for each week. Cached by caller."""
+    from src.evaluation.week_history import ou_week
+
+    out: dict = {}
+    for mk, _ in OU_MARKETS:
+        for wk in weeks:
+            try:
+                got = ou_week(season, wk, mk) or []
+            except Exception:                                    # noqa: BLE001
+                got = []
+            per: dict = defaultdict(list)
+            for r in got:
+                if r.get("won") is None or r.get("odds") is None:
+                    continue
+                per[(r.get("game_id"), r.get("player_name"))].append(r)
+            keep = []
+            for rs in per.values():
+                med = st.median([x["line"] for x in rs])
+                keep.append(min(rs, key=lambda x: (abs(x["line"] - med),
+                                                   -abs(x.get("edge") or 0))))
+            out[(mk, wk)] = keep
+    return out
+
+
+def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
+    ou, grand = [], defaultdict(list)
+    for mk, label in OU_MARKETS:
+        rows = [r for wk in weeks for r in cache.get((mk, wk), [])]
+        if not rows:
+            ou.append({"key": mk, "label": label, "bets": 0})
+            continue
+        by_game = defaultdict(list)
+        for r in rows:
+            ret = _payout(r["odds"]) if r["won"] else -1.0
+            by_game[r["game_id"]].append(ret)
+            grand[r["game_id"]].append(ret)
+        roi, lo, hi = _cluster_ci(by_game)
+        k = sum(1 for r in rows if r["won"])
+        ou.append({"key": mk, "label": label, "bets": len(rows),
+                   "hit": k / len(rows),
+                   "be": st.mean([_implied(r["odds"]) for r in rows]),
+                   "roi": roi, "lo": lo, "hi": hi})
+    roi, lo, hi = _cluster_ci(grand)
+    td = []
+    for mk, label in TD_MARKETS:
+        got = [td_by_week[(mk, w)] for w in weeks if td_by_week.get((mk, w))]
+        if not got:
+            continue
+        n = sum(x["n"] for x in got)
+        if not n:
+            continue
+        td.append({"key": mk, "label": label, "rows": n,
+                   "said": sum(x["said"] * x["n"] for x in got) / n,
+                   "actual": sum(x["actual"] * x["n"] for x in got) / n})
+    return {"weeks": sorted(weeks), "ou": ou, "td": td,
+            "all": {"bets": sum(len(v) for v in grand.values()),
+                    "roi": roi, "lo": lo, "hi": hi}}
+
+
+def _td_week(season: int, week: int, market: str) -> dict | None:
+    from src.evaluation.week_history import week_board
+
+    try:
+        b = week_board(season, week, market)
+    except Exception:                                            # noqa: BLE001
+        return None
+    if b.is_empty() or not {"probability", "book", "scored"} <= set(b.columns):
+        return None
+    d = b.filter(pl.col("book").is_not_null() & pl.col("scored").is_not_null()
+                 & pl.col("probability").is_not_null())
+    if d.is_empty():
+        return None
+    return {"n": d.height, "said": float(d["probability"].mean()),
+            "actual": float(d["scored"].mean())}
 
 
 def build(season: int) -> dict:
-    """The whole scorecard, one market at a time."""
-    out = {"season": season, "markets": {}, "bucket_min": BUCKET_MIN}
-    for m in MARKETS:
-        try:
-            out["markets"][m] = for_market(season, m)
-        except Exception as e:                                   # noqa: BLE001
-            out["markets"][m] = {"error": str(e), "weeks": [],
-                                 "pooled": None, "buckets": []}
-    out["omitted"] = [
-        "Weekly return on investment — at these sample sizes one Sunday "
-        "moves it more than the model does.",
-        "Top-1 hit rate — a single game swings it by double digits over "
-        "four weeks, and a reader cannot tell that from a trend.",
-        "Position splits — the same rows cut four ways, each cut too thin "
-        "to mean anything on its own.",
-    ]
-    return out
+    """Every contiguous week range, each with both halves of the evidence."""
+    from src.evaluation.week_history import played_weeks
 
+    played = sorted(played_weeks(season))
+    grows = game_rows(season)
+    gweeks = sorted({r["week"] for r in grows})
+    cache = ou_rows(season, played)
+    td_by_week = {(mk, w): _td_week(season, w, mk)
+                  for mk, _ in TD_MARKETS for w in played}
 
-#: What the 2026 measurement said, so the next person does not re-derive it.
-#:
-#: FIRST TOUCHDOWN: the model does not improve on the price. Over 1,517
-#: graded rows through week 4 its level is right — 3.8% said against 4.0%
-#: actual, and each book-price quintile tracks — but the book ORDERS better:
-#: AUC 0.7636 against our 0.7307. Blending the two in sample, which is the
-#: most generous test there is, the best weight keeps **5%** of our number.
-#: Anytime's keeps 65% on the same rows and beats both. So first TD's gap is
-#: discrimination, it is not small, and it is the one TD market with no
-#: market blend to borrow the ordering it is missing.
-#:
-#: Not acted on here. The plan is to re-check after week 6 and gate a blend
-#: properly out of sample: 1,517 rows of one season, fitted and scored on
-#: itself, is a direction and not a weight.
-FIRST_TD_2026 = {
-    "n": 1517, "auc_ours": 0.7307, "auc_book": 0.7636,
-    "said": 0.038, "actual": 0.040,
-    "best_in_sample_blend_keep": 0.05,
-    "measured_on": "2026-10-05",
-}
+    ranges: dict = {}
+    for i, a in enumerate(played):
+        for b in played[i:]:
+            sel = [w for w in played if a <= w <= b]
+            g = [r for r in grows if a <= r["week"] <= b]
+            ranges[f"{a}-{b}"] = {
+                "weeks": sel,
+                "games": games_block(g),
+                "players": players_block(cache, sel, td_by_week),
+            }
+    # Weeks a game record cannot exist for, said once rather than per range.
+    missing = [{"week": w,
+                "why": "nothing recorded a projection before these games, and "
+                       "the feature matrix is rebuilt from current data, so "
+                       "there is no honest way to reconstruct one"}
+               for w in played if w not in gweeks]
+    return {
+        "season": season, "played": played,
+        "game_weeks": gweeks, "player_weeks": played,
+        "ranges": ranges,
+        "default": f"{gweeks[0]}-{played[-1]}" if gweeks
+                   else (f"{played[0]}-{played[-1]}" if played else ""),
+        "missing": missing,
+        "break_even": BREAK_EVEN,
+    }

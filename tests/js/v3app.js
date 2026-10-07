@@ -23,7 +23,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
    'v3PublicMoney', 'v3MoneyBlock', 'v3SharpSides', 'V3RATIO_SMALL',
-   'v3GameSet', 'v3RecordPage', 'v3Edge',
+   'v3GameSet', 'v3RecordPage', 'v3RecRange', 'v3Money',
    'v3Ask', 'V3ASK_DEFAULT', 'v3AngleBase', 'v3Surprise', 'V3SURPRISE', 'v3Clears',
    'v3AngleSince', 'v3AngleYears',
    'v3GTab', 'v3MktLabel',
@@ -426,6 +426,8 @@ const handled = new Set(V3CLICKS.concat(
    // The board's and the game's angle controls: two selects, a search box and
    // a range, none of them a click.
    'v3angleq', 'v3angleteam', 'v3anglecat', 'v3anglefrom', 'v3gacat',
+   // The record's week range: two selects, so `change` and not a click.
+   'v3scfrom', 'v3scto',
    // NOT A CONTROL AT ALL. `v3yrlab` marks the number the slider's `input`
    // handler rewrites in place, which is the one thing on the page that must
    // not trigger a render.
@@ -2439,57 +2441,77 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
 
 // ── The season record ──────────────────────────────────────────────────
 //
-// Every figure here is ours against the de-vigged book on the same rows.
-// The screen has to say that out loud, because a Brier score with nothing
-// beside it reads as a grade rather than a comparison.
+// Wins, accuracy and profit, over a range the reader picks. The two things
+// worth guarding are the ones a reader cannot check for themselves: that the
+// picker selects a PRECOMPUTED range rather than the page re-adding
+// anything, and that the two kinds of evidence are never described as one.
 {
-  const { v3RecordPage, v3Edge } = x;
-  V.tab = 'record'; V.game = null; render();
+  const { v3RecordPage, v3RecRange, v3Money } = x;
+  V.tab = 'record'; V.game = null; V.scFrom = null; V.scTo = null; render();
   const h = v3RecordPage();
 
-  ok('the record screen names both markets',
-     h.indexOf('Anytime touchdown') >= 0 && h.indexOf('First touchdown') >= 0,
-     h.slice(0, 200));
+  ok('the record screen leads with the plain-language headline',
+     h.indexOf('Our picks, by the numbers') >= 0, h.slice(0, 200));
   ok('and is reachable from the nav',
      app().indexOf('data-v3tab="record"') >= 0);
   ok('and the nav label is short enough for a fifth column',
-     (V3TABS.filter(t => t[0] === 'record')[0] || [])[1].length <= 7,
-     JSON.stringify(V3TABS.map(t => t[1])));
+     (V3TABS.filter(t => t[0] === 'record')[0] || [])[1].length <= 7);
 
-  // THE EDGE IS SIGNED AND IT IS THEIRS MINUS OURS. Brier is a loss, so a
-  // positive number is the model ahead; getting this backwards would print
-  // a confident green number on a market the book is beating.
-  ok('an edge in our favor is positive and marked good',
-     v3Edge(0.98).indexOf('up') >= 0 && v3Edge(0.98).indexOf('+0.98') >= 0,
-     v3Edge(0.98));
-  ok('and an edge against us is negative and marked bad',
-     v3Edge(-0.21).indexOf('dn') >= 0 && v3Edge(-0.21).indexOf('−0.21') >= 0,
-     v3Edge(-0.21));
-  ok('a missing edge is a dash, not a zero',
-     v3Edge(null).indexOf('—') >= 0, v3Edge(null));
+  ok('all four sections are numbered and named',
+     ['Picking the winning team', 'Picking the point spread',
+      'Picking over or under the total',
+      'Player bets: profit per $100 staked'].every(s => h.indexOf(s) >= 0), h);
 
-  // THE VERDICT MUST NOT OVERSELL. The fixture's anytime market is ahead by
-  // 0.37 hundredths of a point, which at 751 rows is level.
-  ok('a sub-threshold edge is reported as level, not as ahead',
-     h.indexOf('Level with the market') >= 0,
-     h.slice(h.indexOf('class="lede"'), h.indexOf('class="lede"') + 260));
+  // THE PROVENANCE IS ABOVE THE TABLES. A reader who meets the numbers first
+  // has already decided what they mean.
+  ok('it says the game picks were written before kickoff',
+     h.indexOf('written down before') >= 0 && h.indexOf('on the card') >= 0);
+  ok('and that the player results were rebuilt afterwards',
+     h.indexOf('rebuilt afterwards') >= 0
+     && h.indexOf('not a record of bets anyone could') >= 0);
+  ok('and both say so before the first table',
+     h.indexOf('rebuilt afterwards') < h.indexOf('Picking the winning team'));
+  ok('and the weeks with no game record say why',
+     h.indexOf('have no game record') >= 0
+     && h.indexOf('nothing recorded a projection') >= 0);
 
-  // AND THE PAGE SAYS WHERE ITS WEEKS CAME FROM. A week rebuilt after the
-  // games is the model as it stands today scoring a result it has seen.
-  ok('a market with rebuilt weeks says so',
-     h.indexOf('rebuilt after the games') >= 0);
-  ok('and one frozen before kickoff says that instead',
-     h.indexOf('board that was live before') >= 0);
+  // THE PICKER SELECTS, IT DOES NOT COMPUTE.
+  ok('the range picker is on the page',
+     h.indexOf('data-v3scfrom') >= 0 && h.indexOf('data-v3scto') >= 0);
+  const def = String(DATA.scorecard.default || '').split('-').map(Number);
+  ok('and it opens on the payload’s own default range',
+     v3RecRange(DATA.scorecard)[0] === def[0]
+     && v3RecRange(DATA.scorecard)[1] === def[1],
+     JSON.stringify(v3RecRange(DATA.scorecard)));
 
-  ok('a thin calibration band is marked thin rather than read',
-     h.indexOf('thin') >= 0);
-  ok('the level is shown per game, not only per player',
-     h.indexOf('expected a game') >= 0 && h.indexOf('actually scored') >= 0);
-  ok('and the page says what it leaves out',
-     h.indexOf('What this page leaves out') >= 0
-     && h.indexOf('return on investment') >= 0);
+  V.scFrom = 1; V.scTo = 2; render();
+  const none = v3RecordPage();
+  ok('a range whose weeks were never frozen says so rather than showing zeros',
+     none.indexOf('No game projection was recorded') >= 0
+     && none.indexOf('Picking the winning team') < 0, none.slice(0, 400));
+  ok('and still reports the player bets, which do exist for it',
+     none.indexOf('Player bets') >= 0);
 
-  // NOTHING GRADED IS A SENTENCE, NOT A BLANK SCREEN.
+  V.scFrom = 1; V.scTo = 4; render();
+  ok('a wider range reads a different precomputed block',
+     v3RecordPage() !== h);
+
+  V.scFrom = 4; V.scTo = 2;
+  ok('an inverted range collapses rather than showing nothing',
+     v3RecRange(DATA.scorecard)[0] <= v3RecRange(DATA.scorecard)[1],
+     JSON.stringify(v3RecRange(DATA.scorecard)));
+  V.scFrom = null; V.scTo = null; render();
+
+  // MONEY READS AS MONEY, and a loss takes a real minus sign.
+  ok('a profit per $100 is signed and in dollars',
+     v3Money(0.0759).indexOf('+$7.59') >= 0, v3Money(0.0759));
+  ok('and a loss carries a real minus sign',
+     v3Money(-0.0669).indexOf('−$6.69') >= 0, v3Money(-0.0669));
+  ok('the player table says it counts one bet per player-game',
+     h.indexOf('One bet per player, game and category') >= 0);
+  ok('and what a bet has to land to break even',
+     h.indexOf('break even at the usual price') >= 0);
+
   const wasS = DATA.scorecard;
   DATA.scorecard = {};
   ok('an empty scorecard says so rather than rendering nothing',

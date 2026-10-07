@@ -814,28 +814,34 @@ button{cursor:pointer}
 .note h3{margin:-6px 0 0;font-size:17px;line-height:22px;font-weight:600}
 .note p{margin:0;font-size:15px;line-height:20px;color:var(--mut)}
 .figs{display:flex;gap:8px;flex-wrap:wrap}
-/* THE SCORECARD. Five columns on a phone is three too many, so the week
-   table is a grid that keeps the label full width and lets the figures
-   share the rest — and `minmax(0,1fr)` rather than `1fr`, or a long number
-   pushes the row wider than the screen instead of ellipsing inside it. */
-.sc{display:grid;grid-template-columns:auto repeat(4,minmax(0,1fr));
-  gap:2px 8px;align-items:baseline;font-size:14px}
-.sc__h{font-size:11px;letter-spacing:.04em;text-transform:uppercase;
-  color:var(--mut);font-weight:600}
-.sc b{font-weight:600}
-.sc .r{text-align:right;font-variant-numeric:tabular-nums}
-.sc .up{color:var(--good)}
-.sc .dn{color:var(--bad)}
-.sc__s{font-size:11px;color:var(--mut)}
-/* Said against happened, as two bars on one baseline: the gap between them
-   IS the calibration error, and a number pair makes the reader subtract. */
-.cal{display:grid;grid-template-columns:auto 1fr auto;gap:4px 8px;
-  align-items:center;font-size:13px}
-.cal__t{height:8px;border-radius:4px;background:var(--inset);position:relative}
-.cal__s{position:absolute;left:0;top:0;height:8px;border-radius:4px;
-  background:var(--oursfaint)}
-.cal__a{position:absolute;top:-2px;width:2px;height:12px;
-  background:var(--ink);border-radius:1px}
+/* THE RECORD. Five columns of numbers on a 375px phone is the one table
+   shape that genuinely does not fit, so the grid sizes the label column to
+   what is left and lets the figures take what they need — and the whole
+   thing sits in its own scroller, which is the exception the layout rules
+   allow for a table. `minmax(0,auto)` rather than `auto`, or a long range
+   string pushes the row wider than its own scroller and the label clips. */
+.recwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:8px -2px 0;
+  padding:0 2px}
+.rec{display:grid;gap:3px 12px;align-items:baseline;font-size:13.5px;
+  line-height:19px;min-width:min-content}
+.rec--4{grid-template-columns:minmax(92px,1fr) repeat(3,minmax(0,auto))}
+.rec--5{grid-template-columns:minmax(84px,1fr) repeat(4,minmax(0,auto))}
+.rec__h{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--mut);font-weight:700;white-space:nowrap;
+  padding-bottom:4px;border-bottom:1px solid var(--line);margin-bottom:2px}
+.rec .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rec .up{color:var(--good)}
+.rec .dn{color:var(--bad)}
+/* The section number, set small and beside the heading rather than above
+   it: at 375px a number on its own line costs a whole row of height and
+   buys nothing a reader was looking for. */
+.rec__t{display:flex;align-items:baseline;gap:8px;margin-top:2px}
+.rec__n{font-size:11px;font-weight:700;color:var(--ours);
+  font-variant-numeric:tabular-nums}
+.rec__ttl{font-size:17px;line-height:22px;font-weight:700;margin:0}
+.rec__sub{margin-top:4px}
+.recpick{margin:10px 0 2px}
+.recnote{background:var(--inset)}
 .fig{padding:8px 12px;border-radius:12px;background:var(--inset);
   display:flex;flex-direction:column}
 .fig b{font-size:20px;line-height:24px;font-weight:700}

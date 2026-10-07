@@ -5174,158 +5174,226 @@ function v3MirrorLine(r, by, runOf, team) {
 
 // ── screen: record ──────────────────────────────────────────────────────
 //
-// HOW THE MODEL HAS DONE, AGAINST THE PRICE IT WAS OFFERED. Every figure on
-// this screen is ours minus the de-vigged book's on the same rows, because
-// "we said 57% and he scored" is not a result — a coin that says 57% about
-// favorites is right most of the time too.
+// WHAT THE MODEL HAS ACTUALLY DONE, in the words a reader already has: wins
+// and losses, how often it was right, and what a hundred dollars would have
+// come back as. Every number is computed in `season_scorecard` and looked up
+// here — the picker selects a precomputed range rather than re-adding
+// anything, so no figure on this page exists twice in two languages.
 //
-// Computed in Python (`src.evaluation.season_scorecard`) and arranged here.
-// A Brier score re-implemented in JavaScript is a second definition of the
-// project's headline metric that nothing would reconcile.
+// TWO KINDS OF EVIDENCE AND THEY ARE NEVER POOLED. The game sections come
+// from projections frozen at kickoff: a record of what was on the card. The
+// player sections are rebuilt from today's model against archived prices,
+// because nothing froze a player board before week 5. Each section says so
+// on its own face.
 
-const V3SCMKT = [['anytime_td', 'Anytime touchdown'],
-                 ['first_td', 'First touchdown']];
-
-//: Brier and log loss are LOSSES, so the edge is theirs minus ours and a
-//: positive number is the model ahead. Said here once, in the one place that
-//: colors it, rather than at each call site.
-function v3Edge(v, dp) {
-  if (!has(v)) return '<span class="r">—</span>';
-  const s = (v > 0 ? '+' : '−') + Math.abs(v).toFixed(dp == null ? 2 : dp);
-  return '<span class="r ' + (v > 0 ? 'up' : v < 0 ? 'dn' : '')
-    + '">' + s + '</span>';
+//: A record as "18 / 14", with ties only where they happened.
+function v3Rec(r) {
+  if (!r || !r.n) return '—';
+  return r.w + ' / ' + r.l + (r.push ? ' / ' + r.push : '');
+}
+function v3RecPct(r) {
+  return (!r || !has(r.pct)) ? '—' : (r.pct * 100).toFixed(1) + '%';
+}
+function v3RecBand(r) {
+  return (!r || !r.n) ? '—'
+    : (r.lo * 100).toFixed(1) + '% to ' + (r.hi * 100).toFixed(1) + '%';
+}
+function v3RecPts(n2) { return !has(n2) ? '—' : n2.toFixed(2) + ' pts'; }
+//: The book's own error, on each row's own games. The model is graded over
+//: every frozen game and the blend over the ones that have a blend, so one
+//: book figure under both rows would compare two different sets of games.
+function v3RecBook(a, b) {
+  if (!has(a)) return '—';
+  return (!has(b) || Math.abs(a - b) < 0.005)
+    ? a.toFixed(2) + ' pts'
+    : a.toFixed(2) + ' / ' + b.toFixed(2) + ' pts';
+}
+//: A count with a thousands separator, because "1030" reads as a year.
+function v3RecN(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function v3Money(x) {
+  return !has(x) ? '—'
+    : (x >= 0 ? '+$' : '−$') + Math.abs(x * 100).toFixed(2);
 }
 
-function v3ScWeeks(m) {
-  const rows = (m.weeks || []).map(w =>
-    '<span>Week ' + w.week + '</span>'
-    + '<span class="r">' + w.n + '</span>'
-    + '<span class="r">' + (has(w.brier) ? w.brier.toFixed(4) : '—') + '</span>'
-    + '<span class="r">' + (has(w.book_brier) ? w.book_brier.toFixed(4) : '—')
-    + '</span>'
-    + v3Edge(has(w.brier_edge) ? w.brier_edge * 100 : null)).join('');
-  if (!rows) return '';
-  const p = m.pooled || {};
-  return '<div class="sc">'
-    + '<span class="sc__h"></span><span class="sc__h r">Rows</span>'
-    + '<span class="sc__h r">Ours</span><span class="sc__h r">Book</span>'
-    + '<span class="sc__h r">Edge</span>'
-    + rows
-    + '<b>All ' + (m.weeks || []).length + ' weeks</b>'
-    + '<b class="r">' + (p.n || 0) + '</b>'
-    + '<b class="r">' + (has(p.brier) ? p.brier.toFixed(4) : '—') + '</b>'
-    + '<b class="r">' + (has(p.book_brier) ? p.book_brier.toFixed(4) : '—')
-    + '</b>'
-    + v3Edge(has(p.brier_edge) ? p.brier_edge * 100 : null)
-    + '</div>'
-    + '<p class="help" style="margin-top:8px">Brier score, lower is better. '
-    + '<b style="color:var(--ink)">Edge</b> is the book’s score minus '
-    + 'ours on the same rows, in hundredths of a point — above zero is '
-    + 'the model ahead.</p>';
+//: One table. `cols` are the headings; `rows` are arrays of cells already
+//: rendered. The first column carries the label and the rest are numbers.
+function v3RecTable(cols, rows) {
+  const head = cols.map((c, i) =>
+    '<span class="rec__h' + (i ? ' n' : '') + '">' + esc(c) + '</span>').join('');
+  const body = rows.map(r => r.map((c, i) =>
+    '<span' + (i ? ' class="n"' : '') + '>' + c + '</span>').join('')).join('');
+  return '<div class="recwrap"><div class="rec rec--' + cols.length + '">'
+    + head + body + '</div></div>';
 }
 
-function v3ScCal(m) {
-  const bs = (m.buckets || []).filter(b => b.n);
-  if (!bs.length) return '';
-  const top = Math.max.apply(null, bs.map(
-    b => Math.max(b.said || 0, b.actual || 0))) || 1;
-  const rows = bs.map(b => {
-    const s = Math.round(100 * (b.said || 0) / top);
-    const a = Math.round(100 * (b.actual || 0) / top);
-    return '<span>' + b.lo + '–' + b.hi + '%</span>'
-      + '<span class="cal__t"><span class="cal__s" style="width:' + s
-      + '%"></span><span class="cal__a" style="left:calc(' + a
-      + '% - 1px)"></span></span>'
-      + '<span class="sc__s">' + v3Pct(b.said, 1) + ' → '
-      + v3Pct(b.actual, 1) + (b.thin ? ' · thin' : '') + '</span>';
-  }).join('');
-  return '<div class="eyebrow" style="margin-top:14px">Said against '
-    + 'happened</div><div class="cal" style="margin-top:6px">' + rows
-    + '</div>'
-    + '<p class="help" style="margin-top:8px">The bar is what the board said, '
-    + 'the line is what happened. Bands under ' + (DATA.scorecard || {}).bucket_min
-    + ' rows are marked thin and are not evidence of anything.</p>';
+function v3RecHead(n, title, sub) {
+  return '<div class="rec__t"><span class="rec__n">' + n + '</span>'
+    + '<h2 class="rec__ttl">' + esc(title) + '</h2></div>'
+    + (sub ? '<p class="help rec__sub">' + esc(sub) + '</p>' : '');
 }
 
-function v3ScLevel(m) {
-  const g = m.per_game || {};
-  const p = m.pooled || {};
-  if (!has(g.said) || !has(g.actual)) return '';
-  const d = g.said - g.actual;
-  return '<div class="figs" style="margin-top:14px">'
-    + '<span class="fig"><b>' + g.said.toFixed(2) + '</b>'
-    + '<span>expected a game</span></span>'
-    + '<span class="fig"><b>' + g.actual.toFixed(2) + '</b>'
-    + '<span>actually scored</span></span>'
-    + '<span class="fig"><b>' + (d > 0 ? '+' : '−')
-    + Math.abs(d).toFixed(2) + '</b><span>over ' + g.games
-    + ' games</span></span></div>'
-    + '<p class="help" style="margin-top:8px">The level, which an ordering '
-    + 'score hides: a board can rank the right players and still expect more '
-    + 'of them to score than do. Ours says ' + v3Pct(p.said, 1)
-    + ' a player where ' + v3Pct(p.actual, 1) + ' happened; the book said '
-    + v3Pct(p.book_said, 1) + '.</p>';
+//: The range picker. Two selects, because a phone has room for two short
+//: dropdowns and not for eighteen chips, and because "from" and "to" is how
+//: a reader already thinks about a stretch of weeks.
+function v3RecPicker(S) {
+  const ws = S.played || [];
+  if (ws.length < 2) return '';
+  const cur = v3RecRange(S);
+  const sel = (attr, val, opts) =>
+    '<div class="picker mxsel"><select data-' + attr + ' aria-label="'
+    + (attr === 'v3scfrom' ? 'From week' : 'To week') + '">'
+    + opts.map(w => '<option value="' + w + '"' + (w === val ? ' selected' : '')
+        + '>Week ' + w + '</option>').join('')
+    + '</select></div>';
+  return '<div class="pbar__row pbar__row--two recpick">'
+    + sel('v3scfrom', cur[0], ws.filter(w => w <= cur[1]))
+    + sel('v3scto', cur[1], ws.filter(w => w >= cur[0]))
+    + '</div>';
 }
 
-function v3ScMarket(key, label, m) {
-  if (!m || !(m.weeks || []).length) {
-    return '<div class="card"><div class="eyebrow">' + esc(label) + '</div>'
-      + '<p class="lede" style="font-size:15px;margin-top:6px">No graded '
-      + 'week yet.</p></div>';
+//: Which range is showing, falling back to the payload's own default when
+//: the reader has chosen nothing or has chosen a pair that no longer exists.
+function v3RecRange(S) {
+  const ws = S.played || [];
+  if (!ws.length) return [0, 0];
+  let a = has(V.scFrom) ? V.scFrom : null;
+  let b = has(V.scTo) ? V.scTo : null;
+  if (a === null || b === null) {
+    const d = String(S.default || '').split('-');
+    a = Number(d[0]) || ws[0];
+    b = Number(d[1]) || ws[ws.length - 1];
   }
-  const src = (m.sources || []);
-  return '<div class="card"><div class="eyebrow">' + esc(label) + '</div>'
-    + v3ScWeeks(m) + v3ScLevel(m) + v3ScCal(m)
-    + (src.length
-       ? '<p class="help" style="margin-top:8px">'
-         + (src.indexOf('rebuilt') >= 0 || src.indexOf('mixed') >= 0
-            ? 'Some weeks are scored from a board rebuilt after the games '
-              + 'rather than the one that was live — nothing froze a '
-              + 'player board before week 4, and what was lost is what a '
-              + 'bookmaker was offering at the time. Prices come from the '
-              + 'odds archive either way, which is fixed.'
-            : 'Every week is scored from the board that was live before '
-              + 'kickoff.')
-         + '</p>'
-       : '');
+  if (ws.indexOf(a) < 0) a = ws[0];
+  if (ws.indexOf(b) < 0) b = ws[ws.length - 1];
+  if (a > b) b = a;
+  return [a, b];
+}
+
+function v3RecGames(g, S) {
+  if (!g || !g.n) {
+    // NOT A BLANK SECTION. A range with no frozen projection has a reason,
+    // and the reason is the interesting part.
+    const why = (S.missing || [])[0];
+    return '<div class="card"><div class="eyebrow">Game picks</div>'
+      + '<p class="lede" style="font-size:15px;margin-top:6px">No game '
+      + 'projection was recorded before these weeks’ kickoffs'
+      + (why ? ', and ' + esc(why.why) : '') + '.</p></div>';
+  }
+  const m = g.moneyline, sp = g.spread, to = g.total;
+  return '<div class="card">'
+    + v3RecHead('01', 'Picking the winning team')
+    + v3RecTable(['Pick', 'Wins / losses', 'Correct', '95% range'], [
+        ['Our pick', v3Rec(m.ours), v3RecPct(m.ours), v3RecBand(m.ours)],
+        ['Sportsbook favorite', v3Rec(m.book), v3RecPct(m.book), v3RecBand(m.book)],
+        ['Where we disagreed', v3Rec(m.disagree), v3RecPct(m.disagree),
+         v3RecBand(m.disagree)]])
+    + '<p class="help" style="margin-top:8px">Accuracy of the win chances '
+    + 'themselves: our error score ' + (has(m.brier_ours)
+        ? m.brier_ours.toFixed(4) : '—') + ', the sportsbook’s '
+    + (has(m.brier_book) ? m.brier_book.toFixed(4) : '—') + '. Lower is '
+    + 'better.</p>'
+    + '</div><div class="card">'
+    + v3RecHead('02', 'Picking the point spread',
+                'Average error is how many points the number missed the '
+                + 'final winning margin by.')
+    + v3RecTable(['Prediction', 'W / L / push', 'Correct', 'Avg error'], [
+        ['Model alone', v3Rec(sp.model), v3RecPct(sp.model), v3RecPts(sp.mae_model)],
+        ['Shown on the card', v3Rec(sp.blend), v3RecPct(sp.blend),
+         v3RecPts(sp.mae_blend)],
+        ['Sportsbook', '—', '—',
+         v3RecBook(sp.mae_book, sp.mae_book_blend)]])
+    + '</div><div class="card">'
+    + v3RecHead('03', 'Picking over or under the total',
+                'Average error is how many points the number missed the '
+                + 'combined final score by.')
+    + v3RecTable(['Prediction', 'Wins / losses', 'Correct', 'Avg error'], [
+        ['Model alone', v3Rec(to.model), v3RecPct(to.model), v3RecPts(to.mae_model)],
+        ['Shown on the card', v3Rec(to.blend), v3RecPct(to.blend),
+         v3RecPts(to.mae_blend)],
+        ['Sportsbook', '—', '—',
+         v3RecBook(to.mae_book, to.mae_book_blend)]])
+    + '<p class="help" style="margin-top:8px">The over was the pick in '
+    + to.over + ' of ' + g.n + ' games.</p></div>';
+}
+
+function v3RecPlayers(p, S) {
+  if (!p || !(p.ou || []).length) return '';
+  const rows = (p.ou || []).filter(x => x.bets).map(x => [
+    esc(x.label), v3RecN(x.bets), v3RecPct({pct: x.hit, n: x.bets}),
+    (x.be * 100).toFixed(1) + '%',
+    '<b class="' + (x.roi > 0 ? 'up' : x.roi < 0 ? 'dn' : '') + '">'
+      + v3Money(x.roi) + '</b>']);
+  const a = p.all || {};
+  if (a.bets) rows.push(['<b>All four</b>', '<b>' + v3RecN(a.bets) + '</b>',
+    '—', '—',
+    '<b class="' + (a.roi > 0 ? 'up' : a.roi < 0 ? 'dn' : '') + '">'
+      + v3Money(a.roi) + '</b>']);
+  const td = (p.td || []).map(x => esc(x.label) + ' ' + v3Pct(x.said, 1)
+    + ' said against ' + v3Pct(x.actual, 1) + ' actual (' + x.rows + ' rows)');
+  return '<div class="card">'
+    + v3RecHead('04', 'Player bets: profit per $100 staked',
+                'One bet per player, game and category — the archive '
+                + 'quotes alternate lines, and counting each as its own bet '
+                + 'turns one opinion into seventeen.')
+    + v3RecTable(['Category', 'Bets', 'Correct', 'To break even', 'Per $100'],
+                 rows)
+    + '<p class="help" style="margin-top:8px">A bet needs to land about '
+    + ((S.break_even || 0.5238) * 100).toFixed(1) + '% of the time to break '
+    + 'even at the usual price. Ranges allow for players in the same game '
+    + 'winning and losing together: '
+    + (p.ou || []).filter(x => x.bets).map(x => esc(x.label).toLowerCase()
+        + ' ' + v3Money(x.lo) + ' to ' + v3Money(x.hi)).join('; ')
+    + (a.bets ? '; all four ' + v3Money(a.lo) + ' to ' + v3Money(a.hi) : '')
+    + '.</p>'
+    + (td.length ? '<p class="help" style="margin-top:6px">Touchdowns, '
+       + 'predicted against actual: ' + td.join(' · ') + '.</p>' : '')
+    + '</div>';
 }
 
 function v3RecordPage() {
   const S = DATA.scorecard || {};
-  const mk = S.markets || {};
-  if (!Object.keys(mk).length) {
+  const ws = S.played || [];
+  if (!ws.length || !S.ranges) {
     return '<div class="wrap"><h1 class="h1">Record</h1>'
       + '<div class="card"><p class="lede" style="font-size:15px">Nothing '
       + 'graded yet this season.</p></div></div>';
   }
-  const main = mk.anytime_td || {};
-  const p = main.pooled || {};
-  // THE VERDICT IN WORDS, and it is not a flattering one. A tenth of a point
-  // of Brier over fifteen hundred rows is level, and saying "ahead" about it
-  // would be reading noise out loud.
-  const edge = has(p.brier_edge) ? p.brier_edge * 100 : null;
-  const verdict = !has(edge) ? 'Not enough graded rows to say.'
-    : Math.abs(edge) < 0.5
-      ? 'Level with the market. Over ' + p.n + ' graded rows the model and '
-        + 'the book score within half a hundredth of a point of each other, '
-        + 'which at this sample size is the same number.'
-      : edge > 0
-        ? 'Ahead of the market by ' + edge.toFixed(2) + ' hundredths of a '
-          + 'point over ' + p.n + ' rows.'
-        : 'Behind the market by ' + Math.abs(edge).toFixed(2) + ' hundredths '
-          + 'of a point over ' + p.n + ' rows.';
-  const omitted = (S.omitted || []).map(x => '<li>' + esc(x) + '</li>').join('');
-  return '<div class="wrap"><h1 class="h1">Record</h1>'
-    + '<p class="lede">' + esc(verdict) + '</p>'
-    + V3SCMKT.map(x => v3ScMarket(x[0], x[1], mk[x[0]])).join('')
-    + (omitted
-       ? '<div class="card"><details class="fold"><summary>What this page '
-         + 'leaves out</summary><ul class="help" style="margin-top:8px;'
-         + 'padding-left:18px">' + omitted + '</ul>'
-         + '<p class="help" style="margin-top:8px">Brier score and log loss '
-         + 'use every graded row, which is why they are the two that survive '
-         + 'four weeks of football.</p></details></div>'
+  const r = v3RecRange(S);
+  const block = S.ranges[r[0] + '-' + r[1]] || {};
+  const g = block.games, p = block.players;
+  const span = r[0] === r[1] ? 'Week ' + r[0] : 'Weeks ' + r[0] + '–' + r[1];
+  const gw = (S.game_weeks || []);
+  const inRange = gw.filter(w => w >= r[0] && w <= r[1]);
+  return '<div class="wrap">'
+    + '<div class="eyebrow">' + (S.season || '') + ' season · '
+    + esc(span) + '</div>'
+    + '<h1 class="h1">Our picks, by the numbers</h1>'
+    + '<p class="lede">' + (g && g.n ? g.n + ' games' : 'No frozen games')
+    + ' · wins, accuracy and profit, in plain language.</p>'
+    + v3RecPicker(S)
+    // THE PROVENANCE, ABOVE THE NUMBERS RATHER THAN UNDER THEM. A reader who
+    // reaches the tables first has already formed a view of what they mean.
+    + '<div class="card recnote">'
+    + '<div class="eyebrow">Where these come from</div>'
+    + '<p class="help" style="margin-top:6px">'
+    + (inRange.length
+       ? '<b style="color:var(--ink)">Game picks were written down before '
+         + 'kickoff</b> and are the numbers that were on the card.'
+       : '<b style="color:var(--ink)">No game picks in this range</b> were '
+         + 'recorded before kickoff.')
+    + ' <b style="color:var(--ink)">Player results were rebuilt afterwards</b> '
+    + 'with the current model against archived prices — a test of the '
+    + 'model on weeks it did not serve, not a record of bets anyone could '
+    + 'have placed.'
+    + ((S.missing || []).length
+       ? ' Week' + ((S.missing || []).length > 1 ? 's ' : ' ')
+         + (S.missing || []).map(x => x.week).join(' and ')
+         + ' have no game record: ' + esc(S.missing[0].why) + '.'
        : '')
+    + '</p></div>'
+    + v3RecGames(g, S) + v3RecPlayers(p, S)
     + '</div>';
 }
 
@@ -5981,6 +6049,17 @@ document.addEventListener('change', ev => {
     // here: the game's other angle controls keep the reader where they were,
     // and this one sits in the same bar.
     V.gaCat = t.value; V.gaOpen = null; render();
+  } else if (t.getAttribute('data-v3scfrom') != null) {
+    // A `<select>`, so `change`. Both ends are kept in order here rather
+    // than in the renderer: a reader who drags the start past the end means
+    // one week, not an empty range.
+    V.scFrom = Number(t.value);
+    if (has(V.scTo) && V.scTo < V.scFrom) V.scTo = V.scFrom;
+    V.top = 'section'; render();
+  } else if (t.getAttribute('data-v3scto') != null) {
+    V.scTo = Number(t.value);
+    if (has(V.scFrom) && V.scFrom > V.scTo) V.scFrom = V.scTo;
+    V.top = 'section'; render();
   } else if (t.getAttribute('data-v3sortsel') != null) {
     V.sort = t.value; render();
   } else if (t.getAttribute('data-v3gameto') != null) {
