@@ -3600,3 +3600,36 @@ def test_a_season_cannot_vanish_from_the_graded_history_without_saying_so():
         pl.DataFrame({"season": [2027], "game_id": ["2027_01_X_Y"]}),
         played, pl.DataFrame({"season": []}, schema={"season": pl.Int64}),
         "player_anytime_td")
+
+
+def test_every_reader_of_the_game_line_archive_filters_on_market():
+    """THE ARCHIVE STOPPED BEING ONE MARKET ON 2026-10-06.
+
+    Half and quarter lines were added to `GAME_MARKETS` so that history
+    accumulates for a game-script view — the provider sells the current
+    slate and a week that passes uncaptured cannot be bought back. They land
+    in the same parquet as the full-game three, under their own `market`
+    values.
+
+    So a reader that takes every row and calls it "the spread" now averages
+    a first-half line into a full-game one, and nothing raises: the columns
+    are identical and the number just moves. Every existing consumer already
+    filters, which is why this could be added safely; this keeps it true.
+    """
+    import re
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    offenders = []
+    for p in list((repo / "src").rglob("*.py")) + list((repo / "scripts").rglob("*.py")):
+        if p.name == "game_lines.py":
+            continue
+        src = p.read_text()
+        if "LINES_PATH" not in src and "game_lines.parquet" not in src:
+            continue
+        if not re.search(r'col\("market"\)|\["market"\]\s*==|market\s*==', src):
+            offenders.append(str(p.relative_to(repo)))
+    assert not offenders, (
+        "these read the game-line archive without filtering on `market`, so "
+        "they now mix first-half and quarter lines into the full-game ones: "
+        + ", ".join(offenders))

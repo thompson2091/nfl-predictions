@@ -34,16 +34,50 @@ import polars as pl
 
 from src.ingest.odds_history import ARCHIVE_DIR
 
-#: The three game-level markets, and the shape of each one's outcomes.
+#: The game-level markets, and the shape of each one's outcomes.
 #:
 #: `h2h` and `spreads` name a TEAM as the outcome; `totals` names Over/Under.
 #: Getting that wrong does not raise — it archives an empty market after the
 #: credits are spent — which is why it is declared here rather than inferred.
+#:
+#: **THE HALF AND QUARTER LINES WERE ADDED 2026-10-06 FOR HISTORY, NOT FOR A
+#: FEATURE.** Nothing reads them yet. A game-script view wants to condition on
+#: how a game stood at the half, and that cannot be asked of a week nobody
+#: captured — the provider sells the current slate and a week that passes
+#: uncaptured is gone. So the cost is paid now and the reading comes later.
+#:
+#: Which keys exist was PROBED against the provider rather than assumed, on
+#: 2026-10-06, because nothing in this repo documented them and a wrong key
+#: archives an empty market silently. Book coverage on one week-5 event:
+#:
+#:     h2h_h1 6 · spreads_h1 8 · totals_h1 8      <- taken
+#:     h2h_q1 7 · spreads_q1 7 · totals_q1 7      <- taken
+#:     h2h_h2 2 · spreads_h2 2 · totals_h2 2      <- left out, too thin
+#:     spreads_q2 3 · q3 3 · q4 2                 <- left out, too thin
+#:
+#: Two or three books is not a consensus, and a median across them is a
+#: number that will move for reasons that are not the market's.
+#:
+#: Cost: six more markets at two regions over ~16 events and ~17 firings a
+#: week is roughly 3,300 credits a week against a 5,000,000 monthly quota, of
+#: which October had spent 1,402 when this was added.
 GAME_MARKETS: dict[str, str] = {
     "h2h": "team",
     "spreads": "team",
     "totals": "over_under",
+    "h2h_h1": "team",
+    "spreads_h1": "team",
+    "totals_h1": "over_under",
+    "h2h_q1": "team",
+    "spreads_q1": "team",
+    "totals_q1": "over_under",
 }
+
+#: The full-game three, for anything that means "the line" and not "a line".
+#: Every existing consumer of this archive predates the half markets and
+#: filters on `market == "spreads"`, which keeps working; this names the set
+#: so a new consumer does not have to rediscover it.
+FULL_GAME_MARKETS: tuple[str, ...] = ("h2h", "spreads", "totals")
 
 #: Where the archive lives. Append-only, like the props archive: a snapshot the
 #: API has stopped serving cannot be bought back.
