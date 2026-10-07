@@ -257,3 +257,32 @@ def test_the_real_archive_still_holds_what_week_four_kicked_off_with():
         assert gid in got, f"{gid} lost its frozen projection"
         assert (got[gid]["model_spread"], got[gid]["model_total"]) \
             == (spread, total), f"{gid} is not the number it kicked off with"
+
+
+def test_a_field_added_after_the_freeze_is_absent_not_recomputed():
+    """Weeks 3 and 4 of 2026 were frozen before `model_total_centered` and
+    `blend.win_home` existed. A rebuild computes both for every card, and on a
+    started game that is a number the board never showed — so it is dropped,
+    and the page shows nothing rather than today's figure."""
+    PF.load(2026)["3"] = {"ATL_GB": {k: v for k, v in card().items()
+                                     if k in PF.FIELDS}}
+    cards = {"ATL_GB": card(final_home=14, final_away=35,
+                            model_total_centered=41.2,
+                            blend={"spread": -4.8, "total": 47.0,
+                                   "win_home": 0.66})}
+    PF.settle(cards, 2026, 3)
+    c = cards["ATL_GB"]
+    assert "model_total_centered" not in c
+    assert c["blend"] == {"spread": -5.1, "total": 45.0}
+    assert not PF._DIRTY, "serving a frozen game must not rewrite it"
+
+
+def test_the_new_fields_are_frozen_for_games_not_yet_played():
+    assert "model_total_centered" in PF.FIELDS
+    cards = {"ATL_GB": card(model_total_centered=41.2,
+                            blend={"spread": -5.1, "total": 45.0,
+                                   "win_home": 0.66, "total_centered": 44.1})}
+    PF.settle(cards, 2026, 5)
+    kept = PF.load(2026)["5"]["ATL_GB"]
+    assert kept["model_total_centered"] == 41.2
+    assert kept["blend"]["win_home"] == 0.66

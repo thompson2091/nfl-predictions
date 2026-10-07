@@ -32,6 +32,7 @@ season and that is half a minute the export should not spend every build.
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import polars as pl
@@ -68,7 +69,10 @@ def fit(refit: bool = False) -> dict:
     if not refit and CACHE.exists():
         try:
             got = json.loads(CACHE.read_text())
-            if got.get("n", 0) >= MIN_GAMES:
+            # A cache from before the centering fit existed is refitted
+            # rather than served without it, or the centered total would be
+            # silently absent on every card until somebody passed `refit`.
+            if got.get("n", 0) >= MIN_GAMES and "center" in got:
                 return got
         except json.JSONDecodeError:
             pass
@@ -91,9 +95,129 @@ def fit(refit: bool = False) -> dict:
                      "market_mae": round(base, 3),
                      "gain": round(base - e, 4),
                      "oos_gain": round(_oos(d, mc, kc, ac), 4)}
+    center = fit_center(d)
+    if center:
+        out["center"] = center
+    out["fit_date"] = date.today().isoformat()
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     CACHE.write_text(json.dumps(out, indent=1))
     return out
+
+
+# ── the total's level, removed and nothing else ──────────────────────────
+#
+# **THE MODEL'S TOTAL IS RIGHT ABOUT ORDER AND WRONG ABOUT LEVEL.** Walk-forward
+# by season, the vegas-blind total sits anywhere from 1.2 points under the
+# closing line (2020) to 2.7 over it (2022), and in a season that runs high it
+# calls the over on two games in three. That is not an opinion about any one
+# game; it is the league scoring a different amount from the seasons the model
+# learned on. Game to game it still orders well — 52.9 to 54.3% against the
+# close in six of seven seasons.
+#
+# So the week's average gap between our totals and the book's is taken out and
+# the disagreement about each game is kept. The slate is the right unit: every
+# total on it is posted before the first kickoff, and nothing about a result
+# reaches it. How much of the gap to take out is FITTED — `c` swept like the
+# blend weight, chosen on earlier seasons and scored on the next. Measured
+# 2026-10-06 over 1,679 walk-forward games, 2020-2026:
+#
+#     raw       MAE 10.848   over/under 52.44%   over picked 59.4%
+#     centered  MAE 10.734   over/under 53.70%   over picked 51.6%
+#     paired MAE -0.114 +/- 0.039, paired hit +1.26pp +/- 0.74
+#
+# The season-to-date gap was the other candidate and lost to the slate on
+# every line of that table. **The raw total stays the model's number** — this
+# is an extra figure beside it, never a replacement.
+
+
+def _slate_gap(d: pl.DataFrame) -> pl.DataFrame:
+    return d.with_columns(
+        (pl.col("total_model") - pl.col("total_market"))
+        .mean().over(["season", "week"]).alias("_gap"))
+
+
+def _sweep_c(model, gap, actual) -> tuple[float, float]:
+    """The share of the slate gap to remove that minimises absolute error."""
+    best_c, best_e = 0.0, float(abs(model - actual).mean())
+    for i in range(STEPS + 1):
+        c = i / STEPS
+        e = float(abs(model - c * gap - actual).mean())
+        if e < best_e:
+            best_c, best_e = c, e
+    return best_c, best_e
+
+
+def fit_center(d: pl.DataFrame) -> dict:
+    """`c`, the blend weight on the centered total, and what both buy.
+
+    Every figure is out of sample except `c` and `w` themselves, which are
+    fitted on everything because they are what gets served.
+    """
+    if d.height < MIN_GAMES:
+        return {}
+    d = _slate_gap(d)
+    m, g, k, a = (d[x].to_numpy() for x in
+                  ("total_model", "_gap", "total_market", "total_actual"))
+    c, _ = _sweep_c(m, g, a)
+    cen = m - c * g
+    w, e, base = _sweep(cen, k, a)
+
+    # Out of sample: c chosen on earlier seasons, scored on the next.
+    raw_e = cen_e = 0.0
+    hits_raw = hits_cen = n_ou = n = 0
+    for s in sorted(d["season"].unique())[1:]:
+        tr = d.filter(pl.col("season") < s)
+        te = d.filter(pl.col("season") == s)
+        if tr.height < 200 or te.is_empty():
+            continue
+        cs, _ = _sweep_c(tr["total_model"].to_numpy(), tr["_gap"].to_numpy(),
+                         tr["total_actual"].to_numpy())
+        tm, tg = te["total_model"].to_numpy(), te["_gap"].to_numpy()
+        tk, ta = te["total_market"].to_numpy(), te["total_actual"].to_numpy()
+        tc = tm - cs * tg
+        raw_e += float(abs(tm - ta).sum())
+        cen_e += float(abs(tc - ta).sum())
+        n += te.height
+        res = ta - tk
+        for p_raw, p_cen, r, kk in zip(tm, tc, res, tk):
+            if r == 0 or p_raw == kk or p_cen == kk:
+                continue
+            n_ou += 1
+            hits_raw += (p_raw > kk) == (r > 0)
+            hits_cen += (p_cen > kk) == (r > 0)
+    if not n:
+        return {}
+    return {
+        "c": round(c, 3), "w": round(w, 3), "mae": round(e, 3),
+        "market_mae": round(base, 3), "gain": round(base - e, 4),
+        "oos": {"n": n, "raw_mae": round(raw_e / n, 3),
+                "centered_mae": round(cen_e / n, 3),
+                "n_ou": n_ou,
+                "raw_ou_hit": round(hits_raw / n_ou, 4) if n_ou else None,
+                "centered_ou_hit": round(hits_cen / n_ou, 4) if n_ou else None},
+        "seasons_used": sorted(int(x) for x in d["season"].unique()),
+        "n_rows": d.height,
+    }
+
+
+def center_cards(cards: dict, weights: dict) -> None:
+    """`model_total_centered` on every card of one week, from that week's gap.
+
+    `cards` must be ONE slate: the gap is the mean over it, so mixing weeks
+    would center each on the other's level. Cards missing either total are
+    left alone and do not enter the mean.
+    """
+    cen = (weights or {}).get("center") or {}
+    if "c" not in cen:
+        return
+    both = [c for c in cards.values()
+            if c.get("model_total") is not None and c.get("total") is not None]
+    if not both:
+        return
+    gap = sum(float(c["model_total"]) - float(c["total"]) for c in both) / len(both)
+    for c in both:
+        c["model_total_centered"] = round(float(c["model_total"])
+                                          - cen["c"] * gap, 1)
 
 
 def _oos(d: pl.DataFrame, mc: str, kc: str, ac: str) -> float:
@@ -136,4 +260,30 @@ def blend_card(card: dict, weights: dict) -> dict | None:
     if tot is not None and mtot is not None and "total" in weights:
         w = weights["total"]["w"]
         out["total"] = round(w * float(mtot) + (1 - w) * float(tot), 1)
+    ctot, cen = card.get("model_total_centered"), weights.get("center") or {}
+    if tot is not None and ctot is not None and "w" in cen:
+        out["total_centered"] = round(cen["w"] * float(ctot)
+                                      + (1 - cen["w"]) * float(tot), 1)
     return out or None
+
+
+def blend_win(blend: dict | None, curve: dict | None) -> float | None:
+    """P(home wins) at the blended spread — ONE definition, computed here.
+
+    The page used to interpolate this itself, between the book's win
+    probability and ours by the fraction the spread moved. Measured 2026-10-06
+    on 1,674 walk-forward games the two agree to the third decimal (Brier
+    0.2109 here, 0.2114 interpolated, the de-vigged moneyline 0.2109, the raw
+    model 0.2414), so the choice is about having one number, not a better
+    one. The curve is the same `score_dist.win_curve` the raw model's win
+    probability comes from, so the two are on one scale.
+
+    Signed the card's way: a negative spread means HOME is favored, and the
+    curve takes the schedule's opposite convention.
+    """
+    from src.models.score_dist import win_prob
+
+    if not blend or blend.get("spread") is None or not curve:
+        return None
+    got = win_prob(-float(blend["spread"]), curve)
+    return None if got is None else round(got, 4)

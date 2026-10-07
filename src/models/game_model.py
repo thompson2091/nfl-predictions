@@ -31,6 +31,19 @@ AVERAGE in that game. The model had learned to read "this column is absent" as
 `leaky_columns` is that screen, and it is measured within team and season so
 that team quality cannot masquerade as the effect. Anything whose absence
 predicts underperformance in the same game is dropped.
+
+**THE MATCHUP DIFFERENTIALS WERE TRIED AND ARE NOT IN IT.** 2026-10-06: the
+`matchup_stats` rates — early-down success, red zone, explosives, EPA, sack and
+hit rates, pace, two-minute and late-half scoring — season-to-date as of each
+game, for both sides and as offense-minus-defense gaps, 72 columns, none
+flagged by the screen. Walk-forward over 1,935 games, paired:
+
+    margin MAE  10.772 -> 10.671   -0.101 +/- 0.087   worse in 2023, 2025, 2026
+    total  MAE  10.896 -> 11.005   +0.109 +/- 0.082
+
+A margin gain at 1.2 standard errors carried by one season (2020, -0.72) and a
+total that gets worse is not a family to add. The rolling `team_*`/`opp_*`
+columns already carry most of what these say.
 """
 from __future__ import annotations
 

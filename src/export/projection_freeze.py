@@ -48,7 +48,7 @@ from pathlib import Path
 #: here: they come from the odds archive, which is already fixed.
 FIELDS: tuple[str, ...] = (
     "model_spread", "model_total", "model_home", "model_away",
-    "model_win_home", "model_win_n", "blend",
+    "model_win_home", "model_win_n", "blend", "model_total_centered",
 )
 
 ROOT = Path(__file__).resolve().parents[2] / "archive" / "projections"
@@ -140,7 +140,13 @@ def settle(cards: dict, season: int | None, week: int | None,
             kept = wk.get(gid)
             if kept:
                 for f in FIELDS:
-                    if f in kept:
+                    if f not in kept:
+                        # A field the snapshot does not hold was computed
+                        # TODAY, and on a started game that is a number the
+                        # board never showed. Weeks frozen before a field
+                        # existed show it as absent, not recomputed.
+                        c.pop(f, None)
+                    else:
                         # DEEP COPY, because `blend` is a dict: assigned by
                         # reference, a later in-place edit of the card writes
                         # through into `_CACHE`, which then differs from the

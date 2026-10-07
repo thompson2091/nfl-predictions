@@ -1345,16 +1345,25 @@ def _attach_blend(cards: dict) -> None:
     so rather than implying an edge that is three hundredths of a point.
     """
     try:
-        from src.models.game_blend import blend_card, fit
+        from src.models.game_blend import (blend_card, blend_win,
+                                           center_cards, fit)
+        from src.models.score_dist import win_curve
         w = fit()
+        curve = win_curve()
     except Exception as e:                                       # noqa: BLE001
         print(f"  game blend unavailable ({e})", file=sys.stderr)
         return
     if not w:
         return
+    # The total with the slate's level taken out, BEFORE the blend, which
+    # reads it. `cards` is one week, which is the unit the gap is fitted on.
+    center_cards(cards, w)
     for c in cards.values():
         got = blend_card(c, w)
         if got:
+            win = blend_win(got, curve)
+            if win is not None:
+                got["win_home"] = win
             c["blend"] = got
     cards_weights = {k: w[k] for k in ("margin", "total") if k in w}
     for c in cards.values():
