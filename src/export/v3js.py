@@ -1466,7 +1466,14 @@ function v3Explainer() {
 // `game_blend` fits a weight on the SPREAD; the win probability has to move
 // by the same fraction, or the adjusted number on the list and the adjusted
 // bar on the game page are two different quantities with one name.
+//
+// `blend.win_home` is that number computed once in Python
+// (`game_blend.blend_win`) and is preferred whenever the card carries it.
+// Weeks frozen before it existed do not, and fall through to the
+// interpolation below, which reads only frozen fields and the book's own
+// price, so it is a derivation of what the card showed, not a recompute.
 function v3AdjWin(c) {
+  if (c && c.blend && has(c.blend.win_home)) return c.blend.win_home;
   if (!c || !c.blend || !has(c.blend.spread) || !has(c.spread)
       || !has(c.model_spread) || !has(c.win_home) || !has(c.model_win_home))
     return null;
@@ -5288,12 +5295,22 @@ function v3RecGames(g, S) {
         ['Our pick', v3Rec(m.ours), v3RecPct(m.ours), v3RecBand(m.ours)],
         ['Sportsbook favorite', v3Rec(m.book), v3RecPct(m.book), v3RecBand(m.book)],
         ['Where we disagreed', v3Rec(m.disagree), v3RecPct(m.disagree),
-         v3RecBand(m.disagree)]])
+         v3RecBand(m.disagree)],
+        // Recorded from week 5. Earlier frozen games never held it, so the
+        // row reads "—" for them rather than a number computed today.
+        ['Blended win chance', v3Rec(m.blend), v3RecPct(m.blend),
+         v3RecBand(m.blend)]])
     + '<p class="help" style="margin-top:8px">Accuracy of the win chances '
     + 'themselves: our error score ' + (has(m.brier_ours)
         ? m.brier_ours.toFixed(4) : '—') + ', the sportsbook’s '
     + (has(m.brier_book) ? m.brier_book.toFixed(4) : '—') + '. Lower is '
-    + 'better.</p>'
+    + 'better.'
+    + (has(m.brier_blend)
+       ? ' Blended: ' + m.brier_blend.toFixed(4) + ' against the sportsbook’s '
+         + m.brier_book_blend.toFixed(4) + ' on the same ' + m.blend.n
+         + ' games.'
+       : ' The blended win chance is recorded from week 5.')
+    + '</p>'
     + '</div><div class="card">'
     + v3RecHead('02', 'Picking the point spread',
                 'Average error is how many points the number missed the '
@@ -5312,10 +5329,22 @@ function v3RecGames(g, S) {
         ['Model alone', v3Rec(to.model), v3RecPct(to.model), v3RecPts(to.mae_model)],
         ['Shown on the card', v3Rec(to.blend), v3RecPct(to.blend),
          v3RecPts(to.mae_blend)],
+        // The model with its weekly scoring level removed. Recorded from
+        // week 5; "—" before that, never recomputed.
+        ['Model, level removed', v3Rec(to.centered), v3RecPct(to.centered),
+         v3RecPts(to.mae_centered)],
+        ['Card, level removed', v3Rec(to.blend_centered),
+         v3RecPct(to.blend_centered), v3RecPts(to.mae_blend_centered)],
         ['Sportsbook', '—', '—',
          v3RecBook(to.mae_book, to.mae_book_blend)]])
     + '<p class="help" style="margin-top:8px">The over was the pick in '
-    + to.over + ' of ' + g.n + ' games.</p></div>';
+    + to.over + ' of ' + g.n + ' games'
+    + (to.centered && to.centered.n
+       ? ', and in ' + to.over_centered + ' of ' + to.centered.n
+         + ' once the level is removed'
+       : '')
+    + '. Removing the level keeps which games the model rates high or low '
+    + 'and drops how high it rates the week as a whole.</p></div>';
 }
 
 function v3RecPlayers(p, S) {
@@ -5331,7 +5360,22 @@ function v3RecPlayers(p, S) {
     '<b class="' + (a.roi > 0 ? 'up' : a.roi < 0 ? 'dn' : '') + '">'
       + v3Money(a.roi) + '</b>']);
   const td = (p.td || []).map(x => esc(x.label) + ' ' + v3Pct(x.said, 1)
-    + ' said against ' + v3Pct(x.actual, 1) + ' actual (' + x.rows + ' rows)');
+    + ' said'
+    + (has(x.said_model) && Math.abs(x.said_model - x.said) >= 0.0005
+       ? ' (model alone ' + v3Pct(x.said_model, 1) + ')' : '')
+    + ' against ' + v3Pct(x.actual, 1) + ' actual (' + x.rows + ' rows)');
+  // THE PRE-REGISTERED EDGE RULE. A bet only where the blended number beats
+  // the de-vigged price by the fitted threshold, at the price of that side.
+  const edge = (p.edge || []).filter(x => x.bets).map(x => [
+    esc(x.label), v3RecN(x.bets), v3RecPct({pct: x.hit, n: x.bets}),
+    (x.be * 100).toFixed(1) + '%',
+    '<b class="' + (x.roi > 0 ? 'up' : x.roi < 0 ? 'dn' : '') + '">'
+      + v3Money(x.roi) + '</b>']);
+  const ea = p.edge_all || {};
+  if (ea.bets) edge.push(['<b>All four</b>', '<b>' + v3RecN(ea.bets) + '</b>',
+    '—', '—',
+    '<b class="' + (ea.roi > 0 ? 'up' : ea.roi < 0 ? 'dn' : '') + '">'
+      + v3Money(ea.roi) + '</b>']);
   return '<div class="card">'
     + v3RecHead('04', 'Player bets: profit per $100 staked',
                 'One bet per player, game and category — the archive '
@@ -5347,9 +5391,29 @@ function v3RecPlayers(p, S) {
         + ' ' + v3Money(x.lo) + ' to ' + v3Money(x.hi)).join('; ')
     + (a.bets ? '; all four ' + v3Money(a.lo) + ' to ' + v3Money(a.hi) : '')
     + '.</p>'
+    + '<p class="help" style="margin-top:6px">Settled the way a book '
+    + 'settles: an under is paid at the under’s own price, a player who '
+    + 'did not play is void, and one who played and recorded nothing is '
+    + 'graded at zero.</p>'
     + (td.length ? '<p class="help" style="margin-top:6px">Touchdowns, '
        + 'predicted against actual: ' + td.join(' · ') + '.</p>' : '')
-    + '</div>';
+    + '</div>'
+    + (edge.length
+       ? '<div class="card">'
+         + v3RecHead('05', 'Only where our edge cleared the bar',
+                     'A bet only where the blended number beats the '
+                     + 'sportsbook’s fair price by a threshold fitted on '
+                     + 'earlier seasons, at the price of the side taken.')
+         + v3RecTable(['Category', 'Bets', 'Correct', 'To break even',
+                       'Per $100'], edge)
+         + '<p class="help" style="margin-top:8px">Ranges: '
+         + (p.edge || []).filter(x => x.bets).map(x =>
+             esc(x.label).toLowerCase() + ' ' + v3Money(x.lo) + ' to '
+             + v3Money(x.hi)).join('; ')
+         + (ea.bets ? '; all four ' + v3Money(ea.lo) + ' to ' + v3Money(ea.hi)
+                    : '')
+         + '.</p></div>'
+       : '');
 }
 
 function v3RecordPage() {

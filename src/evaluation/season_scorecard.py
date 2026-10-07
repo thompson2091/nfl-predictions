@@ -173,6 +173,12 @@ def game_rows(season: int) -> list[dict]:
                 "model_win": snap.get("model_win_home"),
                 "blend_spread": (snap.get("blend") or {}).get("spread"),
                 "blend_total": (snap.get("blend") or {}).get("total"),
+                # Frozen only from week 5 on. Older snapshots lack them and
+                # the rows below read None as "not recorded", never recompute.
+                "blend_win": (snap.get("blend") or {}).get("win_home"),
+                "model_total_centered": snap.get("model_total_centered"),
+                "blend_total_centered":
+                    (snap.get("blend") or {}).get("total_centered"),
             })
     return out
 
@@ -225,6 +231,15 @@ def games_block(rows: list[dict]) -> dict | None:
     brier = lambda k: (sum((r[k] - (1 if r["margin"] > 0 else 0)) ** 2
                            for r in ml_rows) / len(ml_rows)) if ml_rows else None
 
+    # The blended win chance is frozen only from week 5, so it is scored on
+    # its own rows, with the book beside it on exactly those games. Sharing
+    # `ml_rows` would compare it against a book record over different games.
+    bl_rows = [r for r in ml_rows if r.get("blend_win") is not None]
+    bw = sum(1 for r in bl_rows if (r["blend_win"] > 0.5) == (r["margin"] > 0))
+    blo, bhi = _wilson(bw, len(bl_rows))
+    brier_on = lambda k: (sum((r[k] - (1 if r["margin"] > 0 else 0)) ** 2
+                              for r in bl_rows) / len(bl_rows)) if bl_rows else None
+
     # Spread: a home-signed number against a home-signed line, so the side
     # picked is whichever way the two disagree. `-margin` is the result in
     # the same frame as the line.
@@ -249,6 +264,20 @@ def games_block(rows: list[dict]) -> dict | None:
                                "book_total", "total_actual"),
         "over": sum(1 for r in rows if r.get("model_total") is not None
                     and r["model_total"] > r["book_total"]),
+        # The model with its weekly level removed (`game_blend`), beside the
+        # raw one rather than instead of it.
+        "centered": _side_record(rows, "model_total_centered", "book_total",
+                                 "total_actual"),
+        "blend_centered": _side_record(rows, "blend_total_centered",
+                                       "book_total", "total_actual"),
+        "mae_centered": _mae(rows, "model_total_centered", "total_actual"),
+        "mae_blend_centered": _mae(rows, "blend_total_centered", "total_actual"),
+        "mae_book_centered": _mae(
+            [r for r in rows if r.get("model_total_centered") is not None],
+            "book_total", "total_actual"),
+        "over_centered": sum(1 for r in rows
+                             if r.get("model_total_centered") is not None
+                             and r["model_total_centered"] > r["book_total"]),
     }
     return {
         "n": n, "weeks": sorted({r["week"] for r in rows}),
@@ -258,6 +287,11 @@ def games_block(rows: list[dict]) -> dict | None:
                          "pct": (dw / len(dis)) if dis else None,
                          "lo": dlo, "hi": dhi},
             "brier_ours": brier("model_win"), "brier_book": brier("book_win"),
+            "blend": {"w": bw, "l": len(bl_rows) - bw, "n": len(bl_rows),
+                      "pct": (bw / len(bl_rows)) if bl_rows else None,
+                      "lo": blo, "hi": bhi},
+            "brier_blend": brier_on("blend_win"),
+            "brier_book_blend": brier_on("book_win"),
         },
         "spread": spread, "total": total,
     }
@@ -267,15 +301,26 @@ def games_block(rows: list[dict]) -> dict | None:
 
 def ou_rows(season: int, weeks) -> dict:
     """One bet per player-game per market, for each week. Cached by caller."""
+    from src.evaluation.prop_edge import qualifying
+    from src.evaluation.prop_settlement import (participation, settle_rows,
+                                                side_prices)
     from src.evaluation.week_history import ou_week
 
+    # SETTLED THE WAY A BOOK SETTLES. `ou_week` carries one price, the
+    # over's, so an under used to be paid at the over's number; and a man
+    # who played and recorded nothing had no stat row and dropped out, which
+    # was usually a winning under. Over weeks 3-4 of 2026 the two together
+    # showed +$0.23 per $100 where book settlement gives -$6.47. A man who
+    # did not play is void.
+    prices, played = side_prices(season), participation(season)
     out: dict = {}
     for mk, _ in OU_MARKETS:
         for wk in weeks:
             try:
-                got = ou_week(season, wk, mk) or []
+                raw = ou_week(season, wk, mk) or []
+                got = settle_rows(season, mk, raw, prices=prices, played=played)
             except Exception:                                    # noqa: BLE001
-                got = []
+                raw, got = [], []
             per: dict = defaultdict(list)
             for r in got:
                 if r.get("won") is None or r.get("odds") is None:
@@ -287,6 +332,13 @@ def ou_rows(season: int, weeks) -> dict:
                 keep.append(min(rs, key=lambda x: (abs(x["line"] - med),
                                                    -abs(x.get("edge") or 0))))
             out[(mk, wk)] = keep
+            # The pre-registered edge rule (`prop_edge`): only the bets whose
+            # blended edge clears the fitted threshold, at the side's own price.
+            try:
+                out[("edge", mk, wk)] = [r for r in qualifying(season, mk, raw)
+                                         if r.get("won") is not None]
+            except Exception:                                    # noqa: BLE001
+                out[("edge", mk, wk)] = []
     return out
 
 
@@ -309,6 +361,24 @@ def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
                    "be": st.mean([_implied(r["odds"]) for r in rows]),
                    "roi": roi, "lo": lo, "hi": hi})
     roi, lo, hi = _cluster_ci(grand)
+    edge, egrand = [], defaultdict(list)
+    for mk, label in OU_MARKETS:
+        rows = [r for wk in weeks for r in cache.get(("edge", mk, wk), [])]
+        if not rows:
+            edge.append({"key": mk, "label": label, "bets": 0})
+            continue
+        by_game = defaultdict(list)
+        for r in rows:
+            ret = _payout(r["price"]) if r["won"] else -1.0
+            by_game[r["game_id"]].append(ret)
+            egrand[r["game_id"]].append(ret)
+        eroi, elo, ehi = _cluster_ci(by_game)
+        edge.append({"key": mk, "label": label, "bets": len(rows),
+                     "hit": sum(1 for r in rows if r["won"]) / len(rows),
+                     "be": st.mean([_implied(r["price"]) for r in rows]),
+                     "threshold_pp": rows[0].get("threshold_pp"),
+                     "roi": eroi, "lo": elo, "hi": ehi})
+    eroi, elo, ehi = _cluster_ci(egrand)
     td = []
     for mk, label in TD_MARKETS:
         got = [td_by_week[(mk, w)] for w in weeks if td_by_week.get((mk, w))]
@@ -317,12 +387,19 @@ def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
         n = sum(x["n"] for x in got)
         if not n:
             continue
+        sm = ([x for x in got if x.get("said_model") is not None]
+              if all(x.get("said_model") is not None for x in got) else [])
         td.append({"key": mk, "label": label, "rows": n,
                    "said": sum(x["said"] * x["n"] for x in got) / n,
+                   "said_model": (sum(x["said_model"] * x["n"] for x in sm) / n
+                                  if sm else None),
                    "actual": sum(x["actual"] * x["n"] for x in got) / n})
     return {"weeks": sorted(weeks), "ou": ou, "td": td,
             "all": {"bets": sum(len(v) for v in grand.values()),
-                    "roi": roi, "lo": lo, "hi": hi}}
+                    "roi": roi, "lo": lo, "hi": hi},
+            "edge": edge,
+            "edge_all": {"bets": sum(len(v) for v in egrand.values()),
+                         "roi": eroi, "lo": elo, "hi": ehi}}
 
 
 def _td_week(season: int, week: int, market: str) -> dict | None:
@@ -338,7 +415,15 @@ def _td_week(season: int, week: int, market: str) -> dict | None:
                  & pl.col("probability").is_not_null())
     if d.is_empty():
         return None
+    # `probability` is the served number, which becomes the market blend on
+    # any week served with one (first TD, behind `use_market_blend`). The
+    # raw model is kept beside it, so the row never turns into the blend
+    # without saying so.
+    said_model = (float(d["prob_model"].mean())
+                  if "prob_model" in d.columns
+                  and d["prob_model"].null_count() == 0 else None)
     return {"n": d.height, "said": float(d["probability"].mean()),
+            "said_model": said_model,
             "actual": float(d["scored"].mean())}
 
 

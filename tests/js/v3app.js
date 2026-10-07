@@ -2512,6 +2512,42 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('and what a bet has to land to break even',
      h.indexOf('break even at the usual price') >= 0);
 
+  // THE ADDED ROWS SIT BESIDE THE RAW ONES. Weeks 3-4 were frozen before
+  // the blended win chance and the level-removed total existed, so they read
+  // "—" there and are never recomputed.
+  ok('the blended win chance is a row of its own, beside our pick',
+     h.indexOf('Blended win chance') > h.indexOf('Our pick'));
+  ok('and before week 5 it says when it starts rather than inventing one',
+     h.indexOf('recorded from week 5') >= 0);
+  ok('the level-removed total sits beside the raw model',
+     h.indexOf('Model, level removed') > h.indexOf('Model alone'));
+  ok('the player bets say how they are settled',
+     h.indexOf('paid at the under’s own price') >= 0
+     && h.indexOf('did not play is void') >= 0);
+  ok('the edge rule has its own section after every player bet',
+     h.indexOf('Only where our edge cleared the bar')
+       > h.indexOf('Player bets: profit per $100 staked'));
+  {
+    const key = DATA.scorecard.default;
+    const blk = DATA.scorecard.ranges[key];
+    const was = JSON.stringify(blk.games);
+    blk.games.moneyline.blend = {w: 9, l: 7, n: 16, pct: 0.5625,
+                                 lo: 0.33, hi: 0.77};
+    blk.games.moneyline.brier_blend = 0.2101;
+    blk.games.moneyline.brier_book_blend = 0.2109;
+    blk.games.total.centered = {w: 9, l: 7, push: 0, n: 16, pct: 0.5625,
+                                lo: 0.33, hi: 0.77};
+    blk.games.total.mae_centered = 9.87;
+    blk.games.total.over_centered = 8;
+    const withB = v3RecordPage();
+    ok('once recorded, the blended error score is shown against the book '
+       + 'on the same games', withB.indexOf('Blended: 0.2101') >= 0
+       && withB.indexOf('0.2109 on the same 16 games') >= 0);
+    ok('and the level-removed over count is reported beside the raw one',
+       withB.indexOf('8 of 16 once the level is removed') >= 0);
+    blk.games = JSON.parse(was);
+  }
+
   const wasS = DATA.scorecard;
   DATA.scorecard = {};
   ok('an empty scorecard says so rather than rendering nothing',
