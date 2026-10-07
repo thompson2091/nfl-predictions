@@ -545,8 +545,14 @@ def _streak_flags(full: dict, season, week) -> dict:
     """
     from src.evaluation import streaks as ST
 
+    # RAISED, NOT SKIPPED. Returning an empty map here is indistinguishable
+    # from "nobody is on a streak", which is a legitimate answer — so the
+    # board's filter went silently empty on a live deploy and the page had no
+    # way to know the difference. There is no case where this runs without a
+    # week to be as-of.
     if not season or not week:
-        return {}
+        raise ValueError("streak flags need the season and week they are "
+                         f"as of; got {season!r} and {week!r}")
     by_market: dict = {}
     for player, per in full.items():
         for mk, rows in per.items():
@@ -559,10 +565,13 @@ def _streak_flags(full: dict, season, week) -> dict:
         if got:
             out.setdefault(mk, {})[player] = [got["dir"], got["ran"],
                                               got["of"]]
+    print("  streaks: " + (", ".join(f"{mk} {len(v)}"
+                                     for mk, v in sorted(out.items()))
+                           or "nobody flagged"))
     return out
 
 
-def _history_block(payload: dict) -> None:
+def _history_block(payload: dict, season=None, week=None) -> None:
     """What each player's line has done before.
 
     NOT A PATTERN BOARD, and `player_history` says at length why not. This is
@@ -607,8 +616,7 @@ def _history_block(payload: dict) -> None:
             # parity with the JavaScript was measured on the live payload of
             # 2026-10-07 across all six markets: 277 flagged players,
             # identical sets and directions, identical baselines.
-            "streaks": _streak_flags(full, payload.get("season"),
-                                     payload.get("week")),
+            "streaks": _streak_flags(full, season, week),
             # SHIPPED SO THE PAGE'S PROSE CANNOT LIE. The page says "one way
             # in 4 of their last 5 weeks", and once the rule left the
             # JavaScript those two numbers existed in two places — change
@@ -2163,7 +2171,13 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     _angles_block(payload, s, w)
     # AFTER the history block, because both read `week_board` and the second
     # one wants the freeze already settled for the week.
-    _history_block(payload)
+    #
+    # `s` and `w` ARE PASSED, not read back off the payload. They are written
+    # onto it twenty lines below this, so `payload.get("season")` here is
+    # None — which is how the streak flags shipped empty on 20261007.v3 with
+    # nothing failing. Every other block on this list already took them as
+    # arguments for the same reason.
+    _history_block(payload, s, w)
     _scorecard_block(payload, s)
     _team_form_block(payload, s, w)
     _team_lines_block(payload, s, w)

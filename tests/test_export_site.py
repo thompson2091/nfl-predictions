@@ -328,3 +328,50 @@ def test_a_week_with_no_usable_close_is_priced_off_its_open():
     i_ends = text.index("stale_close, gap_h = _line_ends(season, week)")
     i_board = text.index("b = board(season, week, snapshot=priced_from)")
     assert i_ends < i_board, "which end to price off is decided too late"
+
+
+def _se():
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "se", Path(__file__).resolve().parents[1] / "scripts/47_export_site.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_streak_flags_refuse_to_be_empty_for_the_wrong_reason():
+    """An empty map and "nobody is on a streak" are the same answer.
+
+    They are not the same thing, and that is how this shipped broken.
+    `_history_block` ran BEFORE `payload["season"]` and `payload["week"]`
+    were written, so reading them back off the payload gave None, the flags
+    came back `{}`, and 20261007.v3 went live with the board's Streaks
+    filter silently showing nobody. Nothing failed, because an empty answer
+    is a legal one.
+
+    There is no case where this runs without a week to be as-of, so it
+    raises.
+    """
+    import pytest
+
+    se = _se()
+    for season, week in ((None, 5), (2026, None), (None, None)):
+        with pytest.raises(ValueError):
+            se._streak_flags({}, season, week)
+
+
+def test_the_history_block_is_given_the_week_it_is_as_of():
+    """The call site, because that is where the bug was.
+
+    Every other block on that list already takes `s` and `w` as arguments;
+    this one read them off a payload they had not been written to yet.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1]
+           / "scripts/47_export_site.py").read_text()
+    assert "_history_block(payload, s, w)" in src, (
+        "the history block must be handed the season and week, not left to "
+        "read them off a payload they are written to later")
