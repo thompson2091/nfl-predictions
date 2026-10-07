@@ -623,8 +623,19 @@ first_td:
   # Gated out of sample 2026-10-06 on -log p(first scorer): fit on earlier
   # seasons, scored on the next, the blend beat both the model and the book
   # in 2024 and 2025 and beat the model in 2026 weeks 1-4, where it trailed
-  # the book by 0.026 +/- 0.031 over 61 games. Off until promoted.
-  use_market_blend: false
+  # the book by 0.026 +/- 0.031 over 61 games.
+  #
+  # ON, approved by Matt 2026-10-06, locked and promoted as
+  # 2026.10.06-first-td-market-blend. The case for it is not the gate alone:
+  # first TD's level was already right (3.8% said against 4.0% actual) and
+  # the book simply ordered better, AUC 0.7636 against our 0.7307 over 1,517
+  # rows — see `nfl-predictions-first-td-has-no-edge`. This is the one TD
+  # market that had no blend, and it was the one that needed it.
+  #
+  # `prob_model` keeps the model's own number beside the served one, so the
+  # raw model stays readable and the Record page prints "model alone" when
+  # the two differ.
+  use_market_blend: true
 
 # App-only settings. Nothing here reaches the model.
 app:
