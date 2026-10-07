@@ -1424,7 +1424,51 @@ def payload_v3():
                         "why": "nothing recorded a projection before these games, and the feature matrix is rebuilt from current data, so there is no honest way to reconstruct one"
                 }
         ],
-        "break_even": 0.5238
+        "break_even": 0.5238,
+        # THE PER-LEG BETS, DELIBERATELY A SUBSET. Section 06 adds these up
+        # itself, so a handful of player-games is enough to drive every cut
+        # of the table and the page's own arithmetic is checked against
+        # exactly these legs in `tests/js/v3app.js`.
+        #
+        # It is NOT consistent with the pooled `players` blocks above, and
+        # nothing here pretends otherwise: that the legs and the pooled rows
+        # are the same bets is the invariant, and it is tested against real
+        # pooled rows in `tests/test_season_scorecard.py` rather than
+        # against a fixture that could be trimmed to agree with itself.
+        #
+        # A leg is
+        #   [market, line, actual, adj_side, adj_ret, model_side,
+        #    model_ret, edge_ret]
+        # with a side of 1 for over and 0 for under, and a return per $1
+        # that is positive exactly when the bet won.
+        "bets": {
+            "players": ["Kyren Williams", "Bucky Irving", "Tee Higgins",
+                        "Bo Nix"],
+            "markets": ["Catches", "Receiving yards", "Rushing yards",
+                        "Passing yards"],
+            "market_keys": ["receptions", "receiving_yards",
+                            "rushing_yards", "passing_yards"],
+            "weeks": {
+                # Three legs, all three landing the same way — the shape the
+                # correlation note is about.
+                "3": [[0, "2026_03_LA_DEN", [
+                           [0, 2.5, 4, 1, 0.909091, 1, 0.909091, 0.909091],
+                           [1, 18.5, 31, 1, 0.869565, 1, 0.869565, None],
+                           [2, 64.5, 88, 1, 0.952381, 1, 0.952381, None]]],
+                      # One leg each way, so a player-game is not always
+                      # unanimous.
+                      [1, "2026_03_TB_DAL", [
+                           [0, 3.5, 2, 1, -1.0, 0, 0.909091, None],
+                           [2, 55.5, 41, 1, -1.0, 1, -1.0, -1.0]]],
+                      [2, "2026_03_TB_DAL", [
+                           [0, 5.5, 7, 1, 0.892857, 1, 0.892857, None]]]],
+                # A second week, so a range covers more than one.
+                "4": [[3, "2026_04_DEN_SF", [
+                           [3, 219.5, 180, 0, 0.909091, 1, -1.0, None]]],
+                      [0, "2026_04_LA_SEA", [
+                           [2, 70.5, 102, 1, 0.869565, 1, 0.869565, None]]]],
+            },
+        },
 }
     return p
 
@@ -1459,14 +1503,51 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "and moving only the end moves it too",
                  "an end chosen below the default start pulls the start "
                  "down with it",
-                 "every section names our model, the adjusted model and "
-                 "the book",
+                 "every section names our model, and the full view the "
+                 "other two",
                  "and the adjusted row comes between ours and the book",
                  "the old vocabulary is gone",
-                 "the range column is explained in words, not named after "
+                 "the range is explained in words, not named after "
                  "a statistic",
+                 "and the interval is still reported, in the sentence "
+                 "rather than a column",
+                 "and the winning-team table has no Range column left",
                  "the player section draws our model and the adjusted "
                  "model separately",
+                 # The rethink: a verdict before the working, a reference
+                 # line under every rate, and a simple view that HIDES
+                 # rather than changes.
+                 "a scoreboard states the verdict before the first table",
+                 "and it carries one tile per thing the model claims to do",
+                 "no scoreboard tile is an anchor into the hash router",
+                 "a figure shown in both views is the same figure",
+                 "the detail only the full view carries is absent from the "
+                 "simple one",
+                 "each rate is drawn against the numbers that give it "
+                 "meaning",
+                 "the winning-team section does not invent a break-even "
+                 "rate",
+                 "and it is pinned rather than scrolling away with the "
+                 "tables",
+                 "a week with no frozen game record cannot be selected",
+                 # What a bet is, which the page never said.
+                 "the player table says what one bet is",
+                 "and the break-even column is named in words a reader "
+                 "uses",
+                 "and says in so many words that it is not the board’s "
+                 "filters",
+                 # Section 06, and the arithmetic it does.
+                 "there is a per-player section",
+                 "and it says a player’s bets are not independent",
+                 "and offers all four cuts",
+                 "the model per-player totals are the sum of its own legs",
+                 "the adj per-player totals are the sum of its own legs",
+                 "the edge per-player totals are the sum of its own legs",
+                 "the by-game cut spells out each leg",
+                 "and flags the player-games whose legs all landed together",
+                 "and the search narrows it to one player",
+                 "a payload with no per-leg bets drops section 06 rather "
+                 "than throwing",
                  "and it opens on the payload\u2019s own default range",
                  "a range whose weeks were never frozen says so rather than "
                  "showing zeros",

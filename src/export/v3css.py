@@ -840,8 +840,74 @@ button{cursor:pointer}
   font-variant-numeric:tabular-nums}
 .rec__ttl{font-size:17px;line-height:22px;font-weight:700;margin:0}
 .rec__sub{margin-top:4px}
-.recpick{margin:10px 0 2px}
+/* Three columns, since the Range column came off "Picking the winning
+   team": four intervals each wide enough to contain every other row read as
+   the page declining to say anything. */
+.rec--3{grid-template-columns:minmax(104px,1fr) repeat(2,minmax(0,auto))}
+.recpick{margin:10px 0 2px;gap:8px}
+.recpick .seg{margin-top:0}
 .recnote{background:var(--inset)}
+
+/* ── The scoreboard ──────────────────────────────────────────────────────
+   One tile per thing the model claims to do, above everything else. Two up
+   at 375px rather than four: a tile has a label, a rate, a record and a
+   line of prose, and four across turns every one of them into two words a
+   line. */
+.sbcard{margin-top:10px}
+.sbgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;
+  margin-top:8px}
+@media (min-width:620px){.sbgrid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.sbt{display:flex;flex-direction:column;gap:1px;padding:10px 12px;
+  border-radius:12px;background:var(--inset);min-width:0}
+.sbt__l{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--mut);font-weight:700}
+.sbt__v{font-size:21px;line-height:25px;font-weight:700;
+  font-variant-numeric:tabular-nums}
+.sbt__r{font-size:13px;line-height:17px;font-variant-numeric:tabular-nums}
+.sbt__n{font-size:12px;line-height:16px;color:var(--mut)}
+
+/* ── The reference line ──────────────────────────────────────────────────
+   A rate means nothing on its own: 56% is a good week against a coin flip,
+   a bad one against a book at 59%. The three numbers that give it meaning
+   are drawn on one track so the comparison costs a glance rather than
+   arithmetic. Scale is fixed at 35-70% so the marks do not move between
+   sections and a reader can carry the picture down the page. */
+.rbar{position:relative;height:8px;margin:10px 0 0;border-radius:4px;
+  background:var(--inset)}
+.rbar i,.rbar b{position:absolute;top:-2px;height:12px;width:2px;
+  border-radius:1px;transform:translateX(-1px)}
+.rbar__flip{background:var(--line)}
+.rbar__be{background:var(--mut)}
+.rbar__bk{background:var(--ink);opacity:.55}
+.rbar__us{width:4px;height:16px;top:-4px;border-radius:2px;
+  transform:translateX(-2px)}
+.rbar__us.up{background:var(--good)}
+.rbar__us.dn{background:var(--bad)}
+.rbar__k{display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;font-size:11px;
+  line-height:15px;color:var(--mut)}
+.rbar__kus{color:var(--ours);font-weight:700}
+
+/* ── Bets by player ──────────────────────────────────────────────────────
+   The legs of one player-game, spelled out. This is the view that makes the
+   correlation visible rather than only stated: six legs on one man, all six
+   green, is one opinion drawn six times. */
+.recsub{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--mut);font-weight:700;margin-top:12px}
+.recq{margin-top:8px}
+.pgleg{display:inline-block;font-size:11.5px;line-height:16px;
+  padding:1px 6px;border-radius:7px;background:var(--inset);
+  margin:1px 3px 1px 0;white-space:nowrap}
+.pgleg.up{color:var(--good)}
+.pgleg.dn{color:var(--bad)}
+.pgall{display:block;font-size:11px;line-height:15px;color:var(--mut);
+  margin-top:2px}
+.pgwk{font-size:11.5px;color:var(--mut);font-weight:400}
+/* The leg column is prose, not a figure, so it wraps and is not pushed
+   right with the numbers. */
+.rec .p{text-align:left;white-space:normal;min-width:0}
+/* The leg column is the wide one, so it is the one that takes the slack. */
+.rec--pg{grid-template-columns:minmax(120px,1.1fr) minmax(0,auto)
+  minmax(0,auto) minmax(150px,2fr) minmax(0,auto)}
 .fig{padding:8px 12px;border-radius:12px;background:var(--inset);
   display:flex;flex-direction:column}
 .fig b{font-size:20px;line-height:24px;font-weight:700}

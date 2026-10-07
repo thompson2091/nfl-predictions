@@ -463,6 +463,115 @@ def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
                          "roi": eroi, "lo": elo, "hi": ehi}}
 
 
+
+#: One bet per player-game-market, shipped per week rather than per range.
+#:
+#: EVERY OTHER NUMBER ON THE RECORD PAGE IS PRECOMPUTED PER RANGE, and this
+#: one cannot be. There are 153 contiguous ranges in an 18-week season, so a
+#: per-player table precomputed for each would ship the same bet about a
+#: hundred and fifty times. Shipped per week it is linear, and the page adds
+#: up the weeks the reader picked.
+#:
+#: THE ADDITION IS THE ONLY THING THE PAGE DOES. Every per-leg number — the
+#: side taken, whether it won, what it returned — is computed here, by the
+#: same `_payout` the pooled rows use, and `tests/js/v3app.js` sums the legs
+#: back up and checks the total against `players.all.roi`. So the page is
+#: not a second implementation of the accounting; it is a sum over numbers
+#: this module produced.
+#:
+#: Compact on purpose. Names go in a table and legs are positional arrays,
+#: because the obvious shape — a dict per leg with eight string keys — was
+#: 3.4x the bytes for the same information, on a payload already past 5 MB.
+#:
+#: A leg is:
+#:
+#:     [market, line, actual, adj_side, adj_ret, model_side, model_ret, edge_ret]
+#:
+#: where `market` indexes `markets`, a side is 1 for over and 0 for under,
+#: and a return is per $1 staked — positive means it won, so `won` is not
+#: stored twice. `edge_ret` is null unless the pre-registered rule took this
+#: leg, and is priced at that side's own price, which is why it is not
+#: `adj_ret` with a flag.
+BET_FIELDS = ("market", "line", "actual", "adj_side", "adj_ret",
+              "model_side", "model_ret", "edge_ret")
+
+
+def _ret(row, price_key="odds"):
+    """What one leg returned per $1. Positive means it won."""
+    if row is None or row.get("won") is None:
+        return None
+    return round(_payout(row[price_key]) if row["won"] else -1.0, 6)
+
+
+def bets_block(cache: dict, weeks) -> dict:
+    """Every graded leg, grouped by week and then by player-game.
+
+    Grouped by PLAYER-GAME rather than by player, because that is the shape
+    the correlation lives in: over weeks 3-4, 464 player-games carried two
+    or more legs and 222 of them — 48% — had every leg land the same way. A
+    receiver who clears his catches number has almost always cleared his
+    yards number, so six legs on one man is nearer one and a half opinions
+    than six. A per-player total alone cannot show that; this can.
+    """
+    from src.evaluation.prop_settlement import _norm
+
+    names: dict[str, int] = {}
+    mkeys = [mk for mk, _ in OU_MARKETS]
+    # (week, game_id, player_key) -> market -> leg, filled from the UNION of
+    # the three series rather than from the card's rows alone.
+    #
+    # THE UNION, BECAUSE THE EDGE RULE REACHES PLAYERS THE CARD'S ROWS DO
+    # NOT, and a leg dropped here is a leg this section reports and the
+    # totals above it do not. Built from the card's rows only, over weeks
+    # 3-4 of 2026, this returned 65 of the 69 edge bets at +11.65% against
+    # the published +13.36%.
+    #
+    # Keyed on the CANONICAL normalised name for the same reason. All four
+    # of those missing bets were one join: `prop_edge` keys on
+    # `prop_settlement._norm`, which strips punctuation and the generational
+    # suffix, and a local `.strip().lower()` does not — so "J.K. Dobbins"
+    # and "jk dobbins", "Michael Penix Jr." and "michael penix", "Kenneth
+    # Walker III" and "kenneth walker" each failed to meet.
+    acc: dict = defaultdict(dict)
+    shown: dict = {}
+    for mi, mk in enumerate(mkeys):
+        for w in weeks:
+            series = {k: cache.get(key, []) for k, key in
+                      (("adj", (mk, w)), ("model", ("model", mk, w)),
+                       ("edge", ("edge", mk, w)))}
+            keyed: dict = {}
+            for which, rows in series.items():
+                raw = [r.get("player_name") or "" for r in rows]
+                for r, n in zip(rows, _norm(raw)):
+                    if r.get("won") is None:
+                        continue
+                    k = (r["game_id"], n)
+                    keyed.setdefault(k, {})[which] = r
+                    shown.setdefault(k, r.get("player_name") or n)
+            for k, got in keyed.items():
+                r, m, e = got.get("adj"), got.get("model"), got.get("edge")
+                any_ = r or m or e
+                names.setdefault(shown[k], len(names))
+                acc[(w,) + k][mi] = [
+                    mi,
+                    (r or e or m).get("line", (e or {}).get("point")),
+                    any_.get("actual"),
+                    None if not r else (1 if r.get("side") == "over" else 0),
+                    _ret(r),
+                    None if not m else (1 if m.get("side") == "over" else 0),
+                    _ret(m),
+                    _ret(e, "price"),
+                ]
+    out: dict = defaultdict(list)
+    for (w, gid, key), legs in sorted(acc.items()):
+        out[str(w)].append([names[shown[(gid, key)]], gid,
+                            [legs[i] for i in sorted(legs)]])
+    return {"players": [n for n, _ in sorted(names.items(), key=lambda x: x[1])],
+            "markets": [lb for _, lb in OU_MARKETS],
+            "market_keys": mkeys,
+            "weeks": dict(out)}
+
+
 def _td_week(season: int, week: int, market: str) -> dict | None:
     from src.evaluation.week_history import week_board
 
@@ -523,4 +632,7 @@ def build(season: int) -> dict:
                    else (f"{played[0]}-{played[-1]}" if played else ""),
         "missing": missing,
         "break_even": BREAK_EVEN,
+        # Per week, not per range — see `bets_block`. The page adds up the
+        # weeks the picker is showing.
+        "bets": bets_block(cache, played),
     }

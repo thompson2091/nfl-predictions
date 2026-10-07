@@ -2441,17 +2441,23 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
 
 // ── The season record ──────────────────────────────────────────────────
 //
-// Wins, accuracy and profit, over a range the reader picks. The two things
-// worth guarding are the ones a reader cannot check for themselves: that the
-// picker selects a PRECOMPUTED range rather than the page re-adding
-// anything, and that the two kinds of evidence are never described as one.
+// Wins, accuracy and profit, over a range the reader picks. The things
+// worth guarding are the ones a reader cannot check for themselves: that
+// the picker selects a PRECOMPUTED range rather than the page re-adding
+// anything, that the two kinds of evidence are never described as one, and
+// that the simple view HIDES rather than changes.
 {
   const { v3RecordPage, v3RecRange, v3Money } = x;
-  V.tab = 'record'; V.game = null; V.scFrom = null; V.scTo = null; render();
+  V.tab = 'record'; V.game = null; V.scFrom = null; V.scTo = null;
+  V.recFull = false; V.recWho = 'top'; V.recSeries = 'model'; V.recQ = '';
+  render();
   const h = v3RecordPage();
+  V.recFull = true;
+  const hf = v3RecordPage();
+  V.recFull = false;
 
   ok('the record screen leads with the plain-language headline',
-     h.indexOf('Our picks, by the numbers') >= 0, h.slice(0, 200));
+     h.indexOf('Holding the model to account') >= 0, h.slice(0, 200));
   ok('and is reachable from the nav',
      app().indexOf('data-v3tab="record"') >= 0);
   ok('and the nav label is short enough for a fifth column',
@@ -2461,6 +2467,65 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      ['Picking the winning team', 'Picking the point spread',
       'Picking over or under the total',
       'Player bets: profit per $100 staked'].every(s => h.indexOf(s) >= 0), h);
+
+  // ── THE SCOREBOARD ───────────────────────────────────────────────────
+  // The whole point of the rethink: the verdict before the working. A
+  // reader met five tables of percentages and an error score before
+  // learning whether any of it was good.
+  ok('a scoreboard states the verdict before the first table',
+     h.indexOf('How the model has done') >= 0
+     && h.indexOf('How the model has done') < h.indexOf('Picking the winning team'),
+     h.slice(0, 600));
+  ok('and it carries one tile per thing the model claims to do',
+     ['Winning team', 'Point spread', 'Over / under', 'Player bets']
+       .every(s => h.indexOf('>' + s + '<') >= 0), h);
+  ok('and says the tiles are the model’s own number, not the adjusted one',
+     h.indexOf('our model’s own answer') >= 0);
+  // A TILE IS NOT A LINK. Routing here is the location hash, so an
+  // `href="#sb1"` navigates rather than scrolls.
+  ok('no scoreboard tile is an anchor into the hash router',
+     h.indexOf('href="#sb') < 0, 'a tile would route away from the page');
+
+  // ── SIMPLE HIDES, IT DOES NOT CHANGE ─────────────────────────────────
+  // Every number is still computed either way; the toggle only decides
+  // which rows are drawn. A figure that appears in both must be identical.
+  ok('the simple view is shorter than the full one', hf.length > h.length,
+     h.length + ' vs ' + hf.length);
+  ok('and the toggle is on the page',
+     h.indexOf('data-v3recfull="0"') >= 0
+     && h.indexOf('data-v3recfull="1"') >= 0);
+  {
+    // The headline rate for the winning team, read out of each render.
+    const grab = s => {
+      const i = s.indexOf('Picking the winning team');
+      const m = /Our model<\/span><span class="n">([^<]*)<\/span><span class="n">([^<]*)</
+        .exec(s.slice(i));
+      return m ? m[1] + '|' + m[2] : null;
+    };
+    ok('a figure shown in both views is the same figure',
+       grab(h) && grab(h) === grab(hf), grab(h) + ' vs ' + grab(hf));
+  }
+  ok('the detail only the full view carries is absent from the simple one',
+     h.indexOf('How reliable the win chances') < 0
+     && hf.indexOf('How reliable the win chances') >= 0);
+  ok('and so are the ranges',
+     h.indexOf('luck alone moves these numbers') < 0
+     && hf.indexOf('luck alone moves these numbers') >= 0);
+
+  // ── EVERY RATE GETS A REFERENCE LINE ─────────────────────────────────
+  ok('each rate is drawn against the numbers that give it meaning',
+     (h.match(/class="rbar"/g) || []).length >= 3, h);
+  ok('and the line is labeled in words rather than left as a graphic',
+     h.indexOf('>coin flip<') >= 0 && h.indexOf('>break even<') >= 0
+     && h.indexOf('rbar__kus') >= 0);
+  // A MONEYLINE HAS NO ONE BREAK-EVEN RATE. The first draft said "ahead of
+  // the 50.0% a bet needs to turn a profit", which is not true of any
+  // moneyline: the price moves with the favorite.
+  ok('the winning-team section does not invent a break-even rate',
+     h.indexOf('50.0% a bet needs to turn a profit') < 0
+     && h.indexOf('no one break-even rate') >= 0, h);
+  ok('and the spread and total, which are priced both ways, do quote one',
+     h.indexOf('% a bet needs to turn a profit') >= 0);
 
   // THE PROVENANCE IS ABOVE THE TABLES. A reader who meets the numbers first
   // has already decided what they mean.
@@ -2478,6 +2543,20 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // THE PICKER SELECTS, IT DOES NOT COMPUTE.
   ok('the range picker is on the page',
      h.indexOf('data-v3scfrom') >= 0 && h.indexOf('data-v3scto') >= 0);
+  // PINNED, like every other board here. The tables run several screens and
+  // the control that chooses which weeks they cover was at the top of them.
+  ok('and it is pinned rather than scrolling away with the tables',
+     /class="pbar[^"]*recpick"/.test(h), h.slice(h.indexOf('recpick') - 80,
+                                                 h.indexOf('recpick') + 40));
+  // WEEKS WITH NO GAME RECORD ARE OFFERED BUT DISABLED, with the reason in
+  // the option. Picking one gave three empty sections and no explanation
+  // worth the tap.
+  ok('a week with no frozen game record cannot be selected',
+     h.indexOf('disabled>Week 1 — no game record') >= 0, h);
+  ok('and a week that has one can be',
+     h.indexOf('<option value="4"') >= 0
+     && h.indexOf('value="4" disabled') < 0);
+
   const def = String(DATA.scorecard.default || '').split('-').map(Number);
   ok('and it opens on the payload’s own default range',
      v3RecRange(DATA.scorecard)[0] === def[0]
@@ -2535,52 +2614,156 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      v3Money(0.0759).indexOf('+$7.59') >= 0, v3Money(0.0759));
   ok('and a loss carries a real minus sign',
      v3Money(-0.0669).indexOf('−$6.69') >= 0, v3Money(-0.0669));
-  ok('the player table says it counts one bet per player-game',
-     h.indexOf('One bet per player, game and category') >= 0);
-  ok('and what a bet has to land to break even',
-     h.indexOf('break even at the usual price') >= 0);
+  // WHAT A BET IS, ON THE FACE OF THE CARD. Asked directly whether the
+  // 1,062 was players or bets; it is neither on its own.
+  ok('the player table says what one bet is',
+     h.indexOf('One bet is one player, in one game, in one category') >= 0);
+  ok('and why the alternate lines are not seventeen bets',
+     h.indexOf('turns one opinion into seventeen') >= 0);
+  ok('and the break-even column is named in words a reader uses',
+     h.indexOf('Needed to profit') >= 0 && h.indexOf('To break even') < 0);
 
-  // THE ADDED ROWS SIT BESIDE THE RAW ONES. Weeks 3-4 were frozen before
-  // the blended win chance and the level-removed total existed, so they read
-  // "—" there and are never recomputed.
-  // ONE VOCABULARY ON EVERY SECTION. The sections had grown three names for
-  // one idea — "Our pick", "Model alone", and nothing at all on the player
-  // rows. Asked for directly: our model, the adjusted model, the book, in
-  // that order, everywhere.
-  ok('every section names our model, the adjusted model and the book',
+  // ONE VOCABULARY ON EVERY SECTION.
+  ok('every section names our model, and the full view the other two',
      (h.match(/Our model/g) || []).length >= 3
-     && (h.match(/Adjusted model/g) || []).length >= 3
-     && (h.match(/Sportsbook/g) || []).length >= 3, h.slice(0, 400));
+     && (hf.match(/Adjusted model/g) || []).length >= 3
+     && (hf.match(/Sportsbook/g) || []).length >= 3, h.slice(0, 400));
   ok('and the adjusted row comes between ours and the book',
-     h.indexOf('Our model') < h.indexOf('Adjusted model')
-     && h.indexOf('Adjusted model') < h.indexOf('Sportsbook'));
+     hf.indexOf('Our model') < hf.indexOf('Adjusted model')
+     && hf.indexOf('Adjusted model') < hf.indexOf('Sportsbook'));
   ok('the old vocabulary is gone',
-     h.indexOf('Model alone') < 0 && h.indexOf('Shown on the card') < 0
-     && h.indexOf('Blended win chance') < 0, h);
+     hf.indexOf('Model alone') < 0 && hf.indexOf('Shown on the card') < 0
+     && hf.indexOf('Blended win chance') < 0
+     && hf.indexOf('95% range') < 0, hf);
   ok('before week 5 a new row says when it starts rather than inventing one',
-     h.indexOf('recorded from week 5') >= 0);
-  ok('the level-removed total sits below the three it is a variant of',
-     h.indexOf('Our model, level removed') > h.indexOf('Adjusted model'));
-  // THE RANGE IS EXPLAINED, because "95% range" is a term of art and the
-  // number most likely to be over-read on a page reporting 32 games.
-  ok('the range column is explained in words, not named after a statistic',
-     h.indexOf('95% range') < 0
-     && h.indexOf('luck alone moves these numbers') >= 0
-     && h.indexOf('where the real rate most likely sits') >= 0);
-  // AND THE PLAYER ROWS SHOW BOTH. `ou_week` sides on the served number, so
-  // what the card showed was always the adjusted model under the model's
-  // name; the unblended side is its own series now.
+     hf.indexOf('recorded from week 5') >= 0);
+  // "LEVEL REMOVED" WAS JARGON. Same rows, said in words.
+  ok('the level-removed total is named in words and sits below its variant',
+     hf.indexOf('ignoring the week’s scoring level')
+       > hf.indexOf('Adjusted model')
+     && hf.indexOf('Our model, level removed') < 0);
+  // AND IT IS NOT A COLUMN ANY MORE. Four cells each reading "39.3% to
+  // 71.8%", every one wide enough to contain every other row, read as the
+  // page declining to say anything — so the interval is said once, in
+  // prose, beside the rate it belongs to. The number is not dropped.
+  ok('the range is explained in words, not named after a statistic',
+     hf.indexOf('luck alone moves these numbers') >= 0
+     && hf.indexOf('where the true rate most likely sits') >= 0);
+  ok('and the interval is still reported, in the sentence rather than a '
+     + 'column',
+     /Our model’s [\d.]+% could honestly be anywhere from [\d.]+% to [\d.]+%/
+       .test(hf), hf.slice(hf.indexOf('luck alone'), hf.indexOf('luck alone')
+                           + 240));
+  ok('and the winning-team table has no Range column left',
+     h.indexOf('Picking the winning team') >= 0
+     && !/Picking the winning team[\s\S]{0,400}>Range</.test(h), h);
   ok('the player section draws our model and the adjusted model separately',
-     h.indexOf('Our model') < h.indexOf('Adjusted model'),
+     hf.indexOf('Our model') < hf.indexOf('Adjusted model'),
      'player series not split');
   ok('and compares the two in words',
      h.indexOf('the model alone returned') >= 0);
   ok('the player bets say how they are settled',
-     h.indexOf('paid at the under’s own price') >= 0
-     && h.indexOf('did not play is void') >= 0);
+     hf.indexOf('paid at the under’s own price') >= 0
+     && hf.indexOf('did not play is void') >= 0);
+
+  // ── THE EDGE RULE IS NOT THE BOARD'S FILTERS ─────────────────────────
+  // Asked directly whether section 05 was the shortlist, the fades and the
+  // streaks. It is none of them — it is a price rule — and the old heading
+  // ("Only where our edge cleared the bar") left a reader to guess.
   ok('the edge rule has its own section after every player bet',
-     h.indexOf('Only where our edge cleared the bar')
+     h.indexOf('only where the price was wrong enough')
        > h.indexOf('Player bets: profit per $100 staked'));
+  ok('and says in so many words that it is not the board’s filters',
+     h.indexOf('This is a price rule, not the board’s filters') >= 0
+     && h.indexOf('Shortlist, Fades and Streaks') >= 0, h);
+  ok('and names the margin each market has to clear',
+     /by catches [\d.]+pp/.test(h), h);
+
+  // ── 06 · BETS BY PLAYER ──────────────────────────────────────────────
+  ok('there is a per-player section',
+     h.indexOf('Bets by player') >= 0, h);
+  ok('and it says a player’s bets are not independent',
+     h.indexOf('not independent') >= 0
+     && h.indexOf('land the same way') >= 0);
+  ok('and offers all four cuts',
+     ['Best and worst', 'Every player', 'By game', 'Most bet']
+       .every(s => h.indexOf('>' + s + '<') >= 0), h);
+  ok('and names which of the three gradings it is reading',
+     h.indexOf('data-v3recseries="model"') >= 0
+     && h.indexOf('data-v3recseries="edge"') >= 0);
+
+  // THE PAGE'S ONLY ARITHMETIC IS ADDITION, and this checks it against the
+  // legs it was handed. That the legs and the pooled rows are the SAME
+  // bets is a different claim, tested in Python against real pooled rows
+  // rather than against a fixture trimmed to agree with itself.
+  {
+    const B = DATA.scorecard.bets;
+    const RI = {model: 6, adj: 4, edge: 7};
+    for (const [key, ri] of Object.entries(RI)) {
+      V.recSeries = key; V.recWho = 'all'; V.scFrom = 3; V.scTo = 4;
+      const by = {};
+      for (const w of ['3', '4']) {
+        for (const [pi, , legs] of B.weeks[w]) {
+          for (const l of legs) {
+            if (l[ri] === null || l[ri] === undefined) continue;
+            const n = B.players[pi];
+            by[n] = by[n] || {bets: 0, won: 0, ret: 0};
+            by[n].bets++; by[n].ret += l[ri];
+            if (l[ri] > 0) by[n].won++;
+          }
+        }
+      }
+      const page = v3RecordPage();
+      let every = true, why = '';
+      for (const [n, r] of Object.entries(by)) {
+        const cash = (r.ret / r.bets >= 0 ? '+$' : '−$')
+          + Math.abs(r.ret / r.bets * 100).toFixed(2);
+        const i = page.indexOf('>' + n + '<');
+        if (i < 0) { every = false; why = n + ' missing'; break; }
+        const cells = page.slice(i, i + 420);
+        if (cells.indexOf('>' + r.bets + '<') < 0
+            || cells.indexOf(cash) < 0) {
+          every = false;
+          why = n + ' wanted ' + r.bets + ' bets and ' + cash;
+          break;
+        }
+      }
+      ok('the ' + key + ' per-player totals are the sum of its own legs',
+         every, why);
+    }
+    V.recSeries = 'model'; V.recWho = 'top'; V.scFrom = null; V.scTo = null;
+  }
+  // THE CORRELATION, MADE VISIBLE RATHER THAN ONLY STATED. A player-game
+  // whose legs all landed the same way is one opinion drawn three times.
+  {
+    V.recWho = 'games'; V.scFrom = 3; V.scTo = 4;
+    const g = v3RecordPage();
+    ok('the by-game cut spells out each leg',
+       g.indexOf('class="pgleg') >= 0
+       && /Catches (over|under) [\d.]+, had/.test(g), g.slice(0, 300));
+    ok('and flags the player-games whose legs all landed together',
+       g.indexOf('landed the same way') >= 0);
+    V.recQ = 'Kyren';
+    const q = v3RecordPage();
+    ok('and the search narrows it to one player',
+       q.indexOf('Kyren Williams') >= 0 && q.indexOf('Tee Higgins') < 0, q);
+    V.recQ = 'zzzz';
+    ok('and says so when nothing matches',
+       v3RecordPage().indexOf('No player matching') >= 0);
+    V.recQ = ''; V.recWho = 'top'; V.scFrom = null; V.scTo = null;
+  }
+  // A SCORECARD WITH NO LEGS STILL RENDERS. `bets` is new, so a payload
+  // built before it has to fall through rather than throw.
+  {
+    const was = DATA.scorecard.bets;
+    delete DATA.scorecard.bets;
+    render();
+    ok('a payload with no per-leg bets drops section 06 rather than throwing',
+       v3RecordPage().indexOf('Bets by player') < 0
+       && v3RecordPage().indexOf('Picking the winning team') >= 0);
+    DATA.scorecard.bets = was;
+  }
+
   {
     const key = DATA.scorecard.default;
     const blk = DATA.scorecard.ranges[key];
@@ -2593,7 +2776,9 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
                                 lo: 0.33, hi: 0.77};
     blk.games.total.mae_centered = 9.87;
     blk.games.total.over_centered = 8;
+    V.recFull = true;
     const withB = v3RecordPage();
+    V.recFull = false;
     ok('once recorded, the blended error score is shown against the book '
        + 'on the same games', withB.indexOf('Blended: 0.2101') >= 0
        && withB.indexOf('0.2109 on the same 16 games') >= 0);
