@@ -298,6 +298,36 @@ def payload_v3():
     }
     # An index shaped exactly as `_split_history` leaves it: weeks lifted out
     # into files, `has` naming which of them exist.
+    # ── THE PRICE RULE'S PICKS, AS THE PAYLOAD SHIPS THEM ───────────────
+    #
+    # `prop_edge.qualifying` chooses these and the page is a membership test,
+    # so this is shipped data and is written out rather than derived.
+    #
+    # ONE OF THEM IS AN UNDER, deliberately. Every probability on a board row
+    # is P(over), so an under pick drawn without flipping them reads the
+    # over's model, the over's book and the over's edge beside the word
+    # "Under", and prices the OVER at the UNDER's number — which drew a bet
+    # the rule was recommending at −$17.28 EV on the live board. Over weeks
+    # 3-4 nine of the rule's 77 picks were unders, so this is one row in
+    # eight and not an edge case.
+    #
+    # `Bravo Wide` is given his own priced row below with our number BELOW
+    # the book's, because an under pick on a player we rate above the line is
+    # incoherent and would test the flip against nonsense.
+    p["receptions"]["rows"].insert(1, {
+        "player_name": "Bravo Wide", "team": "BBB", "game_id": "AAA @ BBB",
+        "mu": 3.1, "point": 4.5, "odds": -105, "fair_prob": 0.55,
+        "model_only": 0.41, "ours": 0.44, "edge_pp": -11.0,
+        "implied_prob": 0.5122, "overround": 1.0471,
+        "open_point": 4.5, "open_odds": -115, "open_implied": 0.535,
+        "lo": 1, "hi": 6, "n_books": 6, "thin": False})
+    p["receptions"]["priced_rows"] = 2
+    p["receptions"]["edge"] = {
+        "threshold_pp": 5.5, "note": "",
+        "picks": [{"player_name": "Alpha Back", "point": 4.5, "side": "over",
+                   "edge_pp": 11.3, "price": -105},
+                  {"player_name": "Bravo Wide", "point": 4.5, "side": "under",
+                   "edge_pp": 11.0, "price": -115}]}
     p["history"] = {"anytime_td": {"has": [1, 2],
                                    "accuracy": {"1": {"n": 120}, "2": {"n": 118}}}}
     p["history_path"] = "data/h-{market}-{week}.json"
@@ -1607,6 +1637,18 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "than throwing",
                  # Streaks is a lookup now, and the page must not keep a
                  # rule of its own.
+                 # The price rule's filter, and the side it draws.
+                 "the payload carries what the price rule took",
+                 "and the filter shows exactly those bets",
+                 "and the help line names the fitted margin and the "
+                 "measured return",
+                 "the fixture carries an under pick to draw",
+                 "an under pick is drawn as an under",
+                 "and its edge is positive, because the rule took it",
+                 "and so is its expected return",
+                 "an over pick is still drawn as an over",
+                 "a week the rule takes nothing in is empty, not the whole "
+                 "board",
                  "the payload carries who is on a streak",
                  "and the streak filter shows exactly the flagged players",
                  "and the tag reads its count off the flag rather than "

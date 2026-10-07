@@ -23,6 +23,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
    'v3Streak', 'v3StreakTag', 'V3STREAK_OF', 'V3STREAK_MIN',
+   'v3IsEdge', 'v3EdgeHit', 'v3EdgeNote', 'marketOf', 'KIND',
    'v3PublicMoney', 'v3MoneyBlock', 'v3SharpSides', 'V3RATIO_SMALL',
    'v3GameSet', 'v3RecordPage', 'v3RecRange', 'v3Money',
    'v3Ask', 'V3ASK_DEFAULT', 'v3AngleBase', 'v3Surprise', 'V3SURPRISE', 'v3Clears',
@@ -1310,6 +1311,84 @@ if (cards.length) {
      h.indexOf('to win</span>') < 0);
 }
 V.filter = 'all'; V.tab = 'props';
+
+// ── The price rule, on this week's board ────────────────────────────────
+//
+// Section 03 of the Record page scores these after the fact and nothing
+// showed them before the games. `prop_edge.qualifying` picks them and the
+// payload carries them, so what is left to check is that the page reads the
+// selection and draws the bet the rule actually took.
+{
+  V.tab = 'props'; V.game = null; V.q = ''; V.week = null; V.filter = 'all';
+  const mkt = V3MKT.map(m => m[0])
+    .filter(k => ((marketOf(k) || {}).edge || {}).picks
+                 && marketOf(k).edge.picks.length)[0];
+  ok('the payload carries what the price rule took', !!mkt,
+     'no market carries an edge block');
+  if (mkt) {
+    V.market = mkt; V.filter = 'gap'; render();
+    const picks = marketOf(mkt).edge.picks;
+    ok('and the filter shows exactly those bets',
+       picks.every(p => pane().indexOf(p.player_name) >= 0)
+       && (pane().match(/data-v3open=/g) || []).length === picks.length,
+       JSON.stringify(picks.map(p => p.player_name)) + ' drew '
+       + (pane().match(/data-v3open="[^"]*"/g) || []).join(', '));
+    ok('and the help line names the fitted margin and the measured return',
+       app().indexOf('5.5 points') >= 0 && app().indexOf('+$13.36') >= 0
+       && app().indexOf('spans zero') >= 0);
+
+    // THE RULE'S SIDE, NOT THE BOARD'S DEFAULT. `v3Line` renders "Over" on
+    // any row without `take`, so an under pick would be drawn as the
+    // opposite bet. Nine of the rule's 77 picks over weeks 3-4 were unders.
+    const und = picks.filter(p => p.side === 'under')[0];
+    ok('the fixture carries an under pick to draw', !!und);
+    if (und) {
+      const i = pane().indexOf(und.player_name);
+      const row = pane().slice(i, i + 1400);
+      // Read the row's OWN line cell. A 1400-character slice runs into the
+      // next row, whose line is an over, so the naive "and no Over
+      // anywhere" check failed on a row that was perfectly correct.
+      const lineCell = (/<div class="line">([^<]*)</.exec(row) || [])[1] || '';
+      ok('an under pick is drawn as an under',
+         lineCell.indexOf('Under ') === 0, lineCell);
+      // AND EVERY FIGURE ON IT IS THE UNDER'S. They are all P(over) on the
+      // board, so left alone the strip reads the over's model and edge
+      // beside the word "Under" and `ev100` prices the OVER at the UNDER's
+      // number — which drew a bet the rule recommends at a negative edge
+      // and a negative EV.
+      // Read the two cells by name rather than by scanning the slice.
+      const cell = (lab, s) => {
+        const j = s.indexOf('>' + lab + '<');
+        if (j < 0) return '';
+        const k = s.lastIndexOf('<span class="cell', j);
+        return k < 0 ? '' : s.slice(k, j);
+      };
+      const edgeCell = cell('Edge', row), evCell = cell('EV/$100', row);
+      ok('and its edge is positive, because the rule took it',
+         edgeCell.indexOf('+') >= 0 && edgeCell.indexOf('\u2212') < 0,
+         edgeCell || 'no edge cell found');
+      ok('and so is its expected return',
+         evCell.indexOf('+$') >= 0, evCell || 'no EV cell found');
+    }
+    // AN OVER PICK IS LEFT ALONE.
+    const ov = picks.filter(p => p.side === 'over')[0];
+    if (ov) {
+      const row = pane().slice(pane().indexOf(ov.player_name),
+                              pane().indexOf(ov.player_name) + 1400);
+      ok('an over pick is still drawn as an over', /Over [\d.]+/.test(row));
+    }
+    // NOTHING QUALIFYING IS AN EMPTY FILTER, NOT THE WHOLE BOARD. `fade`
+    // once fell through to returning every row under the word "Fades".
+    const was = marketOf(mkt).edge;
+    marketOf(mkt).edge = {threshold_pp: 5.5, picks: [], note: ''};
+    render();
+    ok('a week the rule takes nothing in is empty, not the whole board',
+       pane().indexOf('No line on this market is far enough off') >= 0,
+       pane().slice(0, 200));
+    marketOf(mkt).edge = was;
+    V.filter = 'all'; V.market = 'any'; render();
+  }
+}
 
 // ── Streaks is a lookup now, not a rule ─────────────────────────────────
 //

@@ -766,11 +766,29 @@ function v3Rows() {
     rows = rows.map(r => {
       const hit = v3EdgeHit(m, r);
       if (!hit) return null;
-      const und = hit.side === 'under';
+      if (hit.side !== 'under') {
+        return Object.assign({}, r, {take: 'over', takeGap: hit.edge_pp});
+      }
+      // EVERY PROBABILITY ON THE ROW IS P(OVER), AND THE BET IS THE UNDER.
+      //
+      // Left alone the strip reads the over's model, the over's book and
+      // the over's edge beside the words "Under 41.5", and `ev100` prices
+      // the OVER at the UNDER's number — which drew Jalon Daniels, a bet
+      // this rule is recommending, at −$17.28 EV and a −6.5pp edge.
+      // Flipped, the row says what the bet is: 89.7% model, 49.6% book,
+      // +6.5pp, and an EV that is positive because the bet is.
+      //
+      // `proj` is NOT flipped. It is a yardage projection, not a
+      // probability — 13.0 is what we expect him to run whichever side
+      // anybody takes.
+      const flip = v => (has(v) ? 1 - v : v);
       return Object.assign({}, r, {
-        take: hit.side, takeGap: hit.edge_pp,
-        odds: und ? (has(r.underOdds) ? r.underOdds : null) : r.odds,
-        dec: und ? (has(r.underDec) ? r.underDec : null) : r.dec,
+        take: 'under', takeGap: hit.edge_pp,
+        odds: has(r.underOdds) ? r.underOdds : null,
+        dec: has(r.underDec) ? r.underDec : null,
+        ours: flip(r.ours), book: flip(r.book),
+        modelOnly: flip(r.modelOnly),
+        edge: has(r.edge) ? -r.edge : null,
       });
     }).filter(Boolean);
   }
@@ -1016,7 +1034,9 @@ function v3EdgeNote() {
     + '\u2212$12.70 to +$39.42 \u2014 which spans zero, so it is the best '
     + 'thing on the card and still 69 bets. That return was priced at the '
     + 'median across books at capture; the price here is the one on offer '
-    + 'now.';
+    + 'now. On an under every figure on the row is the UNDER\u2019s \u2014 '
+    + 'the model, the book, the gap and the EV \u2014 because that is the '
+    + 'bet.';
 }
 
 // A LOOKUP NOW, NOT A RULE. `src/evaluation/streaks.py` decides who is on
