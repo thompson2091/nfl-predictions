@@ -62,6 +62,7 @@ function v3Save() {
       market: V.market, sort: V.sort, filter: V.filter,
       game: V.game, desc: V.desc, gfilter: V.gfilter, gbasis: V.gbasis,
       saved: V.saved, savedFilter: V.savedFilter,
+      gsort: V.gsort, gsortdesc: V.gsortdesc,
       lodds: V.lodds, rungs: V.rungs }));
   } catch (e) { /* private window, blocked storage — the app still works */ }
 }
@@ -228,6 +229,52 @@ function v4GameHead(gid) {
     + '</nav></div>';
 }
 
+// ── v4's own click keys ─────────────────────────────────────────────────
+//
+// `V3CLICKS` is a `const` in v3's bundle and v4 cannot extend it — see the
+// module docstring on why nothing here is a `const` either. So v4 registers
+// a SECOND document listener for its own keys. Additive, not a replacement:
+// v3's walker finds no match on a `data-v4*` node and falls through to the
+// body without acting, and v4's does the same for every v3 key.
+function v4Clicks() {
+  return ['v4gsort'];
+}
+
+function v4Do(kind, v) {
+  switch (kind) {
+    // WHICH COLUMN THE GAMES LIST IS ORDERED BY, and tapping the active one
+    // reverses it. Tapping it a third time clears the sort and goes back to
+    // kickoff order, because a reader who has sorted by Model has no other
+    // way back to the one ordering that groups by day.
+    case 'v4gsort':
+      // An EMPTY value clears it, which is what the "Back to kickoff order"
+      // button sends. Reusing the active column's own key there read as a
+      // third tap and reversed the sort instead of clearing it — a button
+      // doing the opposite of what it says.
+      if (!v) { V.gsort = null; V.gsortdesc = true; }
+      else if (V.gsort !== v) { V.gsort = v; V.gsortdesc = true; }
+      else if (V.gsortdesc) { V.gsortdesc = false; }
+      else { V.gsort = null; V.gsortdesc = true; }
+      V.top = 'section';
+      break;
+    default: return;
+  }
+  v3Save();
+  render();
+}
+
+document.addEventListener('click', ev => {
+  let node = ev.target;
+  const keys = v4Clicks();
+  while (node && node !== document.body) {
+    for (let i = 0; i < keys.length; i++) {
+      const v = node.getAttribute && node.getAttribute('data-' + keys[i]);
+      if (v != null) { ev.preventDefault(); v4Do(keys[i], v); return; }
+    }
+    node = node.parentNode;
+  }
+});
+
 // ── the route ───────────────────────────────────────────────────────────
 //
 // Phase A owns Games and the game screen. The other three tabs still call
@@ -350,6 +397,14 @@ function v4GameCard(c) {
   const bl = c.blend || {};
   const note = v4Note(c);
   return '<button class="gc" data-v3game="' + esc(c.game_id) + '">'
+    // ONE WRAPPER INSIDE THE BUTTON. A `<button>` puts its children in an
+    // anonymous content box that does not stretch to the button's width, so
+    // every row sat at its own intrinsic width and the numbers bunched left
+    // of the column header above them. v3's card is an `<a>` and the
+    // design's is an `<a>`, which is why neither has this problem — and why
+    // this one keeps the button: a card you open with the keyboard has to
+    // answer Enter and Space, and an anchor with no href answers neither.
+    + '<span class="gc__in">'
     + '<span class="gc__t">'
     + '<span class="num" style="font-size:11px;color:var(--mut)">'
     + esc(v3Kick(c)) + '</span>'
@@ -368,7 +423,31 @@ function v4GameCard(c) {
     + '<span>Total \u00b7 M ' + v4Tot(c.model_total) + ' \u00b7 B '
     + v4Tot(c.total) + ' \u00b7 A ' + v4Tot(bl.total) + '</span>'
     + '<span>' + note + '</span>'
-    + '</span></button>';
+    + '</span></span></button>';
+}
+
+//: The orderings the games list offers, and the scalar each one reads.
+//:
+//: EVERY ONE IS THE FAVORITE'S NUMBER, NOT THE HOME SIDE'S. A card carries
+//: two teams and a column holds one figure per team, so "sort by Model" has
+//: to pick a scalar — and the home side's chance is the wrong one: it would
+//: put every game with a strong road favorite at the bottom of a list a
+//: reader asked for the strongest leans. `max(p, 1 - p)` is "how sure is
+//: this number", which is the question a reader sorting by it is asking.
+//:
+//: Spread sorts on the absolute line for the same reason.
+function v4Sorts() {
+  return [
+    ['spread', 'Spread', c => has(c.spread) ? Math.abs(c.spread) : null],
+    ['model', 'Model', c => has(c.model_win_home)
+      ? Math.max(c.model_win_home, 1 - c.model_win_home) : null],
+    ['book', 'Book', c => has(c.win_home)
+      ? Math.max(c.win_home, 1 - c.win_home) : null],
+    ['adj', 'Adj', c => {
+      const a = v3AdjWin(c);
+      return has(a) ? Math.max(a, 1 - a) : null;
+    }],
+  ];
 }
 
 function v4Games() {
@@ -396,7 +475,22 @@ function v4Games() {
     }).join('');
   const show = cards.filter(v4FG()[cur] || v4FG().all);
 
-  // GROUPED BY THE DAY THE CARD ITSELF NAMES, in kickoff order.
+  // THE THREE ESTIMATE COLUMNS ARE THE SORT CONTROL, and the header says so
+  // before it is tapped.
+  const sorts = v4Sorts();
+  const active = sorts.filter(s => s[0] === V.gsort)[0];
+  const heads = sorts.map(s => {
+    const on = V.gsort === s[0];
+    return '<b class="' + (s[0] === 'model' ? 'm' : '') + '" '
+      + 'data-v4gsort="' + s[0] + '" aria-pressed="' + on + '" '
+      + 'aria-label="Order by ' + esc(s[1])
+      + (on ? (V.gsortdesc ? ', high first' : ', low first') : '') + '">'
+      + esc(s[1]) + '<i>' + (on ? (V.gsortdesc ? '\u25bc' : '\u25b2')
+                                : '\u25bc') + '</i></b>';
+  }).join('');
+
+  // GROUPED BY THE DAY THE CARD ITSELF NAMES, in kickoff order — UNTIL A
+  // COLUMN IS SORTED BY, and then not at all.
   //
   // `kick_day` is the card's own label and `kick_sort` is its sortable
   // timestamp, so the grouping cannot disagree with the time printed on each
@@ -404,15 +498,43 @@ function v4Games() {
   // fixed Thu/Sun/Mon list: an international window, a Saturday in December
   // and a Friday after Thanksgiving are all real and none of them is in that
   // list.
-  const sorted = show.slice().sort((a, b) =>
-    String(a.kick_sort || '') < String(b.kick_sort || '') ? -1 : 1);
-  const order = [];
+  //
+  // A sort and the day headings cannot both be true. Ordering by Model and
+  // keeping the headings would print THURSDAY over a Sunday game, or scatter
+  // one day's games down the page under five headings. So a sorted list is
+  // one flat list — every row still carries its own kickoff — and the bar
+  // under it names the order and offers the way back.
+  let order = [];
   const byDay = {};
-  sorted.forEach(c => {
-    const d = c.kick_day || '';
-    if (!byDay[d]) { byDay[d] = []; order.push(d); }
-    byDay[d].push(c);
-  });
+  if (active) {
+    const get = active[2];
+    // `sort` puts a before b when the comparator is NEGATIVE, so descending
+    // — biggest first — has to return a POSITIVE number when a is smaller.
+    // Written the other way round first, and `gsortdesc` sorted ascending on
+    // every column; two of the four happened to tie on the fixture and
+    // passed, which is what the ordering assertion against the card's own
+    // scalar is for.
+    const dir = V.gsortdesc ? 1 : -1;
+    byDay[''] = show.slice().sort((a, b) => {
+      const x = get(a), y = get(b);
+      // Nulls last in BOTH directions, the rule v3's board sort already
+      // uses: a game with no line is not the biggest favorite and it is not
+      // the smallest either.
+      if (!has(x) && !has(y)) return 0;
+      if (!has(x)) return 1;
+      if (!has(y)) return -1;
+      return x === y ? 0 : (x < y ? dir : -dir);
+    });
+    order = [''];
+  } else {
+    const sorted = show.slice().sort((a, b) =>
+      String(a.kick_sort || '') < String(b.kick_sort || '') ? -1 : 1);
+    sorted.forEach(c => {
+      const d = c.kick_day || '';
+      if (!byDay[d]) { byDay[d] = []; order.push(d); }
+      byDay[d].push(c);
+    });
+  }
 
   return '<div class="wrap gl">' + v3PastBanner()
     + '<div style="display:flex;align-items:baseline;'
@@ -422,15 +544,24 @@ function v4Games() {
     + show.length + ' of ' + cards.length + '</span></div>'
     + '<div class="chips" style="margin-top:12px">' + chips + '</div>'
     + '<div class="gl__hd" style="margin-top:12px">'
-    + '<span>Win chance</span><b>Spread</b><b class="m">Model</b>'
-    + '<b>Book</b><b>Adj</b></div>'
-    + '<div style="display:flex;flex-direction:column;gap:8px;'
-    + 'margin-top:8px">'
+    + '<span>Win chance</span>' + heads + '</div>'
+    + '<div class="gl__games" style="display:flex;flex-direction:column;'
+    + 'gap:8px;margin-top:8px">'
     + (show.length
-       ? order.map(d => '<span class="gl__day">' + esc(d.toUpperCase())
-           + '</span>' + byDay[d].map(v4GameCard).join('')).join('')
+       ? order.map(d => (d ? '<span class="gl__day">'
+             + esc(d.toUpperCase()) + '</span>' : '')
+           + byDay[d].map(v4GameCard).join('')).join('')
        : '<div class="empty">No game this week reads that way.</div>')
     + '</div>'
+    // THE ORDER, NAMED, UNDER THE LIST. The header is outside the scrolling
+    // pane, so three games down the only thing on screen is an ordering with
+    // nothing saying what it is.
+    + (active
+       ? '<div class="gl__by"><span>Ordered by ' + esc(active[1]) + ', '
+         + (V.gsortdesc ? 'highest first' : 'lowest first')
+         + ' \u00b7 days not shown</span>'
+         + '<button data-v4gsort="">Back to kickoff order</button></div>'
+       : '')
     // THE 21+ LINE IS NOT DECORATION AND IT IS NOT A FOOTER EITHER.
     //
     // It sits at the end of the one screen everybody lands on, which is

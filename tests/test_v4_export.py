@@ -36,10 +36,36 @@ def v4_js(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def payload_v4():
-    """v3's enriched fixture. Same payload, which is the point of v4."""
+    """v3's enriched fixture, plus one card that carries all three bases.
+
+    Same payload otherwise, which is the point of v4.
+
+    v3's two cards are ATL_GB, which has a model number, and ARI_SF, which
+    does not — good coverage of the null, and between them not enough to
+    check an ORDER: with one usable value the sort assertion had nothing to
+    compare and skipped itself, which is how an inverted comparator passed
+    on the fixture and failed on the real week. A third card with every
+    basis populated makes the ordering genuinely checkable, and the null card
+    stays where it was.
+    """
     import tests.test_v3_export as T
 
-    return T.payload_v3.__wrapped__()
+    p = T.payload_v3.__wrapped__()
+    p["games"] = dict(p["games"])
+    p["games"]["cards"] = list(p["games"]["cards"]) + [{
+        "game_id": "BUF_LA", "home": "LA", "away": "BUF",
+        "spread": -3.0, "total": 54.5,
+        "win_home": 0.583, "win_away": 0.417,
+        "model_spread": 4.1, "model_total": 49.4, "model_win_home": 0.244,
+        "model_home": 22.7, "model_away": 26.8,
+        "proj_home": 28.7, "proj_away": 25.8,
+        "blend": {"spread": -2.4, "total": 53.2, "total_centered": 52.8,
+                  "win_home": 0.56},
+        "kick_day": "Monday", "kick_et": "8:15 PM ET",
+        "kick_sort": "2026-10-12 20:15", "prime": True,
+        "away_is_short_week": 0, "home_is_short_week": 0,
+    }]
+    return p
 
 
 def test_the_bundle_puts_v4s_overrides_after_v3s(v4_js):
@@ -238,6 +264,10 @@ def test_every_v4_screen_renders(payload_v4, v4_js, tmp_path):
                  "the lean buckets account for every game",
                  "the away row reads the away side’s model chance",
                  "inside a game the header goes dark",
-                 "every data key on screen is one the delegation handles"):
+                 "every data key on screen is one a delegation handles",
+                 "and v4 contributed at least one of its own",
+                 "the card wraps its rows in one full-width box",
+                 "sorted by model: the strongest is above the weakest",
+                 "and a third clears"):
         assert f"ok    {line}" in r.stdout, (
             f"never exercised: {line}\n{r.stdout}")

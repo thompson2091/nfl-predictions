@@ -179,10 +179,17 @@ CHROME = """
    and its label instead and leaves the ground alone, so the bar reads as one
    surface and the lime stays reserved for things you press to DO something
    rather than to go somewhere. */
-.tabbar{height:84px;flex:none;background:var(--card);
+/* AS TALL AS WHAT IS IN IT, PLUS WHATEVER THE PHONE ADDS.
+   The design draws 84px, and on the iPhone it was drawn for that is a 50px
+   tab, 4px of padding and 30px of home-indicator inset. Written as a fixed
+   height it is 84px EVERYWHERE — so on Android, on a desktop window and in
+   any browser with no bottom inset, a sixth of the glass is empty band under
+   the labels. `env()` resolves to 0 where there is no indicator, which is
+   exactly the behavior a hard-coded 84 was standing in for. */
+.tabbar{flex:none;background:var(--card);
   border-top:1px solid var(--line);display:grid;
   grid-template-columns:repeat(5,minmax(0,1fr));
-  padding:4px 4px calc(0px + env(safe-area-inset-bottom,0px));
+  padding:4px 4px calc(4px + env(safe-area-inset-bottom,0px));
   box-sizing:border-box}
 .tab{height:50px;display:flex;flex-direction:column;align-items:center;
   justify-content:center;gap:3px;font-size:11px;font-weight:500;
@@ -200,13 +207,42 @@ CHROME = """
 .gl__hd{display:grid;grid-template-columns:var(--gcols);gap:6px;
   padding:0 14px;font-size:11px;font-weight:600;letter-spacing:.04em;
   text-transform:uppercase;color:var(--mut)}
-.gl__hd b{font-weight:600;text-align:right}
+/* SORTABLE, SO THE HEADER IS A ROW OF BUTTONS AND LOOKS LIKE ONE.
+   A column you can order by has to say so before it is tapped: these carry
+   the caret at all times — faint until the column is the active one — rather
+   than only once pressed, which is the pattern that leaves a reader tapping
+   headings to find out which are live. */
+.gl__hd b{font-weight:600;text-align:right;display:flex;
+  align-items:center;justify-content:flex-end;gap:2px;background:none;
+  border:0;padding:4px 0;font:inherit;letter-spacing:inherit;
+  text-transform:inherit;color:var(--mut);min-height:28px}
 .gl__hd b.m{color:var(--ours)}
+.gl__hd b i{font-style:normal;font-size:9px;line-height:1;opacity:.35}
+.gl__hd b[aria-pressed="true"]{color:var(--ink)}
+.gl__hd b.m[aria-pressed="true"]{color:var(--ours)}
+.gl__hd b[aria-pressed="true"] i{opacity:1}
+/* Which column the order is by, restated under the list: the header is
+   outside the scrolling pane, so once you are three games down the only
+   thing on screen is an order with no label on it. */
+.gl__by{display:flex;align-items:center;gap:8px;padding:10px 2px 0;
+  font-size:12px;color:var(--mut)}
+.gl__by button{background:none;border:0;padding:0;font:inherit;
+  color:var(--ours);font-weight:600;min-height:44px}
 .gl__day{padding:6px 2px 0;font-family:var(--mono);font-size:11px;
   font-weight:500;letter-spacing:.08em;color:var(--mut)}
-.gc{display:flex;flex-direction:column;gap:8px;background:var(--card);
+/* THE CONTENT FILLS THE CARD, AND A `<button>` IS WHY IT DID NOT.
+   v3's game card is an `<a>` and the design's is an `<a>`; this is a real
+   `<button>`, because a card you open with the keyboard should answer Enter
+   and Space and an anchor with no href answers neither. The cost is that a
+   button wraps its children in an ANONYMOUS content box which does not
+   stretch to the button's width, so every row inside sat at its own
+   intrinsic width and the numbers bunched left of where their column header
+   was. One flex wrapper of its own defeats that in every engine; the
+   alternative is giving up the button. */
+.gc{display:flex;flex-direction:column;background:var(--card);
   border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;
-  color:var(--ink);text-align:left;width:100%}
+  color:var(--ink);text-align:left;width:100%;align-items:stretch}
+.gc__in{display:flex;flex-direction:column;gap:8px;width:100%;min-width:0}
 .gc__t{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .gc__g{display:grid;grid-template-columns:var(--gcols);gap:6px;row-gap:6px;
   align-items:center}
@@ -219,6 +255,29 @@ CHROME = """
   color:var(--mut)}
 .gc__f span{min-width:0;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap}
+
+/* TWO ABREAST ON A WIDE WINDOW, rather than one card stretched across it.
+   v3's own desktop section makes this argument: 560px is a phone column, and
+   widening a single card to 880 puts the team name and its numbers at
+   opposite ends with nothing in between. The width goes on showing more
+   games instead. The day heading still spans the row, because it labels both.
+   DOWN TO ONE under 560px of grid, which is every phone. */
+@media (min-width:900px){
+  .gl__games{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;align-items:start}
+  .gl__games>.gl__day{grid-column:1/-1}
+  /* The header describes ONE card's columns and there are now two across, so
+     it stops describing the layout — but it is also the sort control, and
+     hiding it would take the ordering away from the wider window that has
+     the most rows to order. It becomes a flat row of the same buttons with
+     its purpose named, and only the column label that described a position
+     goes. */
+  .gl__hd{grid-template-columns:none;display:flex;flex-wrap:wrap;
+    align-items:center;gap:0 14px;padding:0 2px}
+  .gl__hd>span{display:none}
+  .gl__hd::before{content:"Order by";color:var(--mut)}
+  .gl__hd b{justify-content:flex-start}
+}
 
 /* ---- filter chips ----------------------------------------------------
    Lime for the pressed one. These SCROLL sideways on purpose: there are four
