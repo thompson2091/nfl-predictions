@@ -26,6 +26,8 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v4Row', 'v4Edge', 'served', 'v3Streak', 'v3IsEdge',
    'v4Unpriced', 'v3Model', 'KIND', 'v3MktLines',
    'v4Clicks', 'v4Do', 'v4Sorts',
+   'v4Props', 'v4PropsHead', 'v4Psorts', 'v4RowsAnchor', 'v4AskPick',
+   'v3Sheet', 'v3Week', 'v3Fixture', 'v3Do', 'V3SHEETS',
    'V3TABS', 'V3MKT', 'V3CLICKS']);
 const { V, render, v3Screen, v3Nav, DATA, has, v4Tabs, v4GSec, v4FG,
         v4Lean, v4Spread, v4Note, v3GameSet, V3CLICKS, V3MKT,
@@ -305,6 +307,79 @@ ok('opening a row draws its detail under it',
    pane().indexOf('class="pw__d"') >= 0);
 ok('and marks the row open', pane().indexOf('pw--open') >= 0);
 V.open = null;
+
+// ── the column header, and the grid token that hung off it ──────────────
+//
+// `.pw` reads its six columns from `--pcols`, which `v4css` declared on a
+// `.pr` wrapper that NOTHING EVER EMITTED — the rows go into v3's
+// `<div class="list" id="v3rows">`. An undefined custom property makes
+// `grid-template-columns` invalid at computed-value time, so it fell back to
+// `none` and every cell auto-placed into one column: six numbers stacked
+// down the page, no error, no blank screen. The token moved to `:root` (held
+// by `test_the_grid_token_is_where_the_rows_can_see_it`) and this is the
+// header it was written for.
+render();
+ok('the board draws its column header', pane().indexOf('class="pr__hd"') >= 0);
+ok('and every estimate column is a sort control',
+   (pane().match(/data-v4psort=/g) || []).length === x.v4Psorts().length,
+   String((pane().match(/data-v4psort=/g) || []).length));
+// THE ANCHOR THE HEADER IS INSERTED AT. `v4Props` does surgery on `v3Week`'s
+// markup rather than redeclaring twenty lines of it, so this is what makes
+// that safe: move the anchor in v3 and this fails, instead of the header
+// silently vanishing.
+ok('v3Week still carries the anchor the header is inserted at',
+   x.v3Week().indexOf(x.v4RowsAnchor()) >= 0, x.v4RowsAnchor());
+ok('and the header lands above the rows, not inside them',
+   pane().indexOf('class="pr__hd"') < pane().indexOf(x.v4RowsAnchor()));
+// The header names v3's own sorts, so these controls and the "Sort by"
+// select in the board bar are two controls over one piece of state.
+ok('the active column is the one the board is sorted by',
+   pane().indexOf('data-v4psort="' + V.sort + '" aria-pressed="true"') >= 0,
+   V.sort);
+const was = V.sort, wasDesc = V.desc;
+x.v4Do('v4psort', 'book');
+ok('tapping a column sorts by it, high first',
+   V.sort === 'book' && V.desc === true, V.sort + '/' + V.desc);
+x.v4Do('v4psort', 'book');
+ok('and tapping it again reverses it', V.sort === 'book' && V.desc === false);
+x.v4Do('v4psort', 'book');
+ok('and again reverses it back', V.desc === true);
+V.sort = was; V.desc = wasDesc; render();
+
+// ── the row is tappable where the numbers are ──────────────────────────
+//
+// Only the NAME opened the drawer, so a finger on the four columns of
+// numbers — most of the row, and the part being read — did nothing.
+const one = x.v4Row(prows[0]);
+ok('every cell of the summary opens the row',
+   (one.match(/data-v3open=/g) || []).length === 6,
+   String((one.match(/data-v3open=/g) || []).length));
+ok('and the row says that it opens', one.indexOf('class="pw__more"') >= 0);
+// AND THE DRAWER DOES NOT CLOSE IT. v3's walker takes the nearest ancestor
+// carrying a key, so the same attribute on `.pw` itself would catch every
+// tap inside the open panel and collapse the row explaining itself.
+V.open = prows[0].id;
+const opened = x.v4Row(prows[0]);
+const drawer = opened.slice(opened.indexOf('class="pw__d"'));
+ok('and a tap inside the drawer does not collapse the row',
+   drawer.indexOf('data-v3open=') < 0, drawer.slice(0, 160));
+V.open = null;
+
+// THE FIXTURE, ONCE. `v3Fixture` already leads with the team and the
+// position, so prefixing them printed "DET RB · DET RB · DET @ ARI".
+const withTeam = prows.filter(r => r.team && r.pos)[0]
+  || prows.filter(r => r.team)[0];
+ok('the fixture is drawn once, not twice',
+   withTeam && x.v4Row(withTeam).split(x.v3Fixture(withTeam)).length === 2,
+   withTeam && x.v3Fixture(withTeam));
+
+// NO HEADER OVER AN EMPTY BOARD, and none over a graded week — whose rows
+// are `v3PastRow`, v3's shape, not this grid.
+const q = V.q;
+V.q = 'zzzzzzzz';
+ok('no column header over an empty board',
+   x.v4Props().indexOf('class="pr__hd"') < 0);
+V.q = q;
 // EVERY MARKET, because the row is shared and a yardage row has a line
 // where a touchdown row has none.
 V3MKT.filter(m => x.served(m[0])).forEach(m => {
@@ -441,6 +516,55 @@ ok('every data key on screen is one a delegation handles',
 ok('and v4 contributed at least one of its own',
    Object.keys(seen).some(k => x.v4Clicks().indexOf(k) >= 0),
    Object.keys(seen).join(','));
+
+// ── the chrome's three buttons, two of which are now one ────────────────
+//
+// Phase A drew Search, Ask and a person glyph, all three disabled, on the
+// argument that a bar which grows later moves every screen under it. The
+// height is what that argument covers; the buttons are not, and three dead
+// controls were reported as a broken app.
+V.game = null; V.sheet = null; V.tab = 'games'; render();
+ok('nothing in the app bar is disabled', bar().indexOf('disabled') < 0,
+   bar().slice(0, 400));
+// THE PERSON GLYPH IS GONE. There is no account, no profile and nothing to
+// sign in to, so it is not a control waiting to be built.
+ok('and there is no profile control', bar().indexOf('person') < 0
+   && app().indexOf('aria-label="Settings') < 0);
+ok('search is wired to something', bar().indexOf('data-v4search="1"') >= 0);
+ok('and ask is wired to v3\u2019s sheet',
+   bar().indexOf('data-v3sheet="ask"') >= 0);
+
+// SEARCH IS NAVIGATION, NOT A SECOND FILTER: the props board already has a
+// search field over the whole market, and this puts the caret in it.
+x.v4Do('v4search');
+ok('search lands on the props board', V.tab === 'props', String(V.tab));
+ok('and puts the caret in the board\u2019s own search field',
+   document.activeElement
+     && document.activeElement === document.querySelector('[data-v3q]'));
+
+// ASKING WITH NO GAME CHOSEN. The slices the proxy serves are keyed by game
+// id, so there is no "whole week" context to answer from — the sheet offers
+// the fixtures first rather than being disabled or asking about nothing.
+V.game = null; V.tab = 'games'; V.sheet = 'ask'; render();
+const sheetHTML = () => (document.getElementById('sheet') || {}).innerHTML || '';
+ok('asking with no game picks one first',
+   sheetHTML().indexOf('Which game?') >= 0, sheetHTML().slice(0, 200));
+ok('and every game on the board is offered',
+   (sheetHTML().match(/data-v4askgame=/g) || []).length === cards.length,
+   String((sheetHTML().match(/data-v4askgame=/g) || []).length)
+     + ' of ' + cards.length);
+x.v4Do('v4askgame', gid);
+ok('choosing one opens the sheet on it',
+   V.game === gid && V.sheet === 'ask');
+ok('and the form it posts carries that game\u2019s id',
+   sheetHTML().indexOf('data-v3askform="' + gid + '"') >= 0);
+// AND THE GAME SCREEN'S OWN ASK WORKS, which is the button that was
+// reported. There was never anything to build: `v3Ask` has shipped since
+// `b311ba8`.
+ok('the game header\u2019s Ask opens the same sheet',
+   x.v4GameHead(gid).indexOf('data-v3sheet="ask"') >= 0
+   && x.v4GameHead(gid).indexOf('disabled') < 0);
+V.sheet = null; V.game = null; V.tab = 'games'; render();
 
 // ── the note under the totals is a fact about the week ──────────────────
 ok('a short week is named on the card',

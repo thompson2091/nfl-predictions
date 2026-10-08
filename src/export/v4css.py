@@ -315,21 +315,28 @@ CHROME = """
    And the per-$100 under the edge badge is the MODEL's, named in the header,
    because that is the basis the rule's economics were measured on; the
    drawer carries both. */
-.pr{--pcols:32px minmax(0,1fr) 36px 36px 36px 58px}
+/* ON `:root`, NOT ON A `.pr` WRAPPER, and that is the whole bug the first
+   draft of this board shipped with. The custom property was declared on a
+   class NOTHING EMITTED — the rows live in v3's `<div class="list">` — so
+   `var(--pcols)` on `.pw` resolved to nothing, `grid-template-columns` fell
+   back to `none`, and every cell auto-placed into one column. The page did
+   not error and the rows all drew; they drew stacked. A token the layout
+   depends on belongs where the layout can always see it. */
+:root{--pcols:32px minmax(0,1fr) 38px 38px 38px 58px}
 .pr__hd{display:grid;grid-template-columns:var(--pcols);column-gap:4px;
-  padding:0 10px 6px 2px;font-size:11px;font-weight:600;letter-spacing:.04em;
+  padding:0 10px 6px 2px;font-size:10px;font-weight:600;letter-spacing:.03em;
   text-transform:uppercase;color:var(--mut)}
 .pr__hd b{font-weight:600;text-align:right;display:flex;align-items:center;
   justify-content:flex-end;gap:2px;background:none;border:0;padding:4px 0;
   font:inherit;letter-spacing:inherit;text-transform:inherit;
-  color:var(--mut);min-height:28px}
+  color:var(--mut);min-height:28px;cursor:pointer}
 .pr__hd b.m{color:var(--ours)}
 .pr__hd b i{font-style:normal;font-size:9px;line-height:1;opacity:.35}
 .pr__hd b[aria-pressed="true"]{color:var(--ink)}
 .pr__hd b.m[aria-pressed="true"]{color:var(--ours)}
 .pr__hd b[aria-pressed="true"] i{opacity:1}
 .pw{display:grid;grid-template-columns:var(--pcols);column-gap:4px;row-gap:2px;
-  align-items:center;padding:8px 10px 10px 2px;
+  align-items:center;padding:8px 10px 10px 2px;cursor:pointer;
   border-bottom:1px solid var(--line2)}
 .pw--open{background:var(--inset)}
 /* The star spans both rows so it is one 44px target beside the whole row,
@@ -361,14 +368,29 @@ CHROME = """
   color:var(--mut)}
 .pw__ev--up{color:var(--ours)}
 .pw__ev--dn{color:var(--bad)}
-/* The expanded panel spans the whole grid, under the row it belongs to. */
-.pw__d{grid-column:1/-1}
+/* The expanded panel spans the whole grid, under the row it belongs to. It
+   is NOT part of the tappable summary — `data-v3open` is on the summary
+   cells rather than on `.pw` itself, so a tap inside the drawer does not
+   close the row it is explaining. */
+.pw__d{grid-column:1/-1;margin-top:6px;cursor:auto}
+/* The affordance. Four cells of numbers with nothing saying the row opens
+   read as a table; v3 said "More" in a tag and this is that, as a chevron
+   so it costs no width beside the tags it sits with. */
+.pw__more{width:20px;height:20px;border-radius:999px;display:flex;
+  align-items:center;justify-content:center;background:var(--sunk);
+  color:var(--mut);margin-left:auto}
+.pw__more svg{transition:transform .12s ease}
+.pw--open .pw__more{background:var(--ink);color:var(--bg)}
+.pw--open .pw__more svg{transform:rotate(180deg)}
 .pw__tag{height:18px;padding:0 5px;border-radius:4px;font-size:11px;
   font-weight:700;display:flex;align-items:center;white-space:nowrap;
   background:var(--sunk);color:var(--mut)}
 .pw__tag--up{background:var(--oursbg);color:var(--ours)}
 .pw__tag--dn{background:#FCEBDD;color:#8A3C08}
 .pw__tag--star{background:#FBF1D6;color:var(--starline)}
+/* The kickoff time on an Ask pill, which is a note on the fixture and
+   not a second fixture. */
+.q i{font-style:normal;color:var(--mut);font-size:13px}
 
 /* ---- the players no book is quoting ----------------------------------
    FOUR COLUMNS, AND TWO OF THEM ARE EMPTY ON A TOUCHDOWN MARKET. That is

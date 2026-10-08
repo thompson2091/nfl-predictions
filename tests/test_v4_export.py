@@ -194,6 +194,39 @@ def test_the_stylesheet_is_v3s_components_under_hashmark_tokens():
     assert "#F5F3EE" not in out.split(v3css.COMPONENTS)[0]
 
 
+def test_the_grid_token_is_where_the_rows_can_see_it():
+    """A CUSTOM PROPERTY DECLARED ON A SELECTOR NOTHING EMITS IS NO TOKEN.
+
+    `.pw` is the props row and takes its six columns from `--pcols`. The
+    first draft declared that property on `.pr`, a wrapper the board never
+    rendered — the rows go into v3's `<div class="list" id="v3rows">` — so
+    `var(--pcols)` resolved to nothing. An invalid value for
+    `grid-template-columns` falls back to `none`, which auto-places every
+    cell into a single column: the board drew as a stack, with no error and
+    no blank screen.
+
+    Asserted structurally rather than by spelling: the declaring selector has
+    to be one that is an ancestor of every row on every screen, and `:root`
+    is the only such selector this stylesheet has.
+    """
+    import re
+
+    from src.export import v4css
+
+    out = v4css.css()
+    assert "--pcols:" in out
+    decls = [m.group(1) for m in
+             re.finditer(r"([^{}]*)\{[^{}]*--pcols:", out)]
+    assert decls, "nothing declares --pcols"
+    for sel in decls:
+        assert ":root" in sel, (
+            f"--pcols is declared on {sel.strip()!r}, which is not an "
+            "ancestor of .pw — see this test's docstring")
+    # And the rule that reads it is still the row, so the two cannot drift
+    # into being about different things.
+    assert "grid-template-columns:var(--pcols)" in out
+
+
 def test_nothing_in_v4_grades_in_green_or_red():
     """Blue and orange, from the design system, and the reason is not taste.
 
@@ -270,6 +303,22 @@ def test_every_v4_screen_renders(payload_v4, v4_js, tmp_path):
                  "the card wraps its rows in one full-width box",
                  "sorted by model: the strongest is above the weakest",
                  "and a third clears",
+                 # The column header, and the collapsed grid it hid.
+                 "the board draws its column header",
+                 "and every estimate column is a sort control",
+                 "v3Week still carries the anchor the header is inserted at",
+                 "tapping a column sorts by it, high first",
+                 # The row, tappable where the numbers are.
+                 "every cell of the summary opens the row",
+                 "and a tap inside the drawer does not collapse the row",
+                 "the fixture is drawn once, not twice",
+                 # The chrome's dead buttons.
+                 "nothing in the app bar is disabled",
+                 "and there is no profile control",
+                 "and puts the caret in the board\u2019s own search field",
+                 "asking with no game picks one first",
+                 "and the form it posts carries that game\u2019s id",
+                 "the game header\u2019s Ask opens the same sheet",
                  # The props board, and the half of "no bet slip" Phase A
                  # missed: the check ran on one tab and the props board had
                  # 25 live add buttons feeding a bar that never rendered.

@@ -179,17 +179,25 @@ function v4AppBar() {
   return '<div class="appbar">'
     + '<span class="brand">' + esc(DATA.brand || 'Pick Six') + '</span>'
     + '<span class="bargroup">' + wk
-    // Search, Ask and Settings are Phase E. They are drawn now rather than
-    // later because the bar's height is what every screen below it is laid
-    // out against, and adding a 44px row to it afterwards would move every
-    // one of them. Disabled rather than absent: a target that does nothing
-    // and says so is honest, where a bar that grows later is a redesign.
-    + '<button class="iconbtn" disabled aria-label="Search — not built yet">'
+    // TWO TARGETS, AND BOTH OF THEM DO SOMETHING. Phase A drew three and
+    // disabled all three, on the argument that a bar which grows later moves
+    // every screen under it. The argument holds for the bar's HEIGHT and not
+    // for the buttons in it: three dead controls read as a broken app, which
+    // is what they were reported as. So the height is settled and each
+    // remaining button is wired to machinery that already exists.
+    //
+    // Search goes to the props board and puts the caret in its search box —
+    // which is where finding a player happens, and is a screen rather than
+    // a promise. Ask opens v3's Ask sheet; with no game chosen it opens on
+    // the week's fixtures first (see `v3Sheet`).
+    //
+    // THE THIRD IS GONE. It was a person glyph labeled Settings, and this
+    // app has no account, no profile and nothing to sign in to. A control
+    // for a concept that does not exist cannot be built later.
+    + '<button class="iconbtn" data-v4search="1" aria-label="Find a player">'
     + v4Icon('search', 19) + '</button>'
-    + '<button class="iconbtn" disabled aria-label="Ask — not built yet">'
+    + '<button class="iconbtn" data-v3sheet="ask" aria-label="Ask about a game">'
     + v4Icon('ask', 19) + '</button>'
-    + '<button class="iconbtn" disabled aria-label="Settings — not built yet">'
-    + v4Icon('person', 19) + '</button>'
     + '</span></div>';
 }
 
@@ -218,15 +226,68 @@ function v4GameHead(gid) {
     + (V.backTab === 'angles' ? 'Back to the angles board' : 'Back to all games')
     + '">' + v4Icon('chevleft', 20) + '</button>'
     + '<span class="ghead__n">' + name + '</span>'
-    // Phase E. Drawn and disabled for the same reason the app bar's are.
-    + '<button class="gocta" disabled aria-label="Ask about this game — '
-    + 'not built yet">Ask' + v4Icon('arrow', 14) + '</button>'
+    // v3's Ask sheet, which has worked since `b311ba8` — the model asks for
+    // the slices a question needs and the proxy serves them. Phase A drew
+    // this disabled; there was never anything to build.
+    + '<button class="gocta" data-v3sheet="ask" aria-label="Ask about this '
+    + 'game">Ask' + v4Icon('arrow', 14) + '</button>'
     + '</div>'
     + '<nav class="gnav" aria-label="Game sections">'
     + v4GSec().map(s => '<button data-v3gtab="' + s[0] + '"'
         + (sec === s[0] ? ' aria-current="page"' : '') + '>'
         + esc(s[1]) + '</button>').join('')
     + '</nav></div>';
+}
+
+// ── asking, from anywhere ───────────────────────────────────────────────
+//
+// v3's Ask sheet is per game, because the context the proxy serves is per
+// game: `askctx.build_slices` writes `core/<gid>`, `players/<gid>`,
+// `angles/<gid>` and `team/<TEAM>`, and the model names a slice which the
+// proxy maps to a path built from the already-validated game id. There is no
+// "the whole week" slice to answer a question with.
+//
+// v3 drew the Ask button only inside a game for that reason. v4 puts one in
+// the app bar as well, and this is what makes that honest: with no game
+// chosen the sheet is the week's fixtures, and choosing one opens the sheet
+// on it. The alternative — a disabled button, or one that asks a question
+// about nothing — is what Phase A shipped and what was reported.
+//
+// `v3Sheet` is redeclared rather than `v3Ask`, because `v3Ask(null)` would
+// still render a form whose `data-v3askform` is empty and whose submit the
+// proxy would reject by game id. Intercepting at the sheet means the body
+// that cannot work is never built.
+function v3Sheet() {
+  const scrim = document.getElementById('scrim');
+  const sheet = document.getElementById('sheet');
+  if (!scrim || !sheet) return;
+  const pick = V.sheet === 'ask' && !V.game;
+  if (!V.sheet || (!V3SHEETS[V.sheet] && !pick)) {
+    scrim.className = 'scrim'; sheet.className = 'sheet'; sheet.innerHTML = '';
+    return;
+  }
+  sheet.innerHTML = pick
+    ? v3SheetHTML('Which game?', v4AskPick())
+    : V3SHEETS[V.sheet]();
+  scrim.className = 'scrim open'; sheet.className = 'sheet open';
+}
+
+function v4AskPick() {
+  const cards = (v3GameSet().cards || []).slice();
+  if (!cards.length) {
+    return '<p class="lede">No games are on the board for this week, so '
+      + 'there is nothing to ask about yet.</p>';
+  }
+  cards.sort((a, b) => String(a.kick_sort || '').localeCompare(
+    String(b.kick_sort || '')));
+  return '<p class="help">Answers are built from one game\u2019s own numbers '
+    + '\u2014 its lines, its props, its splits and both teams\u2019 records '
+    + '\u2014 so the question starts with the game.</p>'
+    + '<div class="qs">'
+    + cards.map(c => '<button class="q" data-v4askgame="' + esc(c.game_id)
+        + '">' + esc(c.away) + ' at ' + esc(c.home)
+        + ' <i>\u00b7 ' + esc(v3Kick(c)) + '</i></button>').join('')
+    + '</div>';
 }
 
 // ── v4's own click keys ─────────────────────────────────────────────────
@@ -237,7 +298,7 @@ function v4GameHead(gid) {
 // v3's walker finds no match on a `data-v4*` node and falls through to the
 // body without acting, and v4's does the same for every v3 key.
 function v4Clicks() {
-  return ['v4gsort', 'v4unmore'];
+  return ['v4gsort', 'v4unmore', 'v4search', 'v4psort', 'v4askgame'];
 }
 
 function v4Do(kind, v) {
@@ -261,10 +322,44 @@ function v4Do(kind, v) {
     // than `V.shown`, which is the PRICED list's — sharing it would have
     // "see all 374 unpriced" also expand the board above it.
     case 'v4unmore': V.unshown = 1e9; break;
+    // THE APP BAR'S SEARCH, and it goes to the box that already exists.
+    //
+    // `v3Week` carries a search field over the whole market; a second one in
+    // the chrome would be a second filter disagreeing with it. So this is
+    // navigation, not a feature: land on the props board, at the top, with
+    // the caret in its field. Refocused AFTER the render below, because the
+    // render is what creates the field being focused.
+    case 'v4search':
+      V.tab = 'props'; V.game = null; V.shown = V3SHOW; V.top = true;
+      if (V.week != null && v3Weeks().indexOf(V.week) < 0) V.week = null;
+      break;
+    // WHICH COLUMN THE PROPS BOARD IS ORDERED BY. Two states, not the games
+    // board's three: v3's board is always sorted by something (`V.sort`
+    // defaults to Model) and there is no unsorted order to go back to, so
+    // tapping the active column reverses it and tapping again reverses it
+    // back. `V.sort` and `V.desc` are v3's own, which is why the select in
+    // the board bar and these headers can never disagree.
+    case 'v4psort':
+      if (V.sort !== v) { V.sort = v; V.desc = true; }
+      else { V.desc = !V.desc; }
+      V.shown = V3SHOW; V.top = 'section';
+      break;
+    // ASKING FROM OUTSIDE A GAME. The sheet's body is per game — the slices
+    // the proxy serves are keyed by game id — so with none chosen it offers
+    // the week's fixtures and this is the choice. `V.game` rather than a
+    // second field: `v3Do`'s `v3ask` chips read `V.game`, and a parallel
+    // "the game I am asking about" would answer a different question from
+    // the one the chips computed.
+    case 'v4askgame': V.game = v; V.sheet = 'ask'; break;
     default: return;
   }
   v3Save();
   render();
+  // `v3Refocus` is v3's, and it finds the control by the one thing about it
+  // that survives an `innerHTML` write: its own data attribute.
+  if (kind === 'v4search') {
+    v3Refocus({ attr: 'data-v3q', start: null, end: null });
+  }
 }
 
 document.addEventListener('click', ev => {
@@ -287,7 +382,7 @@ document.addEventListener('click', ev => {
 // in its own phase, and until then the app is whole rather than half-built.
 function v3Screen() {
   switch (V.tab) {
-    case 'props': return v3Week() + v4Unpriced();
+    case 'props': return v4Props() + v4Unpriced();
     case 'picks': return v4Starred();       // phase C
     case 'angles': return v3AnglesPage();   // phase C
     case 'record': return v3RecordPage();   // phase D
@@ -669,6 +764,69 @@ function v4Unpriced() {
     + '</div>';
 }
 
+// ── the props board's column header ─────────────────────────────────────
+//
+// THE HEADER THAT WAS NEVER DRAWN, AND THE BUG IT HID. `v4css` declared
+// `--pcols` on a `.pr` wrapper and `.pw` read it — but nothing ever emitted
+// `.pr`, because the rows go into v3's `<div class="list" id="v3rows">`. An
+// undefined custom property makes `grid-template-columns` invalid at
+// computed-value time, so it fell back to `none` and every cell in every row
+// auto-placed into ONE COLUMN. The board rendered, with no error, as a
+// stack. The token now lives on `:root` and this draws the header it was
+// written for.
+//
+// INSERTED INTO `v3Week`'s MARKUP RATHER THAN COPIED FROM IT. The
+// alternative is redeclaring `v3Week` — twenty lines of past banner, lede,
+// board bar, CLV note and explainer — which would then be a second copy
+// drifting from the first. Surgery on a known anchor fails LOUDLY instead:
+// the harness asserts the anchor is found, so a change to `v3Week` breaks a
+// test rather than quietly shipping a board with no header.
+function v4RowsAnchor() {
+  return '<div class="list" id="v3rows">';
+}
+
+//: The three estimate columns and the gap, keyed to v3's own sorts.
+//:
+//: `V.sort` and `V.desc` are v3's, which is why these headers and the "Sort
+//: by" select in the board bar can never disagree — they are one piece of
+//: state with two controls, not two orderings.
+function v4Psorts() {
+  return [['model', 'Model'], ['book', 'Book'], ['adj', 'Adj'],
+          ['edge', 'Edge']];
+}
+
+function v4PropsHead() {
+  return '<div class="pr__hd"><span></span><span>Player</span>'
+    + v4Psorts().map(c => {
+        const on = V.sort === c[0];
+        return '<b class="' + (c[0] === 'model' ? 'm' : '') + '" '
+          + 'data-v4psort="' + c[0] + '" aria-pressed="' + on + '" '
+          + 'aria-label="Order by ' + esc(c[1])
+          + (on ? (V.desc ? ', high first' : ', low first') : '') + '">'
+          + esc(c[1]) + '<i>' + (on ? (V.desc ? '\u25bc' : '\u25b2')
+                                    : '\u25bc') + '</i></b>';
+      }).join('')
+    + '</div>';
+}
+
+function v4Props() {
+  const html = v3Week();
+  // NOT ON A GRADED WEEK. Those rows are `v3PastRow`, which is v3's shape
+  // and not this grid, so a header naming these columns would label cells
+  // that are not under it.
+  if (V.week != null) return html;
+  const a = v4RowsAnchor();
+  const at = html.indexOf(a);
+  if (at < 0) return html;
+  // Nor over an empty board: "no player matching Smith" needs no column
+  // headings, and four sort controls over nothing read as a broken filter.
+  if (html.slice(at + a.length, at + a.length + 24)
+          .indexOf('class="empty"') >= 0) {
+    return html;
+  }
+  return html.slice(0, at) + v4PropsHead() + html.slice(at);
+}
+
 // ── the props board, one player to a line ───────────────────────────────
 //
 // `v3Row` is the override point, so `v3Week`, `v3Rows`, `v3Sorted`,
@@ -744,8 +902,16 @@ function v4Row(row) {
             : row.nBooks + ' books')
        : '');
 
+  // EVERY CELL OF THE SUMMARY OPENS THE ROW, and the drawer does not close
+  // it. Only the name was tappable, so a reader who put a finger on the
+  // numbers — which is most of the row and the part they are reading — got
+  // nothing. `data-v3open` on the cells rather than on `.pw` itself: v3's
+  // walker takes the nearest ancestor carrying a key, so a key on the
+  // container would also catch every tap inside the open drawer and collapse
+  // the row that was explaining itself.
   const cell = (cls, txt) =>
-    '<span class="pw__v ' + cls + '">' + txt + '</span>';
+    '<span class="pw__v ' + cls + '" data-v3open="' + esc(row.id) + '">'
+    + txt + '</span>';
 
   return '<div class="pw' + (open ? ' pw--open' : '') + '">'
     + '<button class="pw__star" data-v3fav="' + esc(row.id) + '" '
@@ -758,17 +924,23 @@ function v4Row(row) {
     + '-4.3-4.1 5.9-.9z"></path></svg></button>'
     + '<button class="pw__n" data-v3open="' + esc(row.id) + '" '
     + 'aria-expanded="' + open + '">'
-    + '<b>' + esc(row.player) + '</b>' + tags + '</button>'
-    + '<span class="pw__m">'
-    + '<span>' + esc([row.team, row.pos].filter(Boolean).join(' '))
-    + (row.team || row.pos ? ' · ' : '') + esc(v3Fixture(row))
-    + '</span>'
+    + '<b>' + esc(row.player) + '</b>' + tags
+    // WHAT SAYS THE ROW OPENS. v3 ended its tag list with "More" / "Hide
+    // detail"; four columns of numbers and nothing else said a tap would do
+    // anything, which is the other half of "doesn't click right".
+    + '<span class="pw__more" aria-hidden="true">' + v4Icon('chevdown', 12)
+    + '</span></button>'
+    + '<span class="pw__m" data-v3open="' + esc(row.id) + '">'
+    // `v3Fixture` ALREADY LEADS WITH THE TEAM AND THE POSITION — it returns
+    // "DET RB · DET @ ARI" — so prefixing them here printed both twice:
+    // "DET RB · DET RB · DET @ ARI" on every row of the live board.
+    + '<span>' + esc(v3Fixture(row)) + '</span>'
     + '<span>' + price + '</span>'
     + '</span>'
     + cell('pw__v--m', v3Pct(v3Model(row), 0))
     + cell('pw__v--b', v3Pct(row.book, 0))
     + cell('pw__v--a', v3Pct(row.ours, 0))
-    + '<span class="pw__r">'
+    + '<span class="pw__r" data-v3open="' + esc(row.id) + '">'
     + '<span class="pw__e' + (has(edge) ? (edge > 0 ? ' pw__e--up'
         : ' pw__e--dn') : '') + '">'
     + (has(edge) ? (edge > 0 ? '+' : '−') + Math.abs(edge).toFixed(1)
