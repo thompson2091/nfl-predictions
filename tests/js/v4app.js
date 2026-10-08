@@ -23,10 +23,12 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v4Games', 'v4Game', 'v4GameHead', 'v4AppBar', 'v4Starred',
    'v4Lean', 'v4Spread', 'v4Note', 'v4Icon', 'v4GameCard',
    'v3GameSet', 'v3Weeks', 'rowsFor', 'isFav', 'v3Load', 'v3Save',
+   'v4Row', 'v4Edge', 'served', 'v3Streak', 'v3IsEdge',
    'v4Clicks', 'v4Do', 'v4Sorts',
    'V3TABS', 'V3MKT', 'V3CLICKS']);
 const { V, render, v3Screen, v3Nav, DATA, has, v4Tabs, v4GSec, v4FG,
-        v4Lean, v4Spread, v4Note, v3GameSet, V3CLICKS } = x;
+        v4Lean, v4Spread, v4Note, v3GameSet, V3CLICKS, V3MKT,
+        rowsFor, v3Line } = x;
 const V4TABS = v4Tabs(), V4GSEC = v4GSec(), FG = v4FG();
 
 // The whole shell. v4 writes the header into `#appbar`, the screen into
@@ -63,11 +65,23 @@ ok('the nav carries every destination',
 ok('the header names the brand', bar().indexOf(DATA.brand) >= 0, DATA.brand);
 ok('the week picker is on the board', bar().indexOf('data-v3week') >= 0);
 
-// NO SLIP BAR ANYWHERE. Asked for directly, and the kind of thing that comes
-// back when a screen is restyled from a design that still had one.
-ok('there is no slip bar',
-   app().indexOf('slipbar') < 0 && app().indexOf('data-v3pick=') < 0,
-   'a slip control is on screen');
+// NO SLIP CONTROL ON ANY TAB, and the "any tab" is the whole point.
+//
+// This check used to run once, right after the first render, which is the
+// GAMES tab — and passed while the props board carried 25 live `+` buttons
+// that added to a slip whose bar never rendered. A dead control is worse
+// than a visible one: the reader taps it, something is recorded, and nothing
+// on screen changes. Counted per tab, with the count in the message, so a
+// regression says where.
+V4TABS.forEach(t => {
+  V.tab = t[0]; V.game = null; render();
+  const h = app();
+  const n = (h.match(/data-v3pick=/g) || []).length;
+  const bar = (h.match(/slipbar/g) || []).length;
+  ok('no slip control on ' + t[0], n === 0 && bar === 0,
+     n + ' add buttons, ' + bar + ' slip bars');
+});
+V.tab = 'games'; render();
 
 // ── every tab renders ───────────────────────────────────────────────────
 V4TABS.forEach(t => {
@@ -232,6 +246,73 @@ ok('the card wraps its rows in one full-width box',
    x.v4GameCard(cards[0]).slice(0, 120));
 ok('and closes it', /<\/span><\/span><\/button>$/.test(x.v4GameCard(cards[0])),
    x.v4GameCard(cards[0]).slice(-60));
+
+// ── the props board's rows ──────────────────────────────────────────────
+V.tab = 'props'; V.game = null; V.filter = 'all'; V.open = null; render();
+const prows = rowsFor(V.market, null);
+ok('the props board exercised real rows', prows.length > 0, String(prows.length));
+ok('the board draws the Hashmark row', pane().indexOf('class="pw') >= 0);
+ok('and not v3\u2019s card', pane().indexOf('class="row') < 0,
+   'v3\u2019s row markup is still being drawn');
+// THE THREE ESTIMATES, EVERY ROW, IN THEIR OWN COLUMNS. A row that drops one
+// silently is a row whose Adj column is reading something else.
+ok('every row carries all three estimates',
+   (pane().match(/class="pw__v pw__v--m"/g) || []).length
+     === (pane().match(/class="pw__v pw__v--a"/g) || []).length
+   && (pane().match(/class="pw__v pw__v--m"/g) || []).length > 0,
+   String((pane().match(/class="pw__v pw__v--m"/g) || []).length));
+// THE BOOK COUNT, which the design declares and never draws — and which
+// only ONE market family has.
+//
+// `nBooks` is the number of books posting THAT LINE and exists on all four
+// over/under markets and none of the touchdown ones; the touchdown boards
+// carry `n_best`, books level at the best PRICE, which is a different
+// quantity and lives in the drawer. Asserted both ways, because a row that
+// printed one where the other was meant would read as a thin market.
+let sawBooks = false, sawThin = false;
+V3MKT.filter(m => x.served(m[0])).forEach(m => {
+  const rows = x.rowsFor(m[0], null);
+  if (!rows.length) return;
+  const n = rows.filter(r => has(r.nBooks)).length;
+  if (n) {
+    sawBooks = true;
+    const r = rows.filter(r2 => has(r2.nBooks))[0];
+    ok('market ' + m[0] + ': the price line carries the book count',
+       x.v4Row(r).indexOf(r.nBooks + ' book') >= 0);
+    // A row quoted by one or two books is marked, because a "consensus" of
+    // two is a median of two and the floors were fitted above that.
+    const thin = rows.filter(r2 => has(r2.nBooks) && r2.nBooks < 3)[0];
+    if (thin) {
+      sawThin = true;
+      ok('market ' + m[0] + ': and marks a thin one',
+         x.v4Row(thin).indexOf('<i>') >= 0);
+    }
+  } else {
+    ok('market ' + m[0] + ': claims no book count, because it has none',
+       x.v4Row(rows[0]).indexOf(' book') < 0);
+  }
+});
+ok('at least one market exercised the book count', sawBooks);
+ok('and at least one thin row', sawThin);
+// STARRING IS ONE 44px TARGET BESIDE THE WHOLE ROW, not a 22px one beside
+// the name — the star spans both grid rows.
+ok('the star is on every row',
+   (pane().match(/data-v3fav=/g) || []).length > 0);
+// Opening a row puts the panel under it, spanning the grid.
+V.open = prows[0].id; render();
+ok('opening a row draws its detail under it',
+   pane().indexOf('class="pw__d"') >= 0);
+ok('and marks the row open', pane().indexOf('pw--open') >= 0);
+V.open = null;
+// EVERY MARKET, because the row is shared and a yardage row has a line
+// where a touchdown row has none.
+V3MKT.filter(m => x.served(m[0])).forEach(m => {
+  V.market = m[0];
+  let e = null;
+  try { render(); } catch (ex) { e = ex; }
+  ok('market ' + m[0] + ' renders', !e, e && (e.message + '\n' + e.stack));
+});
+V.market = 'any'; V.tab = 'games'; render();
 
 // ── one game, all four sections ─────────────────────────────────────────
 const gid = (cards[0] || {}).game_id;

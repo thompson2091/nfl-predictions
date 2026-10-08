@@ -296,6 +296,80 @@ CHROME = """
   color:var(--mut)}
 .chip[aria-pressed="true"] i{color:var(--actionink);opacity:.7}
 
+/* ---- the props board: one player to a line ---------------------------
+   SIX COLUMNS OVER TWO ROWS, from the design:
+
+     [star] [name + tags                                            ]
+     [    ] [team pos · game / price · books] [M] [B] [A] [edge / EV]
+
+   v3 draws the same player as a card: a name row, a price pill, a payout
+   line and a six-cell strip underneath. That is the right shape when a strip
+   is the only place the numbers live and the wrong one for a board you scan,
+   because four players fill a phone. This is denser and the numbers line up
+   down the page, which is what makes "sort by Model" worth having.
+
+   TWO THINGS THE DESIGN DECLARES AND DOES NOT DRAW, added here. The book
+   count sits on the price line, because a yardage "consensus" is a median of
+   two on a typical cell and a row quoted by ONE book is a de-vig against
+   that book alone — which is the gate `ou_shortlist` fits its floors under.
+   And the per-$100 under the edge badge is the MODEL's, named in the header,
+   because that is the basis the rule's economics were measured on; the
+   drawer carries both. */
+.pr{--pcols:32px minmax(0,1fr) 36px 36px 36px 58px}
+.pr__hd{display:grid;grid-template-columns:var(--pcols);column-gap:4px;
+  padding:0 10px 6px 2px;font-size:11px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--mut)}
+.pr__hd b{font-weight:600;text-align:right;display:flex;align-items:center;
+  justify-content:flex-end;gap:2px;background:none;border:0;padding:4px 0;
+  font:inherit;letter-spacing:inherit;text-transform:inherit;
+  color:var(--mut);min-height:28px}
+.pr__hd b.m{color:var(--ours)}
+.pr__hd b i{font-style:normal;font-size:9px;line-height:1;opacity:.35}
+.pr__hd b[aria-pressed="true"]{color:var(--ink)}
+.pr__hd b.m[aria-pressed="true"]{color:var(--ours)}
+.pr__hd b[aria-pressed="true"] i{opacity:1}
+.pw{display:grid;grid-template-columns:var(--pcols);column-gap:4px;row-gap:2px;
+  align-items:center;padding:8px 10px 10px 2px;
+  border-bottom:1px solid var(--line2)}
+.pw--open{background:var(--inset)}
+/* The star spans both rows so it is one 44px target beside the whole row,
+   not a 22px one beside the name. */
+.pw__star{grid-row:span 2;align-self:start;width:32px;height:44px;
+  display:flex;align-items:center;justify-content:center;background:none;
+  border:0;color:var(--mut3)}
+.pw__star[aria-pressed="true"]{color:var(--star)}
+.pw__n{grid-column:2/-1;display:flex;align-items:center;flex-wrap:wrap;
+  gap:4px 8px;min-height:28px;background:none;border:0;padding:0;
+  text-align:left;color:var(--ink);font:inherit}
+.pw__n b{font-size:16px;line-height:20px;font-weight:600}
+.pw__m{display:flex;flex-direction:column;gap:1px;min-width:0;
+  font-family:var(--mono);font-size:11px;color:var(--mut)}
+.pw__m span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pw__m i{font-style:normal;color:var(--bad)}
+.pw__v{text-align:right;font-family:var(--mono);font-size:13px}
+.pw__v--m{color:var(--ours)}
+.pw__v--b{color:var(--mut)}
+.pw__v--a{font-size:14px;font-weight:700}
+.pw__r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.pw__e{height:22px;min-width:46px;padding:0 4px;box-sizing:border-box;
+  border-radius:var(--r-sm);font-family:var(--mono);font-size:12px;
+  font-weight:600;display:flex;align-items:center;justify-content:center;
+  background:var(--sunk);color:var(--mut)}
+.pw__e--up{background:var(--oursbg);color:var(--ours)}
+.pw__e--dn{background:var(--badbg);color:var(--bad)}
+.pw__ev{font-family:var(--mono);font-size:11px;font-weight:600;
+  color:var(--mut)}
+.pw__ev--up{color:var(--ours)}
+.pw__ev--dn{color:var(--bad)}
+/* The expanded panel spans the whole grid, under the row it belongs to. */
+.pw__d{grid-column:1/-1}
+.pw__tag{height:18px;padding:0 5px;border-radius:4px;font-size:11px;
+  font-weight:700;display:flex;align-items:center;white-space:nowrap;
+  background:var(--sunk);color:var(--mut)}
+.pw__tag--up{background:var(--oursbg);color:var(--ours)}
+.pw__tag--dn{background:#FCEBDD;color:#8A3C08}
+.pw__tag--star{background:#FBF1D6;color:var(--starline)}
+
 /* ---- the game screen's dark header ----------------------------------
    The one inverted surface in the app, and it marks the one place you are
    inside something rather than scanning a list. The section nav under it

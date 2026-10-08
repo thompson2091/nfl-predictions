@@ -257,7 +257,8 @@ def test_every_v4_screen_renders(payload_v4, v4_js, tmp_path):
     for line in ("v4’s app bar replaced v3’s header",
                  "the third tab reads Starred, not Picks",
                  "storage is under v4’s own key, not v3’s",
-                 "there is no slip bar",
+                 # Per tab now, not once on whichever one was rendering.
+                 "no slip control on games",
                  "the games list exercised real cards",
                  "every game on the board is openable",
                  "games are grouped under the day the card names",
@@ -268,6 +269,17 @@ def test_every_v4_screen_renders(payload_v4, v4_js, tmp_path):
                  "and v4 contributed at least one of its own",
                  "the card wraps its rows in one full-width box",
                  "sorted by model: the strongest is above the weakest",
-                 "and a third clears"):
+                 "and a third clears",
+                 # The props board, and the half of "no bet slip" Phase A
+                 # missed: the check ran on one tab and the props board had
+                 # 25 live add buttons feeding a bar that never rendered.
+                 "no slip control on props",
+                 "the props board exercised real rows",
+                 "the board draws the Hashmark row",
+                 "and not v3\u2019s card",
+                 "every row carries all three estimates",
+                 "at least one market exercised the book count",
+                 "and at least one thin row",
+                 "opening a row draws its detail under it"):
         assert f"ok    {line}" in r.stdout, (
             f"never exercised: {line}\n{r.stdout}")

@@ -573,6 +573,123 @@ function v4Games() {
     + '</div>';
 }
 
+// ── the props board, one player to a line ───────────────────────────────
+//
+// `v3Row` is the override point, so `v3Week`, `v3Rows`, `v3Sorted`,
+// `v3SortBar`, the market pills, all six filters, the search box, the past-week
+// fetch and the graded colouring are v3's and untouched. What changes is the
+// shape of one row.
+//
+// AND THE ADD-TO-SLIP BUTTON GOES, which is the half of "no bet slip" that
+// Phase A missed. v4's shell has no `slipbarHost`, so the BAR never rendered —
+// but `v3Row` still drew a `+` beside every player, and on the real week that
+// was 25 live controls that added to a slip nobody could see or open. A dead
+// control is worse than a visible one: the reader taps it, something is
+// recorded, and nothing on screen changes. The harness now counts them on
+// every tab rather than on the one it happened to be rendering.
+
+//: Our number against the book's, in the units the design's badge wants.
+function v4Edge(row) {
+  return has(row.edge) ? row.edge : null;
+}
+
+function v4Row(row) {
+  const open = V.open === row.id;
+  const line = v3Line(row);
+  const evm = v3EvModel(row);
+  const ev = has(evm) ? evm * 100 : null;
+  const edge = v4Edge(row);
+  const fav = isFav(row.id);
+  const inj = (DATA.injuries || {})[row.player];
+
+  // THE TAGS, in the order a reader needs them: what stops the bet, then
+  // what recommends it. An injury tag below a "Shortlist" tag reads as a
+  // footnote on a recommendation; above it, it reads as the reason not to.
+  let tags = '';
+  if (inj) {
+    tags += '<span class="pw__tag pw__tag--dn">' + esc(inj.s)
+      + (inj.i ? ' · ' + esc(inj.i) : '') + '</span>';
+  }
+  if (row.status && row.status !== 'ACT') {
+    tags += '<span class="pw__tag pw__tag--dn">' + esc(row.status) + '</span>';
+  }
+  // THE MARKET DECLINING TO QUOTE THE PASSER WE HAVE LEADING THIS TEAM.
+  // Not "our number is far from the line", which is normal and usually us
+  // being right — this is the books knowing he is not playing, so our number
+  // for the man they DO quote was built on him being a backup.
+  if (row.role_doubt) {
+    tags += '<span class="pw__tag pw__tag--dn">Role doubt</span>';
+  }
+  if (v3Script(row)) {
+    tags += '<span class="pw__tag pw__tag--dn">Script risk</span>';
+  }
+  if (row.thin) {
+    tags += '<span class="pw__tag">Thin market</span>';
+  }
+  if (v3IsEdge(row)) {
+    tags += '<span class="pw__tag pw__tag--up">Big gap</span>';
+  }
+  const st = v3Streak(row);
+  if (st) {
+    tags += '<span class="pw__tag pw__tag--star">' + esc(st.of) + ' of '
+      + esc(st.n) + '</span>';
+  }
+  if (line) tags += '<span class="pw__tag">' + esc(line) + '</span>';
+
+  // THE PRICE LINE CARRIES THE BOOK COUNT. The design declares `books` in
+  // its row schema and never draws it; a row quoted by one book is a de-vig
+  // against that book alone, which is the gate `ou_shortlist`'s floors were
+  // fitted under, and it costs no width here.
+  const price = (has(row.odds) ? v3Dash(american(row.odds)) : '—')
+    + (has(row.nBooks)
+       ? ' · ' + (row.nBooks < 3
+            ? '<i>' + row.nBooks + ' book' + (row.nBooks === 1 ? '' : 's')
+              + '</i>'
+            : row.nBooks + ' books')
+       : '');
+
+  const cell = (cls, txt) =>
+    '<span class="pw__v ' + cls + '">' + txt + '</span>';
+
+  return '<div class="pw' + (open ? ' pw--open' : '') + '">'
+    + '<button class="pw__star" data-v3fav="' + esc(row.id) + '" '
+    + 'aria-pressed="' + fav + '" aria-label="'
+    + (fav ? 'Unstar ' : 'Star ') + esc(row.player) + '">'
+    + '<svg width="18" height="18" viewBox="0 0 24 24" fill="'
+    + (fav ? 'currentColor' : 'none') + '" stroke="currentColor" '
+    + 'stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8'
+    + '-4.3-4.1 5.9-.9z"></path></svg></button>'
+    + '<button class="pw__n" data-v3open="' + esc(row.id) + '" '
+    + 'aria-expanded="' + open + '">'
+    + '<b>' + esc(row.player) + '</b>' + tags + '</button>'
+    + '<span class="pw__m">'
+    + '<span>' + esc([row.team, row.pos].filter(Boolean).join(' '))
+    + (row.team || row.pos ? ' · ' : '') + esc(v3Fixture(row))
+    + '</span>'
+    + '<span>' + price + '</span>'
+    + '</span>'
+    + cell('pw__v--m', v3Pct(v3Model(row), 0))
+    + cell('pw__v--b', v3Pct(row.book, 0))
+    + cell('pw__v--a', v3Pct(row.ours, 0))
+    + '<span class="pw__r">'
+    + '<span class="pw__e' + (has(edge) ? (edge > 0 ? ' pw__e--up'
+        : ' pw__e--dn') : '') + '">'
+    + (has(edge) ? (edge > 0 ? '+' : '−') + Math.abs(edge).toFixed(1)
+       : '—') + '</span>'
+    + '<span class="pw__ev' + (has(ev) ? (ev > 0 ? ' pw__ev--up'
+        : ' pw__ev--dn') : '') + '">'
+    + (has(ev) ? (ev > 0 ? '+$' : '−$') + Math.abs(ev).toFixed(0)
+       : '—') + '</span>'
+    + '</span>'
+    + (open ? '<div class="pw__d">' + v3Detail(row) + '</div>' : '')
+    + '</div>';
+}
+
+function v3Row(row) {
+  return v4Row(row);
+}
+
 // ── screen: one game ────────────────────────────────────────────────────
 //
 // The chrome — back, the fixture, Ask and the section nav — is in the header

@@ -2273,13 +2273,23 @@ def test_the_proxy_validates_the_game_id_by_shape_before_building_a_path():
 
 def test_the_proxy_is_rate_limited_per_address_and_in_total():
     """A per-IP limit alone is a limit per proxy. The daily cap is the one
-    that protects the bill."""
+    that protects the bill.
+
+    The three caps and their ordering are `tests/test_ask_proxy.py`'s subject
+    now — including the per-address DAILY cap, which was missing and which
+    mattered more than the total. This stays as the check that v3's page is
+    still fronted by a limited endpoint at all, spelled loosely enough that
+    refactoring the counter's filename is not a test failure. The old version
+    pinned `bump($STATE_DIR, 'ip-'` and broke on hashing the address into a
+    variable.
+    """
     from pathlib import Path
 
     php = (Path(__file__).resolve().parents[1] / "deploy/ask.php").read_text()
-    assert "$PER_IP_HR" in php and "$PER_DAY" in php
+    for cap in ("$PER_IP_HR", "$PER_IP_DAY", "$PER_DAY"):
+        assert cap in php, cap
     assert "bump($STATE_DIR, 'all.json'" in php
-    assert "bump($STATE_DIR, 'ip-'" in php
+    assert "md5($ip)" in php, "the per-address counter is gone"
     # And the limiter runs before the key is even read.
     assert php.index("bump($STATE_DIR, 'all.json'") < php.index("$KEY_FILE)")
 
