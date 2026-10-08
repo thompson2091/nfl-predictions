@@ -691,6 +691,14 @@ def _angles_block(payload: dict, season: int | None, week: int | None) -> None:
             # A row is tinted only when it clears AND has enough games to
             # mean it. See `angles.TINT_MIN_GAMES`.
             "tint_min": A.TINT_MIN_GAMES,
+            # THE CHANCE BUDGET, SHIPPED RATHER THAN SPELLED OUT ON THE PAGE.
+            # A 95% interval that excludes a fixed point does so 5% of the
+            # time under the null, so the count of rows that separate from
+            # their own make-up has an expectation, and the page prints it
+            # beside the count. See `angles.EXPECTED_FALSE_POSITIVES` — the
+            # same constant the break-even version uses, because it is the
+            # same arithmetic.
+            "fp": A.EXPECTED_FALSE_POSITIVES,
             "rows": A.measure(sched, season),
             # KEYED BY GAME, and over the whole season rather than one
             # week: the board carries whatever the books have posted, which

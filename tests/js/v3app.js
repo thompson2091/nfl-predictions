@@ -2175,6 +2175,14 @@ ok('percentages carry two decimals', /\d+\.\d\d%/.test(L()));
     ok('and the lede counts them rather than asserting a verdict',
        new RegExp(String(due) + ' sits? clear of what the make-up').test(L())
        || due === 0, L().slice(0, 420));
+    // AND THE COUNT CARRIES ITS EXPECTATION. "4 separate" reads as a
+    // finding until you know 86 tests produce 4.3 of them by arithmetic —
+    // the same rule the break-even count has followed since it shipped.
+    // Measured out on 2026-10-08: not one of the four survives a Holm
+    // correction across the eighty-six.
+    ok('and the chance budget is beside it, derived from the count measured',
+       /against [\d.]+ that chance alone would put there/.test(L())
+       && L().indexOf('what chance alone produces') >= 0, L().slice(0, 460));
   }
 }
 

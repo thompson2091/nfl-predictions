@@ -6766,6 +6766,16 @@ function v3AnglesPage() {
   // and left the reader to check eighty-six intervals for themselves.
   const clears = everything.filter(o => (o.run || {}).clears).length;
   const seps = everything.filter(o => v3AngleSep(o.run, o.base)).length;
+  // THE EXPECTATION, BESIDE THE COUNT, because the count on its own reads as
+  // a finding. A 95% interval excludes a fixed point 5% of the time under the
+  // null, so 86 patterns measured produce about four of these by arithmetic —
+  // and four is what the live board has. Measured out on 2026-10-08: not one
+  // of the four survives a Holm correction across the 86, the best of them
+  // going from p=0.0020 raw to 0.170 corrected. See the module docstring in
+  // `src/evaluation/angles.py` and `nfl-predictions-bye-angles-are-the-
+  // chance-budget`.
+  const fp = has((A || {}).fp) ? A.fp : 0.05;
+  const due = all.length * fp;
   const narrowed = [];
   if (cat !== 'all') narrowed.push(esc(cat).toLowerCase());
   if (q) narrowed.push('matching \u201c' + esc(V.angleQ) + '\u201d');
@@ -6783,7 +6793,9 @@ function v3AnglesPage() {
        : 'None clears') + ' the ' + (be * 100).toFixed(2)
     + '% a bet needs'
     + (seps ? ', and ' + seps + ' sit' + (seps === 1 ? 's' : '')
-       + ' clear of what the make-up of their own games predicts' : '')
+       + ' clear of what the make-up of their own games predicts \u2014 '
+       + 'against ' + due.toFixed(1) + ' that chance alone would put there'
+       : '')
     + '.</b> Tap one for this season\u2019s games.</p>'
     + '<div class="pbar pbar--free">'
     // ROW ONE IS WHO, ROW TWO IS HOW TO SLICE, ROW THREE IS SINCE WHEN --
@@ -6904,6 +6916,20 @@ function v3AnglesPage() {
         + seps + ' of ' + all.length + ' \u2014 and left plain everywhere '
         + 'else, because +0.4 points over four thousand games is not the '
         + 'same kind of thing as +16.6 over eighty-seven.</p>'
+        // AND THE COLOR IS NOT A RECOMMENDATION, which is the reading the
+        // count invites. Measured on 2026-10-08 and said here rather than
+        // left for a reader to work out.
+        + '<p class="help" style="margin-top:8px">' + seps
+        + ' colored rows out of ' + all.length + ' is <b style="color:'
+        + 'var(--ink)">what chance alone produces</b> \u2014 the expectation '
+        + 'is ' + due.toFixed(1) + '. '
+        + 'Measured against each other rather than one at a time, none of '
+        + 'them survives: the strongest goes from one chance in five hundred '
+        + 'to one in six once the other ' + (all.length - 1) + ' tests are '
+        + 'allowed for, and the bye rows are a split and its own subset and '
+        + 'its own mirror rather than three findings. Separating from your '
+        + 'own make-up is also not the same as beating the price, which '
+        + 'needs ' + (be * 100).toFixed(2) + '%.</p>'
         + v3BaseNote())
     + '</div>'
     + '</div>';

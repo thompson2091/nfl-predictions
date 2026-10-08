@@ -1247,8 +1247,32 @@ def baseline(schedules: pl.DataFrame) -> dict:
     for whatever start year is chosen without another measurement. Four counts
     an angle-season, which is a few kilobytes.
 
-    Not one of the fifty-five measured angles is two standard errors from its
-    own baseline. Chance alone would put two or three there.
+    **FOUR OF THE EIGHTY-SIX SEPARATE FROM THEIR OWN BASELINE, AND THE
+    EXPECTATION IS 4.3.** When this was written there were fifty-five and
+    none separated; the four arrived with the bye batch on 2026-09-30, all
+    four `mined=True`. Measured out on 2026-10-08:
+
+    | | n | record | base | pp |
+    |---|---|---|---|---|
+    | Before a bye, divisional | 87 | 66.67% | 50.08% | +16.59 |
+    | The week before a bye | 347 | 55.62% | 49.94% | +5.68 |
+    | Second divisional game in a row | 534 | 55.24% | 49.96% | +5.28 |
+    | Facing a team before its bye | 347 | 44.38% | 50.06% | -5.68 |
+
+    Not one survives a Holm correction across the eighty-six: the strongest
+    goes from p=0.0020 to 0.170. Two of the four are the same games scored
+    from either side and a third is the first one's own subset, so there are
+    two families here, not four rows. `pre_bye_div` is the best of twenty-
+    three obvious forks of its parent and twenty-two of those forks are
+    positive, which is a parent effect leaking into its subsets rather than a
+    divisional one — divisional against non-divisional WITHIN the split is
+    +14.74pp at p=0.0166, which is 0.38 once the forks are allowed for.
+
+    `pre_bye` is the one worth watching: +5.69pp over 2015-22 and +5.73pp
+    over 2023-26, which is stability rather than reversion. It needs 608
+    team-games for 80% power at that effect size, has 347, and gains 29 a
+    season — nine more seasons. It is already graded forward from the day it
+    was added, which is the whole mechanism for this.
     """
     g = (team_weeks(schedules)
          .filter(pl.col("cover_by").is_not_null() & (pl.col("cover_by") != 0))

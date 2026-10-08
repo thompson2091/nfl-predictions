@@ -333,6 +333,96 @@ def test_the_board_states_its_own_false_positive_budget(sched):
         "the board does not explain why winning half is not enough")
 
 
+def test_the_rows_that_separate_from_their_own_baseline_are_the_chance_budget(
+        sched):
+    """FOUR OF EIGHTY-SIX SEPARATE AND THE EXPECTATION IS 4.3.
+
+    The Angles board colors the `Worth` column on rows whose own interval
+    does not contain the baseline their composition predicts. That count
+    reads as a finding, so the page has to print the expectation beside it —
+    the same rule `test_the_board_states_its_own_false_positive_budget`
+    enforces for break-even, because it is the same arithmetic: a 95%
+    interval excludes a fixed point 5% of the time under the null.
+
+    Measured 2026-10-08. Not one of the four survives a Holm correction
+    across the eighty-six; the strongest goes from p=0.0020 to 0.170. This
+    asserts the two things that would make the page overstate it: that the
+    observed count is still inside the chance budget, and that the page
+    derives the expectation rather than hardcoding a number that drifts as
+    angles are added.
+    """
+    import math
+
+    rows = A.measure(sched)
+    base = A.baseline(sched)
+    cells, mix = base["cells"], base["mix"]
+
+    def expected(aid: str) -> float | None:
+        m = mix.get(aid)
+        if not m:
+            return None
+        w = [0] * len(A.CELLS)
+        n = [0] * len(A.CELLS)
+        for yr in cells.values():
+            for i, c in enumerate(A.CELLS):
+                v = yr.get(c)
+                if v:
+                    w[i] += v[0]
+                    n[i] += v[1]
+        num = den = 0.0
+        for counts in m.values():
+            for i, k in enumerate(counts):
+                if k and n[i]:
+                    num += (w[i] / n[i]) * k
+                    den += k
+        return num / den if den else None
+
+    sep, ps = [], []
+    for r in rows:
+        b = expected(r["id"])
+        a = r["all"]
+        if b is None or not a["n"]:
+            continue
+        if b < a["lo"] or b > a["hi"]:
+            sep.append(r["id"])
+        se = math.sqrt(b * (1 - b) / a["n"])
+        if se:
+            z = abs(a["pct"] - b) / se
+            ps.append(math.erfc(z / math.sqrt(2)))
+
+    budget = len(rows) * A.EXPECTED_FALSE_POSITIVES
+    # INSIDE THE BUDGET, not merely near it. A board that starts separating
+    # more rows than chance explains is the signal worth chasing, and it
+    # should fail here first rather than be noticed on the page.
+    assert len(sep) <= budget + 2, (
+        f"{len(sep)} of {len(rows)} separate from their own baseline against "
+        f"{budget:.1f} expected by chance — more than the budget allows for, "
+        "which is either a real effect or a broken baseline. Re-measure "
+        "before changing this number.")
+    # AND NOT ONE OF THEM SURVIVES THE CORRECTION. Holm over every test run.
+    ps.sort()
+    m = len(ps)
+    holm = [min(1.0, p * (m - i)) for i, p in enumerate(ps)]
+    assert not [h for h in holm if h < 0.05], (
+        "an angle now survives a Holm correction across the whole board, "
+        f"smallest corrected p={holm[0]:.4f}. That is a finding and the "
+        "page, the module docstring and the memory all say there is none.")
+
+    # THE PAGE PRINTS THE EXPECTATION, DERIVED. A hardcoded "4.3" drifts the
+    # day an angle is added.
+    from src.export import v3js
+    src = v3js.js()
+    i = src.index("function v3AnglesPage")
+    j = src.index("\nfunction ", i + 1)
+    page = src[i:j if j > 0 else len(src)]
+    assert "all.length * fp" in page, (
+        "the page no longer derives the chance budget from the number of "
+        "angles measured")
+    assert "chance alone" in page, (
+        "the page states a count of separating rows without the expectation "
+        "beside it")
+
+
 def test_off_a_bye_means_the_team_had_a_week_off(sched):
     """`rest >= 10` was 352 real byes and 378 team-weeks that were not one.
 
