@@ -58,9 +58,27 @@ $MODEL      = 'claude-opus-5';
 // with them. At 900 the third market came back truncated mid-sentence.
 $MAX_TOKENS = 1400;
 $MAX_Q      = 400;        // characters; a question, not a document
-$PER_IP_HR  = 15;
-$PER_DAY    = 300;        // the cap that actually protects the bill
 $TIMEOUT    = 45;         // per upstream call
+
+// THE CAPS, AND WHAT EACH ONE IS FOR.
+//
+// `$PER_DAY` is a WORST-CASE BILL, not an expected one, so it is costed
+// rather than chosen. Measured on the real slices: the system block is ~1,500
+// tokens and is cached, a slice is ~3,500 and never can be — it arrives as a
+// tool_result in the messages — so a question that fetches once is about
+// 4,000 effective input tokens and 900 out across two calls. At roughly Opus
+// rates that is near $0.13 a question, which puts 750 a day at about $95 of
+// exposure. 300 was set when one question was one call against a 10 KB brief.
+//
+// `$PER_IP_DAY` is the one that was MISSING, and it mattered more than the
+// total. At 15 an hour one address could ask 360 times a day against a
+// 300-a-day budget — so a single reader, or a single script, could spend the
+// whole allowance and lock everyone else out until midnight while staying
+// inside every limit this file declared. 50 holds one address to under a
+// fifteenth of the day.
+$PER_IP_HR  = 15;
+$PER_IP_DAY = 50;
+$PER_DAY    = 750;
 
 // HOW MANY TIMES THE MODEL MAY GO BACK FOR MORE, and the two budgets that
 // stop a question from pulling the whole site.
@@ -143,11 +161,18 @@ function bump($dir, $name, $window, $limit) {
 }
 
 $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : 'unknown';
+// THE PER-ADDRESS CAPS FIRST, so one reader spending their own allowance does
+// not spend the day's. Ordered the other way round, every refusal a heavy
+// user earns is still counted against the total that protects everyone else.
+$me = 'ip-' . md5($ip);
+if (!bump($STATE_DIR, $me . '-day.json', 86400, $PER_IP_DAY)) {
+    fail(429, 'you have asked a lot today — try again tomorrow');
+}
+if (!bump($STATE_DIR, $me . '.json', 3600, $PER_IP_HR)) {
+    fail(429, 'too many questions this hour — try again shortly');
+}
 if (!bump($STATE_DIR, 'all.json', 86400, $PER_DAY)) {
     fail(429, 'the daily question budget is used up — try tomorrow');
-}
-if (!bump($STATE_DIR, 'ip-' . md5($ip) . '.json', 3600, $PER_IP_HR)) {
-    fail(429, 'too many questions this hour — try again shortly');
 }
 
 // ---------------------------------------------------------------- key

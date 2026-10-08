@@ -71,8 +71,11 @@ def test_nothing_a_reader_sends_is_interpolated_into_a_path():
 def test_the_rate_limiters_filename_is_hashed_not_the_address():
     """`bump()` builds a path from its `$name`, and one caller passes the
     reader's IP. Hashed, so a header that is not an address cannot be one."""
-    assert "'ip-' . md5($ip) . '.json'" in SRC
+    assert "$me = 'ip-' . md5($ip);" in SRC
     assert "'ip-' . $ip" not in SRC
+    # Both per-address counters are keyed off the hash, not off the address.
+    for suffix in ("'.json'", "'-day.json'"):
+        assert "$me . " + suffix in SRC, suffix
 
 
 def test_the_slice_name_is_an_enum_resolved_against_a_literal_map():
@@ -188,6 +191,35 @@ def test_the_rate_caps_still_run_before_the_key_is_read():
     i_day = SRC.index("$PER_DAY)")
     i_key = SRC.index("$KEY_FILE)")
     assert i_day < i_key, "a refused question must not read the key"
+
+
+def test_one_address_cannot_spend_the_whole_days_budget():
+    """THE CAP THAT WAS MISSING, and it mattered more than the total.
+
+    At 15 an hour one address could ask 360 times a day against a 300-a-day
+    budget, so a single reader or a single script could spend the whole
+    allowance and lock everyone else out until midnight while staying inside
+    every limit the file declared.
+    """
+    caps = {}
+    for name in ("PER_IP_HR", "PER_IP_DAY", "PER_DAY"):
+        m = re.search(r"\$" + name + r"\s*=\s*(\d+)", SRC)
+        assert m, f"${name} is not set"
+        caps[name] = int(m.group(1))
+    assert caps["PER_IP_DAY"] <= caps["PER_IP_HR"] * 24, (
+        "the daily per-address cap is above what the hourly one already allows")
+    assert caps["PER_IP_DAY"] * 4 <= caps["PER_DAY"], (
+        f"one address can take {caps['PER_IP_DAY']}/{caps['PER_DAY']} of the "
+        f"day — more than a quarter")
+
+
+def test_the_per_address_caps_are_counted_before_the_shared_one():
+    """Ordered the other way round, every refusal a heavy user earns is still
+    counted against the total that protects everyone else."""
+    i_me = SRC.index("$PER_IP_DAY)")
+    i_hr = SRC.index("$PER_IP_HR)")
+    i_all = SRC.index("$PER_DAY)")
+    assert i_me < i_all and i_hr < i_all
 
 
 def test_the_answer_says_which_slices_it_looked_at():
