@@ -24,6 +24,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v4Lean', 'v4Spread', 'v4Note', 'v4Icon', 'v4GameCard',
    'v3GameSet', 'v3Weeks', 'rowsFor', 'isFav', 'v3Load', 'v3Save',
    'v4Row', 'v4Edge', 'served', 'v3Streak', 'v3IsEdge',
+   'v4Unpriced', 'v3Model', 'KIND', 'v3MktLines',
    'v4Clicks', 'v4Do', 'v4Sorts',
    'V3TABS', 'V3MKT', 'V3CLICKS']);
 const { V, render, v3Screen, v3Nav, DATA, has, v4Tabs, v4GSec, v4FG,
@@ -313,6 +314,72 @@ V3MKT.filter(m => x.served(m[0])).forEach(m => {
   ok('market ' + m[0] + ' renders', !e, e && (e.message + '\n' + e.stack));
 });
 V.market = 'any'; V.tab = 'games'; render();
+
+// ── the players no book is quoting ──────────────────────────────────────
+//
+// v3's board filters `r.priced`, so on the live week these were 109 players
+// on anytime TD and 374 on receptions that never appeared at all.
+V.tab = 'props'; V.game = null; V.filter = 'all'; V.week = null;
+V.q = ''; V.unshown = 0; V.market = 'any'; render();
+const unAny = rowsFor('any', null).filter(r => !r.priced);
+ok('the fixture has unpriced players to show', unAny.length > 0,
+   String(unAny.length));
+ok('the unpriced group is on the board', pane().indexOf('class="wrap up"') >= 0);
+ok('and it is counted against the whole market',
+   pane().indexOf(' of ' + rowsFor('any', null).length + ' priced') >= 0);
+ok('and the likeliest unpriced player is listed',
+   pane().indexOf(unAny.slice().sort(
+     (a, b) => (x.v3Model(b) || -1) - (x.v3Model(a) || -1))[0].player) >= 0);
+
+// A TOUCHDOWN MARKET SAYS ADJUSTED IS THE MODEL, rather than printing one
+// number under two headings.
+ok('a touchdown market says there is nothing to blend toward',
+   pane().indexOf('nothing to blend') >= 0);
+ok('and its column is headed Model', pane().indexOf('>Model<') >= 0);
+
+// A LINE MARKET HAS NO SIDE TO BE OVER OR UNDER OF, so it carries the
+// projection and the range and no percentage at all. Printing one would be
+// inventing the line.
+const ouMkt = V3MKT.filter(m => x.served(m[0]) && x.KIND[m[0]] === 'ou')[0];
+if (ouMkt) {
+  V.market = ouMkt[0]; V.unshown = 0; render();
+  const unOu = rowsFor(ouMkt[0], null).filter(r => !r.priced);
+  ok('the line market has unpriced players too', unOu.length > 0,
+     String(unOu.length));
+  ok('and says a percentage would need a line nobody set',
+     pane().indexOf('a line nobody') >= 0);
+  ok('and heads its column Projection', pane().indexOf('>Projection<') >= 0);
+  ok('and offers the likely range', pane().indexOf('>Likely range<') >= 0);
+}
+V.market = 'any';
+
+// SEEING ALL OF THEM DOES NOT EXPAND THE BOARD ABOVE. Its own counter, not
+// the priced list's.
+V.unshown = 0; render();
+const capped = (pane().match(/class="up__r"/g) || []).length;
+ok('the group is capped until asked', capped <= 12, String(capped));
+if (unAny.length > 12) {
+  ok('and offers to show the rest', pane().indexOf('data-v4unmore="1"') >= 0);
+  const boardBefore = (pane().match(/class="pw /g) || []).length;
+  x.v4Do('v4unmore', '1');
+  ok('seeing all shows all',
+     (pane().match(/class="up__r"/g) || []).length === unAny.length,
+     String((pane().match(/class="up__r"/g) || []).length));
+  ok('and leaves the priced board where it was',
+     (pane().match(/class="pw /g) || []).length === boardBefore);
+}
+V.unshown = 0;
+
+// A PAST WEEK HAS NONE OF THIS. An unpriced player was never a bet, so a
+// result beside him would be grading something nobody could have taken.
+const weeks = x.v3Weeks();
+if (weeks.length) {
+  V.week = weeks[0]; render();
+  ok('a past week shows no unpriced group',
+     pane().indexOf('class="wrap up"') < 0);
+  V.week = null;
+}
+V.tab = 'games'; render();
 
 // ── one game, all four sections ─────────────────────────────────────────
 const gid = (cards[0] || {}).game_id;

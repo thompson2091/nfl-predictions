@@ -237,7 +237,7 @@ function v4GameHead(gid) {
 // v3's walker finds no match on a `data-v4*` node and falls through to the
 // body without acting, and v4's does the same for every v3 key.
 function v4Clicks() {
-  return ['v4gsort'];
+  return ['v4gsort', 'v4unmore'];
 }
 
 function v4Do(kind, v) {
@@ -257,6 +257,10 @@ function v4Do(kind, v) {
       else { V.gsort = null; V.gsortdesc = true; }
       V.top = 'section';
       break;
+    // The unpriced group opens to its full length. Its own counter rather
+    // than `V.shown`, which is the PRICED list's — sharing it would have
+    // "see all 374 unpriced" also expand the board above it.
+    case 'v4unmore': V.unshown = 1e9; break;
     default: return;
   }
   v3Save();
@@ -283,7 +287,7 @@ document.addEventListener('click', ev => {
 // in its own phase, and until then the app is whole rather than half-built.
 function v3Screen() {
   switch (V.tab) {
-    case 'props': return v3Week();          // phase B
+    case 'props': return v3Week() + v4Unpriced();
     case 'picks': return v4Starred();       // phase C
     case 'angles': return v3AnglesPage();   // phase C
     case 'record': return v3RecordPage();   // phase D
@@ -570,6 +574,98 @@ function v4Games() {
     // claim: nothing here takes a bet.
     + '<div class="legal"><b>21+</b>Information, not a sportsbook \u00b7 '
     + '1-800-GAMBLER</div>'
+    + '</div>';
+}
+
+// ── the players no book is quoting ──────────────────────────────────────
+//
+// `v3Rows` filters `r.priced && !r.blocked`, so on the live week that is 109
+// anytime-TD players and 374 receptions players the board never showed.
+// Asked for directly: "i still want to display unpriced players but with our
+// projection(s)".
+//
+// APPENDED AFTER `v3Week()` RATHER THAN FOLDED INTO IT. The row list is 120
+// lines of filter chain — the fade flip, the gap flip's probability
+// inversion, the search, the game filter, the past-week fetch — and
+// reproducing it to add a group underneath would be a second copy of the one
+// thing on this board that has been wrong twice. This sits below the "see
+// all" button, which is where the design puts it.
+//
+// WHAT THESE ROWS CAN AND CANNOT SAY, and the two families differ:
+//
+//   TOUCHDOWN   `ours` and `modelOnly` both exist. There is no price, so
+//               there is no Book and nothing to blend toward — Adjusted IS
+//               the model, and the group says so rather than printing the
+//               same number twice under two headings.
+//   LINE        there is no posted line, so there is no side to be over or
+//               under OF. `ours`, `book` and `edge` are all null and the
+//               honest content is the projection and its range. Printing a
+//               percentage against a line nobody posted would be inventing
+//               the line.
+//
+// Current week only. A past week's unpriced player was never a bet, so a
+// result column on him would be grading something nobody could have taken.
+function v4Unpriced() {
+  if (V.week != null) return '';
+  const all = rowsFor(V.market, null);
+  let un = all.filter(r => !r.priced);
+  if (V.game) un = un.filter(r => v3Same(r.gameId, V.game));
+  un = v3Match(un);
+  if (!un.length) return '';
+  const priced = all.filter(r => r.priced).length;
+  const ou = v3MktLines();
+  // Ordered by our own number, which is the only ordering these rows have:
+  // the likeliest first on a touchdown market, the biggest projection on a
+  // line market.
+  un = un.slice().sort((a, b) => {
+    const x = ou ? (has(a.proj) ? a.proj : -1e9)
+                 : (has(v3Model(a)) ? v3Model(a) : -1e9);
+    const y = ou ? (has(b.proj) ? b.proj : -1e9)
+                 : (has(v3Model(b)) ? v3Model(b) : -1e9);
+    return y - x;
+  });
+  const show = un.slice(0, V.unshown || 12);
+  const unit = unitOf(V.market) || '';
+  const rows = show.map(r =>
+    '<div class="up__r">'
+    + '<span class="up__n">' + esc(r.player) + '</span>'
+    + '<span class="up__m">'
+    + esc([r.team, r.pos].filter(Boolean).join(' '))
+    + (r.team || r.pos ? ' · ' : '') + esc(v3Fixture(r)) + '</span>'
+    + (ou
+       ? '<span class="up__v">'
+         + (has(r.proj) ? r.proj.toFixed(1) + (unit ? ' ' + unit : '')
+            : '—') + '</span>'
+         + '<span class="up__g">'
+         + (has(r.lo) && has(r.hi)
+            ? r.lo.toFixed(1) + '–' + r.hi.toFixed(1) : '') + '</span>'
+       : '<span class="up__v">' + v3Pct(v3Model(r), 0) + '</span>'
+         + '<span class="up__g"></span>')
+    + '</div>').join('');
+  return '<div class="wrap up">'
+    + '<div class="up__h">'
+    + '<h3 class="up__t">No price anywhere</h3>'
+    + '<span class="num up__c">' + priced + ' of ' + all.length
+    + ' priced</span></div>'
+    + '<p class="help">' + un.length + ' player'
+    + (un.length === 1 ? '' : 's')
+    + ' on this market no book is quoting. '
+    + (ou
+       ? 'With no posted line there is no side to be over or under of, so '
+         + 'these carry our projection and the range most outcomes fall in '
+         + 'and nothing else. A percentage here would need a line nobody '
+         + 'has set.'
+       : 'With no price there is no book number and nothing to blend '
+         + 'toward, so Adjusted is the model — one number, not three.')
+    + '</p>'
+    + '<div class="up__hd"><span>Player</span><span></span>'
+    + '<span>' + (ou ? 'Projection' : 'Model') + '</span>'
+    + '<span>' + (ou ? 'Likely range' : '') + '</span></div>'
+    + rows
+    + (un.length > show.length
+       ? '<button class="more" data-v4unmore="1">See all ' + un.length
+         + '</button>'
+       : '')
     + '</div>';
 }
 

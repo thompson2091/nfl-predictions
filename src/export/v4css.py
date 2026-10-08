@@ -370,6 +370,46 @@ CHROME = """
 .pw__tag--dn{background:#FCEBDD;color:#8A3C08}
 .pw__tag--star{background:#FBF1D6;color:var(--starline)}
 
+/* ---- the players no book is quoting ----------------------------------
+   FOUR COLUMNS, AND TWO OF THEM ARE EMPTY ON A TOUCHDOWN MARKET. That is
+   deliberate: the grid is the same either way so the eye does not have to
+   re-learn it when the market pills change, and a column with nothing in it
+   says "there is no number here" more plainly than a narrower table says
+   anything. A line market with no posted line has no side to be over or
+   under of, so there is no percentage to print — only the projection and
+   the range. */
+.up{margin-top:20px}
+.up__h{display:flex;align-items:baseline;justify-content:space-between;
+  gap:10px;padding-top:8px;border-top:1px solid var(--line)}
+.up__t{margin:0;font-family:var(--display);font-size:24px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.01em}
+.up__c{font-size:12px;color:var(--mut)}
+.up__hd,.up__r{display:grid;
+  grid-template-columns:minmax(0,1fr) 92px 86px 86px;gap:4px 8px;
+  align-items:baseline}
+.up__hd{padding:10px 2px 4px;font-size:11px;font-weight:600;
+  letter-spacing:.04em;text-transform:uppercase;color:var(--mut);
+  border-bottom:1px solid var(--line)}
+.up__hd span:nth-child(3),.up__hd span:nth-child(4){text-align:right}
+.up__r{padding:9px 2px;border-bottom:1px solid var(--line2)}
+.up__n{font-size:15px;font-weight:600;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.up__m{font-family:var(--mono);font-size:11px;color:var(--mut);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.up__v{text-align:right;font-family:var(--mono);font-size:14px;
+  font-weight:600;color:var(--ours)}
+.up__g{text-align:right;font-family:var(--mono);font-size:12px;
+  color:var(--mut)}
+@media (max-width:420px){
+  /* The name takes the row and the numbers sit under it, because three
+     columns plus a name does not divide 390px into anything readable. */
+  .up__hd{display:none}
+  .up__r{grid-template-columns:minmax(0,1fr) 86px;row-gap:2px}
+  .up__m{grid-column:1}
+  .up__v{grid-row:1;grid-column:2}
+  .up__g{grid-row:2;grid-column:2}
+}
+
 /* ---- the game screen's dark header ----------------------------------
    The one inverted surface in the app, and it marks the one place you are
    inside something rather than scanning a list. The section nav under it

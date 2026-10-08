@@ -280,6 +280,13 @@ def test_every_v4_screen_renders(payload_v4, v4_js, tmp_path):
                  "every row carries all three estimates",
                  "at least one market exercised the book count",
                  "and at least one thin row",
-                 "opening a row draws its detail under it"):
+                 "opening a row draws its detail under it",
+                 # The players no book is quoting, which v3's board filtered
+                 # out entirely — 109 on anytime TD, 374 on receptions.
+                 "the unpriced group is on the board",
+                 "and it is counted against the whole market",
+                 "a touchdown market says there is nothing to blend toward",
+                 "and says a percentage would need a line nobody set",
+                 "a past week shows no unpriced group"):
         assert f"ok    {line}" in r.stdout, (
             f"never exercised: {line}\n{r.stdout}")
