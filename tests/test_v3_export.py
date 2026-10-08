@@ -1595,15 +1595,14 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "and moving only the end moves it too",
                  "an end chosen below the default start pulls the start "
                  "down with it",
-                 "every section names our model, and the full view the "
-                 "other two",
-                 "and the adjusted row comes between ours and the book",
+                 "every section names our model, the adjusted one and the book",
+                 "and the adjusted column comes between ours and the book",
                  "the old vocabulary is gone",
                  "the range is explained in words, not named after "
                  "a statistic",
                  "and the interval is still reported, in the sentence "
                  "rather than a column",
-                 "and the winning-team table has no Range column left",
+                 "and the game table has no Range column left",
                  "the player section draws our model and the adjusted "
                  "model separately",
                  # The rethink: a verdict before the working, a reference
@@ -1612,9 +1611,12 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "a scoreboard states the verdict before the first table",
                  "and it carries one tile per thing the model claims to do",
                  "no scoreboard tile is an anchor into the hash router",
-                 "a figure shown in both views is the same figure",
-                 "the detail only the full view carries is absent from the "
-                 "simple one",
+                 "the simple / full detail switch is gone",
+                 "and every number it used to hide is on the page",
+                 "and each section carries its own working, folded",
+                 "the error score is in the working, not on the face",
+                 "the level-removed total is drawn exactly when it has "
+                 "games",
                  "each rate is drawn against the numbers that give it "
                  "meaning",
                  "the winning-team section does not invent a break-even "
@@ -1635,9 +1637,22 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  # Section 06, and the arithmetic it does.
                  "there is a per-player section",
                  "and it says a player’s bets are not independent",
-                 "and offers all four cuts",
-                 "and the three game markets are sub-headings inside one "
-                 "card",
+                 "and offers four cuts, with By game gone",
+                 "and the note names the most concentrated player-game "
+                 "instead",
+                 "the block can be narrowed to one market",
+                 "and to one side of the line",
+                 "and to rows with enough bets behind them",
+                 "a bet floor drops the rows that have not earned a "
+                 "verdict",
+                 "and over and under are different bets",
+                 "and one market is fewer than four",
+                 "the three game markets are rows of one table",
+                 "and the old sub-sections are gone with their three "
+                 "verdicts",
+                 "and every series is a column of that row",
+                 "each track names the thing it is being measured "
+                 "against",
                  "and what each leg was paid at",
                  "the all/model per-player totals are the sum of its "
                  "own legs",
@@ -1646,7 +1661,7 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "legs",
                  "the short/model per-player totals are the sum of its own "
                  "legs",
-                 "the by-game cut spells out each leg",
+                 "the drawer, not a fifth cut, is where a leg is spelled out",
                  "and flags the player-games whose legs all landed together",
                  "and the search narrows it to one player",
                  "a payload with no per-leg bets drops section 06 rather "
@@ -2811,6 +2826,60 @@ def test_the_game_money_note_is_last_and_spans_the_panel():
            / "src/export/v3css.py").read_text()
     assert ".detail__w{grid-column:1/-1}" in css, \
         "the full-width fact no longer spans the panel"
+
+
+def test_the_record_tables_are_not_capped_below_the_width_they_have():
+    """REPORTED AS THE PAGE CUTTING OFF ON A DESKTOP, AND IT LOOKED LIKE IT.
+
+    `.rec`, `.recg`, `.rbar` and `.pgd` each carried `max-width:640px`, and
+    every table on that page sits inside a `.recwrap{overflow-x:auto}` with
+    `min-width:min-content`. At 900px `.wrap` is 880px and at 1280px it is
+    1040px, so the card is 848 to 1008 pixels wide — but the tables stayed
+    capped at 640, so anything needing more than that scrolled sideways
+    inside a card with two to three hundred unused pixels beside it.
+
+    The cap was the wrong instrument for a real problem: `1fr` on the label
+    column takes every spare pixel, which put "Our model" against one edge
+    and "18 / 14" against the other. The fix is the thing the original
+    comment asks for — slack after the last column — which is a
+    content-sized label column, not a 640px box.
+
+    So this asserts the shape rather than the spelling: the narrow cap is
+    still there (the phone layout must not move), the desktop block lifts
+    it, and no `.rec--*` template that applies above 900px hands a column
+    an `fr` — because an `fr` track is what gives the label the slack.
+    """
+    import re
+    from pathlib import Path
+
+    css = (Path(__file__).resolve().parents[1]
+           / "src/export/v3css.py").read_text()
+    rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    i = rules.index("@media (min-width:900px){")
+    # The block runs to the next top-level @media.
+    desktop = rules[i:rules.index("@media (min-width:1280px)", i)]
+
+    # The narrow cap stays: a handset has no room to lift it. Looked for
+    # outside the desktop block rather than above it — the 900px block sits
+    # near the top of this file and the Record page's rules are near the
+    # bottom, so "before it" is not the same question.
+    narrow = rules.replace(desktop, "")
+    assert "max-width:640px" in narrow, (
+        "the narrow cap is gone; the label column will take the slack on a "
+        "phone, which is what the 640px box was for")
+    # And the desktop lifts it for all four.
+    lifted = re.search(r"([^{}]*)\{max-width:none\}", desktop)
+    assert lifted, "nothing lifts the 640px cap at desktop width"
+    for sel in (".rec", ".recg", ".rbar", ".pgd"):
+        assert sel in lifted.group(1), (
+            f"{sel} is still capped at 640px on a 1008px card")
+    # With the cap lifted, an `fr` label column would reopen the original
+    # fault — "Our model" at one edge and its figures at the other.
+    for m in re.finditer(r"(\.rec[-\w]*|\.recg)\{grid-template-columns:([^}]*)\}",
+                         desktop):
+        assert "fr" not in m.group(2), (
+            f"{m.group(1)} hands a column an fr above 900px, so the label "
+            f"column takes the slack again: {m.group(2)}")
 
 
 def test_no_layout_rule_decides_a_phone_by_a_width_that_phones_outgrew():

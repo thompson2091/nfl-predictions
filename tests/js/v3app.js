@@ -2586,12 +2586,10 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
 {
   const { v3RecordPage, v3RecRange, v3Money } = x;
   V.tab = 'record'; V.game = null; V.scFrom = null; V.scTo = null;
-  V.recFull = false; V.recWho = 'top'; V.recSeries = 'model'; V.recQ = '';
+  V.recWho = 'top'; V.recSeries = 'model'; V.recQ = '';
+  V.recMkt = 'all'; V.recTake = 'both'; V.recMin = 1;
   render();
   const h = v3RecordPage();
-  V.recFull = true;
-  const hf = v3RecordPage();
-  V.recFull = false;
 
   ok('the record screen leads with the plain-language headline',
      h.indexOf('Holding the model to account') >= 0, h.slice(0, 200));
@@ -2615,10 +2613,22 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('and there are two numbered cards, not four',
      (h.match(/class="rec__n"/g) || []).length === 2,
      (h.match(/class="rec__n">\d+/g) || []).join(' '));
-  ok('and the three game markets are sub-headings inside one card',
-     ['The winning team', 'The point spread', 'Over or under the total']
-       .every(s => h.indexOf('>' + s + '<') >= 0)
-     && (h.match(/class="recsec/g) || []).length >= 3, h);
+  // ONE TABLE, THREE MARKETS, ONE ROW EACH. They were three sub-sections,
+  // each a heading, a 14-word explainer, a three-row table, a bar and a
+  // 30-to-45-word verdict — ninety words of prose around nine numbers,
+  // three times over. Now the market is the row and the series are the
+  // columns, so the three can be read down a column.
+  ok('the three game markets are rows of one table',
+     ['Winning team', 'Point spread', 'Over / under']
+       .every(s => h.indexOf('<span>' + s + '</span>') >= 0)
+     && h.indexOf('class="rec rec--6"') >= 0, h);
+  ok('and the old sub-sections are gone with their three verdicts',
+     h.indexOf('>The winning team<') < 0
+     && h.indexOf('>Over or under the total<') < 0
+     && h.indexOf('a bet needs to turn a profit') < 0, h);
+  ok('and every series is a column of that row',
+     ['Market', 'Our model', 'Adjusted', 'Sportsbook', 'Per $100']
+       .every(s => h.indexOf('>' + s + '</span>') >= 0), h);
 
   // ── THE SCOREBOARD ───────────────────────────────────────────────────
   // The whole point of the rethink: the verdict before the working. A
@@ -2638,31 +2648,55 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('no scoreboard tile is an anchor into the hash router',
      h.indexOf('href="#sb') < 0, 'a tile would route away from the page');
 
-  // ── SIMPLE HIDES, IT DOES NOT CHANGE ─────────────────────────────────
-  // Every number is still computed either way; the toggle only decides
-  // which rows are drawn. A figure that appears in both must be identical.
-  ok('the simple view is shorter than the full one', hf.length > h.length,
-     h.length + ' vs ' + hf.length);
-  ok('and the toggle is on the page',
-     h.indexOf('data-v3recfull="0"') >= 0
-     && h.indexOf('data-v3recfull="1"') >= 0);
+  // ── ALWAYS FULL DETAIL, WITH THE WORKING ONE TAP UNDER EACH SECTION ──
+  //
+  // The Simple / Full detail switch is gone — asked for directly. It was a
+  // page-wide mode for a per-section problem: a reader meeting `error score
+  // 0.2534` in the first screen has no reference point for it. So the
+  // headline is on the face of each section and the working is a
+  // `<details>` under it, and nothing depends on having found a toggle.
+  ok('the simple / full detail switch is gone',
+     h.indexOf('data-v3recfull') < 0, 'the page-wide mode is back');
+  ok('and every number it used to hide is on the page',
+     ['How reliable the win chances', 'luck alone moves these numbers',
+      'Settled the way a book settles',
+      'Where we picked against the book']
+       .every(s => h.indexOf(s) >= 0), h);
+  // THE LEVEL-REMOVED TOTAL ONLY WHEN THERE IS ONE. `model_total_centered`
+  // is frozen from week 5, so `centered.n` is 0 on every range today and
+  // the old full view drew two rows of dashes and "the over was the pick in
+  // 0 of 0 once the level is removed". Drawn when it has rows, absent when
+  // it does not, and this asserts both ways off the payload itself.
   {
-    // The headline rate for the winning team, read out of each render.
-    const grab = s => {
-      const i = s.indexOf('The winning team');
-      const m = /Our model<\/span><span class="n">([^<]*)<\/span><span class="n">([^<]*)</
-        .exec(s.slice(i));
-      return m ? m[1] + '|' + m[2] : null;
-    };
-    ok('a figure shown in both views is the same figure',
-       grab(h) && grab(h) === grab(hf), grab(h) + ' vs ' + grab(hf));
+    const S2 = DATA.scorecard || {};
+    const r2 = x.v3RecRange(S2);
+    const to2 = (((S2.ranges || {})[r2[0] + '-' + r2[1]] || {}).games
+                 || {}).total || {};
+    const any = ((to2.centered || {}).n || 0)
+      + ((to2.blend_centered || {}).n || 0);
+    ok('the level-removed total is drawn exactly when it has games',
+       (h.indexOf('ignoring the week\u2019s scoring level') >= 0) === any > 0,
+       'centered n=' + any);
   }
-  ok('the detail only the full view carries is absent from the simple one',
-     h.indexOf('How reliable the win chances') < 0
-     && hf.indexOf('How reliable the win chances') >= 0);
-  ok('and so are the ranges',
-     h.indexOf('luck alone moves these numbers') < 0
-     && hf.indexOf('luck alone moves these numbers') >= 0);
+  ok('and each section carries its own working, folded',
+     (h.match(/class="fold"/g) || []).length >= 3,
+     String((h.match(/class="fold"/g) || []).length));
+  {
+    // THE WORKING IS INSIDE THE DISCLOSURE, not loose under the table.
+    // Checked by position: a fold that closed before the text starts is a
+    // fold the text is not in.
+    const inFold = needle => {
+      const at = h.indexOf(needle);
+      if (at < 0) return false;
+      const op = h.lastIndexOf('<details class="fold">', at);
+      const cl = h.lastIndexOf('</details>', at);
+      return op >= 0 && op > cl;
+    };
+    ok('the error score is in the working, not on the face',
+       inFold('How reliable the win chances'));
+    ok('and so are the ranges', inFold('luck alone moves these numbers'));
+    ok('and the way a bet was settled', inFold('Settled the way a book'));
+  }
 
   // ── EVERY RATE GETS A REFERENCE LINE ─────────────────────────────────
   ok('each rate is drawn against the numbers that give it meaning',
@@ -2677,7 +2711,12 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      h.indexOf('50.0% a bet needs to turn a profit') < 0
      && h.indexOf('no one break-even rate') >= 0, h);
   ok('and the spread and total, which are priced both ways, do quote one',
-     h.indexOf('% a bet needs to turn a profit') >= 0);
+     /The spread and the total break even at 5[0-9.]+%/.test(h), h);
+  // AND THE TRACK SAYS WHAT IT BEAT, in three words under the market's
+  // name. That is what is left of the three verdict paragraphs.
+  ok('each track names the thing it is being measured against',
+     h.indexOf('break-even</i>') >= 0
+     && /<i>(ahead of|behind|level with) the sportsbook<\/i>/.test(h), h);
 
   // THE PROVENANCE IS ABOVE THE TABLES. A reader who meets the numbers first
   // has already decided what they mean.
@@ -2776,47 +2815,45 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      h.indexOf('Needed to profit') >= 0 && h.indexOf('To break even') < 0);
 
   // ONE VOCABULARY ON EVERY SECTION.
-  ok('every section names our model, and the full view the other two',
+  //
+  // `hf` is gone with the Simple / Full detail switch: there is one render
+  // now and `h` is it.
+  ok('every section names our model, the adjusted one and the book',
      (h.match(/Our model/g) || []).length >= 3
-     && (hf.match(/Adjusted model/g) || []).length >= 3
-     && (hf.match(/Sportsbook/g) || []).length >= 3, h.slice(0, 400));
-  ok('and the adjusted row comes between ours and the book',
-     hf.indexOf('Our model') < hf.indexOf('Adjusted model')
-     && hf.indexOf('Adjusted model') < hf.indexOf('Sportsbook'));
+     && (h.match(/Adjusted/g) || []).length >= 3
+     && (h.match(/sportsbook/gi) || []).length >= 3, h.slice(0, 400));
+  ok('and the adjusted column comes between ours and the book',
+     h.indexOf('>Our model</span>') < h.indexOf('>Adjusted</span>')
+     && h.indexOf('>Adjusted</span>') < h.indexOf('>Sportsbook</span>'));
   ok('the old vocabulary is gone',
-     hf.indexOf('Model alone') < 0 && hf.indexOf('Shown on the card') < 0
-     && hf.indexOf('Blended win chance') < 0
-     && hf.indexOf('95% range') < 0, hf);
+     h.indexOf('Model alone') < 0 && h.indexOf('Shown on the card') < 0
+     && h.indexOf('Blended win chance') < 0
+     && h.indexOf('95% range') < 0, h);
   ok('before week 5 a new row says when it starts rather than inventing one',
-     hf.indexOf('recorded from week 5') >= 0);
-  // "LEVEL REMOVED" WAS JARGON. Same rows, said in words.
-  ok('the level-removed total is named in words and sits below its variant',
-     hf.indexOf('ignoring the week’s scoring level')
-       > hf.indexOf('Adjusted model')
-     && hf.indexOf('Our model, level removed') < 0);
-  // AND IT IS NOT A COLUMN ANY MORE. Four cells each reading "39.3% to
+     h.indexOf('recorded from week 5') >= 0);
+  // AND THE RANGE IS NOT A COLUMN. Four cells each reading "39.3% to
   // 71.8%", every one wide enough to contain every other row, read as the
   // page declining to say anything — so the interval is said once, in
   // prose, beside the rate it belongs to. The number is not dropped.
   ok('the range is explained in words, not named after a statistic',
-     hf.indexOf('luck alone moves these numbers') >= 0
-     && hf.indexOf('where the true rate most likely sits') >= 0);
+     h.indexOf('luck alone moves these numbers') >= 0
+     && h.indexOf('where the true rate most likely sits') >= 0);
   ok('and the interval is still reported, in the sentence rather than a '
      + 'column',
      /Our model’s [\d.]+% could honestly be anywhere from [\d.]+% to [\d.]+%/
-       .test(hf), hf.slice(hf.indexOf('luck alone'), hf.indexOf('luck alone')
-                           + 240));
-  ok('and the winning-team table has no Range column left',
-     h.indexOf('The winning team') >= 0
-     && !/The winning team[\s\S]{0,400}>Range</.test(h), h);
+       .test(h), h.slice(h.indexOf('luck alone'), h.indexOf('luck alone')
+                         + 240));
+  ok('and the game table has no Range column left',
+     h.indexOf('class="rec rec--6"') >= 0
+     && !/class="rec rec--6"[\s\S]{0,600}>Range</.test(h), h);
   ok('the player section draws our model and the adjusted model separately',
-     hf.indexOf('Our model') < hf.indexOf('Adjusted model'),
+     h.indexOf('>Our model</b>') >= 0 && h.indexOf('>Adjusted model</b>') >= 0,
      'player series not split');
   ok('and compares the two in words',
      h.indexOf('the model alone returned') >= 0);
   ok('the player bets say how they are settled',
-     hf.indexOf('paid at the under’s own price') >= 0
-     && hf.indexOf('did not play is void') >= 0);
+     h.indexOf('paid at the under’s own price') >= 0
+     && h.indexOf('did not play is void') >= 0);
 
   // ── THE EDGE RULE IS NOT THE BOARD'S FILTERS ─────────────────────────
   // Asked directly whether section 05 was the shortlist, the fades and the
@@ -2916,9 +2953,60 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('and it says a player’s bets are not independent',
      h.indexOf('not independent') >= 0
      && h.indexOf('land the same way') >= 0);
-  ok('and offers all four cuts',
-     ['Best and worst', 'Every player', 'By team', 'By game', 'Most bet']
-       .every(s => h.indexOf('>' + s + '<') >= 0), h);
+  // FOUR CUTS, NOT FIVE. "By game" came off: it listed one row per
+  // player-game with the legs as pills, which is what opening a player in
+  // "Every player" already shows — with a price column the pills never had.
+  // The one thing it did that the drawer cannot is rank player-games by leg
+  // count, and that is now a clause in the correlation note.
+  ok('and offers four cuts, with By game gone',
+     ['Best and worst', 'Every player', 'By team', 'Most bet']
+       .every(s => h.indexOf('>' + s + '<') >= 0)
+     && h.indexOf('>By game<') < 0
+     && h.indexOf('class="pgleg') < 0, h);
+  ok('and the note names the most concentrated player-game instead',
+     /The most concentrated was .{1,80} legs, all (winning|losing)\./.test(h),
+     h.slice(h.indexOf('not independent'), h.indexOf('not independent') + 460));
+  // ── THE THREE NEW LEG FILTERS ────────────────────────────────────────
+  ok('the block can be narrowed to one market',
+     (h.match(/data-v3recmkt=/g) || []).length >= 2, h);
+  ok('and to one side of the line',
+     h.indexOf('data-v3rectake="over"') >= 0
+     && h.indexOf('data-v3rectake="under"') >= 0);
+  ok('and to rows with enough bets behind them',
+     h.indexOf('data-v3recmin="5"') >= 0);
+  {
+    // THEY NARROW. A control that redraws the same rows is reading nothing.
+    V.recWho = 'all'; V.scFrom = 3; V.scTo = 4;
+    const wide = v3RecordPage();
+    V.recMin = 3;
+    const deep = v3RecordPage();
+    V.recMin = 1;
+    V.recTake = 'over';
+    const over = v3RecordPage();
+    V.recTake = 'under';
+    const under = v3RecordPage();
+    V.recTake = 'both';
+    V.recMkt = '0';
+    const one = v3RecordPage();
+    V.recMkt = 'all';
+    const bets = str => {
+      const m = /([\d,]+) bets across (\d+) player/.exec(str);
+      return m ? m[1] + '/' + m[2] : null;
+    };
+    ok('a bet floor drops the rows that have not earned a verdict',
+       bets(wide) && bets(deep) && bets(wide) !== bets(deep),
+       bets(wide) + ' vs ' + bets(deep));
+    ok('and over and under are different bets',
+       bets(over) !== bets(under), bets(over) + ' vs ' + bets(under));
+    ok('and one market is fewer than four',
+       bets(one) !== bets(wide), bets(one) + ' vs ' + bets(wide));
+    ok('and the filters say what they left',
+       one.indexOf(' bets across ') >= 0
+       && /bets across \d+ players? — catches/.test(one),
+       one.slice(one.indexOf(' bets across ') - 20,
+                 one.indexOf(' bets across ') + 80));
+    V.recWho = 'top'; V.scFrom = null; V.scTo = null; render();
+  }
   ok('and it reads the page’s own two controls, not a third vocabulary',
      h.indexOf('data-v3recseries') < 0
      && h.indexOf('data-v3recside="model"') >= 0
@@ -2976,16 +3064,20 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
     V.recView = 'all'; V.recSide = 'model'; V.recWho = 'top';
     V.scFrom = null; V.scTo = null;
   }
-  // THE CORRELATION, MADE VISIBLE RATHER THAN ONLY STATED. A player-game
-  // whose legs all landed the same way is one opinion drawn three times.
+  // THE CORRELATION IS STILL ON THE PAGE; the view that illustrated it is
+  // not. See the note above `and offers four cuts, with By game gone`.
   {
-    V.recWho = 'games'; V.scFrom = 3; V.scTo = 4;
-    const g = v3RecordPage();
-    ok('the by-game cut spells out each leg',
-       g.indexOf('class="pgleg') >= 0
-       && /Catches (over|under) [\d.]+, had/.test(g), g.slice(0, 300));
+    V.recWho = 'all'; V.scFrom = 3; V.scTo = 4;
+    ok('the drawer, not a fifth cut, is where a leg is spelled out',
+       (() => {
+         V.recOpen = 'Kyren Williams';
+         const d = v3RecordPage();
+         V.recOpen = null;
+         return d.indexOf('class="pgd__l"') >= 0
+           && /Catches<\/span><span class="pgd__b">(over|under) [\d.]+/.test(d);
+       })());
     ok('and flags the player-games whose legs all landed together',
-       g.indexOf('landed the same way') >= 0);
+       v3RecordPage().indexOf('land the same way') >= 0);
     V.recQ = 'Kyren';
     const q = v3RecordPage();
     ok('and the search narrows it to one player',

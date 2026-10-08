@@ -109,6 +109,34 @@ button{cursor:pointer}
   .tf>.pl__h,.tf>.pl__lg,.tf>.help{grid-column:1/-1}
   .tf .pl__l{max-height:none}
   .tf__c{height:72px}
+
+  /* ── THE RECORD PAGE'S TABLES SCROLLED SIDEWAYS WITH 200px BESIDE THEM ──
+     `.rec`, `.recg`, `.rbar` and `.pgd` each carried `max-width:640px`, and
+     every table sits in a `.recwrap{overflow-x:auto}` with
+     `min-width:min-content`. At this width the card is about 848px, and at
+     1280px about 1008px — but the tables stayed capped at 640, so anything
+     needing more than that scrolled horizontally INSIDE a card with two to
+     three hundred unused pixels next to it. Reported as the page cutting
+     off on a desktop, which is what it looked like.
+
+     THE CAP WAS THE WRONG INSTRUMENT FOR A REAL PROBLEM. `1fr` on the label
+     column takes every spare pixel, which put "Our model" against one edge
+     and "18 / 14" against the other. The fix is the one the original
+     comment asks for — slack after the last column — and that is a
+     content-sized label column, not a 640px box: with no `fr` track the
+     columns sum to less than the card and the leftover lands at the end by
+     itself. A `ch` cap keeps the label from running away on a long row.
+
+     The narrow rules are untouched, so nothing about the phone moves. */
+  .rec,.recg,.rbar,.pgd{max-width:none}
+  .rec--3{grid-template-columns:minmax(104px,24ch) repeat(2,minmax(0,auto))}
+  .rec--4{grid-template-columns:minmax(92px,28ch) repeat(3,minmax(0,auto))}
+  .rec--5{grid-template-columns:minmax(84px,28ch) repeat(4,minmax(0,auto))}
+  .rec--6{grid-template-columns:minmax(84px,22ch) repeat(5,minmax(0,auto))}
+  .recg{grid-template-columns:minmax(0,38ch) 52px 52px 76px 92px;
+    width:auto}
+  /* The drawer's leg lines follow the table they open under. */
+  .pgd__l{grid-template-columns:minmax(0,22ch) 104px 74px 56px 62px}
 }
 @media (min-width:1280px){
   .wrap{max-width:1040px}
@@ -197,8 +225,14 @@ button{cursor:pointer}
    rows of pills — a chooser taller than the thing it chooses. One full-width
    select is a fixed 38px whatever the list holds, which is what lets it ride
    in the pinned bar rather than scroll away above it. */
-.mxsel{margin-top:6px;height:38px;padding:0 10px}
-.mxsel select{height:36px;font-weight:600}
+/* THE WHOLE PILL IS THE CONTROL, not the week name inside it.
+   `.picker` carried the padding and the `<select>` sat within it, so the
+   pill's own edges did nothing on tap — asked about directly. The padding
+   moves onto the select, which then fills the pill and is the hit area it
+   looks like. */
+.mxsel{margin-top:6px;height:38px;padding:0}
+.mxsel select{height:100%;width:100%;padding:0 10px;font-weight:600;
+  cursor:pointer}
 
 /* ---- the props filters, pinned ----
    Stacked at full size these ran about 250px before the first player: six
@@ -516,6 +550,9 @@ button{cursor:pointer}
 .pbar .search input{height:34px;padding-right:34px}
 .pbar .searchx{top:1px;right:2px}
 .pbar .picker{flex-shrink:0;margin-top:0;height:34px;gap:4px;padding:0 6px 0 10px}
+/* And inside the pinned bar, where `.pbar .picker` outranks `.mxsel`. */
+.pbar .mxsel{padding:0}
+.pbar .mxsel select{height:100%;width:100%;padding:0 10px}
 /* "SORT BY" goes: a dropdown listing sort names does not need a label saying
    it sorts, and in a pinned row that label is 60px of nothing. */
 .pbar .picker .eyebrow{display:none}
@@ -835,9 +872,13 @@ button{cursor:pointer}
 .rec{display:grid;gap:3px 12px;align-items:baseline;font-size:13.5px;
   line-height:19px;min-width:min-content;max-width:640px}
 /* The leg table is prose in its widest column and wants the room. */
-.rec--pg{max-width:none}
 .rec--4{grid-template-columns:minmax(92px,1fr) repeat(3,minmax(0,auto))}
 .rec--5{grid-template-columns:minmax(84px,1fr) repeat(4,minmax(0,auto))}
+/* SIX, because the three game markets are one table now. Each row carries
+   our record and rate, the adjusted model's, the sportsbook's, the average
+   error and the money — everything about that market on one line, where it
+   used to be three sub-sections of a table, a bar and a paragraph each. */
+.rec--6{grid-template-columns:minmax(84px,1fr) repeat(5,minmax(0,auto))}
 .rec__h{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
   color:var(--mut);font-weight:700;white-space:nowrap;
   padding-bottom:4px;border-bottom:1px solid var(--line);margin-bottom:2px}
@@ -904,6 +945,30 @@ button{cursor:pointer}
 .rbar__k{display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;font-size:11px;
   line-height:15px;color:var(--mut)}
 .rbar__kus{color:var(--ours);font-weight:700}
+/* A STACK OF TRACKS, ONE PER MARKET, SHARING ONE KEY AND ONE SCALE.
+   The three game markets used to carry a bar each with its own legend
+   under it, inside three sub-sections. Named and stacked, the comparison
+   between them costs a glance — which is the whole reason the scale is
+   fixed rather than fitted per bar. */
+.rbl{display:grid;grid-template-columns:minmax(84px,104px) minmax(0,1fr);
+  gap:0 10px;align-items:center;margin-top:10px}
+/* The market's name and what it beat, stacked in the label cell rather than
+   in a third column: a column would squeeze the track on a handset, and a
+   breakpoint to hide it is the thing the 420px test exists to stop. */
+.rbl__l{display:flex;flex-direction:column;gap:1px;font-size:11px;
+  letter-spacing:.04em;text-transform:uppercase;color:var(--mut);
+  font-weight:700}
+.rbl__l i{font-style:normal;font-size:11px;letter-spacing:0;
+  text-transform:none;font-weight:400;color:var(--mut2)}
+.rbl__b{min-width:0}
+.rbl .rbar{margin:0;max-width:none}
+/* The key rides in a row of the same grid with an empty label, so it lines
+   up with the tracks at every width. A `padding-left` would have to know
+   the label column's width, which is a `minmax` and therefore does not have
+   one — and guessing it needed a phone breakpoint, which is the thing
+   `test_no_layout_rule_decides_a_phone_by_a_width_that_phones_outgrew`
+   exists to stop. */
+.rbl .rbar__k{margin-top:6px}
 
 /* ── Bets by player ──────────────────────────────────────────────────────
    The legs of one player-game, spelled out. This is the view that makes the
@@ -912,11 +977,6 @@ button{cursor:pointer}
 .recsub{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
   color:var(--mut);font-weight:700;margin-top:12px}
 .recq{margin-top:8px}
-.pgleg{display:inline-block;font-size:11.5px;line-height:16px;
-  padding:1px 6px;border-radius:7px;background:var(--inset);
-  margin:1px 3px 1px 0;white-space:nowrap}
-.pgleg.up{color:var(--good)}
-.pgleg.dn{color:var(--bad)}
 .pgall{display:block;font-size:11px;line-height:15px;color:var(--mut);
   margin-top:2px}
 .pgwk{font-size:11.5px;color:var(--mut);font-weight:400}
@@ -960,9 +1020,17 @@ button{cursor:pointer}
 .reccx__l{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
   color:var(--mut);font-weight:700;white-space:nowrap;flex:none}
 .reccx .seg{margin-top:0;flex:1;min-width:0}
+/* TWO LABELED CONTROLS ON ONE LINE, because the per-player block gained
+   three filters and the page was asked to lose scrolling, not gain it. The
+   market takes a row of its own — five chips — and the side and the floor
+   share this one. */
+.reccx2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:0 16px}
+.reccx2 .reccx{min-width:0}
 @media (max-width:560px){
   .reccx{display:block}
   .reccx__l{display:block;margin-bottom:3px}
+  .reccx2{grid-template-columns:1fr;gap:0}
 }
 .recr--open .recr__c{color:var(--ours)}
 .recg .n{text-align:right;font-variant-numeric:tabular-nums;
@@ -990,12 +1058,9 @@ button{cursor:pointer}
     grid-auto-flow:row dense}
   .pgd__p{display:none}
 }
-/* The leg column is prose, not a figure, so it wraps and is not pushed
-   right with the numbers. */
+/* A column of prose rather than a figure wraps and is not pushed right with
+   the numbers. Named by `v3RecTable`'s `opts.prose`. */
 .rec .p{text-align:left;white-space:normal;min-width:0}
-/* The leg column is the wide one, so it is the one that takes the slack. */
-.rec--pg{grid-template-columns:minmax(120px,1.1fr) minmax(0,auto)
-  minmax(0,auto) minmax(150px,2fr) minmax(0,auto)}
 .fig{padding:8px 12px;border-radius:12px;background:var(--inset);
   display:flex;flex-direction:column}
 .fig b{font-size:20px;line-height:24px;font-weight:700}
