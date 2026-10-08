@@ -27,7 +27,8 @@ const x = loadPage(process.argv[2], process.argv[3],
    'v3PublicMoney', 'v3MoneyBlock', 'v3SharpSides', 'V3RATIO_SMALL',
    'v3GameSet', 'v3RecordPage', 'v3RecRange', 'v3Money',
    'v3Ask', 'V3ASK_DEFAULT', 'v3AngleBase', 'v3Surprise', 'V3SURPRISE', 'v3Clears',
-   'v3AngleSince', 'v3AngleYears',
+   'v3AngleSince', 'v3AngleYears', 'v3AngleSep', 'v3AngleEdge',
+   'v3AngleMin', 'v3AngleDrop', 'v3AnglesPage',
    'v3GTab', 'v3MktLabel',
    'v3Clv',
    'v3NowImplied', 'v3Clv', 'v3ClvNote', 'v3GameMoney']);
@@ -239,7 +240,7 @@ if (cards.length) {
     ok('and tapping the same column flips it',
        order().split('|').reverse().join('|') === az);
     // ...and it does not reorder the Angles page behind it.
-    ok('without touching the board\u2019s own sort', V.angleSort === 'season');
+    ok('without touching the board\u2019s own sort', V.angleSort === 'edge');
     v3Do('v3gasort', 'season'); render();
     // Whose angles: both sides in one list read as one team's.
     ok('the card can be narrowed to one side',
@@ -1560,17 +1561,27 @@ if (cards.length) {
 // to answer — what does MY bet at MY price turn into — could be asked twelve
 // ways. The table is patched in place on each keystroke, never re-rendered,
 // or the field being typed into is replaced and loses focus.
-V.tab = 'angles'; render();
+V.tab = 'angles';
+// THE CAP IS EXERCISED IN ITS OWN BLOCK, below. Every check in this
+// section was written about the WHOLE board and still means that, so the
+// cap is lifted here rather than each of them being rewritten to ask
+// about the first forty rows of it.
+V.angleShown = 1e9;
+render();
 const L = () => app();
 // One row per angle, plus a header row.
 // Counted by the row action, which is one per angle exactly. `class="arow`
 // also matches `arow__l` and `arow--h`, which is how the first version of
 // this said seven rows for three angles.
+// CAPPED AT FORTY, like the Record page's player table: all eighty-six
+// drew at once, which is nine screens of board. So the claim is that the
+// board draws every angle it is showing and offers the rest.
 ok('the angles board lists every angle tracked',
    (L().match(/data-v3angle="/g) || []).length
-   === ((DATA.angles || {}).rows || []).length,
+   === Math.min(((DATA.angles || {}).rows || []).length, V.angleShown || 40),
    (L().match(/data-v3angle="/g) || []).length + ' drawn, '
-   + (((DATA.angles || {}).rows || []).length) + ' measured');
+   + (((DATA.angles || {}).rows || []).length) + ' measured, cap '
+   + (V.angleShown || 40));
 // THE DENOMINATOR IS THE FINDING. A board showing only what currently clears
 // is a board of survivors, so the count measured has to be on the page. The
 // headline card that used to carry it came off for space; these moved into
@@ -1770,7 +1781,8 @@ ok('and explains why half is not enough',
 // the other does not: 570-570, and another ten seasons would not move it.
 // The row stays; what it gets is the context no reader can supply.
 {
-  V.tab = 'angles'; V.angleQ = ''; V.angleCat = 'all'; render();
+  V.tab = 'angles'; V.angleQ = ''; V.angleCat = 'all';
+  V.angleShown = 1e9; render();
   const flagged = ((DATA.angles || {}).rows || []).filter(r => r.whole_game);
   ok('a whole-game condition is tagged on the board',
      !flagged.length || L().indexOf('both sides') >= 0, 'no tag drawn');
@@ -1846,10 +1858,12 @@ ok('and explains why half is not enough',
      v3Surprise({ n: 9, w: 5, pct: 0.5 }, { n: 9, w: 9, pct: 1 }) === null);
   // ON THE NAME, NOT ON THE NUMBER. Coloring the season cell is forbidden:
   // green on eight games is the exact misreading this board prevents.
-  V.tab = 'angles'; V.angleTeam = ''; V.angleQ = ''; render();
+  V.tab = 'angles'; V.angleTeam = ''; V.angleQ = '';
+  V.angleShown = 1e9; render();
   // COUNTED ON THE TITLE, because the closing card prints an example tag to
   // explain itself and `>unusual<` matches that too.
-  const tagged = (L().match(/title="This season/g) || []).length;
+  const tagged = (L().match(/title="This season\u2019s record/g) || [])
+    .length;
   // AGAINST THE LONG RUN THE PAGE IS SHOWING, not the shipped `all` block:
   // the year slider recomputes the long run, and the comparison has to move
   // with it or the mark would answer for a span nobody is looking at.
@@ -2103,6 +2117,165 @@ ok('percentages carry two decimals', /\d+\.\d\d%/.test(L()));
     getAttribute: a => a === 'data-v3anglefrom' ? '' : null, value: '2015' } });
   ok('and back again', L().indexOf('\u201915+ ATS') >= 0);
 }
+// ── WHAT THE PATTERN IS WORTH, AS A COLUMN ─────────────────────────────
+//
+// `v3BaseLine` has said this in a sentence inside the opened panel since the
+// baseline landed — "already likely to cover 50.08%, record 66.67%, so the
+// pattern is worth +16.59 points". It is the number that separates a real
+// edge from a split made mostly of road underdogs, and it was one tap down,
+// in prose, and not sortable. Every row on the live board has a baseline.
+{
+  V.tab = 'angles'; V.angleTeam = ''; V.angleQ = ''; V.angleCat = 'all';
+  V.angleMin = 0; V.angleRedundant = 'show'; V.angleShown = 1e9;
+  V.angleSort = 'edge'; V.angleDesc = true; render();
+  ok('what each pattern is worth is a column',
+     L().indexOf('data-v3anglesort="edge"') >= 0
+     && L().indexOf('>points</i>') >= 0, L().slice(0, 400));
+  // AND IT IS THE DEFAULT ORDER. The board opened on THIS SEASON, which on
+  // the live week is one game for a third of the rows — so 86 patterns
+  // measured over 87 to 4,110 games each were ordered by a one-game sample
+  // and the top of the board was whichever of them went 1-0.
+  ok('and the board opens on it rather than on a one-game sample',
+     L().indexOf('data-v3anglesort="edge" aria-pressed="true"') >= 0, L());
+  {
+    // CAPTURED, not matched: a colored cell carries a `title` full of its
+    // own digits, so stripping non-digits off the whole match reads the
+    // sentence as the number.
+    const worth = str => {
+      const re = /<b[^>]*>([+\u2212])([\d.]+)<\/b><i>points/g;
+      const out = [];
+      let m;
+      while ((m = re.exec(str)) !== null) {
+        out.push(Number(m[2]) * (m[1] === '+' ? 1 : -1));
+      }
+      return out;
+    };
+    const w = worth(L());
+    ok('the strongest is above the weakest', w.length > 1 && w[0] >= w[1],
+       w.slice(0, 4).join(', '));
+    v3Do('v3anglesort', 'edge'); render();
+    const up = worth(L());
+    ok('and tapping the column flips it',
+       up.length === w.length && up[0] <= up[1], up.slice(0, 4).join(', '));
+    v3Do('v3anglesort', 'edge'); render();
+  }
+  // COLORED ONLY WHERE IT SEPARATES, which is four rows of the live 86 —
+  // and two of those four are the same games from both sides. Coloring
+  // every row with a sign would say that +0.4 points over four thousand
+  // games is the same kind of thing as +16.6 over eighty-seven.
+  {
+    const yr = x.v3AngleYears();
+    const due = ((DATA.angles || {}).rows || []).filter(a =>
+      x.v3AngleSep(x.v3AngleSince(a, yr.from, 0.5238, ''),
+                   x.v3AngleBase(a, yr.from, ''))).length;
+    const lit = (L().match(/<b class="(up|dn)" title="Even allowing/g) || [])
+      .length;
+    ok('and it is colored on exactly the rows whose record clears their own '
+       + 'make-up', lit === due, lit + ' colored, ' + due + ' qualify');
+    ok('and the lede counts them rather than asserting a verdict',
+       new RegExp(String(due) + ' sits? clear of what the make-up').test(L())
+       || due === 0, L().slice(0, 420));
+  }
+}
+
+// ── TWO MORE WAYS TO CUT EIGHTY-SIX ROWS ───────────────────────────────
+{
+  V.tab = 'angles'; V.angleTeam = ''; V.angleQ = ''; V.angleCat = 'all';
+  V.angleMin = 0; V.angleRedundant = 'show'; V.angleShown = 1e9; render();
+  const n = () => (L().match(/class="arow"/g) || []).length;
+  const every = n();
+  ok('the board can be floored by how many games are behind a pattern',
+     L().indexOf('data-v3anglemin="1000"') >= 0);
+  // THE FLOOR IS READ OFF THE FIXTURE'S OWN LONG RUNS, so this check means
+  // the same thing on a fixture of eight patterns and on a live board of
+  // eighty-six. A hardcoded 1,000 emptied the fixture and then asserted
+  // something about no rows.
+  {
+    const yr2 = x.v3AngleYears();
+    const ns = ((DATA.angles || {}).rows || [])
+      .map(a => ((x.v3AngleSince(a, yr2.from, 0.5238, '') || {}).n) || 0)
+      .sort((a2, b2) => a2 - b2);
+    const floor = [1000, 500, 250].filter(f =>
+      ns.filter(v => v >= f).length > 0
+      && ns.filter(v => v >= f).length < ns.length)[0];
+    if (floor) {
+      v3Do('v3anglemin', String(floor)); render();
+      ok('and a floor leaves fewer rows', n() < every, n() + ' of ' + every);
+      // EVERY ROW LEFT ACTUALLY CLEARS THE FLOOR, counted off the payload
+      // rather than off the markup, where the season column's record looks
+      // like a long run.
+      ok('and each of them has at least that many games',
+         n() === ns.filter(v => v >= floor).length,
+         n() + ' drawn, ' + ns.filter(v => v >= floor).length
+           + ' at ' + floor + '+');
+      // `v3anglemin` resets the cap, which is right for a reader and wrong
+      // for a comparison against an uncapped count.
+      v3Do('v3anglemin', '0'); V.angleShown = 1e9; render();
+    } else {
+      ok('and a floor leaves fewer rows', true,
+         'every pattern in this fixture clears every floor');
+      ok('and each of them has at least that many games', true);
+    }
+  }
+  ok('and clearing the floor restores the board', n() === every);
+
+  // THE ROWS THAT CANNOT SAY ANYTHING NEW. A whole-game condition puts both
+  // teams in the situation, so the split is 50.00% by arithmetic; and
+  // thirty-four of the live rows are one side of a mirror pair, whose
+  // second half is the first half negated.
+  ok('the redundant rows can be hidden',
+     L().indexOf('data-v3angleredundant="hide"') >= 0);
+  v3Do('v3angleredundant', 'hide'); V.angleShown = 1e9; render();
+  const one = n();
+  ok('and hiding them leaves fewer rows', one < every, one + ' of ' + every);
+  ok('and no whole-game row survives it',
+     L().indexOf('both sides') < 0, L());
+  {
+    // AND NO PAIR IS DRAWN TWICE. Read off the ids on screen against the
+    // payload's own `mirror` links.
+    const byId = {};
+    ((DATA.angles || {}).rows || []).forEach(r => { byId[r.id] = r; });
+    const ids = (L().match(/data-v3angle="([^"]+)"/g) || [])
+      .map(m => /data-v3angle="([^"]+)"/.exec(m)[1]);
+    const on = {};
+    ids.forEach(i2 => { on[i2] = 1; });
+    const both = ids.filter(i2 => (byId[i2] || {}).mirror
+                                  && on[byId[i2].mirror]);
+    ok('and never both halves of a pair', both.length === 0,
+       both.join(', '));
+  }
+  v3Do('v3angleredundant', 'show'); V.angleShown = 40; render();
+}
+
+// ── AND EIGHTY-SIX ROWS ARE NOT ALL DRAWN AT ONCE ──────────────────────
+//
+// The Record page's player table caps at forty with a "show more"; this
+// drew every row, which is about nine screens of board under four screens
+// of controls and prose.
+{
+  V.tab = 'angles'; V.angleTeam = ''; V.angleQ = ''; V.angleCat = 'all';
+  V.angleMin = 0; V.angleRedundant = 'show'; V.angleShown = 40; render();
+  const rows = ((DATA.angles || {}).rows || []).length;
+  const drawn = (L().match(/class="arow"/g) || []).length;
+  if (rows > 40) {
+    ok('the board is capped rather than drawing every row',
+       drawn === 40, String(drawn));
+    ok('and the rest is offered behind a button',
+       /data-v3anglemore="100">Show \d+ more of \d+/.test(L()), L());
+    v3Do('v3anglemore', '100'); render();
+    ok('and asking for them draws them',
+       (L().match(/class="arow"/g) || []).length > drawn);
+    V.angleShown = 40; render();
+  } else {
+    ok('the board is capped rather than drawing every row',
+       drawn === rows, 'fixture has ' + rows + ' rows, under the cap');
+    ok('and the rest is offered behind a button',
+       L().indexOf('data-v3anglemore') < 0,
+       'nothing to offer, and nothing offered');
+    ok('and asking for them draws them', true);
+  }
+}
+
 // Categories, so forty-six rows can be read as five lists.
 {
   const cats = {};

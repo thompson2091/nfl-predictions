@@ -137,6 +137,13 @@ button{cursor:pointer}
     width:auto}
   /* The drawer's leg lines follow the table they open under. */
   .pgd__l{grid-template-columns:minmax(0,22ch) 104px 74px 56px 62px}
+
+  /* THE ANGLES BOARD HAD THE SAME FAULT AS THE RECORD TABLES. `1fr` on the
+     pattern column with no cap put the label against one edge of a
+     1008px card and its three figures against the other, a hand's width
+     apart with nothing in between. Content-sized here, so the slack falls
+     after the last column. */
+  .arow{grid-template-columns:minmax(0,44ch) 62px 78px 70px;gap:6px 12px}
 }
 @media (min-width:1280px){
   .wrap{max-width:1040px}
@@ -283,7 +290,11 @@ button{cursor:pointer}
 /* ---- the angles table ----
    A grid rather than stacked cards: forty-six rows is a table, and the whole
    reason to read it is comparing one column down the page. */
-.arow{display:grid;grid-template-columns:minmax(0,1fr) 62px 70px;
+/* FOUR COLUMNS NOW: the pattern, this season, the long run, and what the
+   pattern is WORTH over its own composition — which was a sentence inside
+   the opened panel and is the number that separates a real edge from a
+   split made mostly of road underdogs. */
+.arow{display:grid;grid-template-columns:minmax(0,1fr) 54px 66px 56px;
   align-items:center;gap:6px;width:100%;padding:10px 0;text-align:left;
   border:0;border-top:1px solid var(--line3);background:transparent;
   color:var(--ink)}
@@ -317,6 +328,8 @@ button{cursor:pointer}
 .arow>span i{font-style:normal;font-size:11px;line-height:14px;
   color:var(--mut2)}
 .arow>span.good b{color:var(--good)}
+.arow>span b.up{color:var(--good)}
+.arow>span b.dn{color:var(--bad)}
 
 /* The games behind a season record, opened in place. No tinted panel: an
    indent and one accent rule say "these belong to the row above", which is

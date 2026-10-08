@@ -190,9 +190,14 @@ const V = Object.assign({
   week: null, game: null, gameTab: 'odds', cat: 'all',
   picks: {}, betType: 'twos', stake: 10, shown: V3SHOW,
   lodds: 100, rungs: 6, q: '', half: 'full', metric: 'all',
-  // Sorted by THIS YEAR by default: it is the column a reader came for, and
-  // the all-time one beside it is what keeps that honest.
-  angleSort: 'season', angleDesc: true, angleOpen: null, angleCat: 'all',
+  //: The board opens on what each pattern is WORTH over its own
+  //: composition. It opened on `season`, which on the live week is one
+  //: game for a third of the rows — so 86 patterns measured over 87 to
+  //: 4,110 games each were ordered by a one-game sample.
+  angleSort: 'edge', angleDesc: true, angleOpen: null, angleCat: 'all',
+  //: How many games a long run needs, and whether the rows that cannot
+  //: say anything new are drawn. See `v3AngleMin` and `v3AngleDrop`.
+  angleMin: 0, angleRedundant: 'show', angleShown: 40,
   //: The earliest season the long-run column counts. Every season is shipped
   //: separately so this can move without another measurement.
   angleFrom: 0, angleQ: '',
@@ -5132,6 +5137,54 @@ function v3SurpriseTag(season, all) {
 // cell: `road_dog` expects 52.07% and `home_fav` 47.93%, so reading either
 // against a flat 50% credits it with four points it has not earned. Those are
 // the rows someone opens, and this is where they land.
+//: WHAT THE PATTERN ITSELF IS WORTH, in points, as a figure.
+//:
+//: `v3BaseLine` has said this in a sentence inside the opened panel since
+//: the baseline landed — "already likely to cover 50.08%, record 66.67%, so
+//: the pattern is worth +16.59 points". That is the number that separates a
+//: real edge from a split made mostly of road underdogs, and it was one tap
+//: down, in prose, and not sortable. Every row on the live board has a
+//: baseline (86 of 86), so it can be a column.
+function v3AngleEdge(run, base) {
+  if (!base || !run || !run.n || !has(run.pct) || !has(base.pct)) return null;
+  return (run.pct - base.pct) * 100;
+}
+
+//: WHETHER THE LONG RUN IS FAR ENOUGH FROM ITS OWN MAKE-UP TO MEAN
+//: ANYTHING AT THIS SAMPLE SIZE.
+//:
+//: The record's own interval against the baseline the split's composition
+//: already predicts. "Before a bye, divisional" runs 56.2% to 75.7% over 87
+//: games against a baseline of 50.08%, so the interval does not contain its
+//: own make-up; "Quarterback has never lost to this opponent" is +3.39
+//: points over 321 games with an interval that does, which is a number
+//: indistinguishable from the games it is made of.
+//:
+//: FOUR OF THE 86 ON THE LIVE BOARD, and two of those four are the same
+//: games from both sides. This is a better signal than `clears`, which asks
+//: about break-even and is false on every row — and it is the reason the
+//: edge is colored on four rows rather than on every row with a sign.
+function v3AngleSep(run, base) {
+  if (!base || !run || !run.n || !has(base.pct)) return false;
+  if (!has(run.lo) || !has(run.hi)) return false;
+  return base.pct < run.lo || base.pct > run.hi;
+}
+
+//: The same figure, drawn. Signed, because a fade is as useful as an edge.
+//:
+//: COLORED ONLY WHERE IT SEPARATES. Coloring every row with a sign would
+//: paint half the board green and tell a reader that +0.4 points over 4,110
+//: games is the same kind of thing as +16.6 over 87.
+function v3AngleEdgeCell(e, sep) {
+  if (!has(e)) return '<b>\u2014</b><i></i>';
+  return '<b' + (sep ? ' class="' + (e > 0 ? 'up' : 'dn') + '"' : '')
+    + (sep ? ' title="Even allowing for how few games this is, the record '
+       + 'sits clear of what the make-up of these games already predicts."'
+       : '')
+    + '>' + (e > 0 ? '+' : '\u2212') + Math.abs(e).toFixed(1) + '</b>'
+    + '<i>points</i>';
+}
+
 function v3BaseLine(run, base) {
   if (!base || !run || !run.n) return '';
   const d = (run.pct - base.pct) * 100;
@@ -6548,6 +6601,54 @@ function v3RecordPage() {
     + '</div>';
 }
 
+//: How many games a pattern's long run needs to appear at all.
+//:
+//: The live board runs from 87 games to 4,110 with a median of 640, and a
+//: pattern measured over 87 is a different object from one measured over
+//: 4,110. Same control as the Record page's "At least", same reason.
+function v3AngleMin() {
+  const n = Number(V.angleMin);
+  return (n === 250 || n === 500 || n === 1000) ? n : 0;
+}
+
+//: THE ROWS THAT CANNOT TELL YOU ANYTHING NEW, and the one control that
+//: hides them.
+//:
+//: Two kinds, and they are the same idea twice. A whole-game condition —
+//: prime time, grass, indoors — puts BOTH teams in the situation, so one
+//: covers and the other does not and the split is 50.00% by arithmetic:
+//: 1605-1605 on grass, 822-822 indoors. And thirty-four of the board's rows
+//: are one side of a mirror pair, which is the same games scored from the
+//: other sideline, so the second half is the first half negated.
+//:
+//: 14 whole-game rows and 17 redundant halves on the live board: hiding
+//: them takes 86 rows to 55. Shown by default, because a reader who cannot
+//: find prime time wonders why the board does not track it — the point is
+//: that it is now a choice rather than thirty-one rows of noise you have to
+//: know to discount.
+//:
+//: THE HALF KEPT IS THE ONE WITH THE BETTER EDGE, computed here rather than
+//: taken from wherever the current ordering happens to put it, so changing
+//: the sort does not change which side of a pair you are looking at.
+function v3AngleDrop(list, edgeOf) {
+  if (V.angleRedundant !== 'hide') return {};
+  const best = {}, drop = {};
+  for (const o of list) {
+    if (o.r.whole_game) { drop[o.r.id] = 1; continue; }
+    if (!o.r.mirror) continue;
+    const pair = [o.r.id, o.r.mirror].sort().join('|');
+    const e = edgeOf(o);
+    const cur = best[pair];
+    if (!cur || (has(e) && (!has(cur.e) || e > cur.e))) {
+      if (cur) drop[cur.id] = 1;
+      best[pair] = {id: o.r.id, e: e};
+    } else {
+      drop[o.r.id] = 1;
+    }
+  }
+  return drop;
+}
+
 function v3AnglesPage() {
   const A = DATA.angles || {};
   const all = (A.rows || []).slice();
@@ -6597,30 +6698,62 @@ function v3AnglesPage() {
     || (r.label || '').toLowerCase().indexOf(q) >= 0
     || (r.plain || '').toLowerCase().indexOf(q) >= 0
     || (r.cat || '').toLowerCase().indexOf(q) >= 0;
-  const shown = (cat === 'all' ? all : all.filter(r => r.cat === cat))
-    .filter(hit)
-    .map(r => ({ r: r, run: since(r), base: baseOf(r) }));
+  const min = v3AngleMin();
+  const everything = all.map(r => ({ r: r, run: since(r), base: baseOf(r) }));
+  const edgeOf = o => v3AngleEdge(o.run, o.base);
+  const drop = v3AngleDrop(everything, edgeOf);
+  const shown = everything
+    .filter(o => cat === 'all' || o.r.cat === cat)
+    .filter(o => hit(o.r))
+    .filter(o => !min || ((o.run || {}).n || 0) >= min)
+    .filter(o => !drop[o.r.id]);
 
   const pct = d => (d && d.n) ? d.pct : -1;
   const SORTS = {
+    // WHAT THE PATTERN IS WORTH, AND IT IS THE DEFAULT NOW.
+    //
+    // The board opened sorted by THIS SEASON, which on the live week is one
+    // game for a third of the rows and under ten for most of them — so 86
+    // patterns measured over 87 to 4,110 games each were being ordered by a
+    // one-game sample, and the top of the board was whichever of them
+    // happened to go 1-0. The edge over a split's own composition is
+    // complete on every row and is the thing the page is for.
+    edge: o => { const e = edgeOf(o); return has(e) ? e : -999; },
     season: o => pct(seasonOf(o.r)),
     all: o => pct(o.run),
+    games: o => (o.run || {}).n || 0,
     name: o => o.r.label,
   };
-  const key = SORTS[V.angleSort] ? V.angleSort : 'season';
-  const dir = V.angleDesc ? -1 : 1;
+  const key = SORTS[V.angleSort] ? V.angleSort : 'edge';
+  const dir = V.angleDesc === false ? 1 : -1;
   const rows = shown.slice().sort((a, b) => {
-    const x = SORTS[key](a), y = SORTS[key](b);
-    if (x < y) return -dir;
-    if (x > y) return dir;
+    const xv = SORTS[key](a), yv = SORTS[key](b);
+    if (xv < yv) return -dir;
+    if (xv > yv) return dir;
     // One stable tiebreak, so the order is the same on every build.
     return a.r.label < b.r.label ? -1 : 1;
   });
+  // CAPPED, THE WAY THE RECORD PAGE'S PLAYER TABLE IS. All 86 drew at once,
+  // which is about nine screens of board under four screens of controls and
+  // prose.
+  const cap = V.angleShown || 40;
+  const cut = rows.slice(0, cap);
+  // AND THE OPEN ROW IS ALWAYS DRAWN. Choosing a club rescopes every record
+  // and reorders the board, so a pattern you had opened could fall past the
+  // cap and its panel would vanish with nothing saying why. Taken from
+  // `rows`, so a row the filters actually removed stays removed — the
+  // filters that can remove one close it on the way (see `v3Do`).
+  if (V.angleOpen && !cut.filter(o => o.r.id === V.angleOpen).length) {
+    const held = rows.filter(o => o.r.id === V.angleOpen);
+    if (held.length) cut.push(held[0]);
+  }
 
   const games = A.games || {};
-  const arrow = k => (key === k ? (V.angleDesc ? ' \u2193' : ' \u2191') : '');
-  const head = (k, label) => '<button class="ahead" data-v3anglesort="'
-    + k + '" aria-pressed="' + (key === k) + '">' + label + arrow(k)
+  const arrow = k => (key === k ? (V.angleDesc === false ? ' \u2191' : ' \u2193')
+                                : '');
+  const head = (k, label, title) => '<button class="ahead" '
+    + 'data-v3anglesort="' + k + '" aria-pressed="' + (key === k) + '"'
+    + (title ? ' title="' + esc(title) + '"' : '') + '>' + label + arrow(k)
     + '</button>';
 
   const byId = {};
@@ -6628,12 +6761,30 @@ function v3AnglesPage() {
   const detail = r => v3AngleGames(r, games, scope,
     v3BaseLine(since(r), baseOf(r)) + v3MirrorLine(r, byId, since, scope));
 
+  // NOT ONE OF THE 86 CLEARS, AND THAT IS THE FINDING. Counted rather than
+  // asserted: the paragraph below used to say an angle "would not mean much"
+  // and left the reader to check eighty-six intervals for themselves.
+  const clears = everything.filter(o => (o.run || {}).clears).length;
+  const seps = everything.filter(o => v3AngleSep(o.run, o.base)).length;
+  const narrowed = [];
+  if (cat !== 'all') narrowed.push(esc(cat).toLowerCase());
+  if (q) narrowed.push('matching \u201c' + esc(V.angleQ) + '\u201d');
+  if (min) narrowed.push(v3RecN(min) + ' games or more');
+  if (V.angleRedundant === 'hide') narrowed.push('one side of each pair');
+
   return '<div class="wrap">'
     + '<h1 class="h1">Angles</h1>'
+    // ONE LEDE, NOT TWO. The second explained the columns, which is what the
+    // column headings and the folded note are for.
     + '<p class="lede">Betting patterns people follow \u2014 \u201cteams '
-    + 'bounce back after a beating\u201d, that sort of thing. Each row is how '
-    + 'often that pattern actually beat the point spread. Tap one to see this '
-    + 'season\u2019s games.</p>'
+    + 'bounce back after a beating\u201d, that sort of thing. <b style="'
+    + 'color:var(--ink)">' + all.length + ' measured. '
+    + (clears ? clears + ' clear' + (clears === 1 ? 's' : '')
+       : 'None clears') + ' the ' + (be * 100).toFixed(2)
+    + '% a bet needs'
+    + (seps ? ', and ' + seps + ' sit' + (seps === 1 ? 's' : '')
+       + ' clear of what the make-up of their own games predicts' : '')
+    + '.</b> Tap one for this season\u2019s games.</p>'
     + '<div class="pbar pbar--free">'
     // ROW ONE IS WHO, ROW TWO IS HOW TO SLICE, ROW THREE IS SINCE WHEN --
     // the same three on a game's angles, so a reader who has learned one page
@@ -6668,18 +6819,32 @@ function v3AnglesPage() {
                scope ? 'team' : 'league')
        + '</div>' : '')
     + '</div>'
+    // TWO MORE WAYS TO CUT IT, both from numbers the board already holds.
+    + '<div class="pbar__row pbar__row--two">'
+    + '<div class="seg seg--4">'
+    + v3Seg('v3anglemin', [['0', 'Any size'], ['250', '250+'],
+                           ['500', '500+'], ['1000', '1000+']], String(min))
+    + '</div>'
+    + '<div class="seg seg--2">'
+    + v3Seg('v3angleredundant', [['show', 'Every row'], ['hide', 'One side']],
+            V.angleRedundant === 'hide' ? 'hide' : 'show')
+    + '</div></div>'
     + v3YearSlider(first, last, from)
     + '</div>'
     + '<div class="card" style="margin-top:0">'
     + '<div class="arow arow--h">'
     + head('name', 'Pattern')
-    + head('season', 'Yr ATS')
-    + head('all', '\u2019' + String(from).slice(2) + '+ ATS')
+    + head('season', 'Yr ATS', 'The record so far this season')
+    + head('all', '\u2019' + String(from).slice(2) + '+ ATS',
+           'The record since ' + from + ', and how many games behind it')
+    + head('edge', 'Worth',
+           'What the pattern itself is worth, in points, once where each '
+           + 'team played and whether it was favored are taken out')
     + '</div>'
-    + (rows.length ? '' : '<p class="help" style="padding:12px 0">Nothing '
-       + 'matches ' + (q ? '\u201c' + esc(V.angleQ) + '\u201d' : 'that')
+    + (cut.length ? '' : '<p class="help" style="padding:12px 0">Nothing '
+       + 'matches ' + (narrowed.length ? narrowed.join(', ') : 'that')
        + '.</p>')
-    + rows.map(o => {
+    + cut.map(o => {
         const r = o.r, a = o.run;
         const good = a && a.clears;
         const open = V.angleOpen === r.id;
@@ -6697,33 +6862,50 @@ function v3AnglesPage() {
           // third column to say what "1250-1180" already says.
           + '<span class="num' + (good ? ' good' : '') + '"><b>'
           + v3AnglePct(a) + '</b><i>' + v3AngleRec(a) + '</i></span>'
+          + '<span class="num">'
+          + v3AngleEdgeCell(edgeOf(o), v3AngleSep(a, o.base)) + '</span>'
           + '</button>'
           + (open ? detail(r) : '');
       }).join('')
+    + (rows.length > cut.length
+       ? '<button class="more" data-v3anglemore="' + (cap + 60) + '">Show '
+         + Math.min(60, rows.length - cut.length) + ' more of ' + rows.length
+         + '</button>'
+       : '')
     + '</div>'
     + '<div class="card" style="margin-top:12px">'
     + '<div class="name">Why none of them is a system</div>'
+    // THE COUNT IS THE FINDING AND IT IS NOW IN THE LEDE, so this says the
+    // two things a count cannot: why half is not enough, and why a winner
+    // here would still not mean much.
     + '<p class="lede" style="font-size:15px;line-height:20px">Winning half '
     + 'your bets loses money, because the bookmaker keeps a cut: a split has '
-    + 'to clear <b style="color:var(--ink)">' + (be * 100).toFixed(2)
-    + '%</b> just to break even. At three to five hundred games an interval '
-    + 'runs eight points wide \u2014 wide enough to contain both \u201cno '
-    + 'edge\u201d and \u201ca good edge\u201d. Every angle here has been '
-    + 'public for decades, which is the other half of it: the price already '
-    + 'knows.</p>'
-    // THE DENOMINATOR IS THE FINDING. The headline card that carried this
-    // came off the top of the page for space; the count of patterns measured
-    // has to survive somewhere, or a winner reads as a system.
-    // HOW MANY WERE MEASURED STAYS; HOW TO READ THE TABLE FOLDS. The count
-    // is the finding — a reader seeing four splits has no idea that seventy
-    // eight others were measured beside them and said nothing — and the rest
-    // explains the columns to somebody who has already read it once.
-    + '<p class="help">With ' + all.length + ' patterns measured, two or '
-    + 'three will look good on luck alone, so even a winner here would not '
-    + 'mean much. Nothing is dropped for going cold either: a split that '
-    + 'reverted is the most useful row on this page, and a board with the '
-    + 'losers removed is a board of survivors.</p>'
-    + v3Fold('How to read this table', v3BaseNote()) + '</div>'
+    + 'to clear ' + (be * 100).toFixed(2) + '% just to break even. With '
+    + all.length + ' patterns measured, two or three will look good '
+    + 'on luck alone \u2014 and every angle here has been public for '
+    + 'decades, which is the other half of it: the price already knows.</p>'
+    + v3Fold('How to read this table',
+        '<p class="help">At three to five hundred games an interval runs '
+        + 'eight points wide \u2014 wide enough to contain both \u201cno '
+        + 'edge\u201d and \u201ca good edge\u201d, which is why the '
+        + '<b style="color:var(--ink)">\u2019' + String(from).slice(2)
+        + '+</b> column carries the games behind it and not just the rate.'
+        + '</p>'
+        + '<p class="help" style="margin-top:8px">Nothing is dropped for '
+        + 'going cold: a split that reverted is the most useful row on this '
+        + 'page, and a board with the losers removed is a board of '
+        + 'survivors. <b style="color:var(--ink)">One side</b> hides the '
+        + 'rows that cannot say anything new \u2014 a whole-game condition '
+        + 'both teams are in, and the second half of a mirror pair \u2014 '
+        + 'rather than any row for its record.</p>'
+        + '<p class="help" style="margin-top:8px"><b style="color:'
+        + 'var(--ink)">Worth</b> is colored on the rows where the record\u2019s '
+        + 'own interval does not contain that baseline \u2014 '
+        + seps + ' of ' + all.length + ' \u2014 and left plain everywhere '
+        + 'else, because +0.4 points over four thousand games is not the '
+        + 'same kind of thing as +16.6 over eighty-seven.</p>'
+        + v3BaseNote())
+    + '</div>'
     + '</div>';
 }
 
@@ -7077,6 +7259,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3anglegame', 'v3angleclear', 'v3anglescope', 'v3pastall',
                   'v3pastn', 'v3tlall', 'v3tln',
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
+                  'v3anglemin', 'v3angleredundant', 'v3anglemore',
                   'v3sortpick',
                   'v3recwho', 'v3recseries', 'v3recmore',
                   'v3recqx', 'v3recview', 'v3recside', 'v3recopen',
@@ -7173,6 +7356,7 @@ document.addEventListener('input', ev => {
     // `render` learned to put the focus back.
     V.angleQ = t.value || '';
     V.angleOpen = null;
+    V.angleShown = 40;
     render();
     return;
   }
@@ -7203,11 +7387,13 @@ document.addEventListener('change', ev => {
     // A SELECT FIRES `change`, NOT `click`. Wired to the click listener it
     // drew and highlighted correctly and filtered nothing.
     V.angleTeam = t.value || ''; V.angleOpen = null; V.top = 'section';
+    V.angleShown = 40;
     render();
   } else if (t.getAttribute('data-v3anglecat') != null) {
     // A `<select>` fires `change`, not `click`. Wired only into the click
     // table it drew correctly, highlighted correctly and filtered nothing.
-    V.angleCat = t.value; V.angleOpen = null; V.top = 'section'; render();
+    V.angleCat = t.value; V.angleOpen = null; V.top = 'section';
+    V.angleShown = 40; render();
   } else if (t.getAttribute('data-v3gacat') != null) {
     // A `<select>` again, so `change` and not the click table. No `V.top`
     // here: the game's other angle controls keep the reader where they were,
@@ -7303,7 +7489,19 @@ function v3Do(kind, v) {
       if (V.angleSort === v) V.angleDesc = !V.angleDesc;
       else { V.angleSort = v; V.angleDesc = (v !== 'name'); }
       break;
-    case 'v3angleclear': V.angleQ = ''; break;
+    case 'v3angleclear': V.angleQ = ''; V.angleShown = 40; break;
+    // THE TWO NEW CUTS. Both reset the row cap and close any open row: a
+    // filter that leaves a shorter list should not leave you forty rows into
+    // it with a pattern open that is no longer in it.
+    case 'v3anglemin':
+      V.angleMin = Number(v) || 0; V.angleShown = 40; V.angleOpen = null;
+      V.top = 'section';
+      break;
+    case 'v3angleredundant':
+      V.angleRedundant = v; V.angleShown = 40; V.angleOpen = null;
+      V.top = 'section';
+      break;
+    case 'v3anglemore': V.angleShown = Number(v) || 40; break;
     // THE RECORD PAGE'S OWN CONTROLS. None of them set `V.top`: the picker
     // bar is pinned, so the reader has not moved and the page should not
     // either — and on a page whose tables sit below the fold, a jump to the
