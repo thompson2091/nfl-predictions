@@ -881,7 +881,7 @@ function v4Row(row) {
     tags += '<span class="pw__tag">Thin market</span>';
   }
   if (v3IsEdge(row)) {
-    tags += '<span class="pw__tag pw__tag--up">Big gap</span>';
+    tags += '<span class="pw__tag pw__tag--up">Gap</span>';
   }
   const st = v3Streak(row);
   if (st) {

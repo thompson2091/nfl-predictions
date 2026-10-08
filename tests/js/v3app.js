@@ -2834,7 +2834,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
     ok('and names the margin each market has to clear',
        /catches [\d.]+pp/.test(gp), gp);
     ok('and points at the board’s filter that shows this week’s',
-       gp.indexOf('Big gaps') >= 0);
+       gp.indexOf('>Gaps<') >= 0);
     // A CUT THAT PICKS ITS OWN SIDE OFFERS NO SIDE CONTROL, rather than a
     // choice that does nothing.
     ok('a rule that picks its own side drops the side control',
@@ -3024,7 +3024,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
     // nothing and was read as the shortlist, which is a different rule.
     ok('the price-gap grading is not called an edge rule',
        shut.indexOf('Edge rule only') < 0
-       && shut.indexOf('>Big price gaps<') >= 0, shut.slice(0, 200));
+       && shut.indexOf('>Gaps<') >= 0, shut.slice(0, 200));
     V.recView = 'gap';
     ok('and the shortlist is a different cut with its own bets',
        v3RecordPage().indexOf('data-v3recview="short"') >= 0);

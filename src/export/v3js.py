@@ -546,7 +546,7 @@ function v3MarketControls(after) {
                          // which is why it is on the bar rather than buried:
                          // every other filter here is a description of the
                          // board and this one is a pre-registered bet.
-                         ['gap', 'Big gaps'],
+                         ['gap', 'Gaps'],
                          ['fav', 'Starred']], V.filter)
     + '</div>'
     + '<div class="pbar__row">' + v3Search() + v3SortBar() + '</div>'
@@ -5811,10 +5811,10 @@ const V3RECCUTS = [
    'The shortlist’s under picks — the lines where our number says the '
    + 'posted over is too expensive. Every one of these is also in Shortlist '
    + 'above; a fade is not a separate group on a two-sided line.'],
-  ['gap', 'Big price gaps', 1,
+  ['gap', 'Gaps', 1,
    'Only the bets where our number beat the sportsbook’s own fair price by '
    + 'a margin fitted on earlier seasons, taken at the price of the side '
-   + 'bet. This is the rule the Players board’s "Big gaps" filter shows, so '
+   + 'bet. This is the rule the Players board’s "Gaps" filter shows, so '
    + 'you can see this week’s before they are graded.'],
   ['streak', 'Streaks', 2,
    'Our bets on players who went one way in four of their last five graded '
@@ -6371,7 +6371,7 @@ function v3RecPlayers(p, S, span) {
     + (cut[0] === 'gap' && thr.length
        ? '<p class="help" style="margin-top:6px">The margin each market has '
          + 'to clear: ' + thr.join(', ') + '. These are the bets the Players '
-         + 'board shows under <b style="color:var(--ink)">Big gaps</b>, so '
+         + 'board shows under <b style="color:var(--ink)">Gaps</b>, so '
          + 'this week’s are visible before they are graded.</p>'
        : '')
     + '</div>'
