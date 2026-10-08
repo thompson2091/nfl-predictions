@@ -1363,12 +1363,19 @@ V.filter = 'all'; V.tab = 'props';
         const k = s.lastIndexOf('<span class="cell', j);
         return k < 0 ? '' : s.slice(k, j);
       };
-      const edgeCell = cell('Edge', row), evCell = cell('EV/$100', row);
+      const edgeCell = cell('Edge', row);
+      // BOTH per-$100 cells. One cell labeled `EV/$100` used to read
+      // `ev100`, which answers the model on a touchdown market and the blend
+      // on a yardage one — so this very check passed on a quantity that was
+      // not the one beside `Edge`. Named separately, both are asserted.
+      const evCell = cell('EV model', row), evAdjCell = cell('EV adj', row);
       ok('and its edge is positive, because the rule took it',
          edgeCell.indexOf('+') >= 0 && edgeCell.indexOf('\u2212') < 0,
          edgeCell || 'no edge cell found');
-      ok('and so is its expected return',
-         evCell.indexOf('+$') >= 0, evCell || 'no EV cell found');
+      ok('and so is its expected return on the model',
+         evCell.indexOf('+$') >= 0, evCell || 'no EV model cell found');
+      ok('and on the blend, flipped to the under like every other figure',
+         evAdjCell.indexOf('$') >= 0, evAdjCell || 'no EV adj cell found');
     }
     // AN OVER PICK IS LEFT ALONE.
     const ov = picks.filter(p => p.side === 'over')[0];

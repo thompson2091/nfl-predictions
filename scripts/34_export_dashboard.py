@@ -440,7 +440,13 @@ def players(season: int, week: int, target_type: str, model: str,
 
     shop = shopped_raw = None
     try:
-        d = best_vs_consensus(season, week, target_type)
+        # EVERY SNAPSHOT, NOT THE CLOSE. The board's posted price comes from
+        # the live cache; asking the archive for a "close" asked a different
+        # population, and on 2026 week 5 a thinner and older one — the week
+        # had no real close, so Best price came out SHORTER than posted on
+        # 199 of 571 priced rows. `best_vs_consensus` keeps each book's newest
+        # capture regardless, so this cannot resurrect a stale quote.
+        d = best_vs_consensus(season, week, target_type, snapshot=None)
         shopped_raw = d if d is not None and d.height else None
         shop = shopped_raw.to_pandas() if shopped_raw is not None else None
     except Exception as e:                                   # noqa: BLE001
@@ -502,10 +508,20 @@ def players(season: int, week: int, target_type: str, model: str,
                 "model_only": model_only,
                 "book": _f(r.get("market_prob")),
                 "diff": _f(r.get("edge_pp")),
-                "read": bp.confidence(float(r.get("edge_pp") or 0), lo, hi),
+                # The percentile AND the money. `confidence` is a spread, not
+                # a price — see its docstring for the 84-of-166 measurement.
+                "read": bp.confidence(float(r.get("edge_pp") or 0), lo, hi,
+                                      _f(r.get("ev_model_pct"))),
                 "bet_rank": int(r["bet_rank"]),
                 "bet_edge": _f(r.get("model_edge_pp")),
                 "ev": _f(r.get("ev_model_pct")),
+                # BOTH BASES, SIDE BY SIDE, because they were being crossed.
+                # `diff` is Adjusted minus Book; `ev` is the raw model against
+                # the raw price. A reader given one of each cannot reconcile
+                # them, and the raw model stays the headline, so the blend's
+                # own per-$100 sits beside it rather than replacing it.
+                # `bets.py` computes both already; this only ships the second.
+                "ev_adj": _f(r.get("ev_pct")),
                 "backing": (tier_list[i] if tier_list is not None else None),
                 "status": (r.get("report_status")
                            if isinstance(r.get("report_status"), str) else None),
@@ -526,6 +542,7 @@ def players(season: int, week: int, target_type: str, model: str,
                 "model_only": _f(getattr(r, "prob_model", r.probability)),
                 "book": None, "diff": None, "read": None,
                 "bet_rank": None, "bet_edge": None, "ev": None,
+                "ev_adj": None,
                 "backing": None, "status": None, "blocked": False,
             })
 

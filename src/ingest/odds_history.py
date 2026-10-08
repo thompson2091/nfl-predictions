@@ -358,17 +358,53 @@ def resolve_game_ids(df: pl.DataFrame) -> pl.DataFrame:
     # A pair that matches no fixture keeps what it had. Blanking it would turn
     # a joinable-but-unknown row into an unjoinable one.
     already = pl.col("game_id").str.contains(r"^\d{4}_")
-    return (out.with_columns([
-                pl.when(already).then(pl.col("game_id"))
-                  .otherwise(pl.coalesce([pl.col("_resolved"),
-                                          pl.col("_pair_id"),
-                                          pl.col("game_id")]))
-                  .alias("game_id"),
-                pl.when(already | pl.col("_resolved").is_not_null()
-                        | pl.col("_pair_week").is_null())
-                  .then(pl.col("week"))
-                  .otherwise(pl.col("_pair_week"))
-                  .alias("week")])
+    # The rows whose week is about to move. Named once because the snapshot
+    # label below has to fire on EXACTLY these and no others.
+    reweek = ~(already | pl.col("_resolved").is_not_null()
+               | pl.col("_pair_week").is_null())
+    exprs = [
+        pl.when(already).then(pl.col("game_id"))
+          .otherwise(pl.coalesce([pl.col("_resolved"),
+                                  pl.col("_pair_id"),
+                                  pl.col("game_id")]))
+          .alias("game_id"),
+        pl.when(reweek).then(pl.col("_pair_week")).otherwise(pl.col("week"))
+          .alias("week"),
+    ]
+
+    # AND THE SNAPSHOT LABEL MOVES WITH THE WEEK, WHERE THE WEEK MOVES FORWARD.
+    #
+    # Correcting the week above is half a repair. A Monday capture carries this
+    # week's games all but over and next week's board already up, and
+    # `weekly_odds.sh` labels the whole payload "close" — correct for the
+    # fixtures that are about to kick off, and exactly backwards for the ones
+    # seven days out. Those rows arrive in week N+1 as its *earliest* price
+    # wearing the word for its last.
+    #
+    # Measured 2026-10-07 on the 2026 archive: 8,681 rows had their week
+    # corrected, every one of them labeled "close". 5,518 of 44,255
+    # open/close pairs (12.5%) then had a close that was not after its own
+    # open. Week 5 was the extreme — the raw archive held no close for it at
+    # all, so its only "close" was one 10-book capture taken on the Monday,
+    # three days BEFORE its 13-book open. Nothing raised: a thin early capture
+    # is a well-formed close, and `best_vs_consensus` read it as the last
+    # price available and drew Jahmyr Gibbs's best first-TD price at +270
+    # against a +300 posted.
+    #
+    # Only a FORWARD move is relabeled. A row stamped with a later week than
+    # its fixture was captured nearer kickoff rather than further from it, so
+    # "close" is the honest label and `drop_in_play` handles the rest.
+    #
+    # Read-side, like the week correction and for the same reason: the archive
+    # is append-only, and a fix here repairs the rows already in it.
+    if "snapshot" in out.columns:
+        exprs.append(
+            pl.when(reweek & (pl.col("_pair_week") > pl.col("week")))
+              .then(pl.lit("open"))
+              .otherwise(pl.col("snapshot"))
+              .alias("snapshot"))
+
+    return (out.with_columns(exprs)
             .drop(["_away", "_home", "_resolved", "_pair_id", "_pair_week"]))
 
 
@@ -653,12 +689,16 @@ def append_book_quotes(rows: list[dict], season: int, week: int,
 
 
 def best_prices(season: int, week: int, market: str = "anytime_td",
-                snapshot: str = "close") -> pl.DataFrame | None:
+                snapshot: str | None = "close") -> pl.DataFrame | None:
     """The best available price per player, and who was offering it.
 
     This is what line shopping actually means, and the reason the per-book
     archive exists. Returns None until `append_book_quotes` has run at least
     once for the week asked for.
+
+    `snapshot=None` pools every snapshot, for the same reason and with the same
+    safety as `line_shopping.best_vs_consensus` — see its docstring. The dedupe
+    below keeps each book's newest capture either way.
     """
     if not BOOKS_PATH.exists():
         return None
@@ -668,8 +708,9 @@ def best_prices(season: int, week: int, market: str = "anytime_td",
     df = resolve_game_ids(pl.read_parquet(BOOKS_PATH)).filter(
         (pl.col("season") == season) & (pl.col("week") == week)
         & (pl.col("market") == market) & (pl.col("side") == "yes")
-        & (pl.col("snapshot") == snapshot)
     )
+    if snapshot is not None:
+        df = df.filter(pl.col("snapshot") == snapshot)
     if df.height == 0:
         return None
 

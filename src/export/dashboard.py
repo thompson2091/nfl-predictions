@@ -801,7 +801,7 @@ JS_COMBOS = r"""
 // expected value — those cells are blank, because there is no price to compute
 // them from, and blank is the honest answer rather than a reason to hide the
 // row.
-const READ_ORDER = ['Veto', 'Matches book', 'Leans', 'Strong call'];
+const READ_ORDER = ['Veto', 'Pass', 'Matches book', 'Leans', 'Strong call'];
 
 //: How many candidate legs the search keeps, by slip length. Combinations grow
 //: as C(n, legs), so the pool is cut to its strongest legs first. That cut

@@ -98,7 +98,15 @@ def roi_money(roi_pct: float | None) -> str:
 VETO = "Veto"
 
 
-def confidence(edge_pp: float, lo: float, hi: float) -> str:
+#: What a row reads as when we rate a player above the price and the price
+#: still does not pay for the vig. Its own label, for the same reason `VETO`
+#: is: "we like him and it is not a bet" is a third instruction, and the two
+#: it sits between both say something else.
+PASS = "Pass"
+
+
+def confidence(edge_pp: float, lo: float, hi: float,
+               ev_pct: float | None = None) -> str:
     """Label what the model is doing, not how sure it is.
 
     These read as verdicts, so the wording matters. Calling a large gap "Low
@@ -113,12 +121,43 @@ def confidence(edge_pp: float, lo: float, hi: float) -> str:
     on big disagreements is far stronger on the players we rate down. That is
     the sharpest thing this model does and these markets only sell the Yes
     side, so the honest label for it is a refusal, not a call.
+
+    **AND IT IS GATED ON THE MONEY, BECAUSE THE CUTS ARE A SPREAD AND NOT A
+    PRICE.** `lo` and `hi` are the 33rd and 66th percentiles of how far this
+    model usually sits from the market, which is the right way to say
+    "unusually far" and says nothing at all about whether the bet pays. On
+    first touchdown the 66th percentile is **1.44pp** and on anytime it is
+    **2.19pp**; neither is close to what it takes to clear the vig on a
+    longshot. Measured on the live board 2026-10-07:
+
+        Strong call   84 of 166 rows lose money per $100
+        Leans         75 of 112 rows lose money per $100
+
+    Jahmyr Gibbs's first touchdown read "Strong call" at +300 while returning
+    **-$28.50 per $100**. Nothing was wrong with either number: +1.9pp against
+    a de-vigged book does not pay for a 26% overround. What was wrong was a
+    verdict that had never been asked about the price.
+
+    So a positive disagreement that does not pay reads `PASS`. The percentile
+    is still published beside it — nothing is removed, and the fitted cuts do
+    not move. `VETO` is untouched: it is already the opposite instruction, and
+    a bet we are telling you not to make has no EV to clear.
+
+    `ev_pct` is dollars per $100 at the raw price, and the caller passes the
+    **pre-blend** one (`ev_model_pct`). That is the basis every profitability
+    figure in `src/evaluation/rank_economics.py` is measured on, so a betting
+    verdict expressed in any other terms would mean something different on
+    screen than it did in the backtest. See `prediction/bets.py`.
+
+    Omitting `ev_pct` keeps the old behavior, for a caller that has no price.
     """
     d = abs(edge_pp) / 100.0
     if d <= lo:
         return "Matches book"
     if edge_pp < 0:
         return VETO
+    if ev_pct is not None and float(ev_pct) <= 0.0:
+        return PASS
     return "Leans" if d <= hi else "Strong call"
 
 
@@ -126,7 +165,11 @@ def confidence(edge_pp: float, lo: float, hi: float) -> str:
 #: of its legs': a slip is a single bet that needs all of them, so the leg we
 #: have the least to say about is the one that decides what the slip is — and a
 #: leg we rate below its price is weaker than one we have no opinion on.
-READ_ORDER = (VETO, "Matches book", "Leans", "Strong call")
+#:
+#: `PASS` sits above `VETO` and below `Matches book`: a leg whose price kills
+#: it is not a bet, which is a stronger instruction than having no opinion and
+#: a weaker one than being told to take the other side.
+READ_ORDER = (VETO, PASS, "Matches book", "Leans", "Strong call")
 
 
 def combo_read(reads) -> str:

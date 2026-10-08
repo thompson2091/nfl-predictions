@@ -1033,6 +1033,91 @@ def test_a_fixture_filed_under_the_wrong_week_still_resolves(monkeypatch, tmp_pa
         "whose week column says 1 answers two questions differently")
 
 
+def _resolve_snap(monkeypatch, tmp_path, hist_rows, sched_rows):
+    """`_resolve`, with the snapshot column the label tests need."""
+    import polars as pl
+
+    from src.ingest import odds_history
+
+    raw = tmp_path / "raw"
+    raw.mkdir(parents=True, exist_ok=True)
+    _sched(sched_rows).write_parquet(raw / "schedules.parquet")
+    monkeypatch.setattr(odds_history, "get_path", lambda kind, *a, **k: raw)
+    hist = pl.DataFrame(
+        hist_rows, schema={"season": pl.Int64, "week": pl.Int64,
+                           "game_id": pl.Utf8, "snapshot": pl.Utf8},
+        orient="row")
+    return odds_history.resolve_game_ids(hist)
+
+
+def test_a_week_moved_forward_is_that_weeks_open_not_its_close(monkeypatch,
+                                                               tmp_path):
+    """The other half of the Monday-capture repair.
+
+    `weekly_odds.sh` labels a whole payload with one snapshot, and a Monday
+    capture holds this week's games all but over beside next week's board
+    already up. Calling the lot "close" is right for the fixtures about to
+    kick off and exactly backwards for the ones seven days out: those arrive
+    in week N+1 as its EARLIEST price wearing the word for its last.
+
+    Measured 2026-10-07: 8,681 rows of the 2026 archive had their week
+    corrected and every one was labeled "close". Week 5's raw archive held no
+    close at all, so its only "close" was a 10-book Monday capture taken three
+    days before its 13-book open — and `best_vs_consensus` read that as the
+    last price available.
+    """
+    out = _resolve_snap(monkeypatch, tmp_path,
+                        [(2026, 4, "DET_ARI", "close")],
+                        [(2026, 5, "DET", "ARI", "2026_05_DET_ARI")])
+    assert out["week"].to_list() == [5]
+    assert out["snapshot"].to_list() == ["open"], (
+        "a capture taken during week 4 is week 5's first price, not its last")
+
+
+def test_a_week_that_does_not_move_keeps_the_label_it_was_given(monkeypatch,
+                                                                tmp_path):
+    """The relabel fires on exactly the rows whose week moves, and no others.
+
+    A genuine close, resolved on season-week-pair like every normal row, has
+    to come back a close. Widening the predicate would turn every live capture
+    into an open and delete the archive's closing lines on read.
+    """
+    out = _resolve_snap(monkeypatch, tmp_path,
+                        [(2026, 1, "DEN_KC", "close"),
+                         (2023, 1, "2023_01_HOU_BAL", "close")],
+                        [(2026, 1, "DEN", "KC", "2026_01_DEN_KC"),
+                         (2023, 1, "HOU", "BAL", "2023_01_HOU_BAL")])
+    assert out["snapshot"].to_list() == ["close", "close"]
+
+
+def test_a_week_moved_backward_keeps_its_close(monkeypatch, tmp_path):
+    """Only a FORWARD move is early relative to its fixture.
+
+    A row stamped with a LATER week than its fixture was captured nearer
+    kickoff rather than further from it, so "close" is the honest label and
+    `drop_in_play` handles whatever landed after the whistle.
+    """
+    out = _resolve_snap(monkeypatch, tmp_path,
+                        [(2026, 9, "DET_ARI", "close")],
+                        [(2026, 5, "DET", "ARI", "2026_05_DET_ARI")])
+    assert out["week"].to_list() == [5]
+    assert out["snapshot"].to_list() == ["close"]
+
+
+def test_a_frame_with_no_snapshot_column_still_resolves(monkeypatch, tmp_path):
+    """`resolve_game_ids` is called on frames that carry no snapshot.
+
+    `line_history` and the game-line archive among them. Reaching for the
+    column unconditionally would raise on a path that has nothing to do with
+    the label.
+    """
+    out = _resolve(monkeypatch, tmp_path,
+                   [(2026, 4, "DET_ARI")],
+                   [(2026, 5, "DET", "ARI", "2026_05_DET_ARI")])
+    assert out["week"].to_list() == [5]
+    assert "snapshot" not in out.columns
+
+
 def test_an_ambiguous_pair_is_left_unresolved_rather_than_guessed(monkeypatch, tmp_path):
     """46 season-pairs across 2015-2026 appear twice.
 

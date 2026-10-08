@@ -29,12 +29,33 @@ def _implied(odds: pl.Expr) -> pl.Expr:
 
 
 def best_vs_consensus(season: int, week: int, market: str = "anytime_td",
-                      snapshot: str = "close") -> pl.DataFrame | None:
+                      snapshot: str | None = "close") -> pl.DataFrame | None:
     """Per player: the best price, who offered it, and what it beats.
 
     `gap_pp` is in probability points and is the quantity that matters — a
     price improvement means nothing until it is expressed as the extra chance
     you are being paid for.
+
+    **`snapshot=None` MEANS EVERY SNAPSHOT, AND IS WHAT A LIVE WEEK WANTS.**
+    "The price you can actually take" is the newest quote, not a label. A week
+    still being played has no close at all, and asking for one got a board
+    whose Best price was SHORTER than its own posted price on 199 of 571
+    priced rows — 35% — because the two came from different populations: the
+    posted price off the live cache consensus, the best price off whatever the
+    archive happened to hold under the word "close".
+
+    Measured 2026-10-07, Jahmyr Gibbs first TD, week 5:
+
+        close   fanatics        +270    1 book    Monday
+        open    williamhill_us  +305   10 books   Wednesday
+        posted  (live cache)    +300
+
+    The dedupe below already keeps each book's NEWEST capture, so pooling the
+    snapshots cannot resurrect a stale quote — a book that moved between the
+    open and the close still contributes only its close.
+
+    The `"close"` default stands so `scripts/18_shop.py` and
+    `scripts/39_shortlist.py` keep measuring what they measured.
     """
     from src.ingest.odds_history import BOOKS_PATH
 
@@ -50,8 +71,9 @@ def best_vs_consensus(season: int, week: int, market: str = "anytime_td",
     df = drop_in_play(resolve_game_ids(pl.read_parquet(BOOKS_PATH))).filter(
         (pl.col("season") == season) & (pl.col("week") == week)
         & (pl.col("market") == market) & (pl.col("side") == "yes")
-        & (pl.col("snapshot") == snapshot)
     )
+    if snapshot is not None:
+        df = df.filter(pl.col("snapshot") == snapshot)
     if df.height == 0:
         return None
 
@@ -113,7 +135,7 @@ def best_vs_consensus(season: int, week: int, market: str = "anytime_td",
 
 
 def summary(season: int, week: int, market: str = "anytime_td",
-            snapshot: str = "close") -> dict | None:
+            snapshot: str | None = "close") -> dict | None:
     """How much the best price is worth this week, and how thin the sample is.
 
     Reports `n_books_max` prominently. With two books a "best price" is barely

@@ -577,7 +577,12 @@ button{cursor:pointer}
 /* ---- the number strip: the old board's columns, on the row ---- */
 .rowbtn{flex:1;min-width:0;display:block;text-align:left;border:0;
   background:transparent;padding:0;font:inherit;color:inherit}
-.strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;
+/* SIX CELLS, AND SIX DIVIDES BY THREE. Model, Book, Adjusted, Edge and the
+   per-$100 on BOTH bases — the sixth arrived because one `EV/$100` cell meant
+   the model on a touchdown market and the blend on a yardage one. Five in a
+   five-column grid left a lone cell on a second row below 400px; six fills
+   two rows of three exactly. */
+.strip{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;
   padding:8px 0 2px}
 @media (max-width:400px){.strip{grid-template-columns:repeat(3,minmax(0,1fr));
   row-gap:8px}}

@@ -142,7 +142,10 @@ const V3SORTS = [
   ['book', 'Book', r => r.book],
   ['adj', 'Adjusted (blend)', r => r.ours],
   ['edge', 'Edge', r => r.edge],
-  ['ev', 'EV per $100', r => ev100(r)],
+  // Both bases, named. See `v3EvModel` for why one entry here was two
+  // different quantities depending on the market on screen.
+  ['ev', 'EV per $100 (model)', r => v3EvModel(r)],
+  ['evadj', 'EV per $100 (adjusted)', r => v3EvAdj(r)],
   ['odds', 'Odds', r => has(r.dec) ? r.dec : null],
   ['proj', 'Projection', r => has(r.proj) ? r.proj : null, true],
   ['diff', 'Difference from the line', r => v3Diff(r), true],
@@ -157,6 +160,21 @@ const V3SORTS = [
 const v3MktLines = () => KIND[V.market] === 'ou';
 
 const v3Model = r => has(r.modelOnly) ? r.modelOnly : r.ours;
+
+// PER $100 ON BOTH BASES, BECAUSE THEY WERE BEING CROSSED.
+//
+// `ev100` is v1's and reads `betProb`, which answers MODEL on a touchdown
+// market and ADJUSTED on a yardage one — so a column labeled "EV per $100"
+// meant a different quantity depending on the tab you were on. `edge` is
+// measured pre-blend on both (see the mapping in `site.py`), so a reader
+// handed that edge beside a sometimes-blended EV cannot reconcile them, and
+// the two disagree in SIGN wherever the blend has pulled us past the price.
+//
+// Both named, both sortable, raw model first because it is the headline.
+// Per UNIT staked, not per hundred: `v3Money` does the ×100.
+const v3EvModel = r => (has(v3Model(r)) && has(r.dec))
+  ? v3Model(r) * r.dec - 1 : null;
+const v3EvAdj = r => (has(r.ours) && has(r.dec)) ? r.ours * r.dec - 1 : null;
 
 const V3KEY = 'picksix.v3';
 const V3SHOW = 25;
@@ -272,11 +290,16 @@ const v3Dash = s => String(s == null ? '' : s).replace(/-/g, '−');
 //
 // The thresholds are not fitted and are not claimed to be: +5 and -10 per
 // $100 are wide enough that a row has to disagree with the book clearly
-// before it is labeled, which is the point. `ev100` is v1's and already
-// prefers the model-only probability on a touchdown market, where the blend
-// has the book baked into it and would grade the book against itself.
+// before it is labeled, which is the point.
+//
+// ON THE MODEL'S OWN NUMBER, on every market. This read `ev100`, which prefers
+// the model-only probability on a touchdown market and the blend on a yardage
+// one — so the same tag was computed from a different quantity depending on
+// the tab, and on a yardage row it graded a number with the book baked into it
+// against that book. `v3EvModel` is one basis everywhere.
 function v3Value(row) {
-  const ev = ev100(row);
+  const evu = v3EvModel(row);
+  const ev = has(evu) ? evu * 100 : null;
   const scr = v3Script(row);
   if (!has(ev)) return ['', ''];
   if (ev >= 5) return ['Good value', 'tag tag--good'];
@@ -849,7 +872,13 @@ function v3Row(row) {
     : '')
     + (row.status && row.status !== 'ACT'
        ? '<span class="tag tag--warn">' + esc(row.status) + '</span>' : '');
-  const ev = ev100(row);
+  // BOTH BASES ON THE ROW, not one that changes meaning with the tab. The
+  // single `EV/$100` cell here read `ev100`, which prefers the model on a
+  // touchdown market and the blend on a yardage one — beside an `Edge` cell
+  // that is pre-blend on both. See `v3EvModel`.
+  const evm = v3EvModel(row), eva = v3EvAdj(row);
+  const ev = has(evm) ? evm * 100 : null;
+  const evA = has(eva) ? eva * 100 : null;
   const scr = v3Script(row);
   // The strip carries the numbers the old board carried, on the row, so the
   // common case needs no tap: our number, the book's, the gap, and what the
@@ -862,9 +891,12 @@ function v3Row(row) {
     + v3Cell('Edge', has(row.edge) ? (row.edge > 0 ? '+' : '')
         + row.edge.toFixed(1) + 'pp' : '\u2014',
         has(row.edge) ? (row.edge > 0 ? 'good' : 'bad') : '')
-    + v3Cell('EV/$100', has(ev) ? (ev > 0 ? '+$' : '\u2212$')
+    + v3Cell('EV model', has(ev) ? (ev > 0 ? '+$' : '\u2212$')
         + Math.abs(ev).toFixed(2) : '\u2014',
         has(ev) ? (ev > 0 ? 'good' : 'bad') : '')
+    + v3Cell('EV adj', has(evA) ? (evA > 0 ? '+$' : '\u2212$')
+        + Math.abs(evA).toFixed(2) : '\u2014',
+        has(evA) ? (evA > 0 ? 'good' : 'bad') : '')
     + '</div>';
   return '<div class="row' + (open ? ' row--open' : '') + '">'
     + '<button class="rowbtn" data-v3open="' + esc(row.id) + '" '
@@ -1369,6 +1401,17 @@ function v3Detail(row) {
     ? 'Model' : 'Adjusted');
   add('Edge', has(row.edge)
     ? (row.edge > 0 ? '+' : '') + row.edge.toFixed(1) + 'pp' : null);
+  // BOTH BASES, SIDE BY SIDE. `ev100` uses `betProb`, which answers MODEL on
+  // a touchdown market and ADJUSTED on a yardage one — so one labeled "EV"
+  // means a different quantity depending on the tab, and `Edge` above is
+  // measured pre-blend on both. A reader handed one number of each kind
+  // cannot reconcile them, and on the live board the two disagree in SIGN on
+  // rows where the blend has pulled us past the price.
+  //
+  // The raw model stays the headline, so it is named first and the blend's
+  // sits beside it rather than replacing it.
+  add('Per $100 (model)', v3Money(v3EvModel(row)));
+  add('Per $100 (adjusted)', v3Money(v3EvAdj(row)));
   add('Price', has(row.odds) ? v3Dash(american(row.odds)) : null);
   // NAMING ONE BOOK IMPLIES IT IS THE ONLY ONE. Books tie at the best price
   // on about half of all players — 254 of 538 on one week's anytime board, one
@@ -2829,7 +2872,9 @@ function v3Questions(gid) {
     r => r.priced && v3Same(r.gameId, gid));
   if (!rows.length) return [];
   const byP = rows.slice().sort((a, b) => (betProb(b) || 0) - (betProb(a) || 0));
-  const byV = rows.slice().sort((a, b) => (ev100(b) || -1e9) - (ev100(a) || -1e9));
+  // The model's own per-$100, like every other value figure on the page.
+  const byV = rows.slice().sort(
+    (a, b) => (v3EvModel(b) || -1e9) - (v3EvModel(a) || -1e9));
   const c = (v3GameSet().cards || []).filter(x => x.game_id === gid)[0] || {};
   const out = [];
   if (byP[0]) out.push({ q: 'Who’s most likely to score?',

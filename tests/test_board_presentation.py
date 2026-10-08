@@ -135,6 +135,111 @@ def test_a_gap_below_the_price_is_a_refusal_and_not_a_call():
     assert bp.READ_ORDER[0] == "Veto"
 
 
+# ── The verdict is gated on the money ───────────────────────────────────────
+
+
+def test_a_disagreement_that_does_not_pay_is_not_a_call():
+    """THE BUG. `lo` and `hi` are a spread, and a spread is not a price.
+
+    They are the 33rd and 66th percentiles of how far this model usually sits
+    from the market — the right way to say "unusually far" and silent on
+    whether the bet pays. First touchdown's 66th percentile is 1.44pp and
+    anytime's is 2.19pp, neither of them near what it takes to clear the vig
+    on a longshot. Measured on the live board 2026-10-07: 84 of 166 rows
+    reading "Strong call" lost money per $100, and 75 of 112 "Leans".
+
+    Jahmyr Gibbs's first touchdown read "Strong call" at +300 while returning
+    -$28.50 per $100. Both numbers were right. The verdict had simply never
+    been asked about the price.
+    """
+    # The real row: +1.9pp of disagreement, -$28.50 per $100.
+    assert bp.confidence(1.9, 0.0063, 0.0144) == "Strong call", (
+        "the percentile is unchanged and still clears the fitted cut")
+    assert bp.confidence(1.9, 0.0063, 0.0144, -28.5) == "Pass"
+    # A Leans that does not pay is a Pass too, not a smaller call.
+    assert bp.confidence(1.0, 0.0063, 0.0144, -34.1) == "Pass"
+
+
+def test_a_disagreement_that_does_pay_keeps_its_label():
+    """The gate is a floor on the money, not a second opinion about the edge."""
+    assert bp.confidence(7.0, 0.02, 0.05, 12.4) == "Strong call"
+    assert bp.confidence(3.0, 0.02, 0.05, 4.1) == "Leans"
+
+
+def test_a_row_with_no_price_is_labelled_the_way_it_always_was():
+    """`ev_pct` is optional because an unpriced row has no EV to clear.
+
+    Defaulting it to zero would turn every player no book is quoting into a
+    Pass, which reads as a refusal where the truth is that there is nothing
+    to refuse.
+    """
+    assert bp.confidence(7.0, 0.02, 0.05, None) == "Strong call"
+    assert bp.confidence(7.0, 0.02, 0.05) == "Strong call"
+
+
+def test_the_gate_never_touches_a_veto_or_a_match():
+    """A veto is the opposite instruction and has no EV to clear: these
+    markets only sell the Yes side, so there is no bet whose price could
+    disqualify it. A match is already "not a bet"."""
+    assert bp.confidence(-7.0, 0.02, 0.05, -50.0) == "Veto"
+    assert bp.confidence(-7.0, 0.02, 0.05, 50.0) == "Veto"
+    assert bp.confidence(0.5, 0.02, 0.05, -50.0) == "Matches book"
+
+
+def test_a_pass_leg_is_what_a_slip_containing_it_reads():
+    """Weakest leg wins, and `Pass` sits between the refusal and the shrug:
+    a leg whose price kills it is not a bet, which says more than having no
+    opinion and less than being told to take the other side."""
+    assert bp.combo_read(["Strong call", "Pass"]) == "Pass"
+    assert bp.combo_read(["Pass", "Matches book"]) == "Pass"
+    assert bp.combo_read(["Pass", "Veto"]) == "Veto"
+    assert bp.READ_ORDER.index("Pass") == 1
+
+
+def test_both_rendered_copies_of_read_order_know_the_new_label():
+    """READ_ORDER exists three times — here, in `dashboard.py`'s JavaScript
+    and in `page.py`'s. A label the JavaScript does not know scores -1 in
+    `indexOf`, and `READ_ORDER[-1]` is `undefined`: the slip's read goes
+    blank rather than wrong, which is how a missing label hides.
+    """
+    import inspect
+
+    from src.export import dashboard, page
+
+    for mod in (dashboard, page):
+        line = [ln for ln in inspect.getsource(mod).splitlines()
+                if "READ_ORDER = [" in ln]
+        assert line, f"{mod.__name__} no longer declares READ_ORDER"
+        assert "'Pass'" in line[0], (
+            f"{mod.__name__} READ_ORDER is missing Pass: {line[0].strip()}")
+
+
+def test_the_board_hands_confidence_the_money_and_ships_both_bases():
+    """`ev_pct` is optional, so forgetting it at the call site is silent.
+
+    It is optional for a reason — an unpriced row has no EV — which means the
+    gate is only a gate on the one path that passes it, and a call site is a
+    thing a merge reverts without failing anything.
+
+    The second half is the other half of the same fault: `diff` is Adjusted
+    minus Book while `ev` is the raw model against the raw price. Handed one
+    of each, a reader cannot reconcile them. `bets.py` computes both already.
+    """
+    from pathlib import Path
+
+    src = Path("scripts/34_export_dashboard.py").read_text()
+    assert "bp.confidence(" in src, "the board no longer labels a row at all"
+    # The call wraps across lines, so read a window from it rather than one
+    # line. Wide enough for the wrap, narrow enough that it cannot reach the
+    # next `ev_model_pct` in the file — the `"ev"` field, 4 lines further on.
+    for i in (m for m in range(len(src)) if src.startswith("bp.confidence(", m)):
+        assert "ev_model_pct" in src[i:i + 140], (
+            "the verdict is not being asked about the price: "
+            + src[i:i + 140])
+    assert '"ev_adj": _f(r.get("ev_pct"))' in src, (
+        "the blend's own per-$100 is not shipped beside the model's")
+
+
 # ── Tier assignment ─────────────────────────────────────────────────────────
 
 

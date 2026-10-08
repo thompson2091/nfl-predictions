@@ -462,7 +462,7 @@ JS = r"""
      tie-break, because a published page that ranks slips differently from the
      app is worse than one that cannot rank them at all. */
 
-  var READ_ORDER = ['Matches book', 'Leans', 'Strong call'];
+  var READ_ORDER = ['Pass', 'Matches book', 'Leans', 'Strong call'];
   var BLOCKING = ['Out', 'Doubtful'];
 
   function american(dec) {
