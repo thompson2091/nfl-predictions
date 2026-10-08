@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Build site/v3 — the same numbers, for someone who does not bet much.
+"""Build site/v3 or site/v4 — the same numbers, for someone who does not bet much.
 
     python scripts/52_export_v3.py [--out site/v3] [--no-ai]
+    python scripts/52_export_v3.py --app v4          # -> site/v4
 
 The payload is `scripts/47_export_site.py:build`, unchanged and unforked, plus
 one thing v2 does not carry: `notes`, the per-game explanations. Those are
@@ -9,6 +10,15 @@ selected by `src.analysis.game_notes` and phrased by Claude, cached under a
 hash of their facts so a rebuild whose numbers have not moved makes no API
 call. `--no-ai` skips the phrasing entirely and ships the template sentences,
 which is what happens anyway with no key.
+
+**ONE BUILDER, TWO APPS, AND `--app` IS THE ONLY DIFFERENCE.** Everything
+below — the freshness gate, the notes, the stories, the ask briefs, the
+history split, the stale-file prune and the three-file check — is identical
+for v3 and v4, because they render the same payload. Copying it into a
+`53_export_v4.py` would have made two scripts that drift, and the thing that
+actually differs is one import. The file keeps its name: `58_deploy.py` and
+`scripts/week_rollover.sh` both reach for it by path, and three tests read
+its source.
 """
 from __future__ import annotations
 
@@ -23,7 +33,10 @@ sys.path.insert(0, ".")
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--out", default="site/v3")
+    ap.add_argument("--app", default="v3", choices=["v3", "v4"],
+                    help="which look to render; v4 is the Hashmark design")
+    ap.add_argument("--out", default=None,
+                    help="output directory (default: site/<app>)")
     ap.add_argument("--season", type=int, default=None)
     ap.add_argument("--week", type=int, default=None)
     ap.add_argument("--brand", default="Pick Six")
@@ -32,6 +45,10 @@ def main() -> int:
     ap.add_argument("--force", action="store_true",
                     help="publish even when artifacts predate the served model")
     a = ap.parse_args()
+    # Derived from --app rather than defaulted in argparse, so `--app v4`
+    # alone lands in site/v4 and nobody has to pass the directory twice.
+    if a.out is None:
+        a.out = f"site/{a.app}"
 
     spec = importlib.util.spec_from_file_location(
         "site_export", Path(__file__).with_name("47_export_site.py"))
@@ -53,7 +70,7 @@ def main() -> int:
     if not gmod._gate(a.force):
         return gmod.EXPORT_REFUSED
 
-    print("building v3 ...", file=sys.stderr)
+    print(f"building {a.app} ...", file=sys.stderr)
     payload = mod.build(a.season, a.week, a.brand)
 
     from src.analysis import game_notes
@@ -100,7 +117,11 @@ def main() -> int:
     # inlined, written here and fetched when a reader opens a team.
     teams = payload.pop("_teamlines_full", None) or {}
 
-    from src.export.v3 import render
+    # THE ONE LINE THAT DIFFERS BETWEEN THE TWO APPS.
+    if a.app == "v4":
+        from src.export.v4 import render
+    else:
+        from src.export.v3 import render
     files = render(payload)
     if teams:
         files["data/tlines.json"] = json.dumps(

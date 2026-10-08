@@ -153,7 +153,7 @@ class Session:
 PRUNABLE = "h-"
 
 
-def _prune(s: "Session", root: str, keep: set, dry: bool) -> None:
+def _prune(s: "Session", web: str, keep: set, dry: bool) -> None:
     """Remove week files the build no longer produces — BY NAME, one at a time.
 
     The first version built a shell `for` loop with a `case` statement and
@@ -172,10 +172,10 @@ def _prune(s: "Session", root: str, keep: set, dry: bool) -> None:
     # looking at the shape of someone else's return value is a step that
     # deletes things the day that return value changes.
     if dry:
-        print(f"  (would list {root}/data and remove any h-*.json not in the "
+        print(f"  (would list {web}/data and remove any h-*.json not in the "
               f"{len(keep)} just uploaded)")
         return
-    got = s.run(f"ls {root}/data 2>/dev/null")
+    got = s.run(f"ls {web}/data 2>/dev/null")
     if got is None:
         return
     if got.returncode != 0:
@@ -190,24 +190,33 @@ def _prune(s: "Session", root: str, keep: set, dry: bool) -> None:
           f"{', '.join(stale[:4])}{' ...' if len(stale) > 4 else ''}",
           file=sys.stderr)
     for name in stale:
-        s.run(f"rm -f {root}/data/{name}")
+        s.run(f"rm -f {web}/data/{name}")
 
 
-def next_version(s: Session, root: str, archive: str, stamp: str) -> str:
+def next_version(s: Session, root: str, archive: str, stamp: str,
+                 app: str = "v3") -> str:
     """`YYYYMMDD.vN`, counting up from what is already on the server.
 
     Asked rather than assumed: deploying twice in a day is normal and
     overwriting this morning's archive copy would remove the thing that makes
     a rollback one command.
+
+    **THE APP IS IN THE NAME FOR EVERYTHING BUT v3.** Both apps archive into
+    one `bets/` directory, so a shared `YYYYMMDD.vN` would have v4's build
+    counting v3's copies and then overwriting one of them — and a rollback
+    would restore whichever app happened to win. v3 keeps the bare name it
+    has always had, so every archived build already on the server stays
+    addressable and the rollback line in anyone's notes still works.
     """
-    got = s.run(f"ls {root}/{archive}/{stamp}.v*.html 2>/dev/null | wc -l")
+    pre = stamp if app == "v3" else f"{stamp}-{app}"
+    got = s.run(f"ls {root}/{archive}/{pre}.v*.html 2>/dev/null | wc -l")
     n = 1
     if got and got.returncode == 0:
         try:
             n = int((got.stdout or "0").strip()) + 1
         except ValueError:
             n = 1
-    return f"{stamp}.v{n}"
+    return f"{pre}.v{n}"
 
 
 def main() -> int:
@@ -215,8 +224,19 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true",
                     help="print every command and change nothing")
     ap.add_argument("--no-build", action="store_true",
-                    help="upload what is in site/v3 already")
-    ap.add_argument("--out", default="site/v3")
+                    help="upload what is in site/<app> already")
+    # WHICH APP, AND WHERE ON THE SERVER IT LANDS.
+    #
+    # v3 owns the web root and v4 sits under `/v4/` so the two can be read
+    # side by side on one week's data. The prefix is not cosmetic: a service
+    # worker's scope is the directory it is served from, so a page at `/v4/`
+    # needs its OWN `sw.js` and its OWN `data/` beside it. Sharing `/data/`
+    # would give a page that works online and has no offline week files,
+    # because a worker scoped to `/v4/` cannot intercept a request to
+    # `/data/` — it would load, work, and silently stop working on a train.
+    ap.add_argument("--app", default="v3", choices=["v3", "v4"])
+    ap.add_argument("--out", default=None,
+                    help="local build directory (default: site/<app>)")
     ap.add_argument("--setup-keys", action="store_true",
                     help="print how to stop being asked for a password")
     a = ap.parse_args()
@@ -224,6 +244,14 @@ def main() -> int:
     host, user = env("DEPLOY_HOST"), env("DEPLOY_USER")
     root, archive = env("DEPLOY_ROOT"), env("DEPLOY_ARCHIVE")
     target = f"{user}@{host}"
+    if a.out is None:
+        a.out = f"site/{a.app}"
+    # Where the app's three files and its data/ go. v3 keeps the web root it
+    # has always had; v4 gets a subdirectory of its own. The archive stays at
+    # the root for both, with the app in the version name, so one rollback
+    # command works either way and the two cannot overwrite each other's
+    # history.
+    web = root if a.app == "v3" else f"{root}/{a.app}"
 
     if a.setup_keys:
         key = Session.KEY
@@ -247,7 +275,7 @@ reports.
     if not a.no_build:
         print("building ...", file=sys.stderr)
         r = subprocess.run([sys.executable, "scripts/52_export_v3.py",
-                            "--out", a.out])
+                            "--app", a.app, "--out", a.out])
         if r.returncode != 0:
             print("build failed; nothing uploaded", file=sys.stderr)
             return 1
@@ -275,9 +303,9 @@ reports.
         print("could not connect", file=sys.stderr)
         return 1
     try:
-        ver = next_version(s, root, archive, stamp)
+        ver = next_version(s, root, archive, stamp, a.app)
         print(f"\ndeploying as {ver}\n", file=sys.stderr)
-        s.run(f"mkdir -p {root}/{archive} {root}/data {root}/data/ask")
+        s.run(f"mkdir -p {root}/{archive} {web} {web}/data {web}/data/ask")
 
         # The archive copy first, so a failure part-way leaves the live page
         # untouched rather than half-replaced.
@@ -287,7 +315,7 @@ reports.
                   file=sys.stderr)
             return 1
         for f in ("manifest.webmanifest", "sw.js"):
-            if not s.copy(str(out / f), f"{root}/{f}"):
+            if not s.copy(str(out / f), f"{web}/{f}"):
                 print(f"upload of {f} failed", file=sys.stderr)
                 return 1
         if week_files:
@@ -295,10 +323,10 @@ reports.
                   f"({sum(f.stat().st_size for f in week_files) / 1024:,.0f} KB)",
                   file=sys.stderr)
             for f in week_files:
-                if not s.copy(str(f), f"{root}/data/{f.name}"):
+                if not s.copy(str(f), f"{web}/data/{f.name}"):
                     print(f"upload of {f.name} failed", file=sys.stderr)
                     return 1
-            _prune(s, root, {f.name for f in week_files}, a.dry_run)
+            _prune(s, web, {f.name for f in week_files}, a.dry_run)
         # A SEPARATE STEP, NOT A WIDER GLOB. Loosening the week glob to `h*`
         # would also put these under `_prune`, which deletes anything matching
         # PRUNABLE that is not in its keep-set — a sweep they have no reason
@@ -308,7 +336,7 @@ reports.
                   f"({sum(f.stat().st_size for f in hist_files) / 1024:,.0f} KB)",
                   file=sys.stderr)
             for f in hist_files:
-                if not s.copy(str(f), f"{root}/data/{f.name}"):
+                if not s.copy(str(f), f"{web}/data/{f.name}"):
                     print(f"upload of {f.name} failed", file=sys.stderr)
                     return 1
         else:
@@ -324,7 +352,7 @@ reports.
                   f"({sum(f.stat().st_size for f in tline_files) / 1024:,.0f} KB)",
                   file=sys.stderr)
             for f in tline_files:
-                if not s.copy(str(f), f"{root}/data/{f.name}"):
+                if not s.copy(str(f), f"{web}/data/{f.name}"):
                     print(f"upload of {f.name} failed", file=sys.stderr)
                     return 1
         else:
@@ -333,7 +361,7 @@ reports.
         if ask_files:
             print(f"  {len(ask_files)} ask briefs", file=sys.stderr)
             for f in ask_files:
-                if not s.copy(str(f), f"{root}/data/ask/{f.name}"):
+                if not s.copy(str(f), f"{web}/data/ask/{f.name}"):
                     print(f"upload of {f.name} failed", file=sys.stderr)
                     return 1
         # The proxy itself. Uploaded every time so a change to it ships with
@@ -354,16 +382,17 @@ reports.
                 return 1
 
         # Promote last. Everything the new page needs is already in place.
-        s.run(f"cp {root}/{archive}/{ver}.html {root}/index.html")
+        s.run(f"cp {root}/{archive}/{ver}.html {web}/index.html")
 
         if not a.dry_run:
-            check = s.run(f"ls -l {root}/index.html {root}/sw.js "
-                          f"{root}/manifest.webmanifest && "
-                          f"ls {root}/data | wc -l")
+            check = s.run(f"ls -l {web}/index.html {web}/sw.js "
+                          f"{web}/manifest.webmanifest && "
+                          f"ls {web}/data | wc -l")
             print((check.stdout or "") + (check.stderr or ""), file=sys.stderr)
-            print(f"live: https://{host}/\n"
+            at = "" if a.app == "v3" else a.app + "/"
+            print(f"live: https://{host}/{at}\n"
                   f"rollback: ssh {target} "
-                  f"'cp {root}/{archive}/<older>.html {root}/index.html'",
+                  f"'cp {root}/{archive}/<older>.html {web}/index.html'",
                   file=sys.stderr)
     finally:
         s.close()

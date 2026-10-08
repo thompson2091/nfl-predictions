@@ -42,7 +42,13 @@ def test_the_data_folder_is_uploaded():
     said the weeks were empty rather than missing."""
     src = (REPO / "scripts/58_deploy.py").read_text()
     assert 'glob("h-*.json")' in src
-    assert "{root}/data/{f.name}" in src
+    # `web`, not `root`: v3 owns the web root and v4 sits under `/v4/`, so
+    # the app's own files and its data/ go to the app's directory while the
+    # rollback archive, ask.php and .htaccess stay at the root. A worker
+    # scoped to `/v4/` cannot intercept a request to `/data/`, so sharing one
+    # data directory would ship a page that works online and has no offline
+    # week files.
+    assert "{web}/data/{f.name}" in src
 
 
 def test_stale_week_files_are_deleted_by_name_and_never_by_pattern(dep):
@@ -99,8 +105,62 @@ def test_the_live_page_is_promoted_last():
     are still uploading."""
     src = (REPO / "scripts/58_deploy.py").read_text()
     assert src.index("_prune(") < src.index("cp {root}/{archive}/{ver}.html")
-    assert src.index("{root}/data/{f.name}") < src.index(
+    assert src.index("{web}/data/{f.name}") < src.index(
         "cp {root}/{archive}/{ver}.html")
+
+
+def test_v3_keeps_the_web_root_and_v4_gets_a_subdirectory():
+    """THE ONE LINE THAT COULD OVERWRITE THE LIVE SITE.
+
+    `--app v4` must land in `/var/www/html/v4`, not in `/var/www/html`. If the
+    prefix were ever derived the other way round, a v4 deploy would replace
+    v3's index.html with a page whose data/ is one directory down — a live
+    site serving a shell whose every fetch 404s.
+    """
+    src = (REPO / "scripts/58_deploy.py").read_text()
+    assert 'web = root if a.app == "v3" else f"{root}/{a.app}"' in src
+    # And the three the app owns go to `web`, not to `root`.
+    for frag in ('mkdir -p {root}/{archive} {web} {web}/data {web}/data/ask',
+                 'f"{web}/{f}"', 'f"{web}/data/{f.name}"',
+                 'f"{web}/data/ask/{f.name}"',
+                 'cp {root}/{archive}/{ver}.html {web}/index.html'):
+        assert frag in src, frag
+
+
+def test_the_server_config_stays_at_the_root_for_both_apps():
+    """`ask.php` and `.htaccess` are the SERVER's, not an app's.
+
+    One proxy and one set of cache rules serve both. Copying them under
+    `/v4/` would leave the root pair unmaintained and give the two apps
+    different caching, which is exactly how one of them starts serving a
+    stale page that nobody can reproduce.
+    """
+    src = (REPO / "scripts/58_deploy.py").read_text()
+    assert 'f"{root}/ask.php"' in src
+    assert 'f"{root}/.htaccess"' in src
+
+
+def test_the_archive_name_carries_the_app_for_everything_but_v3(dep):
+    """Both apps archive into one `bets/`, so the name has to separate them.
+
+    Shared, v4's build would count v3's copies, pick the same `vN` and
+    overwrite one — and a rollback would restore whichever app happened to
+    win. v3 keeps the bare name so every build already on the server stays
+    addressable and the rollback line in anyone's notes still works.
+    """
+    class S:
+        def run(self, cmd):
+            class R:
+                returncode = 0
+                stdout = "0"
+                stderr = ""
+            return R()
+
+    s = S()
+    assert dep.next_version(s, "/r", "bets", "20261008") == "20261008.v1"
+    assert dep.next_version(s, "/r", "bets", "20261008", "v3") == "20261008.v1"
+    assert (dep.next_version(s, "/r", "bets", "20261008", "v4")
+            == "20261008-v4.v1")
 
 
 def test_a_partial_build_is_refused_rather_than_half_uploaded():
