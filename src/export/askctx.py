@@ -320,3 +320,334 @@ def build(payload: dict) -> dict[str, dict]:
     """One brief per game on the board, keyed by game id."""
     cards = (payload.get("games") or {}).get("cards") or []
     return {c["game_id"]: for_game(payload, c) for c in cards}
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# SLICES, AND WHY THE BRIEF STOPPED BEING ONE FILE
+# ──────────────────────────────────────────────────────────────────────────
+#
+# `for_game` is a FIXED GUESS at what a question will touch, and the guess was
+# wrong in five places at once. Measured 2026-10-08 against what the app
+# itself draws for one game:
+#
+#   every priced player           ~40 a game, 25 KB   brief carried 16
+#   best price and books quoting  on every board row   brief carried neither
+#   both per-$100 bases           shipped 2026-10-07   brief carried one
+#   the Pass/Leans/Strong verdict on every board row   brief carried none
+#   this game's angles            12 a game            brief carried none
+#   the model's season record     7.5 KB trimmed       brief carried none
+#
+# The last two cannot be fixed by widening the guess. The whole angles table
+# is 1.2 MB and the whole record is 254 KB; neither travels with a question,
+# and "how has the model done on Dallas?" is unanswerable from any per-game
+# file however fat.
+#
+# So the model ASKS. `core` is ~2 KB and always sent, and it ends with a menu
+# of slices; `deploy/ask.php` exposes a `get_data` tool that resolves a slice
+# NAME against the files below. The reader's question never becomes context —
+# the model picks from a fixed enum, the server maps it to a path, and an
+# unknown name comes back as an error rather than as a file read.
+#
+# What a reader could in principle steer is WHICH of our own published slices
+# the model fetches, which is data already on the site. What they cannot do is
+# supply any of it.
+
+#: The slices `get_data` can return, and what each one costs to send.
+#:
+#: Sizes measured on 2026 week 5. They are in the docstring because the tool's
+#: round-trip budget in `ask.php` is set against them: a question that pulls
+#: every slice should still fit a sane prompt.
+#:
+#:     game      ~10 KB   the overview: distribution, matchup edges, public
+#:                        money, line movement, coaches, script, our notes
+#:     players   ~25 KB   every priced player in every market for this game
+#:     angles     ~5 KB   the splits that apply to this fixture, with records
+#:     record     ~8 KB   the model's season record, the default week range
+#:     team       ~2 KB   the model's prop record on one of these two teams
+SLICES: tuple[str, ...] = ("game", "players", "angles", "record", "team")
+
+
+def core(payload: dict, card: dict) -> dict:
+    """The block that travels with every question, and the menu beside it.
+
+    Deliberately small. Everything here answers "what is this game and what
+    do the three numbers say", which is what most questions open with — and
+    anything a question actually reaches for comes through the tool, so a
+    reader who asks about one player does not pay for forty.
+    """
+    gid = card["game_id"]
+    return {
+        "game": f"{card.get('away')} at {card.get('home')}",
+        "game_id": gid,
+        "away": card.get("away"), "home": card.get("home"),
+        "season": payload.get("season"), "week": payload.get("week"),
+        "kickoff": " ".join(x for x in (card.get("kick_day"),
+                                        card.get("kick_et")) if x),
+        "prime_time": bool(card.get("prime")),
+        "roster_note": (f"every team named in any slice is that player's team "
+                        f"in week {payload.get('week')} of "
+                        f"{payload.get('season')}, from the roster ingested "
+                        f"for this week"),
+        "market": {"spread": card.get("spread"), "total": card.get("total"),
+                   "home_win_pct": _round(card.get("win_home")),
+                   "note": "spread is negative when the HOME team is favored"},
+        "our_model": {"spread": card.get("model_spread"),
+                      "total": card.get("model_total"),
+                      "home_win_pct": _round(card.get("model_win_home")),
+                      "note": "built without sight of the betting line"},
+        "adjusted": card.get("blend"),
+        "you_can_fetch": {
+            "game": "this game in detail: the score distribution, the "
+                    "matchup unit by unit, what the public is betting, how "
+                    "the line has moved, the coaches, and our own notes",
+            "players": "every player in this game a book has priced, in "
+                       "every market, with our number, the book's, the "
+                       "blend, both per-$100 figures, the best price "
+                       "available and how many books are quoting",
+            "angles": "the historical splits that apply to this fixture — "
+                      "road underdog, off a bye, prime time and so on — "
+                      "with each one's record and whether it clears the "
+                      "rate you need to profit",
+            "record": "how our model has actually done this season: games "
+                      "against the spread, totals, moneyline, and the prop "
+                      "bets by market",
+            "team": "our prop record on one of these two teams. Needs "
+                    "`team`, one of " + f"{card.get('away')} or "
+                    f"{card.get('home')}",
+        },
+    }
+
+
+def slice_players(payload: dict, gid: str) -> dict:
+    """EVERY priced player in this game, in every market.
+
+    The trimmed cut in `for_game` exists because 25 KB is a lot to send with
+    a question nobody asked. It is the right size for a brief and the wrong
+    answer to "what are Chris Godwin's numbers" when Godwin is the ninth
+    name: the row simply was not there, and the model said so politely about
+    a player whose line is printed on the screen the reader is looking at.
+
+    Carries what the BOARD carries, which the brief did not: the best price
+    and who has it, how many books are quoting, the verdict, and both
+    per-$100 figures. A brief that disagrees with the page a reader is
+    looking at is worse than one that is merely thin.
+    """
+    g = _game_key(gid)
+    out: dict = {"game_id": gid, "markets": {}}
+    for key, name in MARKETS:
+        if key in ("any", "first"):
+            want = "anytime_td" if key == "any" else "first_td"
+            mk = next((m for m in payload.get("markets") or []
+                       if m.get("key") == want), None)
+            rows = [p for p in ((mk or {}).get("players") or [])
+                    if _game_key(p.get("game_id") or "") == g
+                    and p.get("priced")]
+            shaped = [{
+                "player": p["player"], "team": p.get("team"),
+                "pos": p.get("pos"), "odds": p.get("odds_num"),
+                "our_pct": _round(p.get("model_only")
+                                  if p.get("model_only") is not None
+                                  else p.get("ours"), 3),
+                "book_pct": _round(p.get("book"), 3),
+                "adjusted_pct": _round(p.get("ours"), 3),
+                "per_100_model": _round(p.get("ev"), 1),
+                "per_100_adjusted": _round(p.get("ev_adj"), 1),
+                "best_price": p.get("best"), "best_book": p.get("best_book"),
+                "books_level_at_best": p.get("n_best"),
+                "our_read": p.get("read"),
+            } for p in rows]
+            shaped.sort(key=lambda r: -(r["our_pct"] or 0))
+        else:
+            stat = {"recyds": "receiving_yards", "rush": "rushing_yards",
+                    "passyds": "passing_yards", "rec": "receptions"}[key]
+            ym = (payload.get("yards") or {}).get(stat) or {}
+            rows = [r for r in (ym.get("rows") or [])
+                    if _game_key(r.get("game_id") or "") == g
+                    and r.get("point") is not None]
+            shaped = [{
+                "player": r["player_name"], "team": r.get("team"),
+                "line": r.get("point"), "odds": r.get("odds"),
+                "we_project": _round(r.get("proj"), 1),
+                "likely_range": ([_round(r.get("lo"), 1), _round(r.get("hi"), 1)]
+                                 if r.get("lo") is not None else None),
+                "our_pct": _round(r.get("model_only"), 3),
+                "book_pct": _round(r.get("fair_prob"), 3),
+                "adjusted_pct": _round(r.get("ours"), 3),
+                "per_100_adjusted": _round(r.get("ev"), 1),
+                # HOW MANY BOOKS QUOTE THIS LINE, which is the gate the
+                # shortlist's floors were fitted under. A yardage "consensus"
+                # is a median of two on a typical cell, and a row quoted by
+                # one book is a de-vig against that book alone.
+                "books_quoting": r.get("n_books"),
+            } for r in rows]
+            shaped.sort(key=lambda r: -((r["adjusted_pct"] or 0)))
+        if shaped:
+            out["markets"][name] = shaped
+    out["note"] = ("our_pct is the model with no sight of the price, book_pct "
+                   "is the price with the book's cut removed, adjusted_pct is "
+                   "the two blended. A small positive gap can still lose "
+                   "money: per_100 is what clears the cut.")
+    return out
+
+
+def slice_angles(payload: dict, card: dict) -> dict:
+    """The historical splits that apply to THIS fixture, with their records.
+
+    `angles.week[game_id]` is `[[team, angle_id], ...]` — which spots the two
+    teams are in this week — and `angles.rows` holds each one's definition and
+    record. Joined here rather than shipped whole: the full table is 1.2 MB
+    and twelve rows of it are about this game.
+    """
+    a = payload.get("angles") or {}
+    gid = card["game_id"]
+    pairs = ((a.get("week") or {}).get(gid)
+             or (a.get("week") or {}).get(_game_key(gid)) or [])
+    defs = {r.get("id"): r for r in (a.get("rows") or [])}
+    be = a.get("break_even")
+    out = []
+    for pair in pairs:
+        if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+            continue
+        team, aid = pair[0], pair[1]
+        d = defs.get(aid)
+        if not d:
+            continue
+        rec = d.get("all") or {}
+        out.append({
+            "team": team, "angle": d.get("label"), "category": d.get("cat"),
+            "what_it_means": str(d.get("blurb") or "").replace("{team}", team),
+            "record": (f"{rec.get('w')}-{rec.get('l')}"
+                       if rec.get("w") is not None else None),
+            "games": rec.get("n"),
+            "cover_pct": _round(rec.get("pct"), 3),
+            "range_low_pct": _round(rec.get("lo"), 3),
+            "range_high_pct": _round(rec.get("hi"), 3),
+            "clears_break_even": bool(rec.get("clears")),
+        })
+    return {
+        "game_id": gid,
+        "break_even_pct": be,
+        "note": ("cover_pct is how often teams in this spot beat the spread "
+                 "since 2015. range_low_pct to range_high_pct is where that "
+                 "rate could really sit; a range that straddles "
+                 "break_even_pct has shown no edge. These are splits, not "
+                 "the model."),
+        "angles": out,
+    }
+
+
+def slice_record(payload: dict) -> dict:
+    """How the model has actually done, on the range the Record page opens on.
+
+    The whole scorecard is 254 KB, most of it the per-leg detail the page
+    needs to let a reader re-cut it by week. One range is 7.5 KB and is the
+    one the page shows by default, so this is what a reader asking "how has
+    your model done" is looking at.
+    """
+    sc = payload.get("scorecard") or {}
+    ranges = sc.get("ranges") or {}
+    key = sc.get("default")
+    block = ranges.get(key) if isinstance(key, str) else None
+    if block is None and ranges:
+        key = sorted(ranges)[-1]
+        block = ranges[key]
+    return {
+        "season": sc.get("season"),
+        "weeks": key,
+        "weeks_played": sc.get("played"),
+        "break_even_pct": sc.get("break_even"),
+        "games": (block or {}).get("games"),
+        "player_bets": (block or {}).get("players"),
+        "note": ("ours/model is our number with no sight of the price, book "
+                 "is the de-vigged price, blend/adjusted is the two mixed. "
+                 "`pct` is the hit rate and `lo`/`hi` are where it could "
+                 "really sit. `roi` is return per unit staked, so -0.06 is "
+                 "a loss of $6 per $100. A rate above break_even_pct is "
+                 "what profit needs."),
+    }
+
+
+def slice_team(payload: dict, team: str) -> dict:
+    """The model's prop record on one team, summed from the graded legs.
+
+    The payload carries no per-team record: the Record page's own per-team
+    table is summed in the browser from `scorecard.bets`, which is 182 KB of
+    leg detail. The same arithmetic here, so a reader can ask about one of
+    the two teams in front of them without the page's whole working.
+
+    `test_the_per_team_record_sums_to_the_pooled_one` is what keeps this from
+    drifting away from the figure the page prints.
+    """
+    b = (payload.get("scorecard") or {}).get("bets") or {}
+    teams = b.get("teams") or []
+    try:
+        idx = teams.index(team)
+    except ValueError:
+        return {"team": team, "bets": 0,
+                "note": f"no graded prop bets on {team} this season"}
+    markets = b.get("markets") or []
+    per: dict = {}
+    n = 0
+    model = adj = 0.0
+    for wk, entries in (b.get("weeks") or {}).items():
+        for e in entries or []:
+            if not isinstance(e, (list, tuple)) or len(e) < 4:
+                continue
+            if e[3] != idx:
+                continue
+            for leg in e[2] or []:
+                if not isinstance(leg, (list, tuple)) or len(leg) < 7:
+                    continue
+                mkt = markets[leg[0]] if leg[0] is not None \
+                    and leg[0] < len(markets) else "?"
+                row = per.setdefault(mkt, {"bets": 0, "model_return": 0.0,
+                                           "adjusted_return": 0.0})
+                row["bets"] += 1
+                n += 1
+                if leg[6] is not None:
+                    row["model_return"] += float(leg[6])
+                    model += float(leg[6])
+                if leg[4] is not None:
+                    row["adjusted_return"] += float(leg[4])
+                    adj += float(leg[4])
+    for row in per.values():
+        row["model_per_100"] = _round(row["model_return"] / row["bets"] * 100, 1) \
+            if row["bets"] else None
+        row["adjusted_per_100"] = _round(
+            row["adjusted_return"] / row["bets"] * 100, 1) if row["bets"] else None
+        row.pop("model_return"), row.pop("adjusted_return")
+    return {
+        "team": team, "bets": n,
+        "model_per_100": _round(model / n * 100, 1) if n else None,
+        "adjusted_per_100": _round(adj / n * 100, 1) if n else None,
+        "by_market": per,
+        "note": ("one bet is one player, one game, one market, at the line "
+                 "nearest that player's median. per_100 is the average return "
+                 "on a $100 stake. Bets in the same game move together, so "
+                 "a run of them is fewer independent results than it looks."),
+    }
+
+
+def build_slices(payload: dict) -> dict[str, dict]:
+    """Every slice file, keyed by the path under `data/ask/` it is written to.
+
+    One `core/<gid>` and one `game/<gid>` and one `players/<gid>` and one
+    `angles/<gid>` per fixture, one `team/<TEAM>` per team playing, and one
+    `record/season` for the lot. `deploy/ask.php` resolves a slice name to
+    one of these and will not read anything else.
+    """
+    cards = (payload.get("games") or {}).get("cards") or []
+    out: dict[str, dict] = {}
+    for c in cards:
+        gid = c["game_id"]
+        out[f"core/{gid}"] = core(payload, c)
+        out[f"game/{gid}"] = for_game(payload, c)
+        out[f"players/{gid}"] = slice_players(payload, gid)
+        out[f"angles/{gid}"] = slice_angles(payload, c)
+    for c in cards:
+        for t in (c.get("away"), c.get("home")):
+            if t and f"team/{t}" not in out:
+                out[f"team/{t}"] = slice_team(payload, t)
+    if payload.get("scorecard"):
+        out["record/season"] = slice_record(payload)
+    return out

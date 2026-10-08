@@ -76,7 +76,14 @@ TOP = ["index.html", "manifest.webmanifest", "sw.js"]
 #: requires every entry here to be globbed there. The groups stay separate on
 #: purpose — week files are pruned, ask briefs go to a subdirectory — so the
 #: fix is to keep the two in step, not to merge them.
-DATA_GLOBS = ("h-*.json", "hist-*.json", "tlines.json", "ask/*.json")
+#: `ask/*/*.json` is the Ask box's slices — `core/<gid>`, `players/<gid>`,
+#: `angles/<gid>`, `team/<TEAM>` and `record/season`, one directory deeper
+#: than the flat briefs beside them. A glob that stops at `ask/*.json` ships
+#: the summary and none of the data the model asks for, which is the exact
+#: shape of the `hist-*.json` bug this tuple was introduced to prevent: the
+#: page works, every answer is thin, and nothing fails.
+DATA_GLOBS = ("h-*.json", "hist-*.json", "tlines.json", "ask/*.json",
+              "ask/*/*.json")
 
 
 def env(key: str) -> str:
@@ -291,6 +298,11 @@ reports.
     hist_files = sorted(data.glob("hist-*.json")) if data.exists() else []
     tline_files = sorted(data.glob("tlines.json")) if data.exists() else []
     ask_files = sorted((data / "ask").glob("*.json")) if data.exists() else []
+    # One directory deeper, and listed separately because they are uploaded
+    # to a path that includes their subdirectory. Globbed here rather than
+    # merged into `ask_files` so the upload below cannot lose the prefix.
+    slice_files = (sorted((data / "ask").glob("*/*.json"))
+                   if data.exists() else [])
     if not week_files:
         # A warning, not a failure: a season before any week is played has
         # none, and that is legitimate.
@@ -305,7 +317,9 @@ reports.
     try:
         ver = next_version(s, root, archive, stamp, a.app)
         print(f"\ndeploying as {ver}\n", file=sys.stderr)
-        s.run(f"mkdir -p {root}/{archive} {web} {web}/data {web}/data/ask")
+        subs = sorted({f.parent.name for f in slice_files})
+        s.run(f"mkdir -p {root}/{archive} {web} {web}/data {web}/data/ask"
+              + "".join(f" {web}/data/ask/{d}" for d in subs))
 
         # The archive copy first, so a failure part-way leaves the live page
         # untouched rather than half-replaced.
@@ -364,12 +378,31 @@ reports.
                 if not s.copy(str(f), f"{web}/data/ask/{f.name}"):
                     print(f"upload of {f.name} failed", file=sys.stderr)
                     return 1
+        if slice_files:
+            print(f"  {len(slice_files)} ask slices "
+                  f"({sum(f.stat().st_size for f in slice_files) / 1024:,.0f} KB)",
+                  file=sys.stderr)
+            for f in slice_files:
+                # The parent directory is part of the destination. Uploading
+                # by `f.name` alone would flatten `core/TB_DAL.json` and
+                # `players/TB_DAL.json` onto each other.
+                rel = f"{f.parent.name}/{f.name}"
+                if not s.copy(str(f), f"{web}/data/ask/{rel}"):
+                    print(f"upload of {rel} failed", file=sys.stderr)
+                    return 1
         # The proxy itself. Uploaded every time so a change to it ships with
         # the page that calls it; it reads its key from outside the web root
         # and holds no secret of its own.
+        # BESIDE THE PAGE THAT CALLS IT, not at the root.
+        #
+        # `V3ASK_URL` is the relative string `ask.php`, so a page at `/v4/`
+        # calls `/v4/ask.php` — and the proxy resolves its data directory
+        # from `__DIR__`. One copy at the root would have v4's Ask reading
+        # v3's briefs, which are the same numbers only for as long as both
+        # apps are deployed in the same run.
         php = Path("deploy/ask.php")
         if php.exists():
-            if not s.copy(str(php), f"{root}/ask.php"):
+            if not s.copy(str(php), f"{web}/ask.php"):
                 print("upload of ask.php failed", file=sys.stderr)
                 return 1
         # And the cache rules. Without them Apache serves the page with an

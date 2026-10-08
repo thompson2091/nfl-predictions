@@ -127,16 +127,19 @@ def test_v3_keeps_the_web_root_and_v4_gets_a_subdirectory():
         assert frag in src, frag
 
 
-def test_the_server_config_stays_at_the_root_for_both_apps():
-    """`ask.php` and `.htaccess` are the SERVER's, not an app's.
+def test_the_cache_rules_stay_at_the_root_for_both_apps():
+    """`.htaccess` is the SERVER's, not an app's, and it cascades.
 
-    One proxy and one set of cache rules serve both. Copying them under
-    `/v4/` would leave the root pair unmaintained and give the two apps
-    different caching, which is exactly how one of them starts serving a
-    stale page that nobody can reproduce.
+    One set of cache rules serves both. A second copy under `/v4/` would be
+    a second thing to keep in step, and the two drifting is how one app
+    starts serving a stale page that nobody can reproduce.
+
+    `ask.php` is the opposite case and moved for a reason this test used to
+    get wrong: it resolves its data directory from `__DIR__`, so one copy at
+    the root reads v3's briefs even when v4's page calls it. See
+    `test_the_proxy_lands_beside_the_page_that_calls_it`.
     """
     src = (REPO / "scripts/58_deploy.py").read_text()
-    assert 'f"{root}/ask.php"' in src
     assert 'f"{root}/.htaccess"' in src
 
 
@@ -161,6 +164,43 @@ def test_the_archive_name_carries_the_app_for_everything_but_v3(dep):
     assert dep.next_version(s, "/r", "bets", "20261008", "v3") == "20261008.v1"
     assert (dep.next_version(s, "/r", "bets", "20261008", "v4")
             == "20261008-v4.v1")
+
+
+def test_the_ask_slices_are_uploaded_with_their_subdirectory():
+    """THE SHAPE OF THE `hist-*.json` BUG, ONE DIRECTORY DEEPER.
+
+    The slices live under `ask/core/`, `ask/players/`, `ask/angles/`,
+    `ask/team/` and `ask/record/`. A glob that stops at `ask/*.json` ships
+    the summary and none of the data the model asks for: the page works,
+    every answer is thin, and nothing fails. And uploading by `f.name` alone
+    would flatten `core/TB_DAL.json` and `players/TB_DAL.json` onto each
+    other, which is worse — the model would get one and believe it was the
+    other.
+    """
+    src = (REPO / "scripts/58_deploy.py").read_text()
+    assert '"ask/*/*.json"' in src, "the slice glob is not in DATA_GLOBS"
+    assert 'glob("*/*.json")' in src, "the upload does not collect them"
+    assert 'rel = f"{f.parent.name}/{f.name}"' in src, (
+        "the subdirectory is dropped from the destination")
+    assert 'f"{web}/data/ask/{rel}"' in src
+    # And the directories exist before anything is copied into them.
+    i = src.index("mkdir -p {root}/{archive}")
+    j = src.index('f"{web}/data/ask/{rel}"')
+    assert i < j
+    assert "f\" {web}/data/ask/{d}\" for d in subs" in src
+
+
+def test_the_proxy_lands_beside_the_page_that_calls_it():
+    """`V3ASK_URL` is the relative string `ask.php`, so a page at `/v4/` calls
+    `/v4/ask.php` — and the proxy resolves its data directory from `__DIR__`.
+    One copy at the root would have v4's Ask reading v3's briefs, which are
+    the same numbers only for as long as both apps are deployed together."""
+    src = (REPO / "scripts/58_deploy.py").read_text()
+    assert 'f"{web}/ask.php"' in src
+    assert 'f"{root}/ask.php"' not in src
+    js = (REPO / "src" / "export" / "v3js.py").read_text()
+    assert "V3ASK_URL = 'ask.php'" in js, (
+        "the page's ask URL is no longer relative, so __DIR__ is not enough")
 
 
 def test_a_partial_build_is_refused_rather_than_half_uploaded():

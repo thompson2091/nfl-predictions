@@ -103,11 +103,20 @@ def main() -> int:
         if why:
             print(f"    held back: {why}", file=sys.stderr)
 
-    # One brief per game for the Ask box. Written as separate files, never
-    # inlined: the browser sends a game id and the SERVER loads the brief, so
-    # nothing a reader types can become context. See `askctx`.
+    # Data for the Ask box. Written as separate files, never inlined: the
+    # browser sends a game id and the SERVER loads what it needs, so nothing
+    # a reader types can become context. See `askctx`.
+    #
+    # TWO SHAPES, AND BOTH ARE WRITTEN. `briefs` is the flat per-game file
+    # `ask.php` has always read; `slices` is the core-plus-slices arrangement
+    # it reads now, where the MODEL asks for what a question needs instead of
+    # being handed a fixed guess. The flat file stays because `ask.php` falls
+    # back to it, which is what lets a deploy of the page and a deploy of the
+    # proxy land in either order.
     from src.export.askctx import build as ask_briefs
+    from src.export.askctx import build_slices
     briefs = ask_briefs(payload)
+    slices = build_slices(payload)
 
     # OUT OF THE PAYLOAD BEFORE IT IS RENDERED. The whole record is about
     # 1.6 MB and the page already loads 4.6; it is written per market and
@@ -147,6 +156,14 @@ def main() -> int:
         print(f"  {len(briefs)} ask briefs "
               f"({sum(len(files['data/ask/' + g + '.json']) for g in briefs) / 1024:,.0f} KB)",
               file=sys.stderr)
+    for rel, body in slices.items():
+        files[f"data/ask/{rel}.json"] = json.dumps(body, separators=(",", ":"),
+                                                   allow_nan=False)
+    if slices:
+        kb = sum(len(files['data/ask/' + r + '.json'])
+                 for r in slices) / 1024
+        print(f"  {len(slices)} ask slices ({kb:,.0f} KB) — the model "
+              f"fetches what a question needs", file=sys.stderr)
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -158,7 +175,8 @@ def main() -> int:
         for old in list(data_dir.glob("h-*.json")) \
                 + list(data_dir.glob("hist-*.json")) \
                 + list(data_dir.glob("tlines.json")) \
-                + list((data_dir / "ask").glob("*.json")):
+                + list((data_dir / "ask").glob("*.json")) \
+                + list((data_dir / "ask").glob("*/*.json")):
             if old not in keep:
                 old.unlink()
 
