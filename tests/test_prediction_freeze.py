@@ -176,3 +176,43 @@ def test_the_export_cannot_republish_the_week_it_is_reading():
             os.environ[capture.READ_ONLY_ENV] = was
     assert A.selected_model_dir("anytime_td", None) == (None, True)
 
+
+
+# ── The over/under markets, frozen from 2026-10-09 ─────────────────────────
+
+def ou_rows(model=0.58):
+    return [
+        {"game_id": "2026_05_A_B", "player_name": "Early Man", "team": "A",
+         "point": 55.5, "model_only": model, "ours": 0.53, "fair_prob": 0.50,
+         "price_over": -110.0, "price_under": -110.0, "model_side": "over",
+         "gap_side": "over", "gap_edge_pp": 3.0, "gap_threshold_pp": 2.5,
+         "odds": -110, "ev": 1.2},
+        {"game_id": "2026_05_C_D", "player_name": "Monday Man", "team": "C",
+         "point": 40.5, "model_only": 0.41, "ours": 0.47, "fair_prob": 0.49,
+         "price_over": -105.0, "price_under": -115.0, "model_side": "under",
+         "gap_side": None},
+    ]
+
+
+def test_an_over_under_board_keeps_both_prices_and_every_rules_side():
+    assert PF.record(ou_rows(), 2026, 5, "rushing_yards", BEFORE) == 2
+    kept = PF.frozen(2026, 5, "rushing_yards")["2026_05_A_B"][0]
+    for f in ("point", "model_only", "ours", "fair_prob", "price_over",
+              "price_under", "model_side", "gap_side", "gap_edge_pp"):
+        assert f in kept, f"{f} was not frozen"
+    # Display-only fields stay out: the freeze is a record, not a cache.
+    assert "ev" not in kept and "odds" not in kept
+
+
+def test_an_over_under_game_stops_moving_at_its_own_kickoff():
+    PF.record(ou_rows(), 2026, 5, "rushing_yards", BEFORE)
+    PF.record(ou_rows(model=0.70), 2026, 5, "rushing_yards", BETWEEN)
+    kept = PF.frozen(2026, 5, "rushing_yards")
+    assert kept["2026_05_A_B"][0]["model_only"] == 0.58, (
+        "Sunday's game kicked off and was rewritten after it")
+    assert PF.missing(2026, 5, "rushing_yards", BETWEEN) == []
+
+
+def test_the_touchdown_fields_are_unchanged_by_the_over_under_ones():
+    assert PF.fields_for("anytime_td") == PF.FIELDS
+    assert PF.fields_for("receptions") == PF.OU_FIELDS

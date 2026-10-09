@@ -207,7 +207,10 @@ def refresh(season: int, week: int, force: bool = False) -> pl.DataFrame:
            if not have.is_empty() else got)
     out = out.unique(subset=["captured_at", "game_id", "market", "side"],
                      keep="last").sort(["captured_at", "game_id", "market"])
-    out.write_parquet(ARCHIVE)
+    # Write-then-rename: the whole archive is rewritten on every capture.
+    tmp = ARCHIVE.with_suffix(".parquet.tmp")
+    out.write_parquet(tmp)
+    tmp.replace(ARCHIVE)
     return got
 
 

@@ -89,7 +89,9 @@ def refit_served(market: str, seasons: list[int] | None = None,
         except Exception:                                        # noqa: BLE001
             pass
     if write:
-        (root / SERVED_FILE).write_text(json.dumps(out, indent=1))
+        from src.utils.history import write_kept
+
+        write_kept(root / SERVED_FILE, json.dumps(out, indent=1))
     return out
 
 

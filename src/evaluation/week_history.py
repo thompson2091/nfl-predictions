@@ -439,24 +439,15 @@ OU_STAT = {"receptions": "receptions",
            "passing_yards": "passing_yards"}
 
 
-def ou_week(season: int, week: int, market: str,
-            top_n: int | None = TOP_N) -> list[dict]:
-    """One over/under market, one played week, with the line settled.
+def ou_board(season: int, week: int, market: str) -> list[dict]:
+    """One over/under market's board rows for a week, as the exporter builds
+    them: every line, priced or not, scored by the model being served NOW.
 
-    Rebuilt rather than read back. There are no stored per-week files for
-    these markets — only the touchdown boards write one — so the row is
-    reconstructed from the archived odds and the current model, which makes it
-    "how today's model rates that week" and not a record of what was served.
-    Same caveat the touchdown view carries, and for a stronger reason here.
-
-    `won` is graded on the side the MODEL would have taken, not on the over:
-    a line is not a bet until something picks a side, and grading every row as
-    an over would report the market's own coin flip as our record.
+    Split out of `ou_week` so the freeze can take the same rows before
+    kickoff that `ou_week` regrades after it.
     """
     import importlib.util
     from pathlib import Path
-
-    from src.utils.paths import get_path
 
     spec = importlib.util.spec_from_file_location(
         "site_export", Path(__file__).resolve().parents[2]
@@ -479,7 +470,73 @@ def ou_week(season: int, week: int, market: str,
         blk = dash.receptions(season, week)
     else:
         blk = mod.yards(market, season, week)
-    rows = (blk or {}).get("rows") or []
+    return (blk or {}).get("rows") or []
+
+
+def freeze_ou(season: int, week: int, market: str, now=None) -> int:
+    """Keep this week's over/under board for every game still to kick off.
+
+    Returns how many games were written. Each line carries both sides' median
+    prices from the same archive settlement reads (`side_prices`), the side
+    the unblended model takes (`model_side`, the Record page's headline), and
+    the side the Gaps rule takes at the threshold in force today, so grading
+    it later needs nothing but the result.
+    """
+    from src.evaluation.prop_edge import load_threshold
+    from src.evaluation.prop_settlement import _norm, side_prices
+    from src.export import prediction_freeze as PF
+
+    rows = ou_board(season, week, market)
+    if not rows:
+        return 0
+    prices: dict = {}
+    sp = side_prices(season)
+    if sp is not None and not sp.is_empty():
+        for p in sp.filter(pl.col("market") == market).iter_rows(named=True):
+            if p["point"] is not None:
+                prices[(p["game_id"], p["player_name_norm"], float(p["point"]),
+                        p["side"])] = p["odds"]
+    t = load_threshold(market)
+    names = _norm([r.get("player_name") or "" for r in rows])
+    out = []
+    for r, n in zip(rows, names):
+        line = r.get("point") if r.get("point") is not None else r.get("open_point")
+        if line is None or not r.get("game_id"):
+            continue
+        r = dict(r, point=float(line))
+        k = (r["game_id"], n, float(line))
+        r["price_over"] = prices.get(k + ("yes",))
+        r["price_under"] = prices.get(k + ("no",))
+        m, ours, book = r.get("model_only"), r.get("ours"), r.get("fair_prob")
+        r["model_side"] = None if m is None else ("over" if m >= 0.5 else "under")
+        if t is not None and ours is not None and book is not None:
+            e = (ours - book) * 100
+            r["gap_side"] = "over" if e > t else ("under" if e < -t else None)
+            r["gap_edge_pp"] = round(abs(e), 3)
+            r["gap_threshold_pp"] = t
+        out.append(r)
+    wrote = PF.record(out, season, week, market, now)
+    PF.flush()
+    return wrote
+
+
+def ou_week(season: int, week: int, market: str,
+            top_n: int | None = TOP_N) -> list[dict]:
+    """One over/under market, one played week, with the line settled.
+
+    Rebuilt rather than read back. There are no stored per-week files for
+    these markets — only the touchdown boards write one — so the row is
+    reconstructed from the archived odds and the current model, which makes it
+    "how today's model rates that week" and not a record of what was served.
+    Same caveat the touchdown view carries, and for a stronger reason here.
+
+    `won` is graded on the side the MODEL would have taken, not on the over:
+    a line is not a bet until something picks a side, and grading every row as
+    an over would report the market's own coin flip as our record.
+    """
+    from src.utils.paths import get_path
+
+    rows = ou_board(season, week, market)
     if not rows:
         return []
 

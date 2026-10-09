@@ -229,5 +229,20 @@ if [ "$STATUS" -eq 0 ] && [ "$SNAPSHOT" = "close" ]; then
 fi
 
 # Keep the last 40 logs; this runs twice a week forever.
+# FREEZE AND RECORD AFTER EVERY CAPTURE, open or close. These slots are the
+# only scheduled runs in front of each kickoff window, and both steps keep
+# only games that have not started, so running them on every slot is what
+# makes the last pre-kickoff board the one that is kept. After the close
+# rebuild above, so the frozen board is the one priced on the newest capture.
+if [ "$STATUS" -eq 0 ]; then
+    {
+        echo "--- freezing week $WEEK's boards and recording prop picks"
+        "$PY" scripts/66_freeze.py --week "$WEEK" \
+            || echo "  freeze failed (exit $?) — run \`make freeze\` before kickoff"
+        "$PY" scripts/64_prop_picks.py --week "$WEEK" \
+            || echo "  prop picks failed (exit $?) — run it by hand before kickoff"
+    } 2>&1 | tee -a "$LOG"
+fi
+
 ls -1t "$LOG_DIR"/odds_*.log 2>/dev/null | tail -n +41 | xargs -r rm -f
 exit "$STATUS"

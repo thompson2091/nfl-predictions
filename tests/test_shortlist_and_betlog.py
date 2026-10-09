@@ -308,6 +308,7 @@ def test_a_tracked_rule_carries_where_it_came_from():
         shape = (("min_book_pct", "max_book_pct", "max_ratio")
                  if r.get("kind") == "lay"
                  else ("threshold_pp",) if r.get("kind") == "prop_edge"
+                 else () if r.get("kind") == "model_side"
                  else ("min_odds", "max_odds", "min_edge_pp"))
         for k in ("name", "market", "status", "found", "control",
                   "out_of_sample") + shape:
@@ -618,6 +619,11 @@ TRACKED_RULE_DEFINITIONS = {
         "kind": "prop_edge", "threshold_pp": 2.5},
     ("prop edge over threshold", "passing_yards"): {
         "kind": "prop_edge", "threshold_pp": 9.0},
+    # The baseline: the unblended model's side on every priced line.
+    ("model side", "receptions"): {"kind": "model_side"},
+    ("model side", "receiving_yards"): {"kind": "model_side"},
+    ("model side", "rushing_yards"): {"kind": "model_side"},
+    ("model side", "passing_yards"): {"kind": "model_side"},
 }
 
 

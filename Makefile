@@ -10,7 +10,8 @@
 	champion screen gate settle noise-floor experiments diagnose version-prune \
 	families ablate retention settle-overlay line-movement filter-sweep \
 	shortlist shortlist-backtest betlog positions market-shape \
-	cover-backtest cover-selection rehearse lay-sheet
+	cover-backtest cover-selection rehearse lay-sheet freeze prop-picks \
+	backup-odds backup-on backup-off
 
 # The interpreter, resolved once. Every recipe used to call a bare `python`,
 # which does not exist on a machine where the venv is not activated — this is
@@ -75,6 +76,16 @@ books:
 # the disagreement sizes closing-line value has not moved against, priced at
 # the best number any archived book posted. Most weeks it is empty, and it says
 # which measurement emptied it. Usage: make shortlist WEEK=1
+# Keep this week's player boards, all six markets, for every game not yet
+# started. `weekly_odds.sh` runs it after every capture; run it by hand before
+# a kickoff when a capture slot was missed. Usage: make freeze [WEEK=5]
+freeze:
+	$(PYTHON) scripts/66_freeze.py $(if $(WEEK),--week $(WEEK))
+
+# Record the over/under rules' picks before kickoff. Usage: make prop-picks WEEK=5
+prop-picks:
+	$(PYTHON) scripts/64_prop_picks.py --week $(WEEK)
+
 shortlist:
 	$(PYTHON) scripts/39_shortlist.py --week $(WEEK) $(if $(TARGET),--target $(TARGET))
 
@@ -571,21 +582,53 @@ clean:
 # disk — see `nfl-predictions-moving-off-the-laptop`.
 BACKUP_FILES := data/archive/odds_history.parquet \
                 data/archive/odds_books.parquet \
+                data/archive/game_lines.parquet \
+                data/archive/action_public.parquet \
+                data/archive/public_money.parquet \
+                data/archive/line_history.parquet \
                 data/tracked_picks.csv
+
+# How many copies of each file to keep. A copy identical to the newest one is
+# skipped, so this counts real changes, not runs: two byte-identical copies
+# 22 seconds apart were sitting in the folder on 2026-10-09. `game_lines` and
+# the three public-money archives were added the same day — `game_lines` is
+# the only game-line archive there is, and it was never backed up.
+BACKUP_KEEP ?= 14
 
 backup-odds:
 	@mkdir -p data/archive/backups
-	@stamp=$$(date +%Y%m%d_%H%M%S); n=0; \
+	@stamp=$$(date +%Y%m%d_%H%M%S); n=0; same=0; \
 	for f in $(BACKUP_FILES); do \
 		if [ -f "$$f" ]; then \
 			base=$$(basename "$$f"); name=$${base%.*}; ext=$${base##*.}; \
-			cp -p "$$f" "data/archive/backups/$${name}_$${stamp}.$${ext}"; \
-			n=$$((n+1)); \
+			last=$$(ls -1t data/archive/backups/$${name}_*.$${ext} 2>/dev/null | head -1); \
+			if [ -n "$$last" ] && cmp -s "$$f" "$$last"; then \
+				same=$$((same+1)); \
+			else \
+				cp -p "$$f" "data/archive/backups/$${name}_$${stamp}.$${ext}"; \
+				n=$$((n+1)); \
+			fi; \
+			ls -1t data/archive/backups/$${name}_*.$${ext} 2>/dev/null \
+				| tail -n +$$(($(BACKUP_KEEP)+1)) | xargs -r rm -f; \
 		else \
 			echo "  missing, not backed up: $$f"; \
 		fi; \
 	done; \
-	echo "Backed up $$n file(s) to data/archive/backups/ at $$stamp"
+	echo "Backed up $$n file(s) to data/archive/backups/ at $$stamp ($$same unchanged, kept the last $(BACKUP_KEEP) of each)"
+
+# Nightly `backup-odds` at 03:15. Usage: make backup-on · make backup-off
+backup-on:
+	@cp config/launchd/com.mthompson.nfl-backup.plist $$HOME/Library/LaunchAgents/
+	@launchctl bootout "gui/$$UID/com.mthompson.nfl-backup" 2>/dev/null; \
+		launchctl enable "gui/$$UID/com.mthompson.nfl-backup"; \
+		launchctl bootstrap "gui/$$UID" \
+			"$$HOME/Library/LaunchAgents/com.mthompson.nfl-backup.plist" \
+		&& echo "loaded com.mthompson.nfl-backup"
+
+backup-off:
+	@launchctl bootout "gui/$$UID/com.mthompson.nfl-backup" 2>/dev/null; \
+		launchctl disable "gui/$$UID/com.mthompson.nfl-backup"; \
+		echo "disabled com.mthompson.nfl-backup"
 
 test-ingest:
 	$(PYTHON) scripts/01_ingest.py --test-mode

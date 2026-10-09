@@ -50,6 +50,35 @@ FIELDS: tuple[str, ...] = (
     "has_market_price", "odds", "book",
 )
 
+#: The four over/under markets, which had no freeze at all until 2026-10-09.
+#: Their board is rebuilt from the archived odds and TODAY's model every time
+#: anything asks (`week_history.ou_week`), so the Record page graded weeks 1-4
+#: on a model those weeks never saw. A row here is one line as it stood before
+#: kickoff: both sides' prices, the model before and after the blend, and the
+#: side each rule took — so a forward record can be graded later without
+#: asking any of today's code what it would have said.
+OU_MARKETS: tuple[str, ...] = ("receptions", "receiving_yards",
+                               "rushing_yards", "passing_yards")
+OU_FIELDS: tuple[str, ...] = (
+    "player_name", "team", "point", "proj", "lo", "hi",
+    "model_only", "ours", "fair_prob", "n_books",
+    "price_over", "price_under",
+    "model_side", "gap_side", "gap_edge_pp", "gap_threshold_pp",
+)
+
+
+def fields_for(market: str) -> tuple[str, ...]:
+    return OU_FIELDS if market in OU_MARKETS else FIELDS
+
+
+def _order(r: dict) -> tuple:
+    """Board order: most likely first on a touchdown market, and on an
+    over/under the line itself, so a diff of one player's alternates reads
+    top to bottom."""
+    if r.get("probability") is not None:
+        return (-(r.get("probability") or 0), r.get("player_name") or "", 0.0)
+    return (0, r.get("player_name") or "", float(r.get("point") or 0.0))
+
 _CACHE: dict[int, dict] = {}
 _DIRTY: set[int] = set()
 
@@ -114,11 +143,12 @@ def record(rows: list[dict], season: int, week: int, market: str,
     if not (season and week) or not rows:
         return 0
     by_game: dict = {}
+    keep = fields_for(market)
     for r in rows:
         gid = r.get("game_id")
         if gid:
             by_game.setdefault(gid, []).append(
-                {f: r.get(f) for f in FIELDS if r.get(f) is not None})
+                {f: r.get(f) for f in keep if r.get(f) is not None})
     live = started_games(season, week, now)
     store = load(int(season))
     # NOT `setdefault` UNTIL THERE IS SOMETHING TO PUT IN IT. A week where
@@ -130,8 +160,7 @@ def record(rows: list[dict], season: int, week: int, market: str,
     for gid, got in by_game.items():
         if gid in live:
             continue                      # already begun: this is not a board
-        got = sorted(got, key=lambda r: (-(r.get("probability") or 0),
-                                         r.get("player_name") or ""))
+        got = sorted(got, key=_order)
         if wk.get(gid) != got:
             if not wrote:
                 wk = store.setdefault(str(int(week)), {}).setdefault(

@@ -239,6 +239,17 @@ else
 fi
 
 say "  week $WEEK board built."
+
+# THE TUESDAY READ: the forward record per market, with each one marked a
+# candidate or not yet. A report, not a lever — nothing here changes a
+# threshold. See `nfl-predictions-weekly-improvement-loop`.
+"$PY" scripts/67_forward_report.py 2>>"$LOG" | tee -a "$LOG"
+
+# Freeze the new week's boards for every game not yet started, so the first
+# board of the week is kept even if no capture slot runs before Thursday.
+"$PY" scripts/66_freeze.py --week "$WEEK" >>"$LOG" 2>&1 \
+    || say "  freeze failed — run \`make freeze WEEK=$WEEK\`"
+
 say "=== $(date -u +%FT%TZ) done ==="
 
 # Keep the last 20 rollover logs.

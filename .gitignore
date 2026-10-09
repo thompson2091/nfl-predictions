@@ -44,3 +44,9 @@ data/raw/game_notes_cache/
 # rebuildable from the source with `graphify . --update`, and it churns on every
 # rebuild, so committing it would add noise to every diff.
 graphify-out/
+deploy/history/
+
+# QA-Agent output; the config and plugin under qa/ are committed.
+qa/qa-reports/
+qa/.qa-agent/
+qa/qa-triage.yaml

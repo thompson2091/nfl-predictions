@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -226,6 +227,21 @@ def next_version(s: Session, root: str, archive: str, stamp: str,
     return f"{pre}.v{n}"
 
 
+def _canonical(host: str) -> str:
+    """The rewrite that sends every other address to `https://<host>/`."""
+    bare = host[4:] if host.startswith("www.") else host
+    esc = bare.replace(".", "\\.")
+    return (
+        "# One address: http:// and www. go to https://" + bare + "/, so saved\n"
+        "# picks live in one browser store. Written by 58_deploy.py --canonical.\n"
+        "<IfModule mod_rewrite.c>\n"
+        "  RewriteEngine On\n"
+        "  RewriteCond %{HTTPS} off [OR]\n"
+        "  RewriteCond %{HTTP_HOST} !^" + esc + "$ [NC]\n"
+        "  RewriteRule ^ https://" + bare + "%{REQUEST_URI} [L,R=301]\n"
+        "</IfModule>\n\n")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true",
@@ -242,6 +258,11 @@ def main() -> int:
     # because a worker scoped to `/v4/` cannot intercept a request to
     # `/data/` — it would load, work, and silently stop working on a train.
     ap.add_argument("--app", default="v3", choices=["v3", "v4"])
+    ap.add_argument("--canonical", action="store_true",
+                    help="also send http:// and www. to https://<host>/ with "
+                         "a 301. Copy your saved picks over first: each "
+                         "address keeps its own, and after this the others "
+                         "cannot be opened to copy them")
     ap.add_argument("--out", default=None,
                     help="local build directory (default: site/<app>)")
     ap.add_argument("--setup-keys", action="store_true",
@@ -317,6 +338,14 @@ reports.
     try:
         ver = next_version(s, root, archive, stamp, a.app)
         print(f"\ndeploying as {ver}\n", file=sys.stderr)
+        # AND A LOCAL COPY UNDER THE SAME NAME. The server's `bets/` was the
+        # only record of what each deploy served, and git does not line up
+        # with it — deploys come from the working tree. Gitignored: 6 MB a
+        # build, and the server keeps its own.
+        if not a.dry_run:
+            hist = Path("deploy/history")
+            hist.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(out / "index.html", hist / f"{ver}.html")
         subs = sorted({f.parent.name for f in slice_files})
         s.run(f"mkdir -p {root}/{archive} {web} {web}/data {web}/data/ask"
               + "".join(f" {web}/data/ask/{d}" for d in subs))
@@ -409,6 +438,16 @@ reports.
         # ETag and no Cache-Control, browsers cache it heuristically, and a
         # deploy lands while the reader keeps seeing the previous build.
         ht = Path("deploy/htaccess")
+        if ht.exists() and a.canonical:
+            # ONE ADDRESS, OPT-IN. The site answered on http://, https:// and
+            # www., and browser storage belongs to an address — so saved picks
+            # made on one were missing on the others, which looks exactly like
+            # a deploy deleting them. Off by default because switching it on
+            # strands whatever is saved on the addresses it redirects: copy
+            # the picks across (Picks, Move your picks) before the first run.
+            tmp = Path(tempfile.mkdtemp()) / "htaccess"
+            tmp.write_text(_canonical(host) + ht.read_text())
+            ht = tmp
         if ht.exists():
             if not s.copy(str(ht), f"{root}/.htaccess"):
                 print("upload of .htaccess failed", file=sys.stderr)

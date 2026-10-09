@@ -51,12 +51,22 @@ def _label(game_id: str) -> str:
     return f"{bits[0]} @ {bits[1]}" if len(bits) == 2 else pair
 
 
-def picks_for(season: int, week: int, market: str) -> list[dict]:
-    rules = rules_for(market)
-    if not rules:
+def _rule(market: str, kind: str) -> dict | None:
+    return next((r for r in rules_for(market) if r.get("kind") == kind), None)
+
+
+def picks_for(season: int, week: int, market: str,
+              rows: list[dict] | None = None) -> list[dict]:
+    rule = _rule(market, "prop_edge")
+    if rule is None:
         return []
-    name = rules[0]["name"]
-    rows = ou_week(season, week, market) or []
+    name = rule["name"]
+    rows = (ou_week(season, week, market) or []) if rows is None else rows
+    # The unblended number each line was read from, which `qualifying` does
+    # not carry through. Kept on the pick so the forward record can be cut by
+    # the model's own confidence.
+    model = {(r.get("game_id"), r.get("player_name"), float(r["line"])):
+             r.get("model") for r in rows if r.get("line") is not None}
     out = []
     for r in qualifying(season, market, rows):
         if r.get("price") is None or r.get("side") is None:
@@ -67,6 +77,61 @@ def picks_for(season: int, week: int, market: str) -> list[dict]:
             "odds": int(r["price"]), "ours": float(r["p_blend"]),
             "book": float(r["fair_prob"]), "edge_pp": float(r["edge_pp"]),
             "side": r["side"], "line": float(r["point"]),
+            "model": model.get((r.get("game_id"), r.get("player_name"),
+                                float(r["point"]))),
+        })
+    return out
+
+
+def model_side_for(season: int, week: int, market: str,
+                   rows: list[dict] | None = None) -> list[dict]:
+    """The unblended model's side on every priced line, one per player-game.
+
+    The line kept is the one nearest the player's median line, chosen by
+    `prop_edge.main_lines` before the side is read — the same rule the Record
+    page's "Everyone" view applies — and the price is the side's own.
+    """
+    import polars as pl
+
+    from src.evaluation.prop_edge import attach_prices, main_lines
+    from src.evaluation.prop_settlement import _norm
+
+    rule = _rule(market, "model_side")
+    if rule is None:
+        return []
+    rows = (ou_week(season, week, market) or []) if rows is None else rows
+    keep = [r for r in rows if r.get("model") is not None
+            and r.get("line") is not None and r.get("game_id")]
+    if not keep:
+        return []
+    names = _norm([r.get("player_name") or "" for r in keep])
+    d = pl.DataFrame([{
+        "game_id": r["game_id"], "player_name": r.get("player_name"),
+        "player_name_norm": n, "player_key": n, "season": season, "week": 0,
+        "point": float(r["line"]), "p_model": float(r["model"]),
+        "p_blend": r.get("ours"), "fair_prob": r.get("book"),
+        "team": r.get("team"),
+    } for r, n in zip(keep, names)], infer_schema_length=None)
+    d = attach_prices(main_lines(d), season, market)
+    out = []
+    for r in d.iter_rows(named=True):
+        side = "over" if r["p_model"] >= 0.5 else "under"
+        price = r["price_over"] if side == "over" else r["price_under"]
+        if price is None:
+            continue
+        book = r.get("fair_prob")
+        edge = None
+        if book is not None:
+            edge = (r["p_model"] - book) * 100 * (1 if side == "over" else -1)
+        out.append({
+            "rule": rule["name"], "player": r["player_name"],
+            "team": r.get("team"), "game": _label(r["game_id"]),
+            "odds": int(price),
+            "ours": None if r.get("p_blend") is None else float(r["p_blend"]),
+            "book": None if book is None else float(book),
+            "edge_pp": None if edge is None else round(edge, 3),
+            "side": side, "line": float(r["point"]),
+            "model": float(r["p_model"]),
         })
     return out
 
@@ -88,11 +153,20 @@ def main() -> int:
     total = 0
     for market in ([args.market] if args.market else MARKETS):
         try:
-            rows = picks_for(season, args.week, market)
+            board = ou_week(season, args.week, market) or []
+            rows = picks_for(season, args.week, market, board)
+            base = model_side_for(season, args.week, market, board)
         except Exception as e:                                   # noqa: BLE001
             print(f"  {market}: board unavailable ({e})", file=sys.stderr)
             continue
-        rule = (rules_for(market) or [{}])[0]
+        if base:
+            n = record(base, season=season, week=args.week, market=market,
+                       recorded_on=date.today().isoformat(),
+                       allow_late=args.allow_late)
+            total += n
+            print(f"  {market}: model side on {len(base)} lines, "
+                  f"{n} newly recorded")
+        rule = _rule(market, "prop_edge") or {}
         if not rows:
             print(f"  {market}: nothing clears "
                   f"{rule.get('threshold_pp')}pp this week.")

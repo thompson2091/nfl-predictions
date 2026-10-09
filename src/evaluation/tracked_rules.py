@@ -57,9 +57,28 @@ PICKS_PATH = records_dir() / "tracked_picks.csv"
 #: pins the header to this tuple, because `record` appends with a fixed
 #: fieldname list and a column added here without migrating the file writes
 #: rows wider than its own header.
+#:
+#: `recorded_at` and `model` were added 2026-10-09. `recorded_at` is the
+#: moment, not the day, so a pick's lead time is a column a reader can filter
+#: on rather than something the gate has to ban: the over/under markets are
+#: gated per game (see `record`), so a Sunday pick can now be taken on Sunday
+#: morning, and the file says so. `model` is the UNBLENDED probability the
+#: side was read from, which `ours` (the blend) is not — the confidence
+#: gradient measured on 2024-25 has to be confirmed on the served model's own
+#: forward record, and that needs this number kept at the time.
+#: `migrate` pads existing rows; nothing else in them changes.
 COLUMNS = ("recorded_on", "season", "week", "market", "rule", "player",
            "team", "game", "odds", "ours", "book", "edge_pp",
-           "side", "line")
+           "side", "line", "recorded_at", "model")
+
+#: Markets whose picks are gated on their own game's kickoff, not the week's
+#: first. The over/under board is thin until close to the weekend — week 5
+#: held 29 receptions rows on the Tuesday — so the week-level gate closed the
+#: book on every Sunday game when Thursday's kicked off, and week 5 recorded
+#: four over/under picks. The touchdown rules keep the week-level gate: their
+#: premise is the price available days ahead (see `week_has_started`).
+PER_GAME_MARKETS = ("receptions", "receiving_yards", "rushing_yards",
+                    "passing_yards")
 
 #: The rules under observation. Each carries what it is, where it came from and
 #: what it has done out of sample, because a band with no provenance reads as a
@@ -152,6 +171,28 @@ RULES = (
         ("rushing_yards", 2.5, 0.0630, 609),
         ("passing_yards", 9.0, 0.2936, 159),
     )
+) + tuple(
+    # ── THE MODEL'S OWN SIDE, the baseline every rule is measured against ──
+    #
+    # Every priced line, one per player-game (the line nearest his median,
+    # as `prop_edge.main_lines` chooses it), on the side the UNBLENDED model
+    # takes, at that side's own price. This is the Record page's headline
+    # population — "Everyone" on our model's side — recorded before kickoff
+    # instead of rebuilt after it with whatever model is current.
+    {
+        "name": "model side",
+        "market": mkt,
+        "kind": "model_side",
+        "status": "unproven — the baseline, not a rule; recorded so "
+                  "the headline number has a forward version",
+        "found": "on 2024-25 holdout the whole book returned -2.04 per $100 "
+                 "over 18,099 bets, rising monotonically with the model's own "
+                 "confidence to +9.07 above 0.75",
+        "control": "one line per player-game chosen before the side is read",
+        "out_of_sample": "starts week 5 of 2026",
+        "expected_per_week": 250,
+    }
+    for mkt in PER_GAME_MARKETS
 )
 
 
@@ -284,9 +325,57 @@ def week_has_started(season: int, week: int, now=None) -> bool:
     return (now or datetime.now()) >= kick
 
 
+def _label(game_id: str) -> str:
+    """`2026_05_TB_DAL` -> `TB @ DAL`, the form `game` is stored in."""
+    bits = str(game_id or "").split("_")
+    return f"{bits[-2]} @ {bits[-1]}" if len(bits) >= 2 else str(game_id or "")
+
+
+def started_labels(season: int, week: int, now=None) -> set[str]:
+    """`"AWAY @ HOME"` for every game this week that has kicked off."""
+    from datetime import datetime
+
+    at = now or datetime.now()
+    return {_label(gid) for gid, kick in kickoffs(season, week).items()
+            if at >= kick}
+
+
+def migrate(path: Path | str = PICKS_PATH) -> bool:
+    """Rewrite the file under the current `COLUMNS`, padding new cells empty.
+
+    Returns whether anything changed. A copy of the old file is left beside
+    it first: this is the only record of what the rules said before kickoff.
+    """
+    import shutil
+    from datetime import datetime
+
+    p = Path(path)
+    if not p.exists():
+        return False
+    with p.open(newline="") as fh:
+        rd = csv.DictReader(fh)
+        header = list(rd.fieldnames or [])
+        rows = list(rd)
+    if header == list(COLUMNS):
+        return False
+    stray = [c for c in header if c not in COLUMNS]
+    if stray:
+        raise ValueError(f"{p} has columns COLUMNS does not: {stray}")
+    shutil.copy2(p, p.with_name(
+        f"{p.stem}.pre-migrate-{datetime.now():%Y%m%d_%H%M%S}{p.suffix}"))
+    tmp = p.with_suffix(".csv.tmp")
+    with tmp.open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(COLUMNS))
+        w.writeheader()
+        for r in rows:
+            w.writerow({c: r.get(c, "") for c in COLUMNS})
+    tmp.replace(p)
+    return True
+
+
 def record(rows: list[dict], *, season: int, week: int, market: str,
            recorded_on: str, path: Path | str = PICKS_PATH,
-           allow_late: bool = False) -> int:
+           allow_late: bool = False, now=None) -> int:
     """Append this week's picks. Returns how many were new.
 
     Idempotent on (season, week, market, rule, player): re-running the
@@ -295,13 +384,29 @@ def record(rows: list[dict], *, season: int, week: int, market: str,
 
     NOTHING IS RECORDED ONCE THE WEEK HAS KICKED OFF — see `week_has_started`.
     `allow_late=True` overrides it, for a backfill that knows what it is doing.
+
+    EXCEPT ON THE OVER/UNDER MARKETS (`PER_GAME_MARKETS`), which are gated
+    per game: a row is dropped only when its own game has kicked off, and the
+    rest are kept with `recorded_at` saying when.
     """
-    if rows and not allow_late and week_has_started(season, week):
+    from datetime import datetime
+
+    at = now or datetime.now()
+    if rows and not allow_late and market in PER_GAME_MARKETS:
+        gone = started_labels(season, week, at)
+        late = [r for r in rows if (r.get("game") or "") in gone]
+        if late:
+            print(f"  tracked picks: {len(late)} {market} rows are for games "
+                  f"already under way and were not recorded.",
+                  file=sys.stderr)
+        rows = [r for r in rows if (r.get("game") or "") not in gone]
+    elif rows and not allow_late and week_has_started(season, week, at):
         print(f"  tracked picks: week {week} has already kicked off — "
               f"{len(rows)} not recorded. A pick found after the week starts "
               f"is not the forward test this file holds.", file=sys.stderr)
         return 0
     p = Path(path)
+    migrate(p)
     existing = load(p)
     seen = set()
     if existing.height:
@@ -315,7 +420,8 @@ def record(rows: list[dict], *, season: int, week: int, market: str,
             continue
         seen.add(key)
         fresh.append({"recorded_on": recorded_on, "season": season,
-                      "week": week, "market": market, **r})
+                      "week": week, "market": market,
+                      "recorded_at": at.isoformat(timespec="seconds"), **r})
     if not fresh:
         return 0
     p.parent.mkdir(parents=True, exist_ok=True)

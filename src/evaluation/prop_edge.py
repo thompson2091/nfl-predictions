@@ -187,7 +187,9 @@ def refit(market: str, seasons: list[int], weight: float,
            "min_bets": MIN_BETS, "fit_date": date.today().isoformat(),
            "curve": got["curve"]}
     if write:
-        (get_path("models", market) / FILE).write_text(json.dumps(out, indent=1))
+        from src.utils.history import write_kept
+
+        write_kept(get_path("models", market) / FILE, json.dumps(out, indent=1))
     return out
 
 

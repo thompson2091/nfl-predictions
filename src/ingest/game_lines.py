@@ -210,7 +210,12 @@ def append_snapshot(rows: list[dict], season: int, week: int,
             return prior
         df = pl.concat([prior, df], how="diagonal_relaxed")
     p.parent.mkdir(parents=True, exist_ok=True)
-    df.write_parquet(p)
+    # Write-then-rename, as `odds_history` does. This is the only game-line
+    # archive there is and every capture rewrites the whole file, so a crash
+    # mid-write used to leave nothing at all.
+    tmp = p.with_suffix(".parquet.tmp")
+    df.write_parquet(tmp)
+    tmp.replace(p)
     print(f"  Game lines: {df.height:,} rows -> {p}")
     return df
 

@@ -20,7 +20,7 @@ INSTALLED = Path.home() / "Library" / "LaunchAgents"
 #: written, not the day someone notices it was never committed.
 JOBS = ("nfl-odds-open", "nfl-odds-close", "nfl-inactives",
         "nfl-public-money", "nfl-week-rollover", "nfl-sharp-gate",
-        "nfl-sunday-wrap")
+        "nfl-sunday-wrap", "nfl-backup")
 
 
 def _path(name: str) -> Path:

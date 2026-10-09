@@ -71,6 +71,22 @@ def main() -> int:
     season, week = (a.season, a.week) if a.season and a.week else current_week()
 
     if a.refresh:
+        # THE ROSTER A BOARD WAS BUILT FROM, kept before it is replaced.
+        # `load_rosters` rewrites the current season whole, and on a Sunday
+        # this runs four times; without a copy, which statuses a pre-kickoff
+        # board saw cannot be recovered afterwards.
+        import shutil
+
+        src = get_path("raw") / "rosters.parquet"
+        if src.exists():
+            snap = (get_path("raw").parent / "archive" / "snapshots"
+                    / datetime.now().strftime("%Y%m%d"))
+            snap.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, snap / f"rosters_{datetime.now():%H%M%S}.parquet")
+            # 5 MB a copy, four a Sunday: keep a season's worth of days.
+            days = sorted(d for d in snap.parent.iterdir() if d.is_dir())
+            for old in days[:-120]:
+                shutil.rmtree(old, ignore_errors=True)
         from src.ingest.loader import load_rosters
         print("Refreshing rosters from nflverse...")
         load_rosters([season])

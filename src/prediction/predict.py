@@ -662,6 +662,55 @@ def _filter_unavailable(week_df: pl.DataFrame, season: int, week: int) -> pl.Dat
     ).drop("status"))
 
 
+def _keep_started(result: pl.DataFrame, csv_path, season: int,
+                  week: int) -> pl.DataFrame:
+    """The new board, with every started game's rows taken from the old file.
+
+    This CSV had one unconditional writer, and every run after kickoff
+    rewrote games already being played: the live odds cache holds no price
+    for a game under way, so `has_market_price` went false and week 4 of 2026
+    went from a full slate to 47 priced players of 515. A started game's rows
+    are a record of what was predicted; only games still to come are rebuilt.
+    Kickoff is `prediction_freeze.started_games`, the same gate the freezes
+    use. A game with no old rows takes the new ones — a late board beats none.
+    """
+    from pathlib import Path
+
+    p = Path(csv_path)
+    if not p.exists() or "game_id" not in result.columns:
+        return result
+    try:
+        from src.export.prediction_freeze import started_games
+
+        live = started_games(season, week)
+    except Exception:                                            # noqa: BLE001
+        return result
+    if not live:
+        return result
+    try:
+        old = pl.read_csv(p, infer_schema_length=0)
+    except Exception:                                            # noqa: BLE001
+        return result
+    if "game_id" not in old.columns:
+        return result
+    held = old.filter(pl.col("game_id").is_in(list(live)))
+    have = set(held["game_id"].unique().to_list())
+    if not have:
+        return result
+    cols = [c for c in result.columns if c in held.columns]
+    # Read back as text, so each column is cast to the new board's type.
+    # A boolean is spelled `true`/`false` in the CSV and polars will not cast
+    # that string directly.
+    held = held.select(cols).with_columns(
+        [(pl.col(c).str.to_lowercase() == "true")
+         if result.schema[c] == pl.Boolean
+         else pl.col(c).cast(result.schema[c], strict=False) for c in cols])
+    fresh = result.filter(~pl.col("game_id").is_in(list(have)))
+    print(f"  kept {held.height} rows for {len(have)} started games from the "
+          f"previous board rather than rebuilding them")
+    return pl.concat([fresh, held], how="diagonal_relaxed").select(result.columns)
+
+
 def predict(season: int, week: int, model_name: str = None,
             target_type: str = None, model_dir=None,
             persist: bool = True) -> pl.DataFrame | None:
@@ -808,7 +857,17 @@ def predict(season: int, week: int, model_name: str = None,
 
     output_dir = get_path("output", target_type)
     csv_path = output_dir / f"predictions_{season}_week{week}.csv"
-    result.write_csv(csv_path)
+    # THE FILE KEEPS STARTED GAMES; THE RETURN VALUE DOES NOT. Callers that
+    # score the model — `parity.check` above all — need what this run
+    # computed, and handing them last week's rows back would disarm the one
+    # test that compares the served path with the evaluated one.
+    written = _keep_started(result, csv_path, season, week)
+    written.write_csv(csv_path)
+    from src.export.run_manifest import append as _manifest
+
+    _manifest(target_type, season, week, model=model_name, rows=written.height,
+              priced=(int(written["has_market_price"].cast(pl.Boolean).sum())
+                      if "has_market_price" in written.columns else None))
 
     report_lines = []
     report_lines.append(f"NFL TD Predictions ({target_type}) — {season} Week {week} (model: {model_name})")

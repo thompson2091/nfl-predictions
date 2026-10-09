@@ -397,8 +397,11 @@ def refresh(season: int, week: int, force: bool = False) -> pl.DataFrame:
     # widen forces a choice between losing history and losing the new column.
     out = (pl.concat([have, got], how="diagonal_relaxed")
            if not have.is_empty() else got)
+    # Write-then-rename: the whole archive is rewritten on every capture.
+    tmp = ARCHIVE.with_suffix(".parquet.tmp")
     out.unique(subset=["captured_at", "game_id", "market", "side"],
-               keep="last").write_parquet(ARCHIVE)
+               keep="last").write_parquet(tmp)
+    tmp.replace(ARCHIVE)
     return got
 
 
@@ -425,8 +428,10 @@ def _write_lines(frames: list, stamp: str) -> None:
     # widen forces a choice between losing history and losing the new column.
     out = (pl.concat([have, got], how="diagonal_relaxed")
            if not have.is_empty() else got)
+    tmp = LINES.with_suffix(".parquet.tmp")
     out.unique(subset=["captured_at", "game_id", "market"],
-               keep="last").write_parquet(LINES)
+               keep="last").write_parquet(tmp)
+    tmp.replace(LINES)
 
 
 def line_view(season: int, week: int) -> dict:

@@ -384,7 +384,9 @@ def blend(df: pl.DataFrame, model_col: str, market_col: str,
 # --------------------------------------------------------------------------
 
 def save_blend_weight(weight: dict, path: Path) -> None:
-    Path(path).write_text(json.dumps(weight, indent=2))
+    from src.utils.history import write_kept
+
+    write_kept(path, json.dumps(weight, indent=2))
 
 
 def load_blend_weight(path: Path, bootstrap: float | None = None) -> dict:
