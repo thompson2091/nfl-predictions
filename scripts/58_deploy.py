@@ -233,7 +233,7 @@ def _canonical(host: str) -> str:
     esc = bare.replace(".", "\\.")
     return (
         "# One address: http:// and www. go to https://" + bare + "/, so saved\n"
-        "# picks live in one browser store. Written by 58_deploy.py --canonical.\n"
+        "# picks live in one browser store. Written by 58_deploy.py.\n"
         "<IfModule mod_rewrite.c>\n"
         "  RewriteEngine On\n"
         "  RewriteCond %{HTTPS} off [OR]\n"
@@ -258,11 +258,14 @@ def main() -> int:
     # because a worker scoped to `/v4/` cannot intercept a request to
     # `/data/` — it would load, work, and silently stop working on a train.
     ap.add_argument("--app", default="v3", choices=["v3", "v4"])
-    ap.add_argument("--canonical", action="store_true",
-                    help="also send http:// and www. to https://<host>/ with "
-                         "a 301. Copy your saved picks over first: each "
-                         "address keeps its own, and after this the others "
-                         "cannot be opened to copy them")
+    # ON BY DEFAULT since 2026-10-09, once both readers confirmed they use
+    # https://squarespro.com. It has to be: `.htaccess` is uploaded whole on
+    # every deploy, so an opt-in flag would be undone by the next unattended
+    # one — the Tuesday rollover deploys without arguments.
+    ap.add_argument("--no-canonical", dest="canonical", action="store_false",
+                    help="do not send http:// and www. to https://<host>/. "
+                         "Each address keeps its own saved picks")
+    ap.set_defaults(canonical=True)
     ap.add_argument("--out", default=None,
                     help="local build directory (default: site/<app>)")
     ap.add_argument("--setup-keys", action="store_true",
@@ -439,12 +442,10 @@ reports.
         # deploy lands while the reader keeps seeing the previous build.
         ht = Path("deploy/htaccess")
         if ht.exists() and a.canonical:
-            # ONE ADDRESS, OPT-IN. The site answered on http://, https:// and
-            # www., and browser storage belongs to an address — so saved picks
-            # made on one were missing on the others, which looks exactly like
-            # a deploy deleting them. Off by default because switching it on
-            # strands whatever is saved on the addresses it redirects: copy
-            # the picks across (Picks, Move your picks) before the first run.
+            # ONE ADDRESS. The site answered on http://, https:// and www.,
+            # and browser storage belongs to an address — so saved picks made
+            # on one were missing on the others, which looks exactly like a
+            # deploy deleting them.
             tmp = Path(tempfile.mkdtemp()) / "htaccess"
             tmp.write_text(_canonical(host) + ht.read_text())
             ht = tmp

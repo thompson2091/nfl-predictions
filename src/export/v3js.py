@@ -298,7 +298,7 @@ function v3Save() {
     const slip = Object.keys(V.picks || {}).length;
     if (!slip) V.picksWeek = null;
     else if (!has(V.picksWeek)) V.picksWeek = DATA.week;
-    localStorage.setItem(V3KEY, JSON.stringify({
+    const next = JSON.stringify({
       market: V.market, sort: V.sort, filter: V.filter, picks: V.picks,
       picksWeek: V.picksWeek,
       betType: V.betType, stake: V.stake, game: V.game,
@@ -306,7 +306,11 @@ function v3Save() {
       // The saved picks themselves, not a flag. `V.saved` used to be a
       // boolean that nothing read and nothing kept.
       saved: V.saved, savedGone: V.savedGone, savedFilter: V.savedFilter,
-      lodds: V.lodds, rungs: V.rungs }));
+      lodds: V.lodds, rungs: V.rungs });
+    // A WRITE THAT CHANGES NOTHING IS NOT MADE. Every write fires `storage`
+    // in every other open tab; skipping the no-op ones keeps that event
+    // meaning "something changed".
+    if (localStorage.getItem(V3KEY) !== next) localStorage.setItem(V3KEY, next);
   } catch (e) { /* private window, blocked storage — the app still works */ }
 }
 
@@ -8232,12 +8236,23 @@ v3StickResults();
 // ANOTHER TAB SAVED OR DELETED A PICK. Reload the list from storage and
 // redraw, so two open tabs show the same picks; `v3Save` then merges.
 if (typeof window !== 'undefined' && window.addEventListener) {
+  // REDRAW ONLY WHEN THE PICKS THEMSELVES CHANGED. The first version
+  // redrew on every event, and every redraw saves — which fires the event
+  // in the other tab, which redraws and saves, and so on: with two tabs
+  // open, the second filter tapped on Props hung both of them, because the
+  // other tab's market and filter differ from this one's on every write.
+  // Shipped in 20261009.v1 and caught the same night.
   window.addEventListener('storage', ev => {
     if (ev.key !== V3KEY) return;
     const st = v3Load();
-    V.savedGone = Array.from(new Set((V.savedGone || [])
+    const gone = Array.from(new Set((V.savedGone || [])
       .concat(st.savedGone || [])));
-    V.saved = v3MergeSaved(V.saved, st.saved, V.savedGone);
+    const merged = v3MergeSaved(V.saved, st.saved, gone);
+    const sig = l => (l || []).map(p => p.id).join(',');
+    if (sig(merged) === sig(v3Saved())
+        && gone.length === (V.savedGone || []).length) return;
+    V.savedGone = gone;
+    V.saved = merged;
     render();
   });
 }

@@ -74,6 +74,23 @@ export default {
     }
     ctx.check("a stale tab cannot wipe a pick saved elsewhere", "passed");
 
+    // TWO TABS OPEN, FILTERS TAPPED: neither may hang. 20261009.v1 shipped a
+    // storage listener that redrew on every write, and every redraw writes,
+    // so two tabs redrew each other forever after the second tap on Props.
+    const third = await page.context().newPage();
+    await third.goto(task.url);
+    await page.evaluate(() => { V.tab = 'props'; render(); });
+    for (const sel of ['[data-v3filter="short"]', '[data-v3filter="gap"]',
+                       '[data-v3mkt="rec"]', '[data-v3filter="all"]']) {
+      try { await page.click(sel, { timeout: 5000 }); }
+      catch (e) {
+        await third.close();
+        return fail("Props filters hang with a second tab open", sel + ": " + String(e).slice(0, 120));
+      }
+    }
+    await third.close();
+    ctx.check("filters respond with a second tab open", "passed");
+
     // Copy, clear, restore.
     const restored = await page.evaluate(() => {
       const text = JSON.stringify({picksix: 1, saved: V.saved});
