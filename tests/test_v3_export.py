@@ -1647,6 +1647,10 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "verdict",
                  "and over and under are different bets",
                  "and one market is fewer than four",
+                 "the slice carries its own clustered interval",
+                 "and names the games behind it, not just the bets",
+                 "and the interval counts the legs of the rows that "
+                 "survived",
                  "the three game markets are rows of one table",
                  "and the old sub-sections are gone with their three "
                  "verdicts",
@@ -2826,6 +2830,82 @@ def test_the_game_money_note_is_last_and_spans_the_panel():
            / "src/export/v3css.py").read_text()
     assert ".detail__w{grid-column:1/-1}" in css, \
         "the full-width fact no longer spans the panel"
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_the_pages_clustered_interval_is_the_one_python_computes(
+        payload_v3, v3_js, tmp_path):
+    """TWO IMPLEMENTATIONS OF ONE INTERVAL, HELD TO THE SAME NUMBER.
+
+    The per-player block gained market, side and bet-floor filters, which let
+    a reader slice to a hundred and fifty legs — and the table showed a bare
+    per-$100 with nothing saying what it was worth. Measured 2026-10-08: the
+    whole book's clustered standard error is 2.24 points per $100, so a tenth
+    of the book can only see a twenty-point effect. So the slice now carries
+    its own interval, clustered by game for the reason
+    `season_scorecard._cluster_ci` gives: every receiver in one game shares a
+    script, and taken as independent 2,145 legs claim the precision of 2,145
+    coin flips and have roughly that of 64 games.
+
+    That is a second implementation of an estimator Python already owns, and
+    the two must not drift. CR0 is simple enough to write twice and simple
+    enough to check, so this computes it both ways on the same legs.
+    """
+    import json
+    import subprocess
+
+    from src.evaluation import season_scorecard as SC
+
+    S = payload_v3["scorecard"]
+    B = S["bets"]
+    lo, hi = (int(x) for x in str(S["default"]).split("-"))
+    # The default cut: `weeks`, our model's own side, return in slot 6.
+    by_game: dict[str, list[float]] = {}
+    for wk, rows in B["weeks"].items():
+        if not lo <= int(wk) <= hi:
+            continue
+        for row in rows:
+            # The fixture's rows predate the team slot, which the live
+            # payload carries and the page reads defensively.
+            gid, legs = row[1], row[2]
+            for leg in legs:
+                if leg[6] is None:
+                    continue
+                by_game.setdefault(gid, []).append(float(leg[6]))
+    assert by_game, "the fixture carries no legs in its default range"
+    assert len(by_game) > 1, "one game cannot have a clustered interval"
+    mean, plo, phi = SC._cluster_ci(by_game)
+
+    probe = tmp_path / "probe.js"
+    probe.write_text(
+        "const { loadPage } = require("
+        f"{str(REPO / 'tests' / 'js' / 'domstub.js')!r});\n"
+        "const x = loadPage(process.argv[2], process.argv[3],\n"
+        "  ['V','render','DATA','v3RecCI','v3RecPgRows','v3RecRange',\n"
+        "   'v3RecSpecFiltered']);\n"
+        "x.render(); x.V.tab = 'record';\n"
+        "x.V.recView = 'all'; x.V.recSide = 'model'; x.V.recWho = 'all';\n"
+        "x.V.recMkt = 'all'; x.V.recTake = 'both'; x.V.recMin = 1;\n"
+        "const S = x.DATA.scorecard, r = x.v3RecRange(S);\n"
+        "const pg = x.v3RecPgRows(S, r[0], r[1], x.v3RecSpecFiltered());\n"
+        "console.log(JSON.stringify(x.v3RecCI(pg)));\n")
+    pl = tmp_path / "payload.json"
+    pl.write_text(json.dumps(payload_v3))
+    out = subprocess.run(["node", str(probe), str(pl), str(v3_js)],
+                         capture_output=True, text=True, cwd=str(REPO))
+    assert out.returncode == 0, (out.stdout or "") + (out.stderr or "")
+    js = json.loads(out.stdout.strip().splitlines()[-1])
+
+    assert js["n"] == sum(len(v) for v in by_game.values()), (
+        f"the page counts {js['n']} legs, Python "
+        f"{sum(len(v) for v in by_game.values())}")
+    assert js["g"] == len(by_game), (
+        f"the page clusters over {js['g']} games, Python {len(by_game)}")
+    for name, a, b in (("mean", js["mean"], mean), ("lo", js["lo"], plo),
+                       ("hi", js["hi"], phi)):
+        assert abs(a - b) < 1e-9, (
+            f"the page's {name} is {a!r} and Python's is {b!r} — two "
+            "implementations of CR0 have drifted")
 
 
 def test_the_record_tables_are_not_capped_below_the_width_they_have():

@@ -6281,6 +6281,52 @@ function v3RecLegControls(S) {
     + '</div>';
 }
 
+//: THE FILTERED SLICE'S OWN INTERVAL, CLUSTERED BY GAME.
+//:
+//: `season_scorecard._cluster_ci` has done this in Python for the pooled
+//: rows since they shipped, and its reason applies twice as hard here: every
+//: receiver in one game shares a script, so if it turns into a shootout they
+//: all go over together. Taken as independent, 2,145 legs claim the
+//: precision of 2,145 coin flips and have roughly that of 64 games.
+//:
+//: ADDED BECAUSE THE FILTERS THIS BLOCK GAINED MADE IT NECESSARY. Market,
+//: side taken and a bet floor let a reader slice to 149 legs, and the table
+//: showed a bare per-$100 with nothing saying what it was worth. Measured
+//: 2026-10-08: the whole book's clustered standard error is 2.24 points per
+//: $100, so it can see a 6.3-point effect — and a tenth of the book can only
+//: see a 20-point one. A number with no range beside it at that width is the
+//: reading this page exists to prevent.
+//:
+//: CR0, the same estimator and the same arithmetic as the Python, so the two
+//: cannot disagree about the same legs —
+//: `test_the_pages_clustered_interval_is_the_one_python_computes` holds that.
+function v3RecCI(pg, ri) {
+  const by = {};
+  let n = 0, tot = 0;
+  (pg || []).forEach(r => {
+    (r.legs || []).forEach(l => {
+      const v = l[has(ri) ? ri : r.ri];
+      if (!has(v)) return;
+      (by[r.g] || (by[r.g] = [])).push(v);
+      n++; tot += v;
+    });
+  });
+  if (!n) return null;
+  const mean = tot / n;
+  const keys = Object.keys(by);
+  if (keys.length < 2) return {mean: mean, lo: mean, hi: mean, n: n, g: 1};
+  let ss = 0;
+  keys.forEach(k => {
+    const v = by[k];
+    const d = v.reduce((t, x) => t + x, 0) - v.length * mean;
+    ss += d * d;
+  });
+  const g = keys.length;
+  const se = Math.sqrt(ss * (g / Math.max(g - 1, 1))) / n;
+  return {mean: mean, lo: mean - 1.96 * se, hi: mean + 1.96 * se,
+          n: n, g: g};
+}
+
 //: The most concentrated player-game in the cut, as a clause.
 //:
 //: This is what the removed "By game" view was for — the ranking of
@@ -6305,8 +6351,20 @@ function v3RecByPlayer(p, S, a, b) {
   const min = v3RecMin();
   const all = v3RecPlayerRows(S, a, b, sp);
   const rows = all.filter(r => r.bets >= min);
-  const pg = v3RecPgRows(S, a, b, sp);
+  const pgAll = v3RecPgRows(S, a, b, sp);
   const pgCut = v3RecPgRows(S, a, b);
+  // THE LEGS BEHIND THE ROWS THAT SURVIVED THE FLOOR, not every leg the cut
+  // holds. `recMin` drops player ROWS, so leaving the legs alone put two
+  // populations in one sentence: "243 bets across 41 players" followed by an
+  // interval computed over all 1,062. The drawer reads the same list, which
+  // is right — only a surviving row can be opened.
+  const teamView = who === 'team';
+  const keep = {};
+  (teamView ? v3RecTeamRows(S, a, b, sp).filter(r => r.bets >= min) : rows)
+    .forEach(r => { keep[r.name] = 1; });
+  const pg = (min > 1 || teamView)
+    ? pgAll.filter(r => keep[teamView ? r.team : r.name])
+    : pgAll;
   const multi = pgCut.filter(r => r.bets > 1);
   const same = multi.filter(r => r.same).length;
   const seg = (attr, opts, cur) => '<div class="seg seg--' + opts.length
@@ -6322,10 +6380,21 @@ function v3RecByPlayer(p, S, a, b) {
   }
   if ((V.recTake || 'both') !== 'both') narrowed.push(V.recTake + 's only');
   if (min > 1) narrowed.push(min + ' bets or more');
+  // AND WHAT THE SLICE IS WORTH, WITH ITS RANGE. The count alone invited a
+  // reader to take "+$12.07 per $100" off a 149-leg slice as a result.
+  const slice = v3RecCI(pg);
   const count = '<p class="help" style="margin-top:8px">'
     + v3RecN(rows.reduce((t, r) => t + r.bets, 0)) + ' bets across '
     + rows.length + (rows.length === 1 ? ' player' : ' players')
-    + (narrowed.length ? ' \u2014 ' + narrowed.join(', ') : '') + '.</p>';
+    + (narrowed.length ? ' \u2014 ' + narrowed.join(', ') : '') + '.'
+    + (slice && slice.g > 1
+       ? ' <b style="color:var(--ink)">' + v3Money(slice.mean)
+         + ' per $100</b>, somewhere between ' + v3Money(slice.lo) + ' and '
+         + v3Money(slice.hi) + ' once players in the same game are counted '
+         + 'as moving together \u2014 ' + slice.g + ' games behind '
+         + v3RecN(slice.n) + ' bets.'
+       : '')
+    + '</p>';
   let body = '', note = '';
   if (!rows.length) {
     body = '<div class="empty">No bets left after those filters.</div>';
@@ -6349,6 +6418,7 @@ function v3RecByPlayer(p, S, a, b) {
     body = v3RecPlayerTable(
       v3RecTeamRows(S, a, b, sp).filter(r => r.bets >= min), S, pg,
       (g, r) => g.team === r.name, 'Team');
+
     note = 'Every bet on a player from that club. A club\u2019s bets share a '
       + 'game script as well as a player, so these move together even '
       + 'harder than one man\u2019s do.';

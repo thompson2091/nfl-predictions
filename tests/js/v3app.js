@@ -3186,6 +3186,31 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
        && /bets across \d+ players? — catches/.test(one),
        one.slice(one.indexOf(' bets across ') - 20,
                  one.indexOf(' bets across ') + 80));
+    // AND WHAT THE SLICE IS WORTH, WITH ITS RANGE. These filters let a
+    // reader cut to a hundred and fifty legs, where the honest interval is
+    // twenty points wide — a bare per-$100 at that width is the reading
+    // this page exists to prevent. Clustered by game, because every
+    // receiver in one game shares a script.
+    ok('the slice carries its own clustered interval',
+       /somewhere between .{1,12} and .{1,12} once players in the same game/
+         .test(wide), wide.slice(wide.indexOf(' bets across ') - 10,
+                                 wide.indexOf(' bets across ') + 260));
+    ok('and names the games behind it, not just the bets',
+       /\d+ games behind [\d,]+ bets/.test(wide));
+    {
+      // THE FLOOR DROPS PLAYER ROWS, SO IT HAS TO DROP THEIR LEGS TOO.
+      // Leaving the legs alone put two populations in one sentence: "243
+      // bets across 41 players" and an interval over all 1,062.
+      const grab = str => {
+        const head = /([\d,]+) bets across \d+ players?/.exec(str);
+        const tail = /(\d+) games behind ([\d,]+) bets/.exec(str);
+        return (head && tail) ? [head[1], tail[2]] : null;
+      };
+      const g1 = grab(wide), g2 = grab(deep);
+      ok('and the interval counts the legs of the rows that survived',
+         !g1 || !g2 || (g1[0] === g1[1] && g2[0] === g2[1]),
+         JSON.stringify([g1, g2]));
+    }
     V.recWho = 'top'; V.scFrom = null; V.scTo = null; render();
   }
   ok('and it reads the page’s own two controls, not a third vocabulary',

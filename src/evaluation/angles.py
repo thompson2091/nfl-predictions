@@ -1270,9 +1270,36 @@ def baseline(schedules: pl.DataFrame) -> dict:
 
     `pre_bye` is the one worth watching: +5.69pp over 2015-22 and +5.73pp
     over 2023-26, which is stability rather than reversion. It needs 608
-    team-games for 80% power at that effect size, has 347, and gains 29 a
+    team-games for 80% power at that effect size, has 347, and gains 28.9 a
     season — nine more seasons. It is already graded forward from the day it
     was added, which is the whole mechanism for this.
+
+    **WHEN THE FORWARD RECORD CAN SAY ANYTHING, so that nobody asks before
+    it can.** `since` starts 2026-09-30 and is the only evidence here that
+    was not selected on. It is also the slow clock: all-time reaches 608 in
+    nine seasons, the forward record in twenty-one.
+
+    | check at | forward n | 95% half-width | smallest effect it can see |
+    |---|---|---|---|
+    | end 2026 | 10 | ±31.0pp | 44.3pp |
+    | end 2027 | 38 | ±15.9pp | 22.7pp |
+    | end 2029 | 96 | ±10.0pp | 14.3pp |
+    | end 2035 | 270 | ±6.0pp | 8.5pp |
+    | end 2047 | 617 | ±3.9pp | 5.6pp |
+
+    The effect being tested is +5.68pp, so a check before about 2035 cannot
+    move the belief in either direction — and the danger in looking early is
+    not the wasted look, it is that a dated check manufactures a verdict. At
+    38 games the interval spans 40% to 72%: 21-17 reads as "holding" and
+    17-21 reads as "reverted", and both are noise.
+
+    So there is no reminder and no date. The tripwire is
+    `test_the_rows_that_separate_from_their_own_baseline_are_the_chance_
+    budget`, which fails the moment an angle survives the correction, and
+    `test_nothing_clears_break_even_at_the_lower_bound` beside it. Its one
+    honest limitation: both read the ALL-TIME record, which for a mined
+    angle contains the stretch that got it noticed, so a tripwire firing is
+    a reason to come and look rather than a result on its own.
     """
     g = (team_weeks(schedules)
          .filter(pl.col("cover_by").is_not_null() & (pl.col("cover_by") != 0))
