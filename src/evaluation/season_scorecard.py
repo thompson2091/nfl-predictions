@@ -230,6 +230,33 @@ def _mae(rows, key, actual_key, sign=1):
     return (sum(vals) / len(vals)) if vals else None
 
 
+def game_list(rows: list[dict]) -> list[list]:
+    """Every graded game as one compact row, for the Record page to slice.
+
+    `[week, game_id, home_score, away_score, book_win, model_win, blend_win,
+    book_spread, model_spread, blend_spread, book_total, model_total,
+    blend_total]`, every probability the home side's and every spread
+    home-signed, exactly as `game_rows` holds them. The page works out picks,
+    gaps and results from these with the same rules `games_block` uses — a
+    win pick is the side over 50%, a spread or total pick is the side the
+    number sits on against the line — so a slice of All is the table above.
+    """
+    def r4(v):
+        return None if v is None else round(float(v), 4)
+
+    out = []
+    for r in sorted(rows, key=lambda x: (x["week"], x["game_id"])):
+        m, t = r["margin"], r["total_actual"]
+        out.append([r["week"], r["game_id"], (t + m) / 2, (t - m) / 2,
+                    r4(r.get("book_win")), r4(r.get("model_win")),
+                    r4(r.get("blend_win")),
+                    r4(r.get("book_spread")), r4(r.get("model_spread")),
+                    r4(r.get("blend_spread")),
+                    r4(r.get("book_total")), r4(r.get("model_total")),
+                    r4(r.get("blend_total"))])
+    return out
+
+
 def games_block(rows: list[dict]) -> dict | None:
     if not rows:
         return None
@@ -879,6 +906,11 @@ def build(season: int) -> dict:
         # Per week, not per range — see `bets_block`. The page adds up the
         # weeks the picker is showing.
         "bets": bets_block(cache, played),
+        # ONE ROW PER GRADED GAME, for the page to slice: whose pick, which
+        # games, how far from the book, hit or miss. Everything is the frozen
+        # pre-kickoff number and the final; the page only counts. See
+        # `game_list`.
+        "games": game_list(grows),
         # THE PICKS WRITTEN DOWN BEFORE KICKOFF, graded. Everything above is
         # regraded with today's model; this is not, and the page never pools
         # the two. See `forward_record`.

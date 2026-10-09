@@ -889,6 +889,8 @@ button{cursor:pointer}
 .rec--6{grid-template-columns:minmax(84px,1fr) repeat(5,minmax(0,auto))}
 /* Every bet, one row each. Prose in the game, market and bet columns. */
 .rec--8{grid-template-columns:minmax(96px,1fr) repeat(7,minmax(0,auto))}
+/* Every game: the game, then seven short columns. */
+.rec--games8{grid-template-columns:minmax(84px,1fr) repeat(7,minmax(0,auto))}
 .rec__h{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
   color:var(--mut);font-weight:700;white-space:nowrap;
   padding-bottom:4px;border-bottom:1px solid var(--line);margin-bottom:2px}
@@ -1589,6 +1591,12 @@ button{cursor:pointer}
      table's own scroller, which the layout rules allow for a table,
      rather than shrunk until the headings print over each other. */
   .rec--games{grid-template-columns:minmax(92px,auto) repeat(5,auto)}
+  /* Six of the eight on a phone: the week is in the range picker and the
+     final is in the result, and a pick wrapped onto two lines ran into the
+     column beside it. */
+  .rec--games8{grid-template-columns:minmax(0,1fr) repeat(5,auto)}
+  .rec--games8>span:nth-child(8n+2),.rec--games8>span:nth-child(8n+7){display:none}
+  .rec--games8 .p{white-space:nowrap}
 }
 
 /* ── THE RECORD'S DESKTOP TABLES, LAST IN THE FILE ON PURPOSE ────────────
@@ -1613,6 +1621,7 @@ button{cursor:pointer}
   .rec--5{grid-template-columns:minmax(120px,max-content) repeat(4,minmax(0,1fr))}
   .rec--6{grid-template-columns:minmax(132px,max-content) repeat(5,minmax(0,1fr))}
   .rec--8{grid-template-columns:minmax(140px,max-content) 48px repeat(3,minmax(0,1fr)) repeat(3,minmax(0,.7fr))}
+  .rec--games8{grid-template-columns:minmax(110px,max-content) repeat(7,minmax(0,1fr))}
   .recg{grid-template-columns:minmax(180px,max-content) repeat(4,minmax(0,1fr))}
   /* The drawer's leg lines follow the table they open under. */
   .pgd__l{grid-template-columns:minmax(160px,max-content) repeat(4,minmax(0,1fr))}

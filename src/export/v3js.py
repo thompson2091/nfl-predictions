@@ -5899,7 +5899,188 @@ function v3RecBarRow(label, pct, book, be) {
     + '</div>';
 }
 
-function v3RecGames(g, S) {
+// ── EVERY GAME, SLICED THE WAY THE PROPS ARE ───────────────────────────
+//
+// Asked for 2026-10-09: "dissect the games and totals the same way I'm
+// able to with props — like looking into all upsets > 6pp". One market at a
+// time, because the questions differ by market: an upset only means
+// something on the winning team, and a gap is percentage points of win
+// chance there and points from the line on a spread or a total.
+//
+// `S.games` is one row per graded game from `season_scorecard.game_list`,
+// the frozen pre-kickoff numbers and the final. The picks are worked out
+// here by the rules `games_block` uses, so a slice of All matches the table
+// above — `tests/js/v3app.js` holds that.
+const V3RG_MKTS = [['ml', 'Winning team'], ['sp', 'Point spread'],
+                   ['to', 'Over / under']];
+const V3RG_GAPS = {ml: [[0, 'Any'], [3, '3pp+'], [6, '6pp+'], [10, '10pp+']],
+                   sp: [[0, 'Any'], [1, '1 pt+'], [2, '2 pts+'], [3, '3 pts+']],
+                   to: [[0, 'Any'], [1, '1 pt+'], [2, '2 pts+'], [3, '3 pts+']]};
+
+//: One game, graded for the market and whose pick is chosen. Null when that
+//: side had no number for it (the adjusted win chance starts in week 5).
+function v3RgGrade(g, mkt, who) {
+  const [w, gid, hs, as, bw, mw, blw, bs, ms, bls, bt, mt, blt] = g;
+  const t = String(gid).split('_');
+  const away = t[t.length - 2], home = t[t.length - 1];
+  const base = {w: w, gid: gid, away: away, home: home, hs: hs, as: as};
+  if (mkt === 'ml') {
+    const p = who === 'model' ? mw : who === 'adj' ? blw : bw;
+    if (!has(p) || !has(bw) || p === 0.5 || hs === as) return null;
+    const pick = p > 0.5 ? 'h' : 'a';
+    const fav = bw > 0.5 ? 'h' : 'a';
+    // On the book's own row, agreeing means OUR MODEL agreed with it, and
+    // its gap is ours from it: the book cannot disagree with itself.
+    const other = who === 'book' ? mw : p;
+    const otherPick = has(other) ? (other > 0.5 ? 'h' : 'a') : null;
+    return Object.assign(base, {
+      pick: pick, team: pick === 'h' ? home : away,
+      chance: pick === 'h' ? p : 1 - p,
+      book: pick === 'h' ? bw : 1 - bw,
+      gap: has(other) ? Math.abs(other - bw) * 100 : null,
+      upset: pick !== fav, agree: otherPick === null ? null : otherPick === fav,
+      res: (hs > as) === (pick === 'h') ? 'hit' : 'miss', ret: null});
+  }
+  // A spread or a total: the side the number sits on against the line.
+  const sp = mkt === 'sp';
+  const line = sp ? bs : bt;
+  const n = sp ? (who === 'adj' ? bls : ms) : (who === 'adj' ? blt : mt);
+  const other = sp ? (who === 'adj' ? ms : bls) : (who === 'adj' ? mt : blt);
+  if (who === 'book' || !has(n) || !has(line)) return null;
+  const sign = sp ? -1 : 1;
+  const result = sp ? -(hs - as) : hs + as;
+  const edge = sign * (n - line), oedge = has(other) ? sign * (other - line) : null;
+  const rd = sign * (result - line);
+  if (Math.abs(edge) < 1e-9) return null;
+  const up = edge > 0;
+  const res = Math.abs(rd) < 1e-9 ? 'push' : ((rd > 0) === up ? 'hit' : 'miss');
+  return Object.assign(base, {
+    pick: sp ? (up ? home : away) + ' ' + v3Num(up ? line : -line)
+             : (up ? 'Over ' : 'Under ') + line,
+    ours: sp ? (up ? n : -n) : n, line: sp ? (up ? line : -line) : line,
+    gap: Math.abs(n - line), final: sp ? null : hs + as,
+    agree: oedge === null || Math.abs(oedge) < 1e-9 ? null : (oedge > 0) === up,
+    res: res, ret: res === 'hit' ? 100 / 110 : res === 'miss' ? -1 : 0});
+}
+
+//: A signed number of points the way a line is written: -3, +2.5.
+function v3Num(x) {
+  return !has(x) ? '—' : (x > 0 ? '+' : x < 0 ? '−' : '')
+    + String(Math.abs(Math.round(x * 10) / 10));
+}
+
+function v3RgState() {
+  const mkt = ['ml', 'sp', 'to'].indexOf(V.rgMkt) >= 0 ? V.rgMkt : 'ml';
+  let who = ['model', 'adj', 'book'].indexOf(V.rgWho) >= 0 ? V.rgWho : 'model';
+  if (mkt !== 'ml' && who === 'book') who = 'model';
+  let set = ['all', 'upset', 'agree', 'disagree'].indexOf(V.rgSet) >= 0
+    ? V.rgSet : 'all';
+  if (mkt !== 'ml' && set === 'upset') set = 'all';
+  const gaps = V3RG_GAPS[mkt].map(x => x[0]);
+  const gap = gaps.indexOf(Number(V.rgGap)) >= 0 ? Number(V.rgGap) : 0;
+  const res = ['all', 'hit', 'miss'].indexOf(V.rgRes) >= 0 ? V.rgRes : 'all';
+  return {mkt: mkt, who: who, set: set, gap: gap, res: res};
+}
+
+//: The games in the chosen weeks that survive every filter but the result,
+//: and then the result. Two lists, because the summary's rate is over the
+//: first: a hit rate of the hits is 100%.
+function v3RgRows(S, a, b, st) {
+  const all = (S.games || []).filter(g => g[0] >= a && g[0] <= b)
+    .map(g => v3RgGrade(g, st.mkt, st.who)).filter(Boolean)
+    .filter(r => st.set === 'all' ? true
+      : st.set === 'upset' ? r.upset
+      : st.set === 'agree' ? r.agree === true : r.agree === false)
+    .filter(r => !st.gap || (has(r.gap) && r.gap >= st.gap));
+  const shown = st.res === 'all' ? all : all.filter(r => r.res === st.res);
+  return {all: all, shown: shown};
+}
+
+function v3RecGameDissect(S, a, b) {
+  if (!(S.games || []).length) return '';
+  const st = v3RgState();
+  const ml = st.mkt === 'ml';
+  const who = ml ? [['model', 'Our model'], ['adj', 'Adjusted'],
+                    ['book', 'Sportsbook']]
+                 : [['model', 'Our model'], ['adj', 'Adjusted']];
+  const set = ml
+    ? [['all', 'All'], ['upset', 'Upsets'], ['agree', 'Agree with book'],
+       ['disagree', 'Disagree']]
+    : [['all', 'All'], ['agree', 'Model and adjusted agree'],
+       ['disagree', 'Disagree']];
+  const R = v3RgRows(S, a, b, st);
+  const w = R.all.filter(r => r.res === 'hit').length;
+  const l = R.all.filter(r => r.res === 'miss').length;
+  const pu = R.all.filter(r => r.res === 'push').length;
+  const rate = w + l ? w / (w + l) : null;
+  const money = !ml && R.all.length
+    ? R.all.reduce((t, r) => t + r.ret, 0) / R.all.length : null;
+  // The book's own rate on exactly these games, so a rate on a slice has
+  // something to be read against.
+  const bookRate = ml && R.all.length && st.who !== 'book'
+    // The favorite won when our pick WAS the favorite and hit, or was the
+    // underdog and missed.
+    ? R.all.filter(r => (r.book > 0.5) === (r.res === 'hit')).length
+      / R.all.length : null;
+  const thin = R.all.length && R.all.length < 30;
+  const none = st.set === 'upset' && st.who === 'book'
+    ? 'The sportsbook’s pick is its favorite, so it never picks an upset.'
+    : st.who === 'adj' && ml && !R.all.length
+    ? 'The adjusted win chance was first recorded in week 5.'
+    : 'No game in these weeks fits those filters.';
+  const summary = R.all.length
+    ? '<p class="recl__h"><b>' + R.all.length + (R.all.length === 1
+        ? ' game' : ' games') + '</b> · ' + w + '–' + l
+      + (pu ? '–' + pu : '') + ', ' + v3Pct(rate, 1) + ' correct'
+      + (has(money) ? ' · <b class="' + (money > 0 ? 'up' : money < 0
+          ? 'dn' : '') + '">' + v3Money(money) + ' per $100</b> at −110'
+         : '')
+      + (has(bookRate) ? ' · the book’s favorite won '
+         + v3Pct(bookRate, 1) + ' of these' : '')
+      + (thin ? ' <span class="recthin">small sample</span>' : '') + '</p>'
+    : '<p class="help" style="margin-top:12px">' + esc(none) + '</p>';
+  const head = ml
+    ? ['Game', 'Week', 'Pick', 'Our chance', 'Book', 'Gap', 'Final', 'Result']
+    : ['Game', 'Week', 'Pick', 'Ours', 'Line', 'Gap', 'Final', 'Result'];
+  const shown = V.rgShown || 40;
+  const rows = R.shown.slice(0, shown).map(r => [
+    esc(r.away + ' @ ' + r.home), String(r.w), esc(r.team || r.pick),
+    ml ? v3Pct(r.chance, 1) : esc(v3Num(r.ours)),
+    ml ? v3Pct(r.book, 1) : esc(v3Num(r.line)),
+    has(r.gap) ? (ml ? r.gap.toFixed(1) + 'pp' : r.gap.toFixed(1)) : '—',
+    esc(ml || st.mkt === 'sp' ? r.as + '–' + r.hs : String(r.final)),
+    '<b class="' + (r.res === 'hit' ? 'up' : r.res === 'miss' ? 'dn' : '')
+      + '">' + (r.res === 'hit' ? 'Hit' : r.res === 'miss' ? 'Miss' : 'Push')
+      + '</b>']);
+  return '<div class="recl" id="sbg">'
+    + '<h3 class="recsec__t">Every game</h3>'
+    + '<div class="recf">'
+    + v3RecSeg('Market', 'v3rgmkt', V3RG_MKTS, st.mkt)
+    + '<div class="reccx2">'
+    + v3RecSeg('Whose pick', 'v3rgwho', who, st.who)
+    + v3RecSeg('Gap', 'v3rggap', V3RG_GAPS[st.mkt], st.gap)
+    + '</div>'
+    + v3RecSeg('Which games', 'v3rgset', set, st.set)
+    + v3RecSeg('Result', 'v3rgres', [['all', 'All'], ['hit', 'Hit'],
+                                     ['miss', 'Missed']], st.res)
+    + '<p class="help recf__d">' + (ml
+        ? 'Gap is how far the pick’s win chance sat from the book’s, '
+          + 'in percentage points. An upset is a pick of the book’s '
+          + 'underdog.'
+        : 'Gap is how far the number sat from the line, in points. Agree '
+          + 'means our model and the adjusted one took the same side.')
+    + '</p></div>'
+    + summary
+    + (rows.length ? v3RecTable(head, rows, {cls: 'rec--games8',
+                                             prose: [2]}) : '')
+    + (R.shown.length > shown
+       ? '<button class="more" data-v3rgmore="' + (shown + 60) + '">Show '
+         + Math.min(60, R.shown.length - shown) + ' more of '
+         + R.shown.length + '</button>' : '')
+    + '</div>';
+}
+
+function v3RecGames(g, S, span) {
   if (!g || !g.n) {
     // NOT A BLANK SECTION. A range with no frozen projection has a reason,
     // and the reason is the interesting part.
@@ -6025,6 +6206,7 @@ function v3RecGames(g, S) {
     // holes in it.
     + '<p class="help" style="margin-top:10px">' + g.n + ' games is far '
     + 'too few to call any of this.</p>'
+    + (span ? v3RecGameDissect(S, span[0], span[1]) : '')
     + v3Fold('The working', working)
     + '</div>';
 }
@@ -6762,7 +6944,14 @@ function v3RecForward(F) {
          + 'break-even</span>' : ''), v3RecN(m.bets), pct(m.hit), pct(m.be),
       v3RecCash(m.roi), v3RecRangeCell(ci(m))]));
   });
-  const since = 'From week ' + F.weeks[0];
+  const rec = F.recovered || [];
+  const span = w => w.length > 1 ? 'weeks ' + w[0] + '\u2013' + w[w.length - 1]
+                                 : 'week ' + w[0];
+  const since = rec.length
+    ? 'For ' + span(rec) + ' these are the boards the site was showing before '
+      + 'each kickoff, recovered from the pages deployed then; from week '
+      + (rec[rec.length - 1] + 1) + ' they are recorded live. Either way'
+    : 'From week ' + F.weeks[0];
   const wait = F.pending
     ? ' ' + v3RecN(F.pending) + ' more ' + (F.pending === 1 ? 'is' : 'are')
       + ' waiting on ' + (F.pending === 1 ? 'its game' : 'their games') + '.'
@@ -6770,9 +6959,9 @@ function v3RecForward(F) {
   return '<div class="recfw">'
     + '<h3 class="recsec__t">Recorded before kickoff</h3>'
     + '<p class="help" style="margin-top:3px">' + since + ', every pick is '
-    + 'written down before its game starts, at the price on offer then, and '
-    + 'never regraded. This is the record that says whether the model is '
-    + 'getting better.' + (rows.length ? wait : '') + '</p>'
+    + 'what was on the board before its game started, at the price on offer '
+    + 'then, and is never regraded. This is the record that says whether the '
+    + 'model is getting better.' + (rows.length ? wait : '') + '</p>'
     + (rows.length
        ? v3RecTable(['Rule', 'Bets', 'Correct', 'Needed to profit',
                      'Per $100', 'Likely range'], rows, {cls: 'rec--mkt'})
@@ -7011,8 +7200,9 @@ function v3RecordPage() {
     + ', current model against archived prices: a test of the model on weeks '
     + 'it did not serve, not a record of bets anyone could have placed.'
     + ((S.forward && (S.forward.weeks || []).length)
-       ? ' From week ' + S.forward.weeks[0] + ' they are also <b style="color:'
-         + 'var(--ink)">recorded before kickoff</b>, at the top of Player bets.'
+       ? ' From week ' + S.forward.weeks[0] + ' they are also graded <b style="'
+         + 'color:var(--ink)">as they stood before kickoff</b>, at the top of '
+         + 'Player bets.'
        : '')
     + '</p>'
     // WHY A WEEK HAS NO GAME RECORD, folded. It is a paragraph about two
@@ -7026,7 +7216,7 @@ function v3RecordPage() {
            + ' have no game record: ' + esc(S.missing[0].why) + '.</p>')
        : '')
     + '</div>'
-    + v3RecGames(g, S) + v3RecPlayers(p, S, r)
+    + v3RecGames(g, S, r) + v3RecPlayers(p, S, r)
     + '</div>';
 }
 
@@ -7720,6 +7910,8 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3recwho', 'v3recseries', 'v3recmore',
                   'v3recqx', 'v3recview', 'v3recside', 'v3recopen',
                   'v3recmkt', 'v3rectake', 'v3recmin', 'v3recres',
+                  'v3rgmkt', 'v3rgwho', 'v3rgset', 'v3rggap', 'v3rgres',
+                  'v3rgmore',
                   'v3recsort'];
 
 document.addEventListener('click', ev => {
@@ -7979,6 +8171,14 @@ function v3Do(kind, v) {
     case 'v3recmkt': V.recMkt = v; V.recShown = 40; V.recOpen = null; break;
     case 'v3rectake': V.recTake = v; V.recShown = 40; V.recOpen = null; break;
     case 'v3recres': V.recRes = v; V.recShown = 40; V.recOpen = null; break;
+    // THE GAME FILTERS. A new market resets the gap, because its units
+    // change: percentage points of win chance, or points from a line.
+    case 'v3rgmkt': V.rgMkt = v; V.rgGap = 0; V.rgShown = 40; break;
+    case 'v3rgwho': V.rgWho = v; V.rgShown = 40; break;
+    case 'v3rgset': V.rgSet = v; V.rgShown = 40; break;
+    case 'v3rggap': V.rgGap = Number(v) || 0; V.rgShown = 40; break;
+    case 'v3rgres': V.rgRes = v; V.rgShown = 40; break;
+    case 'v3rgmore': V.rgShown = Number(v); break;
     case 'v3recmin':
       V.recMin = Number(v) || 1; V.recShown = 40; V.recOpen = null; break;
     case 'v3recview': V.recView = v; V.recShown = 40; V.recOpen = null;

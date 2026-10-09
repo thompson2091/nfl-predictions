@@ -4620,6 +4620,50 @@ if (cards.length) {
   V.open = null; V.pastN = null;
 }
 
+// ── EVERY GAME, SLICED ──────────────────────────────────────────────────
+//
+// "Dissect the games the way I can the props." A slice of All has to be the
+// table above it, or the two halves of the section disagree about the same
+// games.
+{
+  const S = DATA.scorecard;
+  const g = S.ranges['3-4'].games;
+  const cnt = (mkt, who) => {
+    const x = v3RgRows(S, 3, 4, {mkt: mkt, who: who, set: 'all', gap: 0,
+                                 res: 'all'}).all;
+    return ['hit', 'miss', 'push'].map(k => x.filter(y => y.res === k).length)
+      .join('-');
+  };
+  ok('every game, all of them, is the winning-team row of the table',
+     cnt('ml', 'model') === g.moneyline.ours.w + '-' + g.moneyline.ours.l + '-0'
+     && cnt('ml', 'book') === g.moneyline.book.w + '-' + g.moneyline.book.l + '-0',
+     cnt('ml', 'model') + ' / ' + cnt('ml', 'book'));
+  ok('and the spread and total rows, ours and adjusted',
+     cnt('sp', 'model') === [g.spread.model.w, g.spread.model.l,
+                             g.spread.model.push].join('-')
+     && cnt('sp', 'adj') === [g.spread.blend.w, g.spread.blend.l,
+                              g.spread.blend.push].join('-')
+     && cnt('to', 'model') === [g.total.model.w, g.total.model.l,
+                                g.total.model.push].join('-'),
+     cnt('sp', 'model') + ' ' + cnt('sp', 'adj') + ' ' + cnt('to', 'model'));
+  const up = v3RgRows(S, 3, 4, {mkt: 'ml', who: 'model', set: 'upset',
+                                gap: 6, res: 'all'}).all;
+  ok('upsets at 6pp or more are underdog picks that far from the book',
+     up.length > 0 && up.every(r => r.book < 0.5 && r.gap >= 6),
+     up.map(r => r.team + ' ' + r.gap).join(', '));
+  V.tab = 'record'; V.rgMkt = 'ml'; V.rgWho = 'book'; V.rgSet = 'upset';
+  const bk = v3RecordPage();
+  ok('and the sportsbook says it never picks an upset rather than 0-0',
+     bk.indexOf('never picks an upset') >= 0, bk.slice(bk.indexOf('id="sbg"'),
+                                                       bk.indexOf('id="sbg"') + 300));
+  V.rgWho = 'model'; V.rgSet = 'all'; V.rgMkt = 'sp';
+  const sp = v3RecordPage();
+  ok('a spread offers no sportsbook pick and no upsets',
+     sp.indexOf('data-v3rgwho="book"') < 0 && sp.indexOf('data-v3rgset="upset"') < 0
+     && sp.indexOf('rec--games8') >= 0, sp.slice(sp.indexOf('id="sbg"'), sp.indexOf('id="sbg"') + 300));
+  V.rgMkt = 'ml';
+}
+
 // ── SAVED PICKS SURVIVE ANOTHER TAB, AND A DEPLOY ───────────────────────
 //
 // `v3Save` runs on every render and used to write this tab's list straight
