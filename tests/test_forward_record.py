@@ -120,25 +120,24 @@ def test_the_forward_record_grades_each_pick_at_its_own_price(monkeypatch):
     """Settled the way a book settles, per game, never pooled with the rebuild."""
     from src.evaluation import forward_record as FR
 
-    picks = pl.DataFrame([
+    base = {"season": 2026, "week": 5, "source": None}
+    picks = [
         # Over 40.5, had 52: a win at +120.
-        {"season": "2026", "week": "5", "market": "rushing_yards",
-         "rule": "model side", "player": "Win Man", "game": "C @ D",
-         "odds": "120", "side": "over", "line": "40.5", "model": "0.6"},
+        dict(base, market="rushing_yards", rule="model side", player="Win Man",
+             game="C @ D", odds=120, side="over", line=40.5, model=0.6),
         # Under 3.5 catches, had 5: a loss.
-        {"season": "2026", "week": "5", "market": "receptions",
-         "rule": "model side", "player": "Lose Man", "game": "C @ D",
-         "odds": "-110", "side": "under", "line": "3.5", "model": "0.4"},
+        dict(base, market="receptions", rule="model side", player="Lose Man",
+             game="C @ D", odds=-110, side="under", line=3.5, model=0.4),
         # No snap, no stat line: void, not a loss.
-        {"season": "2026", "week": "5", "market": "receptions",
-         "rule": "model side", "player": "Scratch Man", "game": "C @ D",
-         "odds": "-110", "side": "over", "line": "2.5", "model": "0.6"},
+        dict(base, market="receptions", rule="model side", player="Scratch Man",
+             game="C @ D", odds=-110, side="over", line=2.5, model=0.6),
         # Monday night, no final yet: pending.
-        {"season": "2026", "week": "5", "market": "rushing_yards",
-         "rule": "prop edge over threshold", "player": "Late Man",
-         "game": "E @ F", "odds": "-110", "side": "over", "line": "60.5",
-         "model": "0.6"},
-    ])
+        dict(base, market="rushing_yards", rule="model side", player="Late Man",
+             game="E @ F", odds=-110, side="over", line=60.5, model=0.6),
+        dict(base, market="rushing_yards", rule="prop edge over threshold",
+             player="Late Man", game="E @ F", odds=-110, side="over",
+             line=60.5, model=0.6),
+    ]
     monkeypatch.setattr(FR, "_actuals", lambda season, week, market: {
         "Win Man": 52.0, "Lose Man": 5.0})
     monkeypatch.setattr("src.evaluation.prop_settlement.participation",
@@ -155,3 +154,20 @@ def test_the_forward_record_grades_each_pick_at_its_own_price(monkeypatch):
     assert rush["hit"] == 1.0 and rush["candidate"] is False, (
         "one game cannot make a market a candidate")
     assert b["rules"][1]["all"] is None, "a pending pick was graded"
+
+
+def test_picks_are_read_off_the_frozen_board_one_line_a_player(monkeypatch):
+    """The line nearest the player's median, then each rule's side on it."""
+    from src.evaluation import forward_record as FR
+    from src.export import prediction_freeze as PF
+
+    board = {"2": {"rushing_yards": {"2026_02_C_D": [
+        {"player_name": "Alt Man", "point": p, "model_only": 0.6,
+         "model_side": "over", "price_over": -110, "price_under": -110,
+         "gap_side": "over" if p == 60.5 else None, "source": "x.html"}
+        for p in (40.5, 60.5, 80.5)]}}}
+    monkeypatch.setattr(PF, "load", lambda season: board)
+    got = FR._picks_from_boards(2026)
+    assert [(g["rule"], g["line"]) for g in got] == [
+        ("model side", 60.5), ("prop edge over threshold", 60.5)]
+    assert got[0]["game"] == "C @ D" and got[0]["source"] == "x.html"

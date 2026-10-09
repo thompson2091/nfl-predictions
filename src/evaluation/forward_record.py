@@ -14,7 +14,9 @@ threshold` (the Gaps rule). Settled the way `prop_settlement` settles: the
 side's own price, a player with no snap is void, a player who played with no
 stat line is graded at zero, a push is no bet.
 
-From week 5 of 2026, the first week the four over/under markets recorded.
+Read off the frozen boards: recorded live from week 5 of 2026, and for weeks
+2-4 recovered from the page deployed before each kickoff
+(`scripts/68_recover_boards.py`). Week 1 had no over/under boards on the site.
 """
 from __future__ import annotations
 
@@ -55,29 +57,69 @@ def _actuals(season: int, week: int, market: str) -> dict:
             if n not in dupes}
 
 
-def graded(season: int, picks: pl.DataFrame | None = None) -> tuple[list, int]:
+def _picks_from_boards(season: int) -> list[dict]:
+    """Both rules' picks, read off the boards frozen before kickoff.
+
+    One line per player-game — the one nearest his median line, ties to the
+    lower, which is `prop_edge.main_lines` — chosen before any side is read.
+    `model side` takes the unblended model's side at that side's price on
+    every priced line; the Gaps rule takes its side where the frozen row
+    cleared the margin.
+    """
+    import statistics
+
+    from src.export import prediction_freeze as PF
+
+    out = []
+    for wk, markets in PF.load(int(season)).items():
+        for market, games in (markets or {}).items():
+            if market not in STAT:
+                continue
+            for gid, rows in games.items():
+                by_player: dict = defaultdict(list)
+                for r in rows:
+                    if r.get("player_name") and r.get("point") is not None:
+                        by_player[r["player_name"]].append(r)
+                for player, lines in by_player.items():
+                    med = statistics.median(float(x["point"]) for x in lines)
+                    r = sorted(lines, key=lambda x: (abs(float(x["point"]) - med),
+                                                     float(x["point"])))[0]
+                    away, home = gid.split("_")[-2:]
+                    base = {"season": season, "week": int(wk), "market": market,
+                            "player": player, "game": f"{away} @ {home}",
+                            "line": r["point"], "model": r.get("model_only"),
+                            "source": r.get("source")}
+                    ms = r.get("model_side")
+                    price = r.get("price_over") if ms == "over" else r.get("price_under")
+                    if ms and price is not None:
+                        out.append(dict(base, rule="model side", side=ms, odds=price))
+                    gs = r.get("gap_side")
+                    gp = r.get("price_over") if gs == "over" else r.get("price_under")
+                    if gs and gp is not None:
+                        out.append(dict(base, rule="prop edge over threshold",
+                                        side=gs, odds=gp,
+                                        edge_pp=r.get("gap_edge_pp")))
+    return out
+
+
+def graded(season: int, picks: list[dict] | None = None) -> tuple[list, int]:
     """Every settled forward pick as a dict, and how many are still pending.
 
-    A pick is pending while its own game has no final — per game, not per
-    week, so a Monday-night pick is not graded on the Sunday.
+    Read off the frozen boards (`prediction_freeze`), which hold each game as
+    it stood at kickoff — recorded live from week 5, recovered from the page
+    deployed before kickoff for weeks 1-4. A pick is pending while its own
+    game has no final, so a Monday-night pick is not graded on the Sunday.
     """
     from src.evaluation.prop_settlement import _norm, participation
-    from src.evaluation.tracked_rules import load, unfinished
+    from src.evaluation.tracked_rules import unfinished
 
-    p = load() if picks is None else picks
-    if p.is_empty():
-        return [], 0
-    want = {r for r, _ in RULES}
-    mk = {m for m, _ in OU_MARKETS}
-    p = p.filter((pl.col("season").cast(pl.Utf8) == str(season))
-                 & pl.col("market").is_in(list(mk))
-                 & pl.col("rule").is_in(list(want)))
-    if p.is_empty():
+    rows_in = _picks_from_boards(season) if picks is None else picks
+    if not rows_in:
         return [], 0
     played = participation(season)
     out, pending = [], 0
     by_wm: dict = defaultdict(list)
-    for r in p.iter_rows(named=True):
+    for r in rows_in:
         by_wm[(int(r["week"]), r["market"])].append(r)
     for (week, market), rows in sorted(by_wm.items()):
         open_ = unfinished(season, week)[1]
@@ -85,7 +127,8 @@ def graded(season: int, picks: pl.DataFrame | None = None) -> tuple[list, int]:
         names = _norm([r["player"] or "" for r in rows])
         for r, n in zip(rows, names):
             if (r.get("game") or "") in open_:
-                pending += 1
+                if r["rule"] == "model side":
+                    pending += 1
                 continue
             try:
                 line, odds = float(r["line"]), float(r["odds"])
@@ -106,8 +149,8 @@ def graded(season: int, picks: pl.DataFrame | None = None) -> tuple[list, int]:
                         "player": r["player"], "game_id": gid, "side": side,
                         "line": line, "odds": odds, "actual": got, "won": won,
                         "ret": _payout(odds) if won else -1.0,
-                        "model": r.get("model"),
-                        "recorded_at": r.get("recorded_at")})
+                        "model": r.get("model"), "edge_pp": r.get("edge_pp"),
+                        "recovered": bool(r.get("source"))})
     return out, pending
 
 
@@ -122,23 +165,19 @@ def _row(rows: list[dict]) -> dict:
             "roi": roi, "lo": lo, "hi": hi, "games": len(by_game)}
 
 
-def block(season: int, picks: pl.DataFrame | None = None) -> dict:
+def block(season: int, picks: list[dict] | None = None) -> dict:
     """The forward record, per rule, per market, and per week.
 
     `candidate` is the weekly loop's test: a market whose 95% range sits
     wholly above zero per $100. It is a flag for a reader, and nothing reads
     it to change a threshold — the model changes only at the season-end refit.
     """
-    rows, pending = graded(season, picks)
-    from src.evaluation.tracked_rules import load
-
-    p = load() if picks is None else picks
-    weeks = []
-    if not p.is_empty():
-        q = p.filter((pl.col("season").cast(pl.Utf8) == str(season))
-                     & pl.col("rule").is_in([r for r, _ in RULES]))
-        weeks = sorted({int(w) for w in q["week"].to_list()})
-    out = {"weeks": weeks, "pending": pending, "rules": []}
+    src = _picks_from_boards(season) if picks is None else picks
+    rows, pending = graded(season, src)
+    weeks = sorted({int(r["week"]) for r in src})
+    recovered = sorted({int(r["week"]) for r in src if r.get("source")})
+    out = {"weeks": weeks, "recovered": recovered, "pending": pending,
+           "rules": []}
     for rule, label in RULES:
         mine = [r for r in rows if r["rule"] == rule]
         markets = []

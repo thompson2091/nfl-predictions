@@ -47,7 +47,7 @@ ROOT = Path(__file__).resolve().parents[2] / "archive" / "predictions"
 #: rest of the project grades on; the rest is what the board showed.
 FIELDS: tuple[str, ...] = (
     "player_name", "team", "probability", "prob_model", "rank",
-    "has_market_price", "odds", "book",
+    "has_market_price", "odds", "book", "source",
 )
 
 #: The four over/under markets, which had no freeze at all until 2026-10-09.
@@ -64,6 +64,9 @@ OU_FIELDS: tuple[str, ...] = (
     "model_only", "ours", "fair_prob", "n_books",
     "price_over", "price_under",
     "model_side", "gap_side", "gap_edge_pp", "gap_threshold_pp",
+    # Set only on a board recovered from an old deploy: which build, so the
+    # recovery can be checked against the file it came from.
+    "source",
 )
 
 
@@ -168,6 +171,38 @@ def record(rows: list[dict], season: int, week: int, market: str,
             wk[gid] = got
             _DIRTY.add(int(season))
             wrote += 1
+    return wrote
+
+
+def recover(rows: list[dict], season: int, week: int, market: str,
+            source: str) -> int:
+    """Keep a board recovered from a build deployed before kickoff.
+
+    `scripts/68_recover_boards.py` is the only caller. It has already checked
+    that `source` was built before each game's kickoff, so this does not ask
+    the clock — but it never replaces a board the freeze already holds,
+    because that one was recorded live. Returns how many games were written.
+    """
+    if not (season and week) or not rows:
+        return 0
+    keep = fields_for(market)
+    by_game: dict = {}
+    for r in rows:
+        gid = r.get("game_id")
+        if gid:
+            row = {f: r.get(f) for f in keep if r.get(f) is not None}
+            row["source"] = source
+            by_game.setdefault(gid, []).append(row)
+    store = load(int(season))
+    have = (store.get(str(int(week))) or {}).get(market) or {}
+    wrote = 0
+    for gid, got in by_game.items():
+        if gid in have:
+            continue
+        store.setdefault(str(int(week)), {}).setdefault(market, {})[gid] = \
+            sorted(got, key=_order)
+        _DIRTY.add(int(season))
+        wrote += 1
     return wrote
 
 
