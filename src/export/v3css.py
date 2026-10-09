@@ -91,9 +91,11 @@ button{cursor:pointer}
   .appbar,.tabbar{max-width:912px;margin-left:auto;margin-right:auto;
     width:100%}
   .h1{font-size:34px;line-height:40px}
-  /* A line of text is readable to about 70 characters whatever the window
-     does. These stay where they are and the layout grows around them. */
-  .lede,.help,.pl__s{max-width:68ch}
+  /* PROSE SPANS THE CARD, asked for directly on 2026-10-09 ("i thought we
+     fixed the text - full width"). The 68ch cap left every paragraph
+     stopping two-thirds of the way across a 1008px card beside tables that
+     now run the full width, which read as broken rather than as typography.
+     Matt's call over the line-length convention. */
 
   /* ONE PLAYER TO A ROW, AND THE PANEL OPENS UNDER HIM.
      Two abreast with a docked drawer worked and read as two different apps:
@@ -128,15 +130,8 @@ button{cursor:pointer}
      itself. A `ch` cap keeps the label from running away on a long row.
 
      The narrow rules are untouched, so nothing about the phone moves. */
-  .rec,.recg,.rbar,.pgd{max-width:none}
-  .rec--3{grid-template-columns:minmax(104px,24ch) repeat(2,minmax(0,auto))}
-  .rec--4{grid-template-columns:minmax(92px,28ch) repeat(3,minmax(0,auto))}
-  .rec--5{grid-template-columns:minmax(84px,28ch) repeat(4,minmax(0,auto))}
-  .rec--6{grid-template-columns:minmax(84px,22ch) repeat(5,minmax(0,auto))}
-  .recg{grid-template-columns:minmax(0,38ch) 52px 52px 76px 92px;
-    width:auto}
-  /* The drawer's leg lines follow the table they open under. */
-  .pgd__l{grid-template-columns:minmax(0,22ch) 104px 74px 56px 62px}
+  /* The Record's desktop tables are at the END of this file, not here:
+     see the note there for why this block cannot hold them. */
 
   /* THE ANGLES BOARD HAD THE SAME FAULT AS THE RECORD TABLES. `1fr` on the
      pattern column with no cap put the label against one edge of a
@@ -892,6 +887,8 @@ button{cursor:pointer}
    error and the money — everything about that market on one line, where it
    used to be three sub-sections of a table, a bar and a paragraph each. */
 .rec--6{grid-template-columns:minmax(84px,1fr) repeat(5,minmax(0,auto))}
+/* Every bet, one row each. Prose in the game, market and bet columns. */
+.rec--8{grid-template-columns:minmax(96px,1fr) repeat(7,minmax(0,auto))}
 .rec__h{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
   color:var(--mut);font-weight:700;white-space:nowrap;
   padding-bottom:4px;border-bottom:1px solid var(--line);margin-bottom:2px}
@@ -919,6 +916,87 @@ button{cursor:pointer}
 .recpick{margin:10px 0 2px;gap:8px}
 .recpick .seg{margin-top:0}
 .recnote{background:var(--inset)}
+
+/* ── The Record, 2026-10-09 ──────────────────────────────────────────────
+   A RECORD AND ITS RATE STACK INSIDE ONE CELL: the rate is what is read,
+   the record is what it is made of. On one line they ran into the next
+   column. */
+.rc{display:inline-flex;flex-direction:column;align-items:flex-end;
+  line-height:17px}
+.rc b{font-weight:600}
+.rc i{font-style:normal;font-size:11.5px;line-height:15px;color:var(--mut)}
+.rec--games{row-gap:8px}
+.rec .rr,.rr{color:var(--mut);white-space:nowrap}
+.recthin{display:inline-block;margin-left:6px;padding:0 6px;font-size:10.5px;
+  line-height:16px;border:1px solid var(--line);border-radius:6px;
+  color:var(--mut);font-weight:500;vertical-align:1px}
+/* EVERY FILTER THAT CHOOSES BETS, IN ONE PANEL. Outlined rather than
+   filled: the segments inside are already a filled track. */
+.recf{margin-top:12px;padding:4px 12px 10px;border:1px solid var(--line);
+  border-radius:14px}
+.recf .seg button,.recl .seg button{height:32px;font-size:13px}
+.recf__d{margin-top:8px}
+.recl__h{margin:14px 2px 0;font-size:15px;line-height:21px;color:var(--ink)}
+.recl__h .up{color:var(--good)}
+.recl__h .dn{color:var(--bad)}
+.recl__t{margin-top:18px}
+/* The list is part of the same section: a heading and space, no rule. */
+.recl{margin-top:22px}
+.recl__n{margin-top:8px}
+/* Copy and Restore on the Picks tab. */
+.bk{margin-top:18px}
+.bk__b{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.bk__t{display:block;width:100%;box-sizing:border-box;margin-top:10px;
+  padding:10px 12px;border:1px solid var(--line);border-radius:12px;
+  font:13px/18px ui-monospace,Menlo,monospace;background:var(--card);
+  color:var(--ink);resize:vertical}
+.bk .cta{margin-top:0}
+.bk__b .cta{flex:1;min-width:140px;height:44px;font-size:15px}
+.bk .cta--ghost{background:var(--card);color:var(--ours)}
+.bk__m{margin-top:8px;color:var(--ink)}
+/* The forward record, set apart by a tint: it is a different kind of
+   number from everything under the filters, and the page must not let the
+   two be read as one. */
+.recfw{margin-top:14px;padding:12px 14px;border-radius:14px;
+  background:var(--oursbg)}
+.recfw__w{margin-top:6px;color:var(--ink)}
+.recthin--up{border-color:var(--good);color:var(--good)}
+
+/* ── The dot plot ────────────────────────────────────────────────────────
+   One row per market on one fixed 35-70% axis, labeled. Our rate is a dot
+   with its value beside it; break-even is a dashed line through every row;
+   the sportsbook, where it is the comparison, is a ring. */
+.rdot{margin-top:16px}
+.rdot__r{display:grid;grid-template-columns:minmax(96px,128px) minmax(0,1fr);
+  gap:0 12px;align-items:center;height:30px}
+.rdot__l{font-size:13px;color:var(--ink)}
+.rdot__t{position:relative;height:100%}
+.rdot__t::before{content:"";position:absolute;left:0;right:0;top:50%;
+  border-top:1px solid var(--line)}
+.rdot__g{position:absolute;top:4px;bottom:4px;width:1px;background:var(--line2)}
+.rdot__g--h{background:var(--line)}
+.rdot__be{position:absolute;top:0;bottom:0;width:0;
+  border-left:1.5px dashed var(--mut3)}
+.rdot__bk{position:absolute;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;
+  border:2px solid var(--mut);border-radius:50%;background:var(--card);
+  box-sizing:border-box}
+.rdot__us{position:absolute;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;
+  border-radius:50%;background:var(--ours);box-shadow:0 0 0 2px var(--card)}
+.rdot__us em{position:absolute;left:14px;top:50%;transform:translateY(-50%);
+  font-style:normal;font-size:12px;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.rdot__ax{height:18px}
+.rdot__ax .rdot__t::before{display:none}
+.rdot__ax .rdot__t span{position:absolute;top:0;transform:translateX(-50%);
+  font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+.rdot__k{display:flex;gap:16px;flex-wrap:wrap;margin:8px 0 0;
+  padding-left:calc(min(128px,30%) + 12px);font-size:12px;color:var(--mut)}
+.rdot__k span{display:inline-flex;align-items:center;gap:6px}
+.rdot__sw{display:inline-block;width:10px;height:10px;border-radius:50%}
+.rdot__sw--us{background:var(--ours)}
+.rdot__sw--bk{border:2px solid var(--mut);box-sizing:border-box}
+.rdot__sw--be{width:0;height:12px;border-radius:0;
+  border-left:1.5px dashed var(--mut3)}
 
 /* ── The scoreboard ──────────────────────────────────────────────────────
    One tile per thing the model claims to do, above everything else. Two up
@@ -1492,6 +1570,53 @@ button{cursor:pointer}
      the only cell whose information is also in the marks beside it. */
   .tl__hd,.tl__r{grid-template-columns:46px 48px minmax(0,1fr) 58px}
   .tl__p{display:none}}
+
+/* ── THE RECORD ON A PHONE ───────────────────────────────────────────────
+   The player table's figure columns were fixed at 52+52+76+92px, which on
+   a 390px phone left the NAME about 14px — "Matthew1+" with the bet count
+   printed over him. Won is the column that can go: Hit rate says the same
+   thing as a share. And the market tables drop Likely range, which the
+   summary line above them still states for the total. */
+@media (max-width:560px){
+  .recg{grid-template-columns:minmax(0,1fr) 34px 46px 76px}
+  .recg>:nth-child(3){display:none}
+  .rec--mkt{grid-template-columns:minmax(84px,1fr) repeat(4,auto)}
+  .rec--mkt>span:nth-child(6n){display:none}
+  .recthin{display:block;width:max-content;margin:2px 0 0}
+  .rdot__r{grid-template-columns:88px minmax(0,1fr)}
+  .rdot__k{padding-left:0}
+  /* Six columns do not fit 326px. Sized to their content and left to the
+     table's own scroller, which the layout rules allow for a table,
+     rather than shrunk until the headings print over each other. */
+  .rec--games{grid-template-columns:minmax(92px,auto) repeat(5,auto)}
+}
+
+/* ── THE RECORD'S DESKTOP TABLES, LAST IN THE FILE ON PURPOSE ────────────
+   They used to sit in the 900px block near the top, and the base `.rec`
+   and `.recg` rules further down carry the same specificity — so the base
+   `max-width:640px` won the cascade and the desktop lift never applied.
+   That is why the tables still stopped at 640px on a 1008px card after the
+   fix that was meant to widen them. Last in the file, a media rule of
+   equal specificity is the one that holds. */
+@media (min-width:900px){
+  /* FULL WIDTH SINCE 2026-10-09, AND THE LABEL STILL TAKES NO SLACK.
+     Asked for directly: the tables stopped two-thirds of the way across
+     the card. The original fault was `1fr` on the LABEL column, which put
+     "Our model" at one edge and its figures at the other — so the label is
+     content-sized and the FIGURE columns share the rest, which spreads the
+     numbers across the card at even intervals instead of leaving a field
+     of nothing after the last one. */
+  .rec,.recg,.rbar,.pgd{max-width:none}
+  .rec,.recg{width:100%}
+  .rec--3{grid-template-columns:minmax(104px,max-content) repeat(2,minmax(0,1fr))}
+  .rec--4{grid-template-columns:minmax(92px,max-content) repeat(3,minmax(0,1fr))}
+  .rec--5{grid-template-columns:minmax(120px,max-content) repeat(4,minmax(0,1fr))}
+  .rec--6{grid-template-columns:minmax(132px,max-content) repeat(5,minmax(0,1fr))}
+  .rec--8{grid-template-columns:minmax(140px,max-content) 48px repeat(3,minmax(0,1fr)) repeat(3,minmax(0,.7fr))}
+  .recg{grid-template-columns:minmax(180px,max-content) repeat(4,minmax(0,1fr))}
+  /* The drawer's leg lines follow the table they open under. */
+  .pgd__l{grid-template-columns:minmax(160px,max-content) repeat(4,minmax(0,1fr))}
+}
 """
 
 

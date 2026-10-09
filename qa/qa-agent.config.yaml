@@ -1,0 +1,49 @@
+# QA-Agent run against the v3 app. The tool lives in ~/projects/mofc/QA-Agent
+# and nothing is written there: this config, its plugin and every report stay
+# under qa/ in this repository.
+#
+#   python3 -m http.server 8766 --directory <a built v3 directory>
+#   node ~/projects/mofc/QA-Agent/dist/cli.js run -c qa/qa-agent.config.yaml
+app:
+  name: Pick Six (v3)
+  baseUrl: http://localhost:8766
+  environment: local
+
+auth:
+  type: none
+
+browsers: [chromium]
+viewports: [small-mobile, tablet, laptop]
+
+discovery:
+  startUrls: ["/"]
+  maxPages: 5
+
+workflows:
+  # Tabs by their own attribute: "Record" as text also matches an Angles
+  # control labeled with the word, which is a selector problem, not a bug.
+  - name: every-tab-opens
+    critical: true
+    steps:
+      - { action: goto, url: "/" }
+      - { action: click, target: '[data-v3tab="props"]' }
+      - { action: click, target: '[data-v3tab="picks"]' }
+      - { action: click, target: '[data-v3tab="angles"]' }
+      - { action: click, target: '[data-v3tab="record"]' }
+      - { action: expectText, text: "Holding the model to account" }
+  - name: record-filters-narrow
+    critical: true
+    steps:
+      - { action: goto, url: "/" }
+      - { action: click, target: '[data-v3tab="record"]' }
+      - { action: click, target: "Gaps" }
+      - { action: click, target: "Missed" }
+      - { action: click, target: "Every bet" }
+      - { action: expectText, text: "misses only" }
+
+plugins: ["./plugins/storage.mjs"]
+
+output:
+  dir: qa-reports
+  formats: [html, markdown, json]
+  failOn: high

@@ -40,7 +40,7 @@ SHELL = """<!doctype html>
   <nav class="tabbar" id="tabbar" aria-label="Main"></nav>
 </div>
 <div class="scrim" id="scrim"></div>
-<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" aria-label="Details"></div>
 <script id="payload" type="application/json">__DATA__</script>
 <script>
 const DATA = JSON.parse(document.getElementById('payload').textContent);

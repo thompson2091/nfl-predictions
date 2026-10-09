@@ -434,7 +434,9 @@ const handled = new Set(V3CLICKS.concat(
    // NOT A CONTROL AT ALL. `v3yrlab` marks the number the slider's `input`
    // handler rewrites in place, which is the one thing on the page that must
    // not trigger a render.
-   'v3yrlab']));
+   'v3yrlab',
+   // The Record's player search, an `input` listener.
+   'v3recq']));
 const dead = [...seen].filter(k => !handled.has(k));
 ok('every control the screens emit is wired', dead.length === 0,
    'emitted and never handled: ' + dead.join(', '));
@@ -2787,7 +2789,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // thing; the per-player table had a card of its own, which drew the same
   // two controls a second time.
   ok('all four sections are numbered and named',
-     ['Picking the game', 'Player bets: profit per $100 staked']
+     ['Picking the game', '>Player bets<', 'Profit per $100 staked']
        .every(s => h.indexOf(s) >= 0)
      && h.indexOf('>By market<') >= 0
      && h.indexOf('>The same bets, by player and club<') >= 0, h);
@@ -2802,7 +2804,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('the three game markets are rows of one table',
      ['Winning team', 'Point spread', 'Over / under']
        .every(s => h.indexOf('<span>' + s + '</span>') >= 0)
-     && h.indexOf('class="rec rec--6"') >= 0, h);
+     && h.indexOf('class="rec rec--6') >= 0, h);
   ok('and the old sub-sections are gone with their three verdicts',
      h.indexOf('>The winning team<') < 0
      && h.indexOf('>Over or under the total<') < 0
@@ -2880,11 +2882,17 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   }
 
   // ── EVERY RATE GETS A REFERENCE LINE ─────────────────────────────────
+  // ONE DOT PLOT SINCE 2026-10-09, on a labeled axis, with the legend
+  // drawn in the marks' own shapes. The three tracks before it had
+  // unlabeled ticks and a key whose words matched none of the marks.
   ok('each rate is drawn against the numbers that give it meaning',
-     (h.match(/class="rbar"/g) || []).length >= 3, h);
-  ok('and the line is labeled in words rather than left as a graphic',
-     h.indexOf('>coin flip<') >= 0 && h.indexOf('>break even<') >= 0
-     && h.indexOf('rbar__kus') >= 0);
+     (h.match(/class="rdot__us"/g) || []).length >= 3
+     && h.indexOf('class="rdot__be"') >= 0, h);
+  ok('and the plot is labeled in words rather than left as a graphic',
+     h.indexOf('</b>Our model</span>') >= 0
+     && /<\/b>Break-even 5[0-9.]+%<\/span>/.test(h)
+     && h.indexOf('</b>Sportsbook</span>') >= 0
+     && h.indexOf('>50%</span>') >= 0, h);
   // A MONEYLINE HAS NO ONE BREAK-EVEN RATE. The first draft said "ahead of
   // the 50.0% a bet needs to turn a profit", which is not true of any
   // moneyline: the price moves with the favorite.
@@ -2895,9 +2903,10 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      /The spread and the total break even at 5[0-9.]+%/.test(h), h);
   // AND THE TRACK SAYS WHAT IT BEAT, in three words under the market's
   // name. That is what is left of the three verdict paragraphs.
-  ok('each track names the thing it is being measured against',
-     h.indexOf('break-even</i>') >= 0
-     && /<i>(ahead of|behind|level with) the sportsbook<\/i>/.test(h), h);
+  // AND OUR DOT CARRIES ITS OWN NUMBER, so the plot can be read without
+  // the table beside it.
+  ok('each dot says its own rate',
+     (h.match(/<em>\d+\.\d%<\/em>/g) || []).length >= 3, h);
 
   // THE PROVENANCE IS ABOVE THE TABLES. A reader who meets the numbers first
   // has already decided what they mean.
@@ -3025,8 +3034,8 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
        .test(h), h.slice(h.indexOf('luck alone'), h.indexOf('luck alone')
                          + 240));
   ok('and the game table has no Range column left',
-     h.indexOf('class="rec rec--6"') >= 0
-     && !/class="rec rec--6"[\s\S]{0,600}>Range</.test(h), h);
+     h.indexOf('class="rec rec--6') >= 0
+     && !/class="rec rec--6[\s\S]{0,600}>Range</.test(h), h);
   ok('the player section draws our model and the adjusted model separately',
      h.indexOf('>Our model</b>') >= 0 && h.indexOf('>Adjusted model</b>') >= 0,
      'player series not split');
@@ -3057,7 +3066,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
     // choice that does nothing.
     ok('a rule that picks its own side drops the side control',
        gp.indexOf('>Whose side<') < 0
-       && gp.indexOf('no model-or-adjusted') >= 0, gp.slice(0, 400));
+       && gp.indexOf('The rule picks the side') >= 0, gp.slice(0, 400));
     V.recView = 'all';
   }
 
@@ -3096,13 +3105,14 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
     // model too, and the first version of this check read the whole page
     // and failed on those.
     const sec04 = h2 => {
-      const a = h2.indexOf('Player bets: profit per $100');
-      const b = h2.indexOf('only where the price was wrong enough');
+      const a = h2.indexOf('id="sb4"');
+      const b = h2.indexOf('>The same bets, by player and club<');
       return h2.slice(a, b > a ? b : undefined);
     };
     ok('a filter that picks its own side draws one series, not two',
-       sec04(seen.short).indexOf('The rule’s own side') >= 0
-       && sec04(seen.short).indexOf('Adjusted model') < 0,
+       sec04(seen.short).indexOf('The rule picks the side') >= 0
+       && sec04(seen.short).indexOf('Adjusted model') < 0
+       && sec04(seen.short).indexOf('>Our model</b>') < 0,
        sec04(seen.short).slice(0, 300));
     // AND FADES IS A SUBSET, not a fourth disjoint group. On a two-sided
     // line a fade is the shortlist's under picks.
@@ -3144,6 +3154,32 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
        .every(s => h.indexOf('>' + s + '<') >= 0)
      && h.indexOf('>By game<') < 0
      && h.indexOf('class="pgleg') < 0, h);
+  // EVERY PLAYER FIRST AND THE DEFAULT, BEST AND WORST LAST. Asked for
+  // 2026-10-09: the list is read as "who were these bets on".
+  {
+    const was = V.recWho;
+    V.recWho = undefined;
+    const d = v3RecordPage();
+    V.recWho = was;
+    ok('Every player leads the list and is what opens',
+       d.indexOf('data-v3recwho="all" aria-pressed="true"') >= 0
+       && d.indexOf('>Every player<') < d.indexOf('>By team<')
+       && d.indexOf('>Best and worst<') > d.indexOf('>Every bet<'), d);
+  }
+  {
+    // AND EVERY BET, one row a leg: "of the gaps that missed, whose were
+    // they" is Gaps, Missed, Every bet.
+    V.recView = 'gap'; V.recRes = 'miss'; V.recWho = 'bets';
+    const eb = v3RecordPage();
+    V.recView = 'all'; V.recRes = 'all'; V.recWho = 'all';
+    ok('every bet lists each leg with what it paid',
+       eb.indexOf('rec--legs') >= 0
+       && eb.indexOf('>Price<') >= 0 && eb.indexOf('>Had<') >= 0, eb);
+    ok('and a missed filter shows only losing legs',
+       eb.indexOf('class="up"') < 0 || eb.indexOf('rec--legs') < 0
+       || eb.slice(eb.indexOf('rec--legs')).split('id="sb6"')[0]
+            .indexOf('<b class="up">') < 0, eb);
+  }
   ok('and the note names the most concentrated player-game instead',
      /The most concentrated was .{1,80} legs, all (winning|losing)\./.test(h),
      h.slice(h.indexOf('not independent'), h.indexOf('not independent') + 460));
@@ -3181,18 +3217,24 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
        bets(over) !== bets(under), bets(over) + ' vs ' + bets(under));
     ok('and one market is fewer than four',
        bets(one) !== bets(wide), bets(one) + ' vs ' + bets(wide));
+    // THE MARKET IS A SECTION FILTER NOW, chosen in the panel at the top
+    // and visible there; what the LIST says it left is its own narrowing.
+    V.recRes = 'miss';
+    const miss = v3RecordPage();
+    V.recRes = 'all';
     ok('and the filters say what they left',
-       one.indexOf(' bets across ') >= 0
-       && /bets across \d+ players? — catches/.test(one),
-       one.slice(one.indexOf(' bets across ') - 20,
-                 one.indexOf(' bets across ') + 80));
+       /bets across \d+ players? — misses only/.test(miss),
+       miss.slice(miss.indexOf(' bets across ') - 20,
+                  miss.indexOf(' bets across ') + 80));
+    ok('and a result filter narrows the list',
+       bets(miss) && bets(miss) !== bets(wide), bets(miss) + ' vs ' + bets(wide));
     // AND WHAT THE SLICE IS WORTH, WITH ITS RANGE. These filters let a
     // reader cut to a hundred and fifty legs, where the honest interval is
     // twenty points wide — a bare per-$100 at that width is the reading
     // this page exists to prevent. Clustered by game, because every
     // receiver in one game shares a script.
     ok('the slice carries its own clustered interval',
-       /somewhere between .{1,12} and .{1,12} once players in the same game/
+       /likely between .{1,12} and .{1,12} — \d+ games behind/
          .test(wide), wide.slice(wide.indexOf(' bets across ') - 10,
                                  wide.indexOf(' bets across ') + 260));
     ok('and names the games behind it, not just the bets',
@@ -4576,6 +4618,62 @@ if (cards.length) {
     V.market = 'any';
   }
   V.open = null; V.pastN = null;
+}
+
+// ── SAVED PICKS SURVIVE ANOTHER TAB, AND A DEPLOY ───────────────────────
+//
+// `v3Save` runs on every render and used to write this tab's list straight
+// into storage, so a tab holding an older list replaced picks saved
+// elsewhere the moment it redrew. Merged by id now, with deletes kept.
+{
+  const pick = (id, at) => ({id: id, savedAt: at, week: DATA.week,
+    season: DATA.season, legs: [{id: 'any|Someone', player: 'Someone'}],
+    rows: [], stake: 10});
+  const keep = V.saved, keepGone = V.savedGone;
+  localStorage.setItem('picksix.v3', JSON.stringify({saved: [pick('pA', '1'),
+                                                      pick('pB', '2')]}));
+  V.saved = [pick('pA', '1')]; V.savedGone = [];
+  v3Save();
+  ok('a tab with an older list does not wipe a pick saved elsewhere',
+     V.saved.map(p => p.id).join(',') === 'pA,pB', V.saved.map(p => p.id));
+  v3DropSaved('pB');
+  // Another tab still holds pB and saves.
+  const other = JSON.parse(localStorage.getItem('picksix.v3'));
+  other.saved.push(pick('pB', '2'));
+  localStorage.setItem('picksix.v3', JSON.stringify(other));
+  v3Save();
+  ok('and a delete is not undone by the merge',
+     V.saved.map(p => p.id).join(',') === 'pA', V.saved.map(p => p.id));
+  // Restore from a copied list: merged by id, and it undoes the delete.
+  v3RestorePicks(JSON.stringify({picksix: 1, saved: [pick('pB', '2'),
+                                                     pick('pA', '1')]}));
+  ok('restoring a copied list adds what is missing and nothing twice',
+     V.saved.map(p => p.id).join(',') === 'pA,pB'
+     && V.restoreMsg === 'Restored 1 new picks.', V.restoreMsg);
+  v3RestorePicks('not json');
+  ok('and says so when what was pasted is not a list of picks',
+     /not a copied list/.test(V.restoreMsg), V.restoreMsg);
+  V.saved = keep; V.savedGone = keepGone;
+  localStorage.removeItem('picksix.v3');
+}
+{
+  // AN OVER/UNDER LEG SETTLES FROM THE NUMBER, and a result once seen is
+  // kept on the leg when its week leaves the payload.
+  const was = DATA.results;
+  DATA.results = Object.assign({}, was || {}, {'9|rush|Run Man': 92});
+  const p = {id: 'pOU', week: 9, rows: [{hit: 1, slipsWon: 1, net: 9}],
+             legs: [{id: 'rush|Run Man|88.5', side: undefined}]};
+  ok('an over at 88.5 settles as a hit on 92 yards',
+     settle(p).legs[0].state === 'hit' && settle(p).status === 'Won');
+  const u = {id: 'pOU2', week: 9, rows: [{hit: 0, slipsWon: 0, net: -10}],
+             legs: [{id: 'rush|Run Man|88.5', side: 'under'}]};
+  ok('and the under on the same line as a miss',
+     settle(u).legs[0].state === 'miss');
+  DATA.results = was;
+  const gone = {id: 'pG', week: 9, rows: [{hit: 1, slipsWon: 1, net: 9}],
+                legs: [{id: 'rush|Run Man|88.5', state: 'hit'}]};
+  ok('a result already seen is kept when the payload no longer has it',
+     settle(gone).status === 'Won');
 }
 
 

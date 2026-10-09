@@ -114,8 +114,13 @@ def results(season: int, week: int) -> dict[str, str]:
     if not Path(feats).exists():
         return {}
 
-    out: dict[str, str] = {}
-    for wk in (w for w in (week - 1, week) if w and w > 0):
+    out: dict = {}
+    # EVERY WEEK OF THE SEASON SO FAR, since 2026-10-09. Two weeks meant a
+    # saved pick more than a week old went back from Won or Lost to Pending
+    # on the next deploy, and the Picks tab's settled count and net shrank
+    # with it — which read to the person holding it as their record being
+    # deleted. About 30 KB a week, before compression.
+    for wk in range(1, week + 1):
         # `team` only where the matrix carries it. It always does in
         # production and a missing column here must not crash the export —
         # `qualified_name` leaves a name alone when it has no team to qualify
@@ -131,11 +136,59 @@ def results(season: int, week: int) -> dict[str, str]:
         if pool.height == 0:
             continue
         out.update(_week_results(season, wk, pool))
+        out.update(_ou_results(season, wk))
     # SORTED, because `unique` does not promise an order and this is built by
     # iterating it. The keys and values were identical between builds and only
     # their order moved, which changes nothing a reader sees and makes every
     # rebuild a diff — hiding the real churn this was found alongside.
     return dict(sorted(out.items()))
+
+
+#: The page's over/under market keys, and the stat each settles against.
+_OU_RESULT_KEYS = {"rec": "receptions", "rush": "rushing_yards",
+                   "recyds": "receiving_yards", "passyds": "passing_yards"}
+
+
+def _ou_results(season: int, week: int) -> dict:
+    """`<week>|<key>|<player>` -> the stat he finished with, for a saved leg.
+
+    A saved over/under leg is `rush|Name|88.5` and carries its side, so the
+    page settles it from the number rather than from a hit or miss decided
+    here — the same actual can win an over at 70.5 and lose one at 90.5.
+    These legs had no result at all before 2026-10-09 and every one read
+    Pending forever.
+
+    Only players on that week's FROZEN board (`prediction_freeze`), which
+    is every line the page could have offered; a weekly-stats row for every
+    player in the league would be four times the size. A week with no frozen
+    board ships nothing, and a player with no stat line ships nothing: the
+    leg stays pending rather than being guessed void or zero. A name two
+    players share that week is left out, as `ou_week` leaves it out.
+    """
+    from src.export import prediction_freeze as PF
+
+    out: dict = {}
+    try:
+        ws = (pl.scan_parquet(get_path("raw") / "weekly_stats.parquet")
+              .filter((pl.col("season") == season) & (pl.col("week") == week))
+              .collect())
+    except Exception:                                            # noqa: BLE001
+        return out
+    if ws.height == 0 or "player_display_name" not in ws.columns:
+        return out
+    names = ws["player_display_name"].to_list()
+    dupes = {n for n in names if names.count(n) > 1}
+    for key, market in _OU_RESULT_KEYS.items():
+        if market not in ws.columns:
+            continue
+        stat = dict(zip(names, ws[market].to_list()))
+        board = PF.frozen(season, week, market)
+        for rows in board.values():
+            for r in rows:
+                n = r.get("player_name")
+                if n and n not in dupes and stat.get(n) is not None:
+                    out[f"{week}|{key}|{n}"] = float(stat[n])
+    return out
 
 
 def _week_results(season: int, week: int, pool: pl.DataFrame) -> dict[str, str]:

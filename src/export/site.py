@@ -3228,7 +3228,29 @@ function settle(p) {
   // Keyed by week as well as market and player: `any|Derrick Henry` is a
   // different bet in week 2 than in week 3, and a shared key would settle a
   // live parlay from a result it never had.
-  const legs = p.legs.map(l => ({ ...l, state: res[p.week + '|' + l.id] || 'pending' }));
+  // A LEG KEEPS A RESULT IT HAS ALREADY HAD. `l.state` is written onto the
+  // stored pick once a result has been seen (v3's `v3StickResults`), so a
+  // pick does not fall back to Pending when its week leaves the payload.
+  //
+  // AN OVER/UNDER LEG IS SETTLED FROM THE NUMBER. Its id is
+  // `<market>|<player>|<line>` and it carries its side; the result is the
+  // stat the player finished with, keyed without the line, so one actual
+  // settles every line of his. A push stays pending — the lines are halves
+  // in practice, and a curve has no slot for a returned leg.
+  const legState = l => {
+    const r = res[p.week + '|' + l.id];
+    if (r === 'hit' || r === 'miss') return r;
+    const bits = String(l.id || '').split('|');
+    if (bits.length === 3) {
+      const got = res[p.week + '|' + bits[0] + '|' + bits[1]];
+      const line = Number(bits[2]);
+      if (typeof got === 'number' && isFinite(line) && got !== line) {
+        return ((got > line) === (l.side !== 'under')) ? 'hit' : 'miss';
+      }
+    }
+    return (l.state === 'hit' || l.state === 'miss') ? l.state : 'pending';
+  };
+  const legs = p.legs.map(l => ({ ...l, state: legState(l) }));
   const pending = legs.some(l => l.state === 'pending');
   const hits = legs.filter(l => l.state === 'hit').length;
   let status = 'Pending', net = 0;

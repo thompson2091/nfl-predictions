@@ -1655,8 +1655,7 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "and the old sub-sections are gone with their three "
                  "verdicts",
                  "and every series is a column of that row",
-                 "each track names the thing it is being measured "
-                 "against",
+                 "each dot says its own rate",
                  "and what each leg was paid at",
                  "the all/model per-player totals are the sum of its "
                  "own legs",
@@ -2935,9 +2934,11 @@ def test_the_record_tables_are_not_capped_below_the_width_they_have():
     css = (Path(__file__).resolve().parents[1]
            / "src/export/v3css.py").read_text()
     rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    i = rules.index("@media (min-width:900px){")
-    # The block runs to the next top-level @media.
-    desktop = rules[i:rules.index("@media (min-width:1280px)", i)]
+    # THE LAST 900px BLOCK, which is where the Record's rules live: in the
+    # first one, near the top of the file, the base rules further down won
+    # the cascade and the lift never applied.
+    i = rules.rindex("@media (min-width:900px){")
+    desktop = rules[i:rules.index('"""', i) if '"""' in rules[i:] else None]
 
     # The narrow cap stays: a handset has no room to lift it. Looked for
     # outside the desktop block rather than above it — the 900px block sits
@@ -2953,13 +2954,16 @@ def test_the_record_tables_are_not_capped_below_the_width_they_have():
     for sel in (".rec", ".recg", ".rbar", ".pgd"):
         assert sel in lifted.group(1), (
             f"{sel} is still capped at 640px on a 1008px card")
-    # With the cap lifted, an `fr` label column would reopen the original
-    # fault — "Our model" at one edge and its figures at the other.
+    # With the cap lifted, an `fr` LABEL column would reopen the original
+    # fault — "Our model" at one edge and its figures at the other. Since
+    # 2026-10-09 the tables span the card (asked for directly), so the
+    # FIGURE columns may share the width; the first track may not.
     for m in re.finditer(r"(\.rec[-\w]*|\.recg)\{grid-template-columns:([^}]*)\}",
                          desktop):
-        assert "fr" not in m.group(2), (
-            f"{m.group(1)} hands a column an fr above 900px, so the label "
-            f"column takes the slack again: {m.group(2)}")
+        first = re.match(r"\s*(minmax\([^)]*\)|[^\s]+)", m.group(2)).group(1)
+        assert "fr" not in first, (
+            f"{m.group(1)} hands its label column an fr above 900px, so the "
+            f"label takes the slack again: {m.group(2)}")
 
 
 def test_no_layout_rule_decides_a_phone_by_a_width_that_phones_outgrew():
@@ -3100,7 +3104,8 @@ def test_the_desktop_width_is_spent_rather_than_stretched():
     i = css.index("@media (min-width:900px)")
     block = css[i:i + 1800]
     assert ".wrap{max-width:880px}" in block, "the shell never widens"
-    assert "68ch" in block, "prose runs the full width of the window"
+    # Prose spans the card since 2026-10-09, asked for directly, so the
+    # 68ch cap is gone on purpose and this no longer asserts it.
     assert "max-width:880px" in block, "the shell never widens"
 
 

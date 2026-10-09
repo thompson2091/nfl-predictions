@@ -671,9 +671,15 @@ def players_block(cache: dict, weeks, td_by_week: dict) -> dict:
 #: whichever series took the other side. Not derived from the return
 #: either: a loser returns exactly -1 whatever it was priced at, so the
 #: price is simply gone unless it is carried.
+#: `edge_pp` and `p_model` were added 2026-10-09, at the end so every index
+#: the page already reads stays put. `edge_pp` is how far the Gaps rule's
+#: number cleared the book on that leg, which is what lets the page split a
+#: market's gap bets by size; `p_model` is the unblended probability of the
+#: over, which is what the model's confidence is read from.
 BET_FIELDS = ("market", "line", "actual", "adj_side", "adj_ret",
               "model_side", "model_ret", "edge_ret", "streak",
-              "adj_price", "model_price", "edge_price")
+              "adj_price", "model_price", "edge_price",
+              "edge_pp", "p_model")
 
 
 def _ret(row, price_key="odds"):
@@ -750,6 +756,10 @@ def bets_block(cache: dict, weeks) -> dict:
                     None if not r else r.get("odds"),
                     None if not m else m.get("odds"),
                     None if not e else e.get("price"),
+                    (None if not e or e.get("edge_pp") is None
+                     else round(abs(float(e["edge_pp"])), 2)),
+                    (None if not m or m.get("model") is None
+                     else round(float(m["model"]), 4)),
                 ]
     out: dict = defaultdict(list)
     teams: dict = {}
@@ -869,4 +879,20 @@ def build(season: int) -> dict:
         # Per week, not per range — see `bets_block`. The page adds up the
         # weeks the picker is showing.
         "bets": bets_block(cache, played),
+        # THE PICKS WRITTEN DOWN BEFORE KICKOFF, graded. Everything above is
+        # regraded with today's model; this is not, and the page never pools
+        # the two. See `forward_record`.
+        "forward": _forward(season),
     }
+
+
+def _forward(season: int) -> dict | None:
+    try:
+        from src.evaluation.forward_record import block
+
+        return block(season)
+    except Exception as e:                                       # noqa: BLE001
+        import sys
+
+        print(f"  forward record unavailable ({e})", file=sys.stderr)
+        return None
