@@ -1627,7 +1627,8 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "rate",
                  "and it is pinned rather than scrolling away with the "
                  "tables",
-                 "a week with no frozen game record cannot be selected",
+                 "a week with no game record can be picked and says players only",
+                 "a range reaching past the game weeks says which weeks each half covers",
                  # What a bet is, which the page never said.
                  "the player table says what one bet is",
                  "and the break-even column is named in words a reader "

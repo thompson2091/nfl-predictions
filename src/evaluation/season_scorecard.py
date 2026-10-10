@@ -891,9 +891,9 @@ def build(season: int) -> dict:
             }
     # Weeks a game record cannot exist for, said once rather than per range.
     missing = [{"week": w,
-                "why": "nothing recorded a projection before these games, and "
-                       "the feature matrix is rebuilt from current data, so "
-                       "there is no honest way to reconstruct one"}
+                "why": "the game model did not exist until after these games "
+                       "were played, and a projection made now would be "
+                       "today's model answering for weeks it never saw"}
                for w in played if w not in gweeks]
     return {
         "season": season, "played": played,

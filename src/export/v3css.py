@@ -871,7 +871,7 @@ button{cursor:pointer}
    allow for a table. `minmax(0,auto)` rather than `auto`, or a long range
    string pushes the row wider than its own scroller and the label clips. */
 .recwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:8px -2px 0;
-  padding:0 2px}
+  padding:0 8px 0 2px}
 /* CAPPED, because `1fr` on the label column gives it every spare pixel.
    At 880px that put "Our model" against one edge of the card and "18 / 14"
    against the other with a hand's width of nothing between them, which is

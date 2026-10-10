@@ -2929,14 +2929,25 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   ok('and it is pinned rather than scrolling away with the tables',
      /class="pbar[^"]*recpick"/.test(h), h.slice(h.indexOf('recpick') - 80,
                                                  h.indexOf('recpick') + 40));
-  // WEEKS WITH NO GAME RECORD ARE OFFERED BUT DISABLED, with the reason in
-  // the option. Picking one gave three empty sections and no explanation
-  // worth the tap.
-  ok('a week with no frozen game record cannot be selected',
-     h.indexOf('disabled>Week 1 — no game record') >= 0, h);
-  ok('and a week that has one can be',
-     h.indexOf('<option value="4"') >= 0
-     && h.indexOf('value="4" disabled') < 0);
+  // WEEKS WITH NO GAME RECORD ARE OFFERED, AND SAY SO. Disabled, they also
+  // hid their PLAYER results, which exist — the game model was built after
+  // weeks 1 and 2, the player boards were recovered from before them.
+  ok('a week with no game record can be picked and says players only',
+     h.indexOf('>Week 1 — players only<') >= 0 && h.indexOf(' disabled>') < 0, h);
+  {
+    V.scFrom = 1; V.scTo = 2;
+    const w12 = v3RecordPage();
+    ok('and picking it shows the player bets with the game section saying why',
+       w12.indexOf('No game picks for these weeks') >= 0
+       && w12.indexOf('id="sb4"') >= 0, w12.slice(0, 600));
+    V.scFrom = 1; V.scTo = 4;
+    const w14 = v3RecordPage();
+    ok('a range reaching past the game weeks says which weeks each half covers',
+       w14.indexOf('Games: weeks 3\u20134 of the weeks picked.') >= 0
+       && w14.indexOf('Players: weeks 1\u20134.') >= 0,
+       w14.slice(w14.indexOf('Picking the game'), w14.indexOf('Picking the game') + 200));
+    V.scFrom = null; V.scTo = null;
+  }
 
   const def = String(DATA.scorecard.default || '').split('-').map(Number);
   ok('and it opens on the payload’s own default range',
@@ -2975,7 +2986,7 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   V.scFrom = 1; V.scTo = 2; render();
   const none = v3RecordPage();
   ok('a range whose weeks were never frozen says so rather than showing zeros',
-     none.indexOf('No game projection was recorded') >= 0
+     none.indexOf('No game picks for these weeks') >= 0
      && none.indexOf('Picking the winning team') < 0, none.slice(0, 400));
   ok('and still reports the player bets, which do exist for it',
      none.indexOf('Player bets') >= 0);

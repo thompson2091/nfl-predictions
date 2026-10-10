@@ -5668,11 +5668,12 @@ function v3RecHead(n, title, sub) {
 // you could no longer see. `.pbar` is the same sticky bar the players board
 // and the angles table already use.
 //
-// WEEKS WITHOUT A GAME RECORD ARE OFFERED BUT DISABLED, with the reason in
-// the option itself. Weeks 1 and 2 of 2026 have no frozen projection and
-// cannot get one — the feature matrix is rebuilt from current data, so a
-// recomputed week is a different model's answer — and a reader who picks
-// them gets three empty sections and no explanation worth the tap.
+// WEEKS WITHOUT A GAME RECORD ARE OFFERED, AND SAY SO. They were disabled,
+// which also hid their PLAYER results — and those exist: weeks 1 and 2 of
+// 2026 have no game picks because the game model was built after them, but
+// their player boards were recovered from the pages deployed before
+// kickoff. So the option is live and labeled "players only", and the game
+// section says why it is empty.
 function v3RecPicker(S) {
   const ws = S.played || [];
   if (ws.length < 2) return '';
@@ -5682,9 +5683,8 @@ function v3RecPicker(S) {
     '<div class="picker mxsel"><select data-' + attr + ' aria-label="'
     + (attr === 'v3scfrom' ? 'From week' : 'To week') + '">'
     + opts.map(w => '<option value="' + w + '"'
-        + (w === val ? ' selected' : '')
-        + (gw.indexOf(w) < 0 ? ' disabled' : '') + '>Week ' + w
-        + (gw.indexOf(w) < 0 ? ' — no game record' : '') + '</option>').join('')
+        + (w === val ? ' selected' : '') + '>Week ' + w
+        + (gw.indexOf(w) < 0 ? ' — players only' : '') + '</option>').join('')
     + '</select></div>';
   return '<div class="pbar pbar--free recpick">'
     + '<div class="pbar__row pbar__row--two">'
@@ -6080,15 +6080,28 @@ function v3RecGameDissect(S, a, b) {
     + '</div>';
 }
 
+//: "Games: weeks 3-4" when a range reaches weeks the section has nothing
+//: for, so a range of 1-4 does not read as four weeks of game picks. Empty
+//: when the section covers every week picked.
+function v3RecSpanNote(what, weeks, span) {
+  const w = (weeks || []).slice().sort((x, y) => x - y);
+  if (!span || !w.length || (w[0] === span[0] && w[w.length - 1] === span[1])) {
+    return '';
+  }
+  return what + ': ' + (w.length === 1 ? 'week ' + w[0]
+    : 'weeks ' + w[0] + '\u2013' + w[w.length - 1]) + ' of the weeks picked.';
+}
+
 function v3RecGames(g, S, span) {
   if (!g || !g.n) {
     // NOT A BLANK SECTION. A range with no frozen projection has a reason,
     // and the reason is the interesting part.
     const why = (S.missing || [])[0];
-    return '<div class="card"><div class="eyebrow">Game picks</div>'
-      + '<p class="lede" style="font-size:15px;margin-top:6px">No game '
-      + 'projection was recorded before these weeks\u2019 kickoffs'
-      + (why ? ', and ' + esc(why.why) : '') + '.</p></div>';
+    return '<div class="card" id="sb1">'
+      + v3RecHead('01', 'Picking the game')
+      + '<p class="help" style="margin-top:6px">No game picks for these '
+      + 'weeks' + (why ? ': ' + esc(why.why) : '') + '. Player bets below '
+      + 'cover them.</p></div>';
   }
   const m = g.moneyline, sp = g.spread, to = g.total;
   const be = has(S.break_even) ? S.break_even : 0.5238;
@@ -6194,7 +6207,7 @@ function v3RecGames(g, S, span) {
        : '');
 
   return '<div class="card" id="sb1">'
-    + v3RecHead('01', 'Picking the game')
+    + v3RecHead('01', 'Picking the game', v3RecSpanNote('Games', g.weeks, span))
     + v3RecTable(['Market', 'Our model', 'Adjusted', 'Sportsbook',
                   'Avg miss, us / book', 'Per $100'], rows,
                  {cls: 'rec--games'})
@@ -7014,8 +7027,11 @@ function v3RecPlayers(p, S, span) {
   const V_ = (p.views || {})[cut[0]]
     || (cut[0] === 'all' ? {ou: p.ou, all: p.all, model: p.model,
                             model_all: p.model_all, sides: 2} : null);
+  const gw = (S.game_weeks || []).filter(w => w >= span[0] && w <= span[1]);
+  const straddle = gw.length && (gw[0] !== span[0] || gw[gw.length - 1] !== span[1]);
   const head = v3RecHead('02', 'Player bets',
-    'Profit per $100 staked. One bet is one player, in one game, in one '
+    (straddle ? 'Players: weeks ' + span[0] + '\u2013' + span[1] + '. ' : '')
+    + 'Profit per $100 staked. One bet is one player, in one game, in one '
     + 'category.');
   if (!V_) {
     return '<div class="card" id="sb4">' + head + v3RecFilters(S)
@@ -7217,7 +7233,7 @@ function v3RecordPage() {
     + '<div class="eyebrow">' + (S.season || '') + ' season · '
     + esc(span) + '</div>'
     + '<h1 class="h1">Holding the model to account</h1>'
-    + '<p class="lede">' + (g && g.n ? g.n + ' games' : 'No frozen games')
+    + '<p class="lede">' + (g && g.n ? g.n + ' games' : 'Player bets only')
     + ' · what it picked, what happened, and what it would have paid.</p>'
     + v3RecPicker(S)
     + v3RecBoard(g, p, S)

@@ -43,6 +43,12 @@ The forward record reads the frozen player boards in
 Week 1 has touchdown boards only. The site carried no over/under boards
 until week 2.
 
+Game picks start at week 3. The game model was first built after week 2's
+games, so weeks 1 and 2 have no game record and never will: a projection
+made now would be today's model answering for weeks it never saw. The week
+picker still offers them, labeled "players only", and a range that reaches
+past week 3 says which weeks each section covers.
+
 Note: Recovery times each build by the `built` stamp inside its payload, not
 by the server's file time. The server's clock runs about 40 minutes behind,
 and three builds that looked pre-kickoff by file time were built after their
