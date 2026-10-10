@@ -33,7 +33,14 @@ from src.evaluation.season_scorecard import (OU_MARKETS, _cluster_ci,
 RULES: tuple[tuple[str, str], ...] = (
     ("model side", "Our model"),
     ("prop edge over threshold", "Gaps"),
+    ("model confident", "Our model, 75%+ sure"),
+    ("model under", "Our model's unders, catches and rushing"),
 )
+
+#: The two selection rules are subsets of `model side`. Where each was found
+#: decides the first week that can test it — see `tracked_rules.RULES`.
+SINCE = {"model confident": 2, "model under": 6}
+UNDER_MARKETS = ("receptions", "rushing_yards")
 
 #: The stat each market settles against, in `weekly_stats`.
 STAT = {"receptions": "receptions", "receiving_yards": "receiving_yards",
@@ -92,7 +99,16 @@ def _picks_from_boards(season: int) -> list[dict]:
                     ms = r.get("model_side")
                     price = r.get("price_over") if ms == "over" else r.get("price_under")
                     if ms and price is not None:
-                        out.append(dict(base, rule="model side", side=ms, odds=price))
+                        pick = dict(base, rule="model side", side=ms, odds=price,
+                                    version=r.get("version"))
+                        out.append(pick)
+                        m = r.get("model_only")
+                        if (m is not None and max(m, 1 - m) >= 0.75
+                                and int(wk) >= SINCE["model confident"]):
+                            out.append(dict(pick, rule="model confident"))
+                        if (ms == "under" and market in UNDER_MARKETS
+                                and int(wk) >= SINCE["model under"]):
+                            out.append(dict(pick, rule="model under"))
                     gs = r.get("gap_side")
                     gp = r.get("price_over") if gs == "over" else r.get("price_under")
                     if gs and gp is not None:
@@ -150,7 +166,9 @@ def graded(season: int, picks: list[dict] | None = None) -> tuple[list, int]:
                         "line": line, "odds": odds, "actual": got, "won": won,
                         "ret": _payout(odds) if won else -1.0,
                         "model": r.get("model"), "edge_pp": r.get("edge_pp"),
-                        "recovered": bool(r.get("source"))})
+                        "recovered": bool(r.get("source")),
+                        "version": r.get("version")
+                                   or ("recovered" if r.get("source") else None)})
     return out, pending
 
 
@@ -191,8 +209,104 @@ def block(season: int, picks: list[dict] | None = None) -> dict:
         by_week = {}
         for w in sorted({r["week"] for r in mine}):
             by_week[str(w)] = _row([r for r in mine if r["week"] == w])
+        # PER MODEL VERSION, so a promotion is judged on its own bets. A
+        # recovered board predates the stamp and is its own population.
+        by_version = {}
+        for v in sorted({str(r.get("version")) for r in mine}):
+            by_version[v] = _row([r for r in mine if str(r.get("version")) == v])
         out["rules"].append({"rule": rule, "label": label,
+                             "since": SINCE.get(rule),
                              "markets": markets,
                              "all": _row(mine) if mine else None,
-                             "by_week": by_week})
+                             "by_week": by_week, "by_version": by_version})
+    out["clv"] = clv(season)
+    return out
+
+
+# ── CLOSING-LINE VALUE: the signal that arrives before the results ─────────
+
+def _close_fair(season: int) -> dict:
+    """(game_id, normalized player, market, line) -> de-vigged P(over) at the
+    close: the newest pre-kickoff close capture, in-play quotes dropped."""
+    from src.ingest.odds_history import (HISTORY_PATH, SCHEMA, _conform,
+                                         drop_in_play, resolve_game_ids)
+
+    if not HISTORY_PATH.exists():
+        return {}
+    h = _conform(pl.read_parquet(HISTORY_PATH), SCHEMA)
+    h = resolve_game_ids(h).filter(
+        (pl.col("season") == season) & (pl.col("snapshot") == "close")
+        & pl.col("market").is_in(list(STAT)) & pl.col("point").is_not_null()
+        & pl.col("fair_prob").is_not_null())
+    if h.height == 0:
+        return {}
+    h = (drop_in_play(h).sort("captured_at")
+         .unique(subset=["game_id", "player_name_norm", "market", "point"],
+                 keep="last"))
+    return {(r["game_id"], r["player_name_norm"], r["market"], float(r["point"])):
+            float(r["fair_prob"]) for r in h.iter_rows(named=True)}
+
+
+def clv(season: int, picks: pl.DataFrame | None = None) -> dict:
+    """How far the close moved toward each logged pick, in points of de-vigged
+    probability, with the market's own open-to-close drift taken out.
+
+    Read from `tracked_picks.csv`, NOT the frozen boards: a frozen board is
+    the last board before kickoff, priced at the close, so its CLV is zero by
+    construction. A logged pick carries the fair price when it was first
+    seen and the moment (`recorded_at`), which is what CLV and the timing
+    question both need.
+
+    THE DRIFT IS SUBTRACTED. On every over/under market the de-vigged over
+    rises from open to close regardless of any opinion (`ou_shortlist.drift`);
+    left in, it credits every over with ~0.3pp of skill and charges every
+    under the same. See `nfl-predictions-ou-markets-drift`.
+
+    Positive means the market moved our way after we took it.
+    """
+    from src.evaluation.ou_shortlist import drift, pairs
+    from src.evaluation.prop_settlement import _norm
+    from src.evaluation.tracked_rules import load
+
+    p = load() if picks is None else picks
+    if p.is_empty() or "recorded_at" not in p.columns:
+        return {}
+    p = p.filter((pl.col("season").cast(pl.Utf8) == str(season))
+                 & pl.col("market").is_in(list(STAT))
+                 & pl.col("rule").is_in([r for r, _ in RULES]))
+    if p.is_empty():
+        return {}
+    close = _close_fair(season)
+    dr = {m: drift(pairs(m)) for m in STAT}
+    rows = p.to_dicts()
+    names = _norm([r["player"] or "" for r in rows])
+    got = []
+    for r, n in zip(rows, names):
+        try:
+            book, line = float(r["book"]), float(r["line"])
+        except (TypeError, ValueError):
+            continue
+        away, _, home = (r.get("game") or "").partition(" @ ")
+        gid = f"{season}_{int(r['week']):02d}_{away}_{home}"
+        c = close.get((gid, n, r["market"], line))
+        if c is None or r.get("side") not in ("over", "under"):
+            continue
+        s = 1 if r["side"] == "over" else -1
+        got.append({"rule": r["rule"], "market": r["market"], "game": gid,
+                    "clv": s * ((c - book) * 100 - dr[r["market"]]),
+                    "recorded_at": r.get("recorded_at")})
+    out = {}
+    for rule, label in RULES:
+        mine = [g for g in got if g["rule"] == rule]
+        if not mine:
+            continue
+        by_game = defaultdict(list)
+        for g in mine:
+            by_game[g["game"]].append(g["clv"])
+        mean, lo, hi = _cluster_ci(by_game)
+        out[rule] = {"label": label, "n": len(mine), "mean": mean,
+                     "lo": lo, "hi": hi,
+                     "markets": {m: round(st.mean(g["clv"] for g in mine
+                                                  if g["market"] == m), 3)
+                                 for m in sorted({g["market"] for g in mine})}}
     return out

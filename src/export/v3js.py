@@ -6936,7 +6936,9 @@ function v3RecForward(F) {
   F.rules.forEach(r => {
     if (!r.all) return;
     const ci = x => ({lo: x.lo, hi: x.hi, g: x.games});
-    rows.push(['<b>' + esc(r.label) + '</b>', v3RecN(r.all.bets),
+    rows.push(['<b>' + esc(r.label) + '</b>'
+               + (r.since ? ' <span class="recthin">from week ' + r.since
+                  + '</span>' : ''), v3RecN(r.all.bets),
                pct(r.all.hit), pct(r.all.be), v3RecCash(r.all.roi),
                v3RecRangeCell(ci(r.all))]);
     (r.markets || []).forEach(m => rows.push([esc(m.label)
@@ -6967,7 +6969,40 @@ function v3RecForward(F) {
                      'Per $100', 'Likely range'], rows, {cls: 'rec--mkt'})
        : '<p class="help recfw__w">' + v3RecN(F.pending || 0)
          + ' picks are waiting on their games.</p>')
+    + v3RecClv(F.clv)
+    + v3RecVersions(F)
     + '</div>';
+}
+
+//: CLOSING-LINE VALUE, the number that moves before the results do. A
+//: win-loss record needs thousands of bets to say anything; whether the
+//: price moved our way after we took it says it in a few hundred. With the
+//: market's own open-to-close drift taken out — see `forward_record.clv`.
+function v3RecClv(C) {
+  const m = (C || {})['model side'];
+  if (!m || !m.n) return '';
+  const pp = v => (v >= 0 ? '+' : '\u2212') + Math.abs(v).toFixed(2) + 'pp';
+  return '<p class="help" style="margin-top:8px"><b style="color:var(--ink)">'
+    + 'Closing-line value</b>: the close moved ' + pp(m.mean)
+    + ' toward our model\u2019s picks on average, likely between '
+    + pp(m.lo) + ' and ' + pp(m.hi) + ', over ' + v3RecN(m.n)
+    + ' picks logged when first seen. Above zero means the market came our '
+    + 'way after we took the price.</p>';
+}
+
+//: ONE ROW PER MODEL VERSION, once there is more than one, so a promotion
+//: is judged on its own bets rather than averaged into the last model's.
+function v3RecVersions(F) {
+  const r = (F.rules || []).filter(x => x.rule === 'model side')[0];
+  const v = (r || {}).by_version || {};
+  const keys = Object.keys(v);
+  if (keys.length < 2) return '';
+  return '<h3 class="recsec__t" style="margin-top:12px">By model version</h3>'
+    + v3RecTable(['Version', 'Bets', 'Correct', 'Per $100', 'Likely range'],
+        keys.map(k => [esc(k), v3RecN(v[k].bets),
+                       v3RecPct({pct: v[k].hit, n: 1}), v3RecCash(v[k].roi),
+                       v3RecRangeCell({lo: v[k].lo, hi: v[k].hi,
+                                       g: v[k].games})]));
 }
 
 function v3RecPlayers(p, S, span) {

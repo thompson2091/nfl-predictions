@@ -47,7 +47,7 @@ ROOT = Path(__file__).resolve().parents[2] / "archive" / "predictions"
 #: rest of the project grades on; the rest is what the board showed.
 FIELDS: tuple[str, ...] = (
     "player_name", "team", "probability", "prob_model", "rank",
-    "has_market_price", "odds", "book", "source",
+    "has_market_price", "odds", "book", "source", "version",
 )
 
 #: The four over/under markets, which had no freeze at all until 2026-10-09.
@@ -67,6 +67,10 @@ OU_FIELDS: tuple[str, ...] = (
     # Set only on a board recovered from an old deploy: which build, so the
     # recovery can be checked against the file it came from.
     "source",
+    # The model that scored the board (`run_manifest.served_version`), so a
+    # promotion starts a new population on the forward record instead of
+    # being averaged into the old one. Absent on recovered boards.
+    "version",
 )
 
 
@@ -147,11 +151,19 @@ def record(rows: list[dict], season: int, week: int, market: str,
         return 0
     by_game: dict = {}
     keep = fields_for(market)
+    try:
+        from src.export.run_manifest import served_version
+
+        ver = served_version(market)
+    except Exception:                                            # noqa: BLE001
+        ver = None
     for r in rows:
         gid = r.get("game_id")
         if gid:
-            by_game.setdefault(gid, []).append(
-                {f: r.get(f) for f in keep if r.get(f) is not None})
+            row = {f: r.get(f) for f in keep if r.get(f) is not None}
+            if ver and "version" not in row:
+                row["version"] = ver
+            by_game.setdefault(gid, []).append(row)
     live = started_games(season, week, now)
     store = load(int(season))
     # NOT `setdefault` UNTIL THERE IS SOMETHING TO PUT IN IT. A week where

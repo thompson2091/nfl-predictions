@@ -58,6 +58,29 @@ def _served_version(market: str) -> str | None:
         return None
 
 
+def served_version(market: str) -> str | None:
+    """What model a board was scored by, as one short string.
+
+    The touchdown markets have locked versions in `CURRENT.json`. The four
+    over/under markets do not — their models are a `.pkl` and two JSON files
+    refit in place — so for those this is a hash of every file in
+    `models/<market>/`, which changes exactly when what is served changes.
+    Stamped on every frozen board so the forward record can be split by the
+    model that made it rather than pooling two versions under one number.
+    """
+    v = _served_version(market)
+    if v:
+        return v
+    d = ROOT / "models" / market
+    if not d.is_dir():
+        return None
+    h = hashlib.sha256()
+    for f in sorted(p for p in d.iterdir() if p.is_file()):
+        h.update(f.name.encode())
+        h.update((_sha(f) or "").encode())
+    return "files:" + h.hexdigest()[:12]
+
+
 def _latest_capture() -> str | None:
     try:
         import polars as pl

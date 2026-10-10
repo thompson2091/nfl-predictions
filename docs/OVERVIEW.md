@@ -4,7 +4,9 @@ What this repo is, what the models actually are, and where everything lives.
 Start here; [MODEL_ITERATION.md](MODEL_ITERATION.md) is how you change a model
 without fooling yourself, [DATA_SOURCES.md](DATA_SOURCES.md) is where every
 number comes from and what is known to be wrong with it, and
-[DEPLOY.md](DEPLOY.md) is how the board reaches the web.
+[DEPLOY.md](DEPLOY.md) is how the board reaches the web, and
+[RECORD_LOOP.md](RECORD_LOOP.md) is how the Record page is read each week and
+how a change earns its way onto the site.
 
 A weekly NFL player-prop pipeline. It ingests nflverse data and sportsbook
 odds, trains a model per market, and publishes a board you read before a slate.

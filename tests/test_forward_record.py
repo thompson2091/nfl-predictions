@@ -171,3 +171,52 @@ def test_picks_are_read_off_the_frozen_board_one_line_a_player(monkeypatch):
     assert [(g["rule"], g["line"]) for g in got] == [
         ("model side", 60.5), ("prop edge over threshold", 60.5)]
     assert got[0]["game"] == "C @ D" and got[0]["source"] == "x.html"
+
+
+def test_the_selection_rules_are_subsets_and_count_from_their_own_week(monkeypatch):
+    """`model confident` counts from week 2 (its cut came from 2024-25);
+    `model under` from week 6 (it was read off weeks 2-4)."""
+    from src.evaluation import forward_record as FR
+    from src.export import prediction_freeze as PF
+
+    def board(wk, side, m):
+        return {"rushing_yards": {f"2026_{wk:02d}_C_D": [
+            {"player_name": "P", "point": 50.5, "model_only": m,
+             "model_side": side, "price_over": -110, "price_under": -110,
+             "version": "v1"}]}}
+    store = {"3": board(3, "under", 0.2), "6": board(6, "under", 0.4)}
+    monkeypatch.setattr(PF, "load", lambda season: store)
+    got = {(p["rule"], p["week"]) for p in FR._picks_from_boards(2026)}
+    assert ("model confident", 3) in got, "0.8 sure on the under is confident"
+    assert ("model confident", 6) not in got, "0.6 sure is not"
+    assert ("model under", 3) not in got, "week 3 cannot test a week-2-4 finding"
+    assert ("model under", 6) in got
+
+
+def test_clv_takes_the_markets_own_drift_out(monkeypatch):
+    """A close that moved only as far as every over/under moves is no skill."""
+    from src.evaluation import forward_record as FR
+
+    picks = pl.DataFrame([
+        {"season": "2026", "week": "5", "market": "rushing_yards",
+         "rule": "model side", "player": "Over Man", "game": "C @ D",
+         "book": "0.50", "line": "50.5", "side": "over",
+         "recorded_at": "2026-10-07T12:00:00"},
+        {"season": "2026", "week": "5", "market": "rushing_yards",
+         "rule": "model side", "player": "Under Man", "game": "C @ D",
+         "book": "0.50", "line": "40.5", "side": "under",
+         "recorded_at": "2026-10-07T12:00:00"},
+    ])
+    monkeypatch.setattr(FR, "_close_fair", lambda season: {
+        ("2026_05_C_D", "over man", "rushing_yards", 50.5): 0.503,
+        ("2026_05_C_D", "under man", "rushing_yards", 40.5): 0.503})
+    monkeypatch.setattr("src.evaluation.ou_shortlist.pairs", lambda m: None)
+    monkeypatch.setattr("src.evaluation.ou_shortlist.drift",
+                        lambda pr: 0.3)
+    monkeypatch.setattr("src.evaluation.prop_settlement._norm",
+                        lambda names: [n.lower() for n in names])
+    c = FR.clv(2026, picks)["model side"]
+    assert c["n"] == 2
+    # Both closes moved +0.3pp on the over, which is exactly the drift: the
+    # over gained nothing and the under lost nothing.
+    assert c["mean"] == pytest.approx(0.0, abs=1e-9)

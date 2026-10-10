@@ -193,6 +193,48 @@ RULES = (
         "expected_per_week": 250,
     }
     for mkt in PER_GAME_MARKETS
+) + tuple(
+    # ── TWO SELECTION RULES, registered 2026-10-09 ──────────────────────
+    #
+    # Ways to choose among the model's own picks, recorded forward so the
+    # record can test them. Neither changes the model. Each says where its
+    # cut came from, because a rule found on the weeks that grade it is
+    # grading its own fit — `since` is the first week that counts.
+    {
+        "name": "model confident",
+        "market": mkt,
+        "kind": "model_conf",
+        "min_conf": 0.75,
+        "since": 2,
+        "status": "unproven — a cut found on 2024-25, recorded forward",
+        "found": "on the 2024-25 holdout, 18,099 bets, return rose with the "
+                 "model's own certainty max(p, 1-p) to +9.07 per $100 "
+                 "[+3.82, +14.32] above 0.75; paired within game +8.48, "
+                 "p=0.000005",
+        "control": "the cut was the top band of a measurement on earlier "
+                   "seasons, so weeks 2-4 of 2026 are out of sample for it",
+        "out_of_sample": "weeks 2-4 of 2026: +5.31 per $100 on 79 bets, "
+                         "seen before registering; the band was fixed first",
+        "expected_per_week": 25,
+    }
+    for mkt in PER_GAME_MARKETS
+) + tuple(
+    {
+        "name": "model under",
+        "market": mkt,
+        "kind": "model_under",
+        "since": 6,
+        "status": "unproven — found on this season, so it counts from week 6",
+        "found": "weeks 2-4 of 2026: the model's unders returned +1.96 per "
+                 "$100 on catches and +11.07 on rushing yards while its "
+                 "overs lost on both — the direction the open-to-close "
+                 "drift of every over/under market predicts",
+        "control": "nothing before week 6 counts: the split was read off "
+                   "weeks 2-4, so those weeks cannot test it",
+        "out_of_sample": "starts week 6 of 2026",
+        "expected_per_week": 60,
+    }
+    for mkt in ("receptions", "rushing_yards")
 )
 
 

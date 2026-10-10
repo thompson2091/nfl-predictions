@@ -308,7 +308,8 @@ def test_a_tracked_rule_carries_where_it_came_from():
         shape = (("min_book_pct", "max_book_pct", "max_ratio")
                  if r.get("kind") == "lay"
                  else ("threshold_pp",) if r.get("kind") == "prop_edge"
-                 else () if r.get("kind") == "model_side"
+                 else () if r.get("kind") in ("model_side", "model_conf",
+                                              "model_under")
                  else ("min_odds", "max_odds", "min_edge_pp"))
         for k in ("name", "market", "status", "found", "control",
                   "out_of_sample") + shape:
@@ -624,6 +625,13 @@ TRACKED_RULE_DEFINITIONS = {
     ("model side", "receiving_yards"): {"kind": "model_side"},
     ("model side", "rushing_yards"): {"kind": "model_side"},
     ("model side", "passing_yards"): {"kind": "model_side"},
+    # Two selection rules among the model's own picks, registered 2026-10-09.
+    ("model confident", "receptions"): {"kind": "model_conf", "min_conf": 0.75},
+    ("model confident", "receiving_yards"): {"kind": "model_conf", "min_conf": 0.75},
+    ("model confident", "rushing_yards"): {"kind": "model_conf", "min_conf": 0.75},
+    ("model confident", "passing_yards"): {"kind": "model_conf", "min_conf": 0.75},
+    ("model under", "receptions"): {"kind": "model_under"},
+    ("model under", "rushing_yards"): {"kind": "model_under"},
 }
 
 

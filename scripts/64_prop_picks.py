@@ -166,6 +166,24 @@ def main() -> int:
             total += n
             print(f"  {market}: model side on {len(base)} lines, "
                   f"{n} newly recorded")
+            # THE TWO SELECTION RULES are subsets of the model's own side,
+            # recorded under their own names so each has its own record.
+            for kind, keep in (
+                    ("model_conf", lambda p, r: max(p["model"], 1 - p["model"])
+                     >= r["min_conf"]),
+                    ("model_under", lambda p, r: p["side"] == "under")):
+                rule = _rule(market, kind)
+                if not rule:
+                    continue
+                sub = [dict(p, rule=rule["name"]) for p in base if keep(p, rule)]
+                if sub:
+                    n = record(sub, season=season, week=args.week,
+                               market=market,
+                               recorded_on=date.today().isoformat(),
+                               allow_late=args.allow_late)
+                    total += n
+                    print(f"  {market}: {rule['name']} on {len(sub)} lines, "
+                          f"{n} newly recorded")
         rule = _rule(market, "prop_edge") or {}
         if not rows:
             print(f"  {market}: nothing clears "
