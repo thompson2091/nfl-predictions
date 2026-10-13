@@ -395,52 +395,52 @@
    "model_home": 21.3,
    "model_spread": 4.3,
    "model_total": 46.8,
-   "model_total_centered": 44.7,
+   "model_total_centered": 44.5,
    "model_win_home": 0.3364,
    "model_win_n": 2959
   },
   "BUF_LA": {
    "blend": {
-    "spread": -2.4,
-    "total": 53.2,
-    "total_centered": 52.7,
-    "win_home": 0.5743
+    "spread": -2.9,
+    "total": 52.5,
+    "total_centered": 52.0,
+    "win_home": 0.5912
    },
-   "model_away": 28.4,
-   "model_home": 21.0,
-   "model_spread": 7.4,
-   "model_total": 49.4,
-   "model_total_centered": 47.3,
-   "model_win_home": 0.2438,
-   "model_win_n": 2959
+   "model_away": 24.3,
+   "model_home": 22.3,
+   "model_spread": 2.0,
+   "model_total": 46.6,
+   "model_total_centered": 44.3,
+   "model_win_home": 0.4141,
+   "model_win_n": 2973
   },
   "CHI_GB": {
    "blend": {
     "spread": 0.9,
     "total": 46.5,
-    "total_centered": 46.0,
+    "total_centered": 45.9,
     "win_home": 0.4544
    },
    "model_away": 22.5,
    "model_home": 27.1,
    "model_spread": -4.6,
    "model_total": 49.5,
-   "model_total_centered": 47.4,
+   "model_total_centered": 47.2,
    "model_win_home": 0.6503,
    "model_win_n": 2959
   },
   "CIN_MIA": {
    "blend": {
-    "spread": 7.0,
+    "spread": 7.4,
     "total": 43.4,
-    "total_centered": 42.9,
-    "win_home": 0.2547
+    "total_centered": 42.8,
+    "win_home": 0.2438
    },
    "model_away": 28.6,
    "model_home": 17.5,
    "model_spread": 11.1,
    "model_total": 46.1,
-   "model_total_centered": 44.0,
+   "model_total_centered": 43.8,
    "model_win_home": 0.1581,
    "model_win_n": 2959
   },
@@ -455,22 +455,22 @@
    "model_home": 26.5,
    "model_spread": -3.0,
    "model_total": 50.1,
-   "model_total_centered": 48.0,
+   "model_total_centered": 47.8,
    "model_win_home": 0.5955,
    "model_win_n": 2959
   },
   "DEN_LAC": {
    "blend": {
     "spread": 3.1,
-    "total": 41.9,
-    "total_centered": 41.4,
+    "total": 41.5,
+    "total_centered": 40.9,
     "win_home": 0.3766
    },
    "model_away": 20.8,
    "model_home": 20.8,
    "model_spread": 0.0,
    "model_total": 41.5,
-   "model_total_centered": 39.4,
+   "model_total_centered": 39.2,
    "model_win_home": 0.4872,
    "model_win_n": 2959
   },
@@ -485,52 +485,52 @@
    "model_home": 24.5,
    "model_spread": -0.1,
    "model_total": 48.8,
-   "model_total_centered": 46.7,
+   "model_total_centered": 46.5,
    "model_win_home": 0.4908,
    "model_win_n": 2959
   },
   "HOU_TEN": {
    "blend": {
     "spread": 7.2,
-    "total": 38.5,
-    "total_centered": 37.9,
+    "total": 38.1,
+    "total_centered": 37.5,
     "win_home": 0.2492
    },
    "model_away": 22.2,
    "model_home": 17.6,
    "model_spread": 4.5,
    "model_total": 39.8,
-   "model_total_centered": 37.7,
+   "model_total_centered": 37.5,
    "model_win_home": 0.3299,
    "model_win_n": 2959
   },
   "IND_PIT": {
    "blend": {
     "spread": -2.2,
-    "total": 45.0,
-    "total_centered": 44.5,
+    "total": 42.8,
+    "total_centered": 42.2,
     "win_home": 0.5671
    },
    "model_away": 23.5,
    "model_home": 23.1,
    "model_spread": 0.3,
    "model_total": 46.6,
-   "model_total_centered": 44.5,
+   "model_total_centered": 44.3,
    "model_win_home": 0.4762,
    "model_win_n": 2959
   },
   "LV_NE": {
    "blend": {
     "spread": -2.9,
-    "total": 43.8,
-    "total_centered": 43.3,
+    "total": 44.2,
+    "total_centered": 43.6,
     "win_home": 0.592
    },
    "model_away": 21.5,
    "model_home": 18.8,
    "model_spread": 2.8,
    "model_total": 40.3,
-   "model_total_centered": 38.2,
+   "model_total_centered": 38.0,
    "model_win_home": 0.3869,
    "model_win_n": 2959
   },
@@ -545,22 +545,22 @@
    "model_home": 22.5,
    "model_spread": -1.3,
    "model_total": 43.6,
-   "model_total_centered": 41.5,
+   "model_total_centered": 41.3,
    "model_win_home": 0.5346,
    "model_win_n": 2959
   },
   "NYG_WAS": {
    "blend": {
-    "spread": -3.8,
-    "total": 44.0,
-    "total_centered": 43.5,
-    "win_home": 0.6233
+    "spread": -3.3,
+    "total": 43.6,
+    "total_centered": 43.0,
+    "win_home": 0.606
    },
    "model_away": 24.1,
    "model_home": 25.9,
    "model_spread": -1.8,
    "model_total": 50.0,
-   "model_total_centered": 47.9,
+   "model_total_centered": 47.7,
    "model_win_home": 0.5527,
    "model_win_n": 2959
   },
@@ -568,29 +568,29 @@
    "blend": {
     "spread": -7.0,
     "total": 43.0,
-    "total_centered": 42.5,
+    "total_centered": 42.4,
     "win_home": 0.7253
    },
    "model_away": 22.3,
    "model_home": 25.1,
    "model_spread": -2.8,
    "model_total": 47.4,
-   "model_total_centered": 45.3,
+   "model_total_centered": 45.2,
    "model_win_home": 0.5885,
    "model_win_n": 2959
   },
   "SF_SEA": {
    "blend": {
     "spread": -2.9,
-    "total": 46.8,
-    "total_centered": 46.2,
+    "total": 47.1,
+    "total_centered": 46.5,
     "win_home": 0.592
    },
    "model_away": 23.4,
    "model_home": 25.6,
    "model_spread": -2.2,
    "model_total": 49.0,
-   "model_total_centered": 46.9,
+   "model_total_centered": 46.7,
    "model_win_home": 0.5671,
    "model_win_n": 2959
   },

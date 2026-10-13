@@ -292,21 +292,21 @@
   },
   "BUF_LA": {
    "paras": [
-    "The Rams host Buffalo in prime time with Los Angeles favored by 3.5 points and our adjusted number making it 27.8 to 25.4, a 2.4-point edge to the home side. Both teams arrive healthy and on normal rest. The total sits at 54.5, well above our model's own number of 49.4 before it blends with the book, suggesting the market expects more scoring than recent form alone would justify. In 122 past games priced like this one, 60.7 percent finished within one score, and the underdog won outright 38.5 percent of the time.",
-    "Buffalo's offense has been the sharper unit lately, scoring 28.9 a game over its last ten against an expected 25.9, and it holds edges over the Rams defense in both EPA per play by 0.231 and two-minute situations by 0.288. Los Angeles has also scored above expectation at 26.4 against 25.2, but both defenses have underperformed, with Buffalo allowing 23.6 against an expected 21.3 and the Rams giving up 24.7 against 20.9. Seven of Buffalo's last ten have gone over, as have seven of the Rams' last ten.",
-    "The total has drifted from 54.0 to 54.5, with 71.4 percent of tickets now on the over, up from 70.8 percent at the open. That move reflects the recent behavior of both offenses and both defenses, neither of which has held its ground the way the market expected. The spread has stayed put at 3.5, and while Buffalo carries patterns as a road underdog after being favored, those records don't clear break-even and offer no edge in themselves.",
-    "Matthew Stafford is projected for 285.8 passing yards against a line of 283.5, with Davante Adams expected to collect 80.4 receiving yards on 6.1 receptions, both above their posted marks. Josh Allen sits at 254.7 passing yards against 245.5 and adds 38.4 on the ground against 36.5, giving Buffalo multiple ways to move the ball. Puka Nacua's projection of 72.2 receiving yards trails his line of 90.5, while James Cook and Kyren Williams both project slightly below their rushing totals. The game turns on whether either defense can tighten up in moments that matter, or whether the quarterbacks continue to find space the way they have for weeks."
+    "The book makes LA favored by 3.5 on a total of 54.5. Our own number is BUF 24.8, LA 27.7.",
+    "In 122 games priced like this one, BUF won outright 38.5% of the time and 60.7% finished within one score. 37.7% turned into shootouts against 29.5% that became grinds. Those are the games that have happened, not a forecast of this one.",
+    "BUF did not practice Josh Palmer (WR), Ed Oliver (DE), Terrel Bernard (LB); LA did not practice Aaron Donald (DT).",
+    "BUF has scored 28.9 a game over its last 10 against an expected 25.9, and allowed 23.6 against an expected 21.3."
    ],
    "scoreline": {
     "away": "BUF",
-    "away_pts": 25.4,
+    "away_pts": 24.8,
     "home": "LA",
-    "home_pts": 27.8,
+    "home_pts": 27.7,
     "lead": "LA",
-    "spread": -2.4,
-    "total": 53.2
+    "spread": -2.9,
+    "total": 52.5
    },
-   "written": true
+   "written": false
   },
   "CHI_GB": {
    "paras": [
