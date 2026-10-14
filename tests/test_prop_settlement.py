@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 import polars as pl
+import pytest
 
 from src.evaluation import prop_edge as E
 from src.evaluation.prop_settlement import settle_rows

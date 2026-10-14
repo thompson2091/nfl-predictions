@@ -596,3 +596,37 @@ def test_an_unreadable_schedule_does_not_advise_overwriting_a_board():
         assert _is_a_record(P())
     finally:
         TR.week_has_started = was
+
+
+def test_a_kept_copy_is_not_an_unexpected_artifact():
+    """`write_kept` snapshots into `history/` inside a served model directory.
+
+    The snapshot machinery exists so the weight a board was served with last
+    week survives this week's refit. It put those copies beside the file they
+    snapshot, which is inside `models/<market>/` — so the first time the blend
+    weight actually refit itself, `verify_current` reported two unexpected
+    artifacts and the served state read as unidentified. A kept copy is as
+    runtime as the file it is a copy of.
+    """
+    assert V._is_runtime("history/blend_weight.20261013T120025.json")
+    assert V._is_runtime("history/edge_threshold.20261013T120025.json")
+    # Nested one deeper, and under a market directory, both still runtime.
+    assert V._is_runtime("anytime_td/history/blend_weight.20260101T000000.json")
+
+    # And the exclusion is the directory, not the word: a fitted artifact that
+    # merely has "history" in its filename is still enforced.
+    assert not V._is_runtime("history_features.pkl")
+    assert not V._is_runtime("anytime_td/xgb_history.pkl")
+    # A file literally named `history` is a file, not a directory of kept
+    # copies, so it is fitted until something says otherwise.
+    assert not V._is_runtime("history")
+
+    # The split follows, which is what `verify_current` actually reads.
+    fitted, runtime = V.split_runtime({
+        "xgb_model.pkl": "a",
+        "blend_weight.json": "b",
+        "history/blend_weight.20261013T120025.json": "c",
+    })
+    assert set(fitted) == {"xgb_model.pkl"}, fitted
+    assert set(runtime) == {
+        "blend_weight.json", "history/blend_weight.20261013T120025.json"}

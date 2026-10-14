@@ -152,6 +152,14 @@ def hash_tree(root: Path) -> dict[str, str]:
 
 
 def _is_runtime(relpath: str) -> bool:
+    # A kept copy is as runtime as the file it is a copy of. `write_kept`
+    # snapshots a refit-in-place artifact into `history/` beside it, so those
+    # files appear in a served model directory and in no locked version —
+    # which `verify_current` read as two unexpected artifacts the first time
+    # the blend weight refit itself.
+    parts = Path(relpath).parts
+    if "history" in parts[:-1]:
+        return True
     return Path(relpath).name in RUNTIME_ARTIFACTS
 
 

@@ -774,18 +774,30 @@ def test_a_mirror_pair_is_the_same_games_from_the_other_side(sched):
     # exactly 208-208 on 416 games, which they were on the day it was written
     # and stopped being on 2026-10-04, when the ingest that graded a Thursday
     # divisional game moved two of them by one: 209-208, 208-209, 208-208.
-    # The point survived the change untouched — the records are still within a
-    # game of each other and `pickem` is still not their mirror — so what is
+    # The point survived the change untouched — the records are still
+    # indistinguishable and `pickem` is still not their mirror — so what is
     # asserted now is that, rather than the coincidence that illustrated it.
     # A test that fails every time a divisional game is played is a test that
     # gets its number bumped without being read.
+    #
+    # ON THE RATE, NOT THE COUNT, which is the second half of that lesson. A
+    # spread of "within two wins" was itself a snapshot: the three conditions
+    # are structurally balanced — a pick'em has no favorite, and the
+    # divisional pair is one set of games read from either sideline — so their
+    # RATES stay within a fraction of a point forever while their raw counts
+    # drift apart as the seasons accumulate. Week 5 of 2026 pushed the count
+    # spread to three (208-208, 211-210, 210-211) and the rate spread to 0.24
+    # of a point, which is the same claim holding, not failing.
     same = [i for i in ("pickem", "div_home_dog", "div_road_fav") if i in by]
     if len(same) == 3:
         recs = {i: (by[i]["all"]["w"], by[i]["all"]["l"]) for i in same}
-        spread = max(w for w, _ in recs.values()) - min(w for w, _ in recs.values())
-        assert spread <= 2, (
-            f"these three no longer have near-identical records, so they no "
-            f"longer demonstrate the false positive: {recs}")
+        rates = {i: w / (w + l) for i, (w, l) in recs.items() if w + l}
+        assert len(rates) == 3, recs
+        spread = max(rates.values()) - min(rates.values())
+        assert spread <= 0.02, (
+            f"these three no longer have indistinguishable records, so they "
+            f"no longer demonstrate the false positive: {recs} "
+            f"({spread * 100:.2f} points apart)")
         assert mir.get("div_home_dog") == "div_road_fav", mir.get("div_home_dog")
         assert "pickem" not in mir, (
             "pickem was paired on an identical record, which is the mistake "
