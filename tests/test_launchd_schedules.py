@@ -117,3 +117,37 @@ def test_the_sunday_wrap_runs_after_the_late_games_and_again_after():
     # And at least one lands on Monday, for data published overnight.
     assert any(c.get("Weekday") == 1 for c in ci), (
         "nothing picks up play-by-play that publishes after midnight")
+
+
+def test_monday_nights_result_does_not_depend_on_the_rollover():
+    """The gap found on 2026-10-14, and why it is this job that closes it.
+
+    `week_rollover.sh` runs the same ingest, so Monday night was left to it.
+    But the rollover reaches `01_ingest.py` only AFTER its roster probe, and
+    that probe exits when nflverse has not published the upcoming week's
+    rosters. On 2026-10-13 the 07:00 and 10:00 rollovers both exited there, so
+    Monday night's BUF @ LA stayed ungraded until 13:00 — and nothing at all
+    was scheduled between Monday 11:30 and then. Rosters that slipped to
+    Thursday would have taken the result with them.
+
+    So the wrap carries Tuesday slots of its own. It ingests unconditionally
+    and gates only the publish, which is the right shape for a result that has
+    already happened.
+    """
+    d = plistlib.loads(_path("nfl-sunday-wrap").read_bytes())
+    ci = d["StartCalendarInterval"]
+    ci = [ci] if isinstance(ci, dict) else ci
+    tue = [c for c in ci if c.get("Weekday") == 2]
+    assert tue, (
+        "nothing ingests on a Tuesday, so Monday night's result is back to "
+        "riding on the rollover reaching its ingest step")
+
+    # Before the rollover's own first slot is no use — the point is to cover
+    # the case where the rollover exits early — so at least one has to land
+    # late enough to be a genuine second attempt, and before the Tuesday
+    # opening capture at 12:00 that prices the next board.
+    assert any(c["Hour"] * 60 + c["Minute"] <= 11 * 60 + 30 for c in tue), (
+        "every Tuesday attempt sits after the midday opening capture")
+    assert len(tue) >= 2, (
+        "one attempt cannot outlast a publishing delay, which is the same "
+        "reason the Sunday night run is not alone either")

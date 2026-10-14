@@ -16,8 +16,21 @@
 #
 #   ./scripts/sunday_wrap.sh          # ingest results, rebuild, deploy
 #
-# Monday night's game is NOT covered here, and does not need to be: Tuesday's
-# `week_rollover.sh` runs the same ingest before it builds the next board.
+# MONDAY NIGHT IS COVERED HERE, by the Tuesday slots, and the reason is worth
+# writing down because the first version of this said the opposite.
+#
+# It said Monday night did not need covering because Tuesday's
+# `week_rollover.sh` runs the same ingest before it builds the next board. It
+# does — but only AFTER its roster probe, and that probe EXITS when nflverse
+# has not published the upcoming week's rosters yet. On 2026-10-13 that is
+# exactly what happened: the 07:00 and 10:00 rollovers both exited at the
+# probe, so neither reached `01_ingest.py`, and Monday night's BUF @ LA stayed
+# ungraded until the 13:00 run. Nothing scheduled ran between Monday 11:30 and
+# then. Had the rosters slipped to Thursday, so would the result.
+#
+# So the Tuesday slots are here rather than in the rollover: this job ingests
+# unconditionally and gates only the publish, which is the right shape for a
+# result that has already happened.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
