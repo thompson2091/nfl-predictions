@@ -34,6 +34,7 @@ import json
 import sys
 import time
 import urllib.parse
+from datetime import date, datetime, timedelta, timezone
 import urllib.request
 from pathlib import Path
 
@@ -52,6 +53,10 @@ ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
 #: comes back null and the analysis is used instead. See `fetch` for why that is
 #: an acceptable substitution and what it costs.
 PREVIOUS_RUNS = "https://previous-runs-api.open-meteo.com/v1/forecast"
+#: The live forecast, for games that have not kicked off. Both archives above
+#: hold the past only, so without this the upcoming week — the one a board is
+#: priced on — carries no weather at all. About 16 days of reach.
+LIVE_FORECAST = "https://api.open-meteo.com/v1/forecast"
 WEATHER_PATH = Path(__file__).resolve().parents[1] / "data" / "processed" / "weather.parquet"
 OUT = Path(__file__).resolve().parents[1] / "diagnostics" / "weather_validation.json"
 
@@ -113,6 +118,17 @@ def hourly_temps(lat: float, lon: float, start: str, end: str) -> dict | None:
     })
 
 
+def _archive_pair(url: str, lat: float, lon: float, start: str, end: str,
+                  hourly: list[str]) -> dict:
+    """One archive request, already defaulted to an empty dict."""
+    return _get(url, {
+        "latitude": lat, "longitude": lon,
+        "start_date": start, "end_date": end,
+        "timezone": "UTC", "wind_speed_unit": "mph",
+        "hourly": hourly,
+    }) or {}
+
+
 def fetch(seasons: list[int] | None = None) -> "pl.DataFrame":
     """One row per outdoor game: what was forecast at kickoff, 24 hours out.
 
@@ -157,47 +173,117 @@ def fetch(seasons: list[int] | None = None) -> "pl.DataFrame":
         sub = games.filter((pl.col("stadium") == pr["stadium"])
                            & (pl.col("season") == pr["season"]))
         days = sorted({str(d)[:10] for d in sub["gameday"]})
+        # BOTH SOURCES ARE ARCHIVES, SO A FUTURE DATE IS A 400.
+        #
+        # The range asked for was min(days) to max(days) over the whole
+        # season, which for the season being played runs into next January.
+        # Open-Meteo answers that with `400 Bad Request` and the handler
+        # reported "no data from either source" — so a mid-season fetch
+        # returned almost nothing and looked like a service problem rather
+        # than a request this code should not have sent. Clamp to yesterday,
+        # which is the last day an archive can be expected to hold.
+        #
+        # What this does NOT do is price an upcoming game: a board going up on
+        # Wednesday wants Sunday's FORECAST, which lives behind the live
+        # forecast endpoint rather than either archive. That is a separate
+        # addition and the coverage report below says how many games are
+        # waiting on it.
+        cutoff = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+        # 14, not 15, so that the extra UTC day added below still lands
+        # inside the forecast endpoint's own ~16-day reach. Asking past it is
+        # a 400, and that dropped Lambeau's Sunday night game — a stadium
+        # whose last upcoming fixture happened to sit on the old edge.
+        horizon = (datetime.now(timezone.utc).date() + timedelta(days=14)).isoformat()
+        api_limit = (datetime.now(timezone.utc).date() + timedelta(days=15)).isoformat()
+        ahead = [d for d in days if cutoff < d <= horizon]
+        days = [d for d in days if d <= cutoff]
+        if not days and not ahead:
+            print(f"[{i}/{pairs.height}] {pr['stadium'][:34]:34s} {pr['season']} "
+                  f"(nothing within reach of either source yet)")
+            continue
         print(f"[{i}/{pairs.height}] {pr['stadium'][:34]:34s} {pr['season']} "
-              f"({len(days)} game days)")
+              f"({len(days)} played, {len(ahead)} upcoming)")
         # Two sources, because neither covers the whole span. The previous-runs
         # archive holds forecasts-as-issued but only from 2016-01-01, and its
         # analysis field is empty for the early years — the first version of this
         # relied on that fallback and silently produced nothing before 2017. The
         # reanalysis archive covers everything but holds no forecasts. So: ask
         # both, prefer the forecast, fall back to the reanalysis.
-        forecast = _get(PREVIOUS_RUNS, {
-            "latitude": lat, "longitude": lon,
-            "start_date": min(days), "end_date": max(days),
-            "timezone": "UTC", "wind_speed_unit": "mph",
-            "hourly": ["temperature_2m_previous_day1",
-                       "wind_speed_10m_previous_day1",
-                       "precipitation_previous_day1"],
-        }) or {}
-        analysis = _get(ARCHIVE, {
-            "latitude": lat, "longitude": lon,
-            "start_date": min(days), "end_date": max(days),
-            "timezone": "UTC", "wind_speed_unit": "mph",
-            "hourly": ["temperature_2m", "wind_speed_10m", "precipitation"],
-        }) or {}
+        # A NIGHT GAME KICKS OFF ON THE NEXT UTC DAY, AND THE RANGE ENDED
+        # TOO EARLY FOR IT.
+        #
+        # The hourly index is keyed by kickoff in UTC, but the range was built
+        # from LOCAL game days. Atlanta at 20:20 on 11 October is 00:20 UTC on
+        # the 12th, so for the last game in a stadium's range the key fell one
+        # hour past the end of the data and `t is None` dropped it without a
+        # word. It bit only the final game of each stadium-season, which is
+        # why it read as an occasional gap rather than a rule: 4 to 8 outdoor
+        # games a season from 2016 on, 59% of them kicking off at or after
+        # 16:00 local. One more day on the end covers every timezone the
+        # league plays in.
+        forecast, analysis = {}, {}
+        if days:
+            last = (date.fromisoformat(max(days))
+                    + timedelta(days=1)).isoformat()
+            forecast = _archive_pair(PREVIOUS_RUNS, lat, lon, min(days), last,
+                                     ["temperature_2m_previous_day1",
+                                      "wind_speed_10m_previous_day1",
+                                      "precipitation_previous_day1"])
+            analysis = _archive_pair(ARCHIVE, lat, lon, min(days), last,
+                                     ["temperature_2m", "wind_speed_10m",
+                                      "precipitation"])
+        # THE UPCOMING WEEK IS THE HALF THAT PRICES A BOARD, and neither
+        # archive can serve it: both hold the past. So a game that has not
+        # kicked off is read from the live forecast endpoint, which is the
+        # same request shape and the same free service. Without this the
+        # refresh fills in history and the board going up on Wednesday still
+        # sees the outdoor mean with every weather flag at zero — which is
+        # the state `weather.parquet` was actually in, for every 2026 game.
+        #
+        # Marked `wx_is_forecast = 1`, because that is exactly what it is.
+        upcoming = {}
+        if ahead:
+            # The same UTC day boundary as the archive range above: a
+            # Thursday 20:15 in Denver is 02:15 UTC on the Friday, so the
+            # forecast window needs the extra day too or the week's own night
+            # games fall out of it.
+            upto = min((date.fromisoformat(max(ahead))
+                        + timedelta(days=1)).isoformat(), api_limit)
+            upcoming = _get(LIVE_FORECAST, {
+                "latitude": lat, "longitude": lon,
+                "start_date": min(ahead), "end_date": upto,
+                "timezone": "UTC", "wind_speed_unit": "mph",
+                "hourly": ["temperature_2m", "wind_speed_10m",
+                           "precipitation"],
+            }) or {}
+
         fh, ah = forecast.get("hourly"), analysis.get("hourly")
-        if not fh and not ah:
-            print("    no data from either source")
+        uh = upcoming.get("hourly")
+        if not fh and not ah and not uh:
+            print("    no data from any source")
             continue
 
         fidx = {t: k for k, t in enumerate(fh["time"])} if fh else {}
         aidx = {t: k for k, t in enumerate(ah["time"])} if ah else {}
+        uidx = {t: k for k, t in enumerate(uh["time"])} if uh else {}
+        reach = max(days + ahead)
         for g in sub.iter_rows(named=True):
+            if str(g["gameday"])[:10] > reach:
+                continue
             ko = kickoff_utc(str(g["gameday"])[:10], g["gametime"])
             key = ko.strftime("%Y-%m-%dT%H:00")
 
             def pick(fc: str, an: str):
-                """The 24h forecast if it was archived, else the reanalysis."""
+                """Archived 24h forecast, else reanalysis, else live forecast."""
                 k = fidx.get(key)
                 if k is not None and fh.get(fc) and fh[fc][k] is not None:
                     return fh[fc][k], True
                 k = aidx.get(key)
                 if k is not None and ah.get(an) and ah[an][k] is not None:
                     return ah[an][k], False
+                k = uidx.get(key)
+                if k is not None and uh.get(an) and uh[an][k] is not None:
+                    return uh[an][k], True
                 return None, False
 
             t, is_fc = pick("temperature_2m_previous_day1", "temperature_2m")
@@ -216,6 +302,26 @@ def fetch(seasons: list[int] | None = None) -> "pl.DataFrame":
 
     out = pl.DataFrame(rows)
     WEATHER_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    # MERGE, DO NOT OVERWRITE, AND THAT IS WHY THIS WENT STALE.
+    #
+    # This wrote `out` wholesale, so the only safe way to run it was over every
+    # season — a few hundred calls against a free service. Expensive enough
+    # that nobody ran it mid-season, and `weather.parquet` sat at 2021-2025
+    # from 20 August while every 2026 game fell to the outdoor mean with
+    # `wx_is_cold`, `wx_is_windy` and `wx_is_wet` all zero. The model saw a
+    # season with no cold, windy or wet game in it.
+    #
+    # Now a run replaces only the seasons it actually fetched and leaves the
+    # rest untouched, so `--seasons 2026` is a cheap weekly refresh and the
+    # historical rows keep the values they were archived with.
+    if seasons and WEATHER_PATH.exists():
+        prior = pl.read_parquet(WEATHER_PATH)
+        kept = prior.filter(~pl.col("season").is_in(list(seasons)))
+        out = pl.concat([kept, out.select(prior.columns)], how="vertical") \
+                .sort(["season", "game_id"])
+        print(f"\n  kept {kept.height:,} rows from seasons this run did not "
+              f"fetch")
     out.write_parquet(WEATHER_PATH)
     print(f"\n{out.height:,} games -> {WEATHER_PATH}")
     if out.height:
@@ -342,13 +448,17 @@ def report(payload: dict) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--validate", action="store_true")
+    ap.add_argument("--seasons", default=None,
+                    help="comma-separated seasons to fetch, e.g. 2026. Only "
+                         "these are replaced; every other season already on "
+                         "disk is kept. Omit to rebuild the whole archive.")
     ap.add_argument("--fetch", action="store_true",
                     help="build data/processed/weather.parquet")
     ap.add_argument("--limit", type=int, default=None,
                     help="check only the N busiest stadiums")
     a = ap.parse_args()
     if a.fetch:
-        fetch()
+        fetch([int(x) for x in a.seasons.split(",")] if a.seasons else None)
         return 0
     if not a.validate:
         ap.print_help()

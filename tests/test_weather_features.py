@@ -264,17 +264,36 @@ def test_weather_cannot_be_served_until_the_forecast_window_opens():
     wx = [c for c in with_wx if c.startswith("wx_")]
     assert wx, "the experiment must actually add the family"
 
-    constant = [c for c in wx if upcoming[c].n_unique() <= 1]
-    if constant:
-        # Expected while the window is shut. Assert the whole family is
-        # constant rather than some of it: a partial fill would mean the
-        # archive covers some fixtures and not others, which is a different
-        # and worse state — half the board carrying real weather and half
-        # carrying the mean, with nothing distinguishing them.
-        assert len(constant) == len(wx), (
+    # COVERAGE IS A QUESTION ABOUT THE MEASUREMENTS, NOT THE FLAGS.
+    #
+    # This asserted that either every `wx_` column varies or every one is
+    # constant, on the reasoning that a mixture means the archive covers some
+    # fixtures and not others. That inference held in August, when the window
+    # was shut and all six took the fill. It stopped holding on 2026-10-14,
+    # when the archive was refreshed and the board came back fully covered:
+    # temperature spans 44.8F to 97.5F over 62 distinct values and
+    # `wx_is_cold` is STILL constant, because no game this season has been
+    # played under 40F. That is October, not a gap.
+    #
+    # So the coverage question is asked of the three measured columns, which
+    # cannot be constant across a real slate. A derived flag is allowed to be
+    # constant whenever the column it thresholds varies — the condition
+    # simply has not happened yet.
+    measured = [c for c in wx if c in ("wx_temp_f", "wx_wind_mph",
+                                       "wx_precip_mm")]
+    flat = [c for c in measured if upcoming[c].n_unique() <= 1]
+    if flat and len(flat) != len(measured):
+        raise AssertionError(
             f"the archive covers the predict season only partially: "
-            f"{sorted(set(wx) - set(constant))} vary and {sorted(constant)} "
-            f"do not. Re-run `python scripts/28_weather.py --fetch`")
+            f"{sorted(set(measured) - set(flat))} vary and {sorted(flat)} do "
+            f"not. Re-run `python scripts/28_weather.py --fetch --seasons "
+            f"{predict_season}`")
+    if flat:
+        # Every measurement flat is the window-shut state, and then the flags
+        # derived from them must be flat too, or something is inventing one.
+        assert all(upcoming[c].n_unique() <= 1 for c in wx), (
+            "every measured column takes the fill, so no flag derived from "
+            "them can vary")
 
 
 def test_an_interaction_hides_the_constancy_its_inputs_have():
@@ -352,3 +371,102 @@ def test_the_written_verdict_is_in_the_ledger_and_points_at_runs_that_happened()
     # The two things that would otherwise have to be rediscovered.
     assert "within" in note["text"].lower()
     assert "DO NOT RETRY" in note["text"]
+
+
+# --------------------------------------------------------------------------
+# Coverage of the archive itself, against the schedule it has to serve
+# --------------------------------------------------------------------------
+
+def test_every_played_outdoor_game_this_season_has_a_reading():
+    """The staleness this is written against, and the bug under it.
+
+    `weather.parquet` sat at 2021-2025 from 20 August while the season played
+    on, so every 2026 game fell to the outdoor mean with `wx_is_cold`,
+    `wx_is_windy` and `wx_is_wet` all zero — a season the model saw as having
+    no cold, windy or wet game in it. Nothing failed, because the fill is
+    deliberate and silent.
+
+    Underneath it was a real bug. The fetch range was built from LOCAL game
+    days while the hourly index is keyed by kickoff in UTC, so a night game —
+    Atlanta at 20:20 is 00:20 UTC the next day — fell one hour past the end of
+    its own range and was dropped. It bit only the last game of each
+    stadium-season, 4 to 8 outdoor games a year from 2016 on.
+
+    A row count would not have caught either. This asks the question that
+    matters: is there a game we could have priced and did not?
+    """
+    import polars as pl
+
+    from src.features.stadium_coords import coordinates
+    from src.utils.config import get_config
+    from src.utils.paths import get_path
+
+    wx_path = Path(get_path("processed")) / "weather.parquet"
+    if not wx_path.exists():
+        pytest.skip("no weather archive — run `28_weather.py --fetch`")
+
+    season = int(get_config()["seasons"]["predict_season"])
+    sched = pl.read_parquet(Path(get_path("raw")) / "schedules.parquet")
+    played = sched.filter(
+        (pl.col("season") == season)
+        & pl.col("roof").is_in(["outdoors", "open"])
+        & pl.col("home_score").is_not_null())
+    if not played.height:
+        pytest.skip(f"{season} has no completed outdoor games yet")
+
+    have = set(pl.read_parquet(wx_path)["game_id"].to_list())
+    missing = [
+        (r["game_id"], r["gametime"], r["stadium"])
+        for r in played.iter_rows(named=True)
+        # A stadium with no asserted coordinate cannot be fetched at all, and
+        # that is a different gap — `stadium_coords` is the place it is fixed.
+        if coordinates(r["stadium"]) is not None
+        and r["game_id"] not in have
+    ]
+    assert not missing, (
+        f"{len(missing)} played outdoor {season} games have no weather row, "
+        f"so they are being served the outdoor mean with every flag at zero: "
+        f"{missing[:5]}")
+
+
+def test_the_upcoming_week_is_forecast_rather_than_filled():
+    """An archive cannot price a game that has not kicked off.
+
+    Both sources the fetch used hold the past, so a refresh filled in history
+    and left the board going up on Wednesday on the fill — which is the half
+    that actually prices anything. The live forecast endpoint covers it, and
+    this checks the result rather than the intention.
+    """
+    import polars as pl
+
+    from src.features.stadium_coords import coordinates
+    from src.utils.config import get_config
+    from src.utils.paths import get_path
+
+    wx_path = Path(get_path("processed")) / "weather.parquet"
+    if not wx_path.exists():
+        pytest.skip("no weather archive — run `28_weather.py --fetch`")
+
+    season = int(get_config()["seasons"]["predict_season"])
+    sched = pl.read_parquet(Path(get_path("raw")) / "schedules.parquet")
+    upcoming = sched.filter(
+        (pl.col("season") == season)
+        & pl.col("roof").is_in(["outdoors", "open"])
+        & pl.col("home_score").is_null()
+        & pl.col("gameday").is_not_null())
+    if not upcoming.height:
+        pytest.skip("nothing left to play")
+
+    # Only the games near enough for a forecast to exist. Beyond the
+    # endpoint's reach there is nothing to ask for, and the next weekly
+    # refresh collects them.
+    soon = sorted({str(d)[:10] for d in upcoming["gameday"]})[:1]
+    nearest = upcoming.filter(pl.col("gameday").cast(pl.Utf8).str.slice(0, 10)
+                              <= (soon[0] if soon else ""))
+    have = set(pl.read_parquet(wx_path)["game_id"].to_list())
+    missing = [r["game_id"] for r in nearest.iter_rows(named=True)
+               if coordinates(r["stadium"]) is not None
+               and r["game_id"] not in have]
+    assert not missing, (
+        "the next outdoor games to kick off carry no forecast and will be "
+        f"served the outdoor mean: {missing}")

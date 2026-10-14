@@ -564,28 +564,28 @@
   },
   "BAL_CLE": {
    "paras": [
-    "Baltimore comes in as the favorite by 4.5 points in a divisional matchup where the adjusted projection has them at 23.1 and Cleveland at 19.2. The Ravens have scored 28.1 points per game over their last ten outings, well above the 24.7 the market expected from their offense, but their defense has allowed 22.4 against an expected 21.1, playing worse than asked. Cleveland's offense has been more modest at 17.8 points per game, just a tick above the 17.2 expected, while their defense has quietly outperformed by allowing 22.1 against an expected 22.4.",
-    "The shape of this one figures to be decided by whether Baltimore can impose its offensive rhythm or whether Cleveland's defense can keep things compressed. The Ravens have an edge on two-minute EPA over the Browns' defense by 0.328, suggesting they'll look to create tempo and exploit late-half situations where Cleveland has struggled. The Browns' offense is worse than Baltimore's defense on late-half scoring drives by 0.178, which means they may need to lean on possessions earlier in quarters to stay within striking distance.",
-    "In past games priced like this one, 52.4% finished within one score and underdogs won outright 37.5% of the time, so there's a reasonable chance this stays competitive even if Baltimore controls the tempo. Cleveland's run game and passing yards both drop off sharply if they fall behind early\u2014the rush by about 27.3% and passing yards by about 22.4% in that scenario, which has roughly a 23.2% chance of happening. That makes the first half critical for the Browns to stay within range and keep their offensive balance intact.",
-    "Jesse Minter coaches Baltimore and Todd Monken coaches Cleveland, both with too few previous games for meaningful records in their current roles. The totals line has moved from 41.5 to 42.5 and the spread has widened from 3.0 to 5.5, reflecting late money on the favorite and a slightly higher-scoring expectation. Watch how Baltimore's offense attacks in two-minute situations and whether Cleveland's defense can force the Ravens into longer, grinding possessions that keep this game from getting away."
+    "Baltimore arrives as the favorite by 4.5 points in a divisional game where both sides know each other well, and the adjusted number sits at 22.9 for the Ravens and 19.1 for the Browns with a total of 42.0. The Ravens have been the more explosive offense lately, scoring 28.1 points per game over their last ten against an expected 24.7, while Cleveland has managed just 17.8 against an expected 17.2. That gap in firepower shapes the expectation here, though in 349 past games priced like this one, 52.4% finished within one score.",
+    "The concern for Baltimore is a defense that has slipped, allowing 22.4 points over those ten games against an expected 21.1. Cleveland has moved the other direction on that side of the ball, allowing 22.1 against an expected 22.4, and the Browns have covered the spread six times in their last ten. The Ravens hold an edge in two-minute situations, where their offense is better than Cleveland's defense by 0.328 in EPA, a measure that often decides tight divisional games.",
+    "Cleveland's offensive plan becomes script-dependent if the Browns fall behind badly, a scenario with roughly a 23.2% chance of happening. In that case, the running back rush volume drops by about 27.3% and quarterback passing yards fall by about 22.4%, meaning the Browns need to keep this game within reach to execute what they want to do. Baltimore's offense is worse than Cleveland's defense by 1.4 plays per game, suggesting possessions may be limited and each drive will carry weight.",
+    "Jesse Minter coaches Baltimore and Todd Monken leads Cleveland, both without enough previous games for a meaningful track record in their current roles. The game likely turns on whether Cleveland's defense can continue its recent form and keep the Ravens from building the kind of lead that forces the Browns out of their preferred approach. Both teams arrive healthy with nobody missing practice, so this comes down to execution between divisional opponents who understand each other's tendencies."
    ],
    "scoreline": {
     "away": "BAL",
-    "away_pts": 23.1,
+    "away_pts": 22.9,
     "home": "CLE",
-    "home_pts": 19.2,
+    "home_pts": 19.1,
     "lead": "BAL",
     "spread": 3.9,
-    "total": 42.2
+    "total": 42.0
    },
    "written": true
   },
   "BUF_LV": {
    "paras": [
-    "Buffalo arrives as the favorite by 5.5 points, and the adjusted number puts them at 28.4 to Las Vegas at 22.8, with a margin of 5.6 points to the Bills. Both sides have underperformed defensively over their last ten games, Buffalo allowing 23.9 against an expected 21.9 and Las Vegas giving up 25.3 against an expected 23.6. That sets up a game where the offenses should have room to work, though the model on its own would set the total at 44.3, lower-scoring than the book's 53.5.",
-    "Buffalo has been productive lately, scoring 29.1 per game over its last ten against an expected 25.9, and the Bills hold meaningful edges where it matters. On EPA per play, their offense is better than the Raiders defense by 0.206, and on two-minute situations that gap widens to 0.242. Las Vegas has stayed above water offensively at 19.4 per game against an expected 17.9, but the Raiders are at a disadvantage in plays per game, worse than Buffalo's defense by 7.2.",
-    "In 69 past games priced like this one, the underdog won outright 24.6% of the time and 59.4% finished within one score, so this spread has historically produced competitive football more often than blowouts. The Raiders offense becomes heavily script-dependent if they fall behind: in the lost big case, which has roughly a 27.5% chance of happening, the running back rush drops about 27.3% lower and the quarterback's passing yards fall about 22.4% lower. That makes the middle innings critical for Las Vegas to stay within striking distance.",
-    "Sean McDermott has won 66.7% and covered 55.8% across 147 previous games, a record that reflects consistency but does not beat the bookmaker's cut by itself. Klint Kubliak has too few previous games for a meaningful record. Buffalo is coming off an overtime game, and both teams are on normal rest with no one who missed practice. The Bills need to protect leads without giving the Raiders the desperation script that changes how Las Vegas moves the ball, while the Raiders need their defense to slow down an offense that has been scoring well above market expectation."
+    "Buffalo arrives as the favorite by 5.5 points, and the adjusted numbers bear that out: 28.4 for the Bills against 22.8 for the Raiders. Both defenses have played worse than expectation over their last 10 games, Buffalo allowing 23.9 against an expected 21.9 and Las Vegas giving up 25.3 against an expected 23.6. The Bills have been the more productive offense in that stretch, scoring 29.1 per game against an expected 25.9, while the Raiders have managed 19.4 against an expected 17.9. On two-minute EPA, Buffalo's offense is better than Las Vegas's defense by 0.242, and on EPA per play the edge is 0.206 to the Bills.",
+    "The model sees a lower-scoring game than the market does. Before blending with the book, it would set the total at 44.3, well below the book's 53.5. The adjusted total settles at 51.2, still suggesting something more controlled than a track meet. In 69 past games priced like this one, 59.4% finished within one score and 39.1% were grinds, while 29.0% were shootouts. Both teams have seen the over land more often than the under in their last 10, but that reflects what has already happened, not what this matchup is likely to produce.",
+    "Las Vegas faces script trouble if it falls behind early. The Raiders' running back rush is about 27.3% lower in the lost big case, which has roughly a 27.5% chance of happening, and their quarterback's passing yardage drops about 22.4% in that same scenario. Buffalo's offense is better than Las Vegas's defense by 0.206 on EPA per play, and the Raiders' offense is worse than the Bills' defense by 7.2 on plays per game. If the Bills build a lead, the Raiders may struggle to find the volume they need to claw back.",
+    "Both teams are healthy, with nobody missing practice on either side. Sean McDermott has won 66.7% and covered 55.8% across 147 previous games coaching Buffalo, though a record like that does not beat the bookmaker's cut by itself. The game turns on whether Las Vegas can keep it close enough to avoid falling into that lost big script, and whether Buffalo's offense can exploit a Raiders defense that has allowed more than expected. The Bills have the personnel and the matchup advantage; the Raiders need to stay within striking distance to have a chance."
    ],
    "scoreline": {
     "away": "BUF",
@@ -600,10 +600,10 @@
   },
   "CAR_PHI": {
    "paras": [
-    "The book makes Philadelphia the favorite by 1.0 points in a game with a total set at 40.5, but the adjusted number has this closer still: Carolina 19.8, Philadelphia 20.7, a margin of 0.9 points. In 299 past games priced like this one, 61.9% finished within one score, which is the shape this game projects to take. Both teams arrive healthy, with nobody missing practice, and Carolina comes off a bye while Philadelphia is on normal rest.",
-    "Over their last 10 games, Carolina's offense has been the surprise, scoring 24.7 a game against an expected 20.7, well above what the market asked. Philadelphia's offense has gone the other way, scoring 20.1 against an expected 22.5, consistently below expectation. The totals line opened at 43.5 and has dropped to 40.5, with 62.0% of tickets still on the over despite that move. On defense, Philadelphia has been the steadier side, allowing 18.9 against an expected 19.4, while Carolina has allowed 25.4 against an expected 23.9.",
-    "The matchup details point to a game that turns on execution in tight windows. Philadelphia's offense is better than Carolina's defense by 0.157 on two-minute EPA, which matters in a contest this close. Carolina's offense is worse than Philadelphia's defense by 0.152 on late-half scoring drives, another measure of finishing ability when the margin is slim. Philadelphia's offense is worse than Carolina's defense by 13.9 on plays per game, a figure that speaks to pace but not necessarily efficiency.",
-    "Dave Canales coaches Carolina and has won 39.5% across 38 previous games, while Nick Sirianni coaches Philadelphia and has won 67.8% across 87 previous games. Both have covered just over half the time, records that do not beat the bookmaker's cut by themselves. The game likely stays within one score throughout, the kind of contest where a few drives decide it and where both coaching staffs will lean on what has worked: Carolina's offense continuing to exceed expectations, Philadelphia's defense continuing to hold."
+    "The line says everything about where these teams stand. Philadelphia is favored by 1.0 points with an adjusted number of 20.7 to Carolina's 19.8, and the total sitting at 40.5 after falling from an opening of 43.5. This is as tight as the market gets, two sides separated by less than a field goal in what the number expects to be a defensive game. In 299 past games priced like this one, 61.9% finished within one score, and the outright underdog won 45.2% of the time.",
+    "Carolina comes off a bye with an offense that has outperformed expectations, scoring 24.7 per game over its last ten against an expected 20.7. Philadelphia's offense has gone the other way, managing just 20.1 against an expected 22.5 over the same stretch. The Eagles have leaned on their defense instead, allowing 18.9 against an expected 19.4, while Carolina's defense has allowed 25.4 against an expected 23.9. The shape of this game turns on whether Philadelphia's defense can keep doing the work its offense has left undone.",
+    "The matchups suggest a ground-level fight. Philadelphia's offense is worse than Carolina's defense by 13.9 plays per game, which speaks to pace and possessions. But the Eagles hold an edge in two-minute EPA, better than Carolina's defense by 0.157, and Carolina's offense is worse than Philadelphia's defense by 0.152 in late-half scoring drives. Those numbers point to a game that stays close through four quarters, decided by execution when the clock matters most.",
+    "Dave Canales brings a Carolina team that has covered six of its last ten, while Nick Sirianni's Philadelphia squad has covered just four of ten despite winning half. Neither coaching record clears the bookmaker's cut on its own, which fits the price. This comes down to which team can impose its will in the margins, and whether the Panthers can keep rolling an offense that has found something over the last month and a half."
    ],
    "scoreline": {
     "away": "CAR",
@@ -618,10 +618,10 @@
   },
   "CHI_ATL": {
    "paras": [
-    "Chicago arrives as a 3.0-point favorite, and the adjusted numbers reflect a tight game: 25.8 for the Bears and 23.3 for the Falcons. Both teams come in on normal rest with clean injury reports, setting up a straightforward Sunday afternoon contest between two sides that have shown very different defensive profiles lately. The total sits at 49.5, moved up from its 48.5 open.",
-    "The Bears have been the more complete team over their last 10 games, scoring 24.3 per game while allowing just 22.0\u2014below what was expected of their defense. Chicago's offense has also cleared its market expectations, and Ben Johnson's club carries a two-minute success edge of 0.079 over Atlanta's defense. The Falcons, meanwhile, have scored 22.9 per game against an expected 21.2, showing their offense can exceed expectations, but they've allowed 24.7 when asked to hold teams to 23.7. That defensive leakage is the clearest split between the two.",
-    "Atlanta's offense runs more plays per game than Chicago's defense by 10.0, which could help the Falcons control possession and keep this competitive. The script-dependency numbers tell you what happens if Atlanta falls behind: their running back usage drops by about 27.3% and quarterback passing yards fall by about 22.4% in games where they've lost big, a scenario with roughly a 21.4% chance. In past games priced like this one, 53.8% finished within one score, and the underdog won outright 38.3% of the time.",
-    "Chicago's discipline under Johnson has been evident, though his 63.6% win rate and 57.1% cover rate across 21 games don't clear the break-even bar by themselves. Atlanta under Raheem Morris has been streakier, winning 44.0% and covering 46.0% over 50 games. The Bears have the defensive consistency to frustrate Atlanta's skill players, but the Falcons have shown they can move the ball when the script stays neutral. This one likely turns on whether Chicago's defense can force Atlanta into the kind of hole that changes how the Falcons attack."
+    "Chicago comes in as the favorite by 3.0 points, and the adjusted number has the Bears at 25.8 and the Falcons at 23.3. That margin of 2.5 points suggests a game that stays within reach, and history bears that out: in past games priced like this one, 53.8% finished within one score. Both teams are healthy, with no one missing practice on either side, and both are on normal rest.",
+    "The Bears have been the more balanced team over their last 10 games, scoring slightly above what the market expected while their defense has played better than expectation, allowing 22.0 against an expected 23.3. Atlanta has leaned more on its offense, scoring above expectation at 22.9 per game, but the defense has struggled, allowing 24.7 against an expected 23.7. That gap on the defensive side is where Chicago should find its edge, particularly in a game where the total has climbed from 48.5 at open to 49.5 now.",
+    "The matchup leans on tempo and situational execution. Atlanta's offense holds an advantage over Chicago's defense by 10.0 on plays per game, which could give the Falcons chances to control the clock if they stay within striking distance. The Bears have the edge in two-minute success by 0.079, though Atlanta answers back with a slight advantage in two-minute EPA by 0.076. Those late-game windows may well decide a game expected to be this close.",
+    "Chicago is coached by Ben Johnson, who has won 63.6% and covered 57.1% across 21 previous games, while Raheem Morris has won 44.0% and covered 46.0% over 50 games. Neither record clears the bookmaker's cut by itself, but the difference in recent form shows. Atlanta's backfield and passing game are both script-dependent, with the run game dropping about 27.3% and quarterback passing yards falling about 22.4% in the lost big case, which has roughly a 21.4% chance of happening. If the Bears get ahead, those numbers suggest the Falcons may struggle to adjust."
    ],
    "scoreline": {
     "away": "CHI",
@@ -636,55 +636,55 @@
   },
   "DAL_GB": {
    "paras": [
-    "Green Bay is a 1.5-point favorite at home in what shapes up as a tight, high-scoring affair. The adjusted number puts Dallas at 25.9 and Green Bay at 27.1, with a total of 53.0. In past games priced like this one, 59.7% finished within one score, and neither team arrives in form that inspires confidence. Both have lost seven of their last ten, and both defenses have allowed more than expected\u2014Dallas giving up 30.5 per game against an expected 24.0, Green Bay allowing 25.6 against an expected 21.4.",
-    "The offenses have struggled too. Dallas has scored 25.8 per game over its last ten, below the market's expectation of 26.5. Green Bay has managed just 20.0 against an expected 21.5, the weaker attack of the two. On efficiency per play, Green Bay's offense is worse than Dallas's defense by 0.139, which gives the Cowboys something to lean on. But Dallas's offense is worse than Green Bay's defense by 4.6 plays per game, a gap that suggests the Packers can slow the tempo when they need to.",
-    "Dallas does have an edge in two-minute situations, where its offense is better than Green Bay's defense by 0.253, and that could matter late if this stays close as the numbers suggest. The Cowboys' rushing game and quarterback passing yardage are both script-dependent\u2014each falling off sharply if they fall behind big, a scenario with about a 20.1% chance. If Dallas can keep it within reach, they have the pieces to stay in it. If not, the offense risks stalling out.",
-    "Brian Schottenheimer, coaching his 21st game with Dallas, has won 40.9% and covered 42.9%. Matt LaFleur, in his 120th for Green Bay, has won 64.8% and covered 53.3%, though neither record clears the bookmaker's cut on its own. Both coaching staffs know their teams are limping into the postseason, and both defenses have leaked points. The difference may come down to which offense finds a rhythm first, and whether Dallas can protect late leads or Green Bay can impose its pace."
+    "Green Bay is a 1.5-point favorite at home in a game the model sees as nearly a toss-up, with an adjusted number of 26.3 to 25.4 and a margin of just 0.9 points. Both teams arrive with identical 3-7 records over their last ten games, and neither has covered the spread with any consistency. The Cowboys failed to cover seven times in that stretch, the Packers eight. Both defenses have played worse than the market expected, Dallas allowing 30.5 per game against an expected 24.0, Green Bay giving up 25.6 against an expected 21.4.",
+    "The offenses have struggled as well, each scoring below what was asked of them. Dallas has managed 25.8 per game against an expected 26.5, while Green Bay has been held to just 20.0 against an expected 21.5. On EPA per play, Green Bay's offense is worse than Dallas's defense by 0.139, which gives the Cowboys a measurable edge in that matchup. Dallas's offense is better than Green Bay's defense by 0.253 on two-minute EPA, suggesting the Cowboys may have success when they need to move quickly.",
+    "The total opened at 52.0 and has climbed to 53.0, though the model on its own would set it at 48.3, lower-scoring than the book. In past games priced like this one, 59.7% finished within one score, while 29.5% were shootouts and 36.0% were grinds. Nine of Dallas's last ten games went over the total, though that reflects what happened in those contests, not a forecast of this one.",
+    "Brian Schottenheimer takes over for Dallas after a turbulent stretch, bringing a 40.9% win rate and 42.9% cover rate across 21 previous games as a head coach. He faces Matt LaFleur, who has won 64.8% and covered 53.3% over 120 games, though neither record clears the bookmaker's cut on its own. Both teams are healthy, with nobody missing practice, and the stage is set for a tight Sunday night game between two clubs trying to salvage something from difficult seasons."
    ],
    "scoreline": {
     "away": "DAL",
-    "away_pts": 25.9,
+    "away_pts": 25.4,
     "home": "GB",
-    "home_pts": 27.1,
+    "home_pts": 26.3,
     "lead": "GB",
-    "spread": -1.2,
-    "total": 53.0
+    "spread": -0.9,
+    "total": 51.8
    },
    "written": true
   },
   "HOU_JAX": {
    "paras": [
-    "Jacksonville hosts Houston in a division game with the smallest of margins attached. The adjusted number puts the Jaguars at 22.9 and the Texans at 20.5, with the total at 43.4. Both teams arrive healthy, neither with anyone who missed practice, and the line has tightened from where it opened at 3.5 to the current 2.5. In games priced like this one, 62.1% have finished within one score.",
-    "The Jaguars have been the better team lately, winning eight of their last ten while covering seven times. Their offense has scored 29.3 a game over that stretch against an expected 25.0, above what the market asked. More impressive has been the defense, which allowed just 16.1 against an expected 20.9, playing well below what was asked of it. Houston has gone 5-5 in its last ten, covering only three times. The Texans have scored 23.7 against an expected 22.5, clearing the bar on offense, but their defense has allowed 21.3 against an expected 19.0, worse than expectation.",
-    "The model's unadjusted total sits at 46.1, higher-scoring than the book's 42.5, though that difference reflects a view before it blends with market wisdom. Houston does hold edges in certain situational measures: on plays per game, the Texans offense is better than Jacksonville's defense by 6.8, and on two-minute EPA, better by 0.306. Those advantages suggest Houston can move the ball when it needs to, particularly late in halves when the game tightens.",
-    "DeMeco Ryans brings Houston into Jacksonville with a 58.9% win rate across 55 games, while Liam Coen has won 77.3% of his 22 so far with the Jaguars, though neither record clears the bookmaker's cut by itself. The spread opened at 3.5 and has moved to 2.5, with 67.1% of tickets on Jacksonville but that figure down from the 70.0% it started with. This is a division game where both sides know each other, and the number suggests it stays close throughout."
+    "Jacksonville comes in as the favorite by 2.5 points in a division game that the adjusted number sets at 22.6 to 20.2, with a total of 42.7. The Jaguars have been the sharper side lately, covering seven of their last 10 while winning eight, and their defense has been the story\u2014allowing just 16.1 points per game against an expected 20.9. Houston has gone the other way, covering only three times in that same stretch, and its defense has allowed 21.3 against an expected 19.0. Both teams are healthy and rested, but Jacksonville's recent form gives them the edge on paper.",
+    "The Texans offense has a few advantages in the pass game, particularly late. Houston's offense is better than Jacksonville's defense by 0.306 in two-minute EPA and by 0.174 in two-minute success, which matters if this one stays tight. In comparable past games priced like this one, 62.1% finished within one score, so there's a reasonable chance the Texans get a chance to use those edges. Houston has scored 23.7 per game over its last 10, above the market's expectation of 22.5, so the offense has been doing its part even as the results haven't followed.",
+    "Jacksonville's offense has been rolling, putting up 29.3 per game against an expected 25.0 over the last 10, but the betting public has pulled back slightly\u201467.1% of spread tickets are on the Jaguars now, down from 70.0% at the open, and the line has moved a full point in Houston's direction from 3.5 to 2.5. The model's own unadjusted total of 43.4 is higher-scoring than the book's 42.5, though the adjusted number comes in nearly even at 42.7. Still, the under has hit six times in Jacksonville's last 10, and their defense has been stout enough to keep games lower than expected.",
+    "DeMeco Ryans has Houston competing in division games, and while his 58.9% win rate and 47.3% cover rate across 55 games don't beat the cut on their own, this is the kind of spot where his defense-minded approach keeps things from getting away. Liam Coen has won 77.3% of his 22 games coaching Jacksonville, though that record also doesn't clear break-even by itself. The game turns on whether the Jaguars' recent defensive surge holds up against a Texans offense that has the tools to move the ball when it counts, and whether Houston can finally get a stop or two when it needs one."
    ],
    "scoreline": {
     "away": "HOU",
-    "away_pts": 20.5,
+    "away_pts": 20.2,
     "home": "JAX",
-    "home_pts": 22.9,
+    "home_pts": 22.6,
     "lead": "JAX",
     "spread": -2.4,
-    "total": 43.4
+    "total": 42.7
    },
    "written": true
   },
   "LAC_KC": {
    "paras": [
-    "Kansas City comes off a bye as an 8.0-point favorite at home, and the model's adjusted number has the Chiefs at 26.1 and the Chargers at 17.9. The total sits at 42.5, down from an opener of 45.5, as both offenses have struggled recently. Los Angeles has scored just 15.6 a game over its last 10, well below the 20.8 the market expected, while Kansas City managed 20.3 against an expected 23.0. The Chargers have won twice in those 10 games, the Chiefs four times, and the under has landed more often for both teams.",
-    "The Chargers defense has been the bright spot, allowing 21.4 per game against an expected 23.4, but it faces a Kansas City offense that holds an edge of 0.184 in EPA per play. Los Angeles arrives on normal rest with Jim Harbaugh coaching a team whose offense has underperformed badly, trailing Kansas City's defense by 0.535 in two-minute EPA. In past games priced like this one, 45.5% finished within one score, though the underdog won outright only 22.9% of the time.",
-    "If the Chargers fall behind, their offensive structure changes sharply: rushing volume drops about 27.3% in the lost big case, which has roughly a 36.0% chance of happening, and their quarterback's passing yardage falls about 22.4% in that same scenario. That script-dependence makes the game turn on whether Los Angeles can keep it close early, because once Kansas City gets separation, the Chargers have shown little ability to answer.",
-    "Andy Reid has won at a 71.9% clip across 180 previous games, and while his team's defense has allowed more than expected lately\u201420.4 against an anticipated 20.0\u2014the rest advantage and home setting tilt the field. Harbaugh has covered at 57.9% in 38 games, a record that speaks to preparation but not one that clears the break-even threshold on its own. Both teams arrive healthy, with nobody who missed practice, so the outcome comes down to whether the Chargers can sustain drives against a Chiefs side that knows how to control divisional games."
+    "Kansas City comes off a bye as an 8.0-point favorite at home, where the adjusted number has the Chiefs at 25.4 and the Chargers at 17.4. Los Angeles arrives having won just twice in its last ten games, scoring 15.6 a game against an expected 20.8. The Chargers have been carried by a defense that has allowed 21.4 against an expected 23.4, playing better than the market asked. But on EPA per play, Kansas City's offense is better than that Los Angeles defense by 0.184, and the Chiefs figure to control the game if they protect early.",
+    "Kansas City has had its own offensive troubles, scoring 20.3 a game over its last ten against an expected 23.0, while allowing 20.4 against an expected 20.0. The Chiefs' defense has played worse than expectation, which gives Los Angeles a chance to stay within range if Jim Harbaugh can keep the ground game alive. The Chargers' rushing output is script-dependent, about 27.3% lower in the lost big case, which has roughly a 36.0% chance of happening. If Los Angeles falls behind early, the offense loses its foundation.",
+    "In past games priced like this one, 45.5% finished within one score, so a tight result isn't out of the question even with an eight-point spread. The total sits at 42.5, down from an opening of 45.5, and both teams have gone under more often than over in their last ten. Kansas City covered the spread three times in those games, Los Angeles just twice, and neither offense has been clicking. The adjusted total of 42.8 suggests a defensive afternoon where every possession matters.",
+    "Andy Reid has won at a 71.9% clip across 180 games, though his spread record sits at 50.0%. Harbaugh is 38 games into his stretch at 56.4% wins and 57.9% against the spread, records that don't clear the bookmaker's cut by themselves. The game turns on whether Kansas City can establish rhythm coming off the bye, and whether Los Angeles can keep it close long enough for its defense to force a mistake or two. On two-minute EPA, the Chargers' offense is worse than the Chiefs' defense by 0.535, so late-game situations favor the home side if Kansas City protects a lead."
    ],
    "scoreline": {
     "away": "LAC",
-    "away_pts": 17.9,
+    "away_pts": 17.4,
     "home": "KC",
-    "home_pts": 26.1,
+    "home_pts": 25.4,
     "lead": "KC",
-    "spread": -8.1,
-    "total": 44.0
+    "spread": -8.0,
+    "total": 42.8
    },
    "written": true
   },
@@ -708,39 +708,39 @@
   },
   "NYJ_NE": {
    "paras": [
-    "New England's defense has been the story of its recent stretch, allowing 15.9 points per game over its last ten when the market expected 21.6. That gap tells you why the Patriots have won seven of those ten and why they're favored by 7.0 points at home in a division game. The Jets have struggled on both sides: their offense has managed just 14.7 points per game against an expected 17.9, while their defense has allowed 28.4 against an expected 24.0. The mismatch is stark enough that the model settles on New England by 6.5 points.",
-    "This projects as a low-scoring game, with the total set at 43.5 and the adjusted numbers showing 25.3 for New England and 18.8 for the Jets. In past games priced similarly, nearly a quarter have been grinds, and New England's recent form supports that shape. The Patriots have seen the under land in six of their last ten, while the Jets have split evenly. The total has ticked up slightly from its opening of 43.0, but this still looks like a game decided more by what doesn't happen than what does.",
-    "The Jets face script trouble if they fall behind early. When losing big, their running back production drops by about 27.3 percent and quarterback passing yards fall by about 22.4 percent, a scenario with roughly a 30.1 percent chance of occurring. New England on two-minute drives holds an edge of 0.344 in EPA over what the Jets' offense has managed in those situations, which matters in a division game where possessions tighten late. Aaron Glenn's Jets have won outright in games priced like this 28.2 percent of the time historically, though that reflects comparable past games rather than a forecast of Sunday.",
-    "Mike Vrabel has won at a 58.7 percent clip across 116 games, while Glenn sits at 22.7 percent through 21, though neither record clears the threshold needed to beat the bookmaker's cut on its own. What does separate them is recent execution: New England has covered six of its last ten, the Jets just three of theirs. The Patriots' defense has been better than expectation while the Jets' has been worse, and that's the fundamental tension in a game where neither offense has met what was asked of it. The numbers point to New England controlling tempo and the Jets searching for answers they haven't found often enough this season."
+    "New England's defense has carried this team through its last ten games, allowing 15.9 points a contest against an expected 21.6, while the Jets have let in 28.4 against an expected 24.0. That gap tells you where this game is likely to turn. The adjusted number has New England at 25.2 and the Jets at 18.9, with the Patriots favored by 6.4 points in a total set at 44.1. Both offenses have underperformed lately, New England scoring 21.5 against an expected 23.1 and the Jets managing just 14.7 against an expected 17.9, so this figures to be a game decided by which defense breaks first.",
+    "The Jets offense operates on a thin margin. When they fall behind by much, the running game shrinks by 27.3 percent and the passing yardage drops by 22.4 percent, and there is roughly a 30.1 percent chance that script takes hold. Against a Patriots defense that has been stingy all season, New England can afford to sit back, force the Jets to pass, and watch the offense compress. The model's own total before blending with the book was 45.9, higher-scoring than the book's 43.5, but recent form suggests points will be harder to come by than usual.",
+    "In 355 past games priced like this one, the underdog won outright 28.2 percent of the time and 49.3 percent finished within one score, so division games at this number tend to stay competitive even when the favorite prevails. New England has covered six of its last ten and won seven, while the Jets have covered just three and won two. The spread has moved down from 7.0 to 7.5 since opening, and the total has ticked up from 43.0 to 43.5, modest shifts that reflect where the market sees value.",
+    "Mike Vrabel has won 58.7 percent across 116 games as a head coach, Aaron Glenn 22.7 percent across 21, though neither record beats the bookmaker's cut by itself. What matters more is execution, and New England has the defense to dictate tempo and force the Jets into uncomfortable downs. If the Patriots can protect the ball and avoid giving the Jets short fields, their defense should be able to contain an offense that has struggled to score all season. The game likely stays within a possession for stretches, but New England's ability to get stops when it matters should be the difference."
    ],
    "scoreline": {
     "away": "NYJ",
-    "away_pts": 18.8,
+    "away_pts": 18.9,
     "home": "NE",
-    "home_pts": 25.3,
+    "home_pts": 25.2,
     "lead": "NE",
-    "spread": -6.5,
+    "spread": -6.4,
     "total": 44.1
    },
    "written": true
   },
   "PIT_TB": {
    "paras": [
-    "Pittsburgh comes in favored by 2.5 points in a game the adjusted projection puts at 22.0 to 19.8, with an adjusted total of 41.7. The market sees this as a low-scoring affair, with the total at 40.5, though the model on its own would set it at 45.4 before blending with the book. In games priced like this one, 55.3% have finished within one score, which is the most likely shape here: tight, defensive, decided late.",
-    "Both offenses have struggled recently, and both defenses have played worse than expected. Pittsburgh has scored 20.6 per game over its last ten, level with what the market asked of its offense, but allowed 21.5 against an expected 20.9. Tampa Bay has been worse on both sides: scoring just 20.1 against an expected 22.8, and allowing 22.2 against an expected 21.2. The Steelers hold edges in the efficiency metrics that matter, with their offense better than Tampa Bay's defense by 6.8 plays per game, while Tampa Bay's offense is worse than Pittsburgh's defense by 0.088 EPA per play and 0.314 in two-minute situations.",
-    "The game turns on which offense can function against defenses that have underperformed but still have the capacity to dominate a sputtering attack. Tampa Bay has covered the spread just once in its last ten games and has lost eight of them, while Pittsburgh has covered six times and won six. Neither team has injury concerns, with both entering on normal rest and full health.",
-    "Mike McCarthy coaches Pittsburgh with a 55.7% win rate and 52.0% cover rate across 146 games, while Todd Bowles leads Tampa Bay with a 43.8% win rate and 45.0% cover rate over 131 games. The line has held at 2.5, but the total has moved down from 40.5 to 39.5, reflecting what the market expects: a grind decided by which quarterback can manage the margins better when neither offense has been giving its coach much to work with."
+    "The book makes PIT favored by 2.5 on a total of 40.5. Our own number is PIT 21.7, TB 19.4.",
+    "In 295 games priced like this one, TB won outright 43.4% of the time and 55.3% finished within one score. 29.5% turned into shootouts against 27.8% that became grinds. Those are the games that have happened, not a forecast of this one.",
+    "PIT has scored 20.6 a game over its last 10 against an expected 20.6, and allowed 21.5 against an expected 20.9.",
+    "TB has scored 20.1 a game over its last 10 against an expected 22.8, and allowed 22.2 against an expected 21.2."
    ],
    "scoreline": {
     "away": "PIT",
-    "away_pts": 22.0,
+    "away_pts": 21.7,
     "home": "TB",
-    "home_pts": 19.8,
+    "home_pts": 19.4,
     "lead": "PIT",
     "spread": 2.2,
-    "total": 41.7
+    "total": 41.1
    },
-   "written": true
+   "written": false
   },
   "SEA_DEN": {
    "paras": [
@@ -780,19 +780,19 @@
   },
   "WAS_SF": {
    "paras": [
-    "San Francisco comes in as the favorite by 7.5 points, and the adjusted number sees it 29.8 to 22.1 for Washington, a margin of 7.6 points to the 49ers. Over their last ten games, the 49ers have scored 27.6 a game against an expected 24.0, their offense delivering well above what the market asked. Washington has managed 20.9 against an expected 20.4, a smaller edge. Both defenses have played worse than expectation, with the Commanders allowing 27.7 against an expected 24.2 and San Francisco giving up 23.1 against an expected 23.0.",
-    "The model on its own would set the total at 56.2 before blending with the book's 50.5, and in Washington's last ten games the over has landed eight times against two unders. San Francisco has seen the over land six times in its last ten. The adjusted total sits at 51.9, pointing toward a game that tests both defenses. In 184 past games priced like this one, 60.9 percent finished within one score, 25.5 percent were shootouts and 31.5 percent were grinds.",
-    "Washington's offense shows vulnerability late in halves, where it trails San Francisco's defense by 0.171 on late-half scoring drives. The 49ers hold an edge on two-minute EPA, where their offense is better than Washington's defense by 0.175. If the Commanders fall behind by multiple scores, the script dependence shows up: their running back rush would be about 27.3 percent lower in that case, which has roughly a 23.4 percent chance of happening.",
-    "San Francisco has covered seven of its last ten and won eight, while Washington has gone 3-6 straight up and split the spread. Kyle Shanahan's 49ers have been the sharper side down the stretch, and the public agrees: 81.8 percent of tickets are on San Francisco, with the line unmoved at 7.5. Both teams are healthy, with no one missing practice. The game turns on whether Washington can keep it close into the fourth quarter and whether the 49ers can impose themselves in the moments that matter most."
+    "San Francisco comes in as the favorite by 7.5 points at home, and the adjusted numbers behind that line sit at 29.4 for the 49ers and 21.8 for Washington. Both offenses have recently performed above what the market expected, but both defenses have also allowed more than asked. Washington has scored 20.9 a game over its last ten against an expected 20.4, while San Francisco has put up 27.6 against an expected 24.0. The model on its own would set the total at 53.7, higher-scoring than the book's 50.5, and eight of Washington's last ten have gone over.",
+    "The 49ers have won eight of their last ten and covered seven times in that stretch, while Washington has won just three and covered five. San Francisco's offense is better than Washington's defense by 0.175 in two-minute EPA, a situation that tends to matter late. Washington's offense, meanwhile, is worse than San Francisco's defense by 0.171 on late-half scoring drives, which speaks to the Commanders' challenge in critical moments when they need to answer.",
+    "In 184 past games priced like this one, the underdog won outright 35.9% of the time and 60.9% finished within one score, so these lines do not guarantee blowouts. Still, the public is leaning heavily toward the 49ers, with 81.8% of tickets on San Francisco and just 18.2% on Washington. The line has not moved from the opening number, nor has the total budged from 50.5, suggesting the market is comfortable where it opened.",
+    "Kyle Shanahan has the 49ers playing their best football of the season, and the offense has been the engine. For Washington, the task is clear: Dan Quinn's squad needs to keep this game competitive into the fourth quarter and hope two-minute situations break their way. The script-dependent numbers show Washington's rushing attack and passing yardage both drop significantly if the Commanders fall behind big, which has about a 23.4% chance of happening. The game turns on whether Washington can stay within striking distance long enough for those late possessions to matter."
    ],
    "scoreline": {
     "away": "WAS",
-    "away_pts": 22.1,
+    "away_pts": 21.8,
     "home": "SF",
-    "home_pts": 29.8,
+    "home_pts": 29.4,
     "lead": "SF",
     "spread": -7.6,
-    "total": 51.9
+    "total": 51.3
    },
    "written": true
   }
