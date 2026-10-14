@@ -100,7 +100,8 @@ def _game_pick_lines(result: pl.DataFrame, top_n: int = 5):
 
 
 def blend_weight_needs_fit(stored: dict | None, eligible: int, min_rows: int,
-                           first_clean: int) -> bool:
+                           first_clean: int,
+                           last_clean: int | None = None) -> bool:
     """Should the blend weight be refitted, given what is already stored.
 
     Refitting replays the whole odds archive through the model, so it should
@@ -118,12 +119,19 @@ def blend_weight_needs_fit(stored: dict | None, eligible: int, min_rows: int,
 
     Artifacts written before `eligible_rows` existed fall back to `n_rows`, so
     they refit exactly once and then settle.
+
+    `last_clean` moves once a year, when a season finishes. An artifact fitted
+    under the old window has to be refitted under the new one, and an artifact
+    written before the cap existed carries no `max_season` at all — both read
+    as a changed rule here, which is the same test `min_season` already gets.
     """
     if eligible < min_rows:
         return False
     if stored is None or stored.get("source") != "fitted":
         return True
     if int(stored.get("min_season", -1)) != first_clean:
+        return True
+    if last_clean is not None and int(stored.get("max_season", -1)) != last_clean:
         return True
     return int(stored.get("eligible_rows", stored.get("n_rows", 0))) < eligible
 
@@ -286,8 +294,16 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
     # the clean seasons say 0.60 — roughly twice as much trust in the model as
     # the evidence supports. See build_blend_training_frame's docstring.
     first_clean = int(cfg["splits"]["val_season"]) + 1
+    # AND NOT THE SEASON BEING BET. `first_clean` keeps the model's own
+    # homework out; this keeps out the season whose board this weight is about
+    # to price. Without it the weight was fitted on 2025-2026 and refitted
+    # itself whenever another week graded — a served constant moving weekly on
+    # live results, with no promotion point, which is the one thing the
+    # improvement loop says never to do.
+    last_clean = int(cfg["seasons"]["end"])
     eligible = (0 if graded is None
-                else graded.filter(pl.col("season") >= first_clean).height)
+                else graded.filter((pl.col("season") >= first_clean)
+                                   & (pl.col("season") <= last_clean)).height)
 
     # Refitting replays the archive through the model, so do it only when the
     # eligible rows have grown or the eligibility rule itself has moved. Both
@@ -304,15 +320,18 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
     # edits the record itself — the manifest's hashes would stop describing the
     # files they name.
     needs_fit = persist and blend_weight_needs_fit(
-        stored, eligible, min_rows, first_clean)
+        stored, eligible, min_rows, first_clean, last_clean)
     if needs_fit:
         print(f"  Fitting blend weight on {eligible:,} graded player-games from "
-              f"{first_clean} on (replaying the archive through the model)...")
+              f"{first_clean} to {last_clean} "
+              f"(replaying the archive through the model)...")
         history = build_blend_training_frame(target_type, model_name,
-                                             min_season=first_clean)
+                                             min_season=first_clean,
+                                             max_season=last_clean)
         fitted = fit_blend_weight(history, min_rows=min_rows)
         if fitted is not None:
             fitted["min_season"] = first_clean
+            fitted["max_season"] = last_clean
             fitted["eligible_rows"] = eligible
             save_blend_weight(fitted, weight_path)
             print(f"  Blend weight FITTED on {fitted['n_rows']:,} graded "
@@ -321,8 +340,9 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
     if weight.get("source") == "bootstrap":
         n = 0 if graded is None else graded.height
         print(f"  Blend weight BOOTSTRAP (market={weight['market_weight']:.2f}) — "
-              f"{eligible:,} of {n:,} archived rows are from {first_clean} on; "
-              f"{min_rows:,} needed before a weight can be fitted.")
+              f"{eligible:,} of {n:,} archived rows are from {first_clean} to "
+              f"{last_clean}; {min_rows:,} needed before a weight can be "
+              f"fitted.")
 
     result = blend(result, "prob_calibrated", "market_prob", weight,
                    out_col="probability")

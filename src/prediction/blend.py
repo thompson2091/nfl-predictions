@@ -159,7 +159,8 @@ def calibrate_level(df: pl.DataFrame, prob_col: str, expected: pl.DataFrame,
 def build_blend_training_frame(target_type: str, model_name: str,
                                before: tuple[int, int] | None = None,
                                model_dir=None,
-                               min_season: int | None = None) -> pl.DataFrame | None:
+                               min_season: int | None = None,
+                               max_season: int | None = None) -> pl.DataFrame | None:
     """Assemble (model_prob, market_prob, scored) rows to fit the stacker on.
 
     `load_graded_history` returns prices and outcomes but no model predictions,
@@ -177,6 +178,15 @@ def build_blend_training_frame(target_type: str, model_name: str,
         min_season: drop archive seasons before this. Serving passes
             `val_season + 1`, because a model cannot tell you how much help it
             needs by being asked about years it trained on — see below.
+        max_season: drop archive seasons after this. Serving passes
+            `seasons.end`, the last COMPLETED season. The lower bound is about
+            contamination; this one is about a different thing entirely — a
+            served constant must not be fitted on the season being bet. Without
+            it the weight was fitted on 2025-2026 and refitted itself every
+            time another week graded, so the board served in week 7 was
+            informed by the results of weeks 1-6 and the constant moved without
+            a promotion point. Capping at 2025 moves it 0.5506 -> 0.5896 on
+            7,058 rows.
 
     `model_dir` and `min_season` are the whole reason this is not a two-line
     helper. Both exist to stop the stacker learning from a model's own training
@@ -226,6 +236,8 @@ def build_blend_training_frame(target_type: str, model_name: str,
         )
     if min_season is not None:
         graded = graded.filter(pl.col("season") >= min_season)
+    if max_season is not None:
+        graded = graded.filter(pl.col("season") <= max_season)
     if graded.height == 0:
         return None
 

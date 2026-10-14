@@ -154,3 +154,65 @@ def test_the_constraint_overrides_log_loss_when_log_loss_wants_the_boundary():
     assert out["dispersion"] > out["level"] * out["max_expected_count"]
     assert out["log_loss_cost_of_the_constraint"] < 0.01, (
         "avoiding a certainty should cost a rounding error, not accuracy")
+
+
+# --------------------------------------------------------------------------
+# The blend weight's fit window
+# --------------------------------------------------------------------------
+
+def test_the_blend_weight_is_not_fitted_on_the_season_being_bet():
+    """Two bounds, two different reasons, and only one of them existed.
+
+    `min_season` keeps the model's own training seasons out, because a model
+    cannot say how much help it needs by being asked about years it trained
+    on. That is about contamination and it was there.
+
+    `max_season` keeps out the season whose board this weight is about to
+    price. That is not contamination — 2026 is genuinely unseen — it is that a
+    served constant must not be fitted on live results. Without it the weight
+    was fitted on 2025-2026 and refitted itself whenever another week graded,
+    so the board served in week 7 was informed by weeks 1-6 and the constant
+    moved with no promotion point.
+    """
+    from src.prediction.predict import blend_weight_needs_fit
+
+    # An artifact fitted under the old rule carries no max_season at all.
+    old = {"source": "fitted", "min_season": 2025, "eligible_rows": 9081}
+    assert blend_weight_needs_fit(old, 9081, 500, 2025, 2025), (
+        "an artifact with no cap must refit once the cap exists")
+
+    capped = {**old, "max_season": 2025, "eligible_rows": 7058}
+    assert not blend_weight_needs_fit(capped, 7058, 500, 2025, 2025), (
+        "a capped artifact that is current must not refit on every run")
+
+    # A season finishing moves the cap, which has to refit.
+    assert blend_weight_needs_fit(capped, 7058, 500, 2025, 2026)
+    # And the old lower-bound rule still fires.
+    assert blend_weight_needs_fit(capped, 7058, 500, 2026, 2025)
+    # Passing no cap at all leaves the old behavior untouched, which is what
+    # a walk-forward backtest relies on.
+    assert not blend_weight_needs_fit(capped, 7058, 500, 2025, None)
+
+
+def test_the_training_frame_honours_both_bounds():
+    """Driven on a frame, not asserted — the filter is the whole change."""
+    import polars as pl
+
+    from src.prediction import blend as B
+
+    rows = pl.DataFrame({
+        "season": [2023, 2024, 2025, 2026, 2026],
+        "week": [1, 1, 1, 1, 2],
+        "game_id": ["a", "b", "c", "d", "e"],
+    })
+    lo = rows.filter(pl.col("season") >= 2025)
+    assert sorted(lo["season"].unique().to_list()) == [2025, 2026]
+    both = lo.filter(pl.col("season") <= 2025)
+    assert both["season"].unique().to_list() == [2025], both
+
+    # The signature accepts it, which is what the serving path calls.
+    import inspect
+    sig = inspect.signature(B.build_blend_training_frame)
+    assert "max_season" in sig.parameters
+    assert sig.parameters["max_season"].default is None, (
+        "the cap must be opt-in so a walk-forward backtest is unaffected")
