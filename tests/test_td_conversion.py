@@ -1,0 +1,156 @@
+"""The count -> probability conversion, and the certainty it may not publish.
+
+`fit_conversion` turns the joint model's expected touchdown count into the
+percentage the board prints. It is fitted by log loss over the whole priced
+population, which is thousands of long shots where every candidate pair
+agrees and a few dozen at the top where they differ by five points — so the
+number being optimised is close to blind to the end of the board that breaks.
+
+These drive it with synthetic counts whose right answer is arithmetic.
+"""
+from __future__ import annotations
+
+import numpy as np
+import polars as pl
+import pytest
+
+from src.models.joint import fit_conversion, mu_headroom
+
+
+def pop(n_per_season=4000, seasons=(2023, 2024), top=1.10, seed=0):
+    """A priced population with a realistic tail: most rows near zero, a few
+    expected to score about one touchdown."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i, s in enumerate(seasons):
+        mu = rng.beta(1.3, 7.0, n_per_season) * top * (1.0 + 0.05 * i)
+        mu[0] = top * (1.0 + 0.05 * i)          # the lead back
+        p = 1.0 - np.exp(-mu)
+        rows.append(pl.DataFrame({
+            "season": [s] * n_per_season,
+            "_mu": mu,
+            "target": (rng.random(n_per_season) < p).astype(np.int8),
+        }))
+    return pl.concat(rows)
+
+
+def test_the_headroom_is_the_data_not_a_number_somebody_chose():
+    d = pop(seasons=(2023, 2024))
+    head, mu_max, growth = mu_headroom(d, "_mu")
+    assert mu_max == pytest.approx(d["_mu"].max())
+    # 2024's lead back is 5% above 2023's by construction.
+    assert growth == pytest.approx(0.05, abs=1e-6)
+    assert head == pytest.approx(mu_max * 1.05, rel=1e-6)
+
+
+def test_one_season_has_no_growth_to_observe_and_says_so():
+    """Rather than inventing a margin, which would be the tuned constant the
+    constraint exists to avoid."""
+    head, mu_max, growth = mu_headroom(pop(seasons=(2023,)), "_mu")
+    assert growth == 0.0
+    assert head == pytest.approx(mu_max)
+
+
+def test_a_season_that_falls_does_not_lower_the_headroom():
+    """A shrinking maximum is not evidence the next one shrinks too, and a
+    negative margin would pull the floor INTO the clip."""
+    d = pl.concat([
+        pl.DataFrame({"season": [2023] * 3, "_mu": [0.2, 0.5, 1.20],
+                      "target": [0, 0, 1]}),
+        pl.DataFrame({"season": [2024] * 3, "_mu": [0.2, 0.4, 0.80],
+                      "target": [0, 1, 1]}),
+    ])
+    head, mu_max, growth = mu_headroom(d, "_mu")
+    assert growth == 0.0
+    assert head == pytest.approx(1.20)
+
+
+def test_the_fit_never_publishes_a_certainty_on_its_own_data():
+    """THE CLAIM. `apply_joint` clips `level * mu / r` at 1 - 1e-12, so a pair
+    with `r <= level * mu` prints a probability of exactly 1 — the model
+    asserting a player cannot fail to score.
+
+    On 2026-10-14 the served pair was level 0.92, r 1.00, where the form
+    reduces to `p = level * mu` and saturates. It put the week's top pick on
+    the live board at 99.8% against a book at 53.8%.
+    """
+    d = pop()
+    out = fit_conversion(d, "_mu")
+    level, r = out["level"], out["dispersion"]
+    assert r > level * out["max_expected_count"], (
+        f"level {level} with dispersion {r} saturates at "
+        f"mu >= {r / level:.4f}, and the data holds "
+        f"{out['max_expected_count']:.4f}")
+
+    mu = d["_mu"].to_numpy()
+    q = np.clip(level * mu / r, 0.0, 1.0 - 1e-12)
+    p = 1.0 - (1.0 - q) ** r
+    assert p.max() < 1.0, "the board can print a certainty"
+
+
+def test_the_floor_carries_a_season_of_growth_not_just_todays_maximum():
+    """A conversion that only just clears the fit data walks into the clip the
+    first time a lead back's expected count rises, which it has done in every
+    season on record."""
+    d = pop()
+    out = fit_conversion(d, "_mu")
+    assert out["min_dispersion"] > out["level"] * out["max_expected_count"], (
+        "the floor has no room for growth")
+    assert out["dispersion"] > out["min_dispersion"]
+
+
+def test_the_unconstrained_answer_is_reported_rather_than_hidden():
+    """Provenance. A reader must be able to see what the constraint cost and
+    what log loss alone would have chosen, without re-deriving it."""
+    out = fit_conversion(pop(), "_mu")
+    for k in ("max_expected_count", "headroom_growth", "min_dispersion",
+              "unconstrained_level", "unconstrained_dispersion",
+              "unconstrained_log_loss", "log_loss_cost_of_the_constraint"):
+        assert k in out, f"{k} is not reported"
+    # The constraint can only cost log loss, never save it.
+    assert out["log_loss"] >= out["unconstrained_log_loss"]
+    assert out["log_loss_cost_of_the_constraint"] == pytest.approx(
+        out["log_loss"] - out["unconstrained_log_loss"])
+
+
+def degenerate_pop(n_per_season=5000, seasons=(2023, 2024), seed=2):
+    """A population whose outcomes are generated BY the degenerate form.
+
+    `p = level * mu` is what the conversion reduces to at r = 1.0. Generating
+    the targets from it is what makes log loss genuinely prefer the boundary,
+    which is the condition the real 2023-24 fit was in and the only condition
+    under which the constraint is doing any work.
+    """
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i, s in enumerate(seasons):
+        mu = rng.beta(1.3, 7.0, n_per_season) * 1.15 * (1.0 + 0.05 * i)
+        mu[0] = 1.15 * (1.0 + 0.05 * i)
+        p = np.clip(0.95 * mu, 0.0, 1.0)
+        rows.append(pl.DataFrame({
+            "season": [s] * n_per_season,
+            "_mu": mu,
+            "target": (rng.random(n_per_season) < p).astype(np.int8),
+        }))
+    return pl.concat(rows)
+
+
+def test_the_constraint_overrides_log_loss_when_log_loss_wants_the_boundary():
+    """The whole point, driven rather than asserted.
+
+    On this fixture the unconstrained optimum is level 1.0 with dispersion
+    1.0 — the grid floor, the degenerate form, exactly where the real fit sat
+    on 2026-10-14. The constrained fit has to move off it, and the move has to
+    cost almost nothing, or the constraint is buying safety with accuracy.
+    """
+    out = fit_conversion(degenerate_pop(), "_mu")
+    free_l = out["unconstrained_level"]
+    free_r = out["unconstrained_dispersion"]
+    assert free_r <= free_l * out["max_expected_count"], (
+        "this fixture no longer reproduces the saturating optimum, so the "
+        "test is guarding nothing — regenerate it")
+    assert (out["level"], out["dispersion"]) != (free_l, free_r), (
+        "the constraint bound and changed nothing")
+    assert out["dispersion"] > out["level"] * out["max_expected_count"]
+    assert out["log_loss_cost_of_the_constraint"] < 0.01, (
+        "avoiding a certainty should cost a rounding error, not accuracy")

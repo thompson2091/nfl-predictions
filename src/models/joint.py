@@ -348,6 +348,33 @@ def combine(df: pl.DataFrame, share_col: str = "share",
     return out.drop("_score_in") if "_score_in" in out.columns else out
 
 
+def mu_headroom(df: pl.DataFrame, mu_col: str,
+                season_col: str = "season") -> tuple[float, float, float]:
+    """The expected count a conversion has to stay above, and how that is got.
+
+    Returns `(headroom, mu_max, growth)`. `headroom` is the largest expected
+    count the fit data holds, raised by the largest season-over-season rise in
+    that maximum the same data has shown. Where fewer than two seasons are
+    available there is no growth to observe, `growth` is 0.0, and the headroom
+    is the observed maximum alone.
+
+    THIS IS NOT A TUNED NUMBER. It is read off the fit population the way
+    `min_priced_share` is read off the weekly priced share — every input is
+    the data's own, and the answer moves when the data does.
+    """
+    mu = df[mu_col].to_numpy()
+    mu_max = float(np.max(mu)) if len(mu) else 0.0
+    growth = 0.0
+    if season_col in df.columns:
+        per = (df.group_by(season_col).agg(pl.col(mu_col).max().alias("_m"))
+                 .sort(season_col)["_m"].to_list())
+        rises = [per[i + 1] / per[i] - 1.0
+                 for i in range(len(per) - 1) if per[i] > 0]
+        if rises:
+            growth = max(0.0, max(rises))
+    return mu_max * (1.0 + growth), mu_max, growth
+
+
 def fit_conversion(df: pl.DataFrame, mu_col: str, target_col: str = "target",
                    unpriced: pl.DataFrame | None = None) -> dict:
     """Fit the level and dispersion that turn expected touchdowns into P(>=1).
@@ -386,18 +413,62 @@ def fit_conversion(df: pl.DataFrame, mu_col: str, target_col: str = "target",
         p = np.clip(1.0 - (1.0 - q) ** r, 1e-7, 1 - 1e-7)
         return float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)))
 
-    best = (1.0, 1e6, nll(1.0, 1e6))
-    for level in np.arange(0.70, 1.31, 0.02):
-        for r in np.arange(1.0, 4.01, 0.05):
-            v = nll(float(level), float(r))
-            if v < best[2]:
-                best = (round(float(level), 2), round(float(r), 2), v)
+    # A CONVERSION MAY NOT PUBLISH A CERTAINTY, WHATEVER ITS LOG LOSS.
+    #
+    # `apply_joint` clips `level * mu / r` at 1 - 1e-12, so any pair where
+    # `r <= level * mu` publishes that clip: a probability of exactly 1,
+    # asserting the player cannot fail to score. The model is never certain
+    # and the number is not a probability, so the pair is inadmissible before
+    # its log loss is read. This is a statement about what the output means,
+    # not a threshold — nothing here is tuned.
+    #
+    # It mattered because log loss cannot see it. Fitted on 2023-24 the
+    # optimum pinned at r = 1.0, the grid's own floor, where the form reduces
+    # to p = level * mu exactly and saturates at mu >= 1/level. It beat
+    # r = 1.15 by 0.0003 on the fit window, lost to it by 0.0003 on held-out
+    # 2025 + 2026, and the difference is the near-zero bulk: 14,000 long shots
+    # where every pair agrees, against the handful at the top where they
+    # differ by five points. On 2026-10-14 it put Kyren Williams on the live
+    # board at 99.8% against a book at 53.8%, the week's top pick, reading
+    # "Strong call" at +45 per $100.
+    #
+    # The floor is the data's own: the largest expected count the fit holds,
+    # raised by the largest season-over-season rise in that maximum the same
+    # data has shown, so one season's growth cannot walk the served board
+    # into the clip between refits. See `mu_headroom`.
+    headroom, mu_max, growth = mu_headroom(df, mu_col)
+
+    def search(constrained: bool):
+        best = (1.0, 1e6, nll(1.0, 1e6))
+        for level in np.arange(0.70, 1.31, 0.02):
+            floor = float(level) * headroom
+            for r in np.arange(1.0, 4.01, 0.05):
+                if constrained and float(r) <= floor:
+                    continue
+                v = nll(float(level), float(r))
+                if v < best[2]:
+                    best = (round(float(level), 2), round(float(r), 2), v)
+        return best
+
+    best = search(True)
+    free = search(False)
     level, r, ll = best
     out = {
         "kind": "td_conversion",
         "level": level,
         "dispersion": r,
         "log_loss": ll,
+        # Provenance for the constraint: what it ruled out, and by how much.
+        # A reader who wants the unconstrained answer can see it rather than
+        # having to re-derive it, and a later season that moves the headroom
+        # shows up here as a changed floor rather than as a silent reselection.
+        "max_expected_count": mu_max,
+        "headroom_growth": growth,
+        "min_dispersion": level * headroom,
+        "unconstrained_level": free[0],
+        "unconstrained_dispersion": free[1],
+        "unconstrained_log_loss": free[2],
+        "log_loss_cost_of_the_constraint": ll - free[2],
         "poisson_log_loss": nll(1.0, 1e6),
         "n": int(len(y)),
         "fit_date": date.today().isoformat(),
