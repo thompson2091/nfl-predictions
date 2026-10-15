@@ -181,6 +181,47 @@ fi
 STATUS=${PIPESTATUS[0]}
 echo "$(date -u +%FT%TZ) exit=$STATUS" | tee -a "$LOG"
 
+# IS THE WEEK BUILT YET? The capture does not care; everything after it does.
+#
+# Tuesday's 12:00 open lands an hour before the 13:00 rollover, and on a week
+# the rosters are late it lands before any rollover at all. The prices are
+# worth taking regardless — that is the opening line — but the shortlist,
+# freeze and prop picks below would run against a feature matrix holding the
+# 28-odd DEF/ST rows of a week nobody has built. On 2026-10-13 that printed
+# "No players could be matched to a sportsbook price" and "shortlist failed"
+# for both markets, and recorded a 28-row board as the frozen week 6.
+#
+# Nothing is lost by skipping: `week_rollover.sh` runs the shortlist, the prop
+# picks and the freeze itself when it builds the week, against the open this
+# run just archived. Same threshold as the rollover's own "already built".
+#
+# Unknown is NOT unbuilt. If the check itself fails, the steps run as they
+# always did, because a noisy log is cheaper than a week with no picks.
+BUILT=$("$PY" - "${SEASON:-}" "$WEEK" <<'PYEOF' 2>/dev/null
+import sys
+
+import polars as pl
+
+from src.utils.paths import get_path
+
+season, week = int(sys.argv[1]), int(sys.argv[2])
+feat = get_path("processed", "anytime_td") / "features.parquet"
+n = 0
+if feat.exists():
+    n = (pl.scan_parquet(feat)
+         .filter((pl.col("season") == season) & (pl.col("week") == week))
+         .select(pl.len()).collect().item())
+print(n)
+PYEOF
+)
+WEEK_READY=1
+if [[ "${BUILT:-}" =~ ^[0-9]+$ ]] && [ "$BUILT" -le 200 ]; then
+    WEEK_READY=0
+    echo "  week $WEEK is not built yet ($BUILT candidate rows) — skipping" \
+         "picks and freeze; week_rollover.sh records both when it builds" \
+         "the week" | tee -a "$LOG"
+fi
+
 # Write down what the tracked rules say, at the price that was just captured.
 #
 # Only on the opening snapshot: the close firings run fifteen times a week and
@@ -191,7 +232,7 @@ echo "$(date -u +%FT%TZ) exit=$STATUS" | tee -a "$LOG"
 # Never allowed to fail the capture. The odds are the irreplaceable half: a
 # price the API has stopped serving cannot be bought back, while a missed
 # recording is one `make shortlist` away.
-if [ "$STATUS" -eq 0 ] && [ "$SNAPSHOT" = "open" ]; then
+if [ "$STATUS" -eq 0 ] && [ "$SNAPSHOT" = "open" ] && [ "$WEEK_READY" -eq 1 ]; then
     {
         echo "--- recording tracked picks for week $WEEK"
         for MARKET in anytime_td first_td; do
@@ -234,7 +275,7 @@ fi
 # only games that have not started, so running them on every slot is what
 # makes the last pre-kickoff board the one that is kept. After the close
 # rebuild above, so the frozen board is the one priced on the newest capture.
-if [ "$STATUS" -eq 0 ]; then
+if [ "$STATUS" -eq 0 ] && [ "$WEEK_READY" -eq 1 ]; then
     {
         echo "--- freezing week $WEEK's boards and recording prop picks"
         "$PY" scripts/66_freeze.py --week "$WEEK" \
