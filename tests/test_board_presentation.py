@@ -477,3 +477,62 @@ def test_a_slip_with_nothing_marked_says_nothing():
 def test_a_fade_leg_is_named_like_any_other():
     """It needs no special case: "Strong + Fade" says exactly what it is."""
     assert bp.combo_backing(["Strong", "Fade"]) == "Strong + Fade"
+
+
+# --------------------------------------------------------------------------
+# A verdict needs a fitted rule behind it
+# --------------------------------------------------------------------------
+
+def test_a_betting_verdict_requires_a_fitted_rule():
+    """The Gaps discipline, applied to the touchdown board.
+
+    `lo` and `hi` are percentiles of our own disagreement, which say how
+    unusual a gap is and nothing about whether it pays. The over/under
+    markets already have the honest version — `prop_edge.fit_threshold` fits
+    a cut on past seasons by return, with a floor on bets, saved with
+    provenance. The touchdown equivalent, `rank_economics.fit_edge_rule`, is
+    stricter still and returns None on both markets: every band of the
+    2023-2025 edge curve is negative or indistinguishable from zero.
+
+    The board already fell back to the percentile labels when no rule was
+    fitted. What it did not do was change what they SAY, so 87 live rows read
+    "Strong call" on a market whose own economics verdict is `negative`.
+    """
+    from src.presentation import board as B
+
+    # Same row, same numbers; only whether a rule exists differs.
+    assert B.confidence(9.0, 0.02, 0.05, 20.0, rule_fitted=True) == "Strong call"
+    assert B.confidence(9.0, 0.02, 0.05, 20.0, rule_fitted=False) == B.WELL_ABOVE
+    assert B.confidence(3.0, 0.02, 0.05, 20.0, rule_fitted=True) == "Leans"
+    assert B.confidence(3.0, 0.02, 0.05, 20.0, rule_fitted=False) == B.ABOVE
+
+    # The instructions that are NOT claims about our own edge are untouched.
+    # Veto is a refusal, carried by its own measurement; Pass is the money
+    # gate; Matches book is having no opinion.
+    for fitted in (True, False):
+        assert B.confidence(-9.0, 0.02, 0.05, 0.0, rule_fitted=fitted) == B.VETO
+        assert B.confidence(9.0, 0.02, 0.05, -5.0, rule_fitted=fitted) == B.PASS
+        assert B.confidence(0.5, 0.02, 0.05, 5.0,
+                            rule_fitted=fitted) == "Matches book"
+
+    # Defaulting to True keeps every other caller as it was.
+    assert B.confidence(9.0, 0.02, 0.05, 20.0) == "Strong call"
+
+
+def test_the_descriptive_tiers_rank_below_the_betting_ones():
+    """A slip takes the weakest read among its legs, so the order matters.
+
+    "Above book" is a weaker statement than "Leans": it says our number is
+    higher and declines to call it a bet. If it sorted above, a slip of
+    unproven legs would inherit a betting verdict none of them carries.
+    """
+    from src.presentation import board as B
+
+    o = B.READ_ORDER
+    assert o.index(B.ABOVE) < o.index("Leans")
+    assert o.index(B.WELL_ABOVE) < o.index("Strong call")
+    assert o.index(B.ABOVE) < o.index(B.WELL_ABOVE)
+    assert o.index("Matches book") < o.index(B.ABOVE)
+    # And a mixed slip still takes the weakest leg.
+    assert B.combo_read([B.WELL_ABOVE, "Strong call"]) == B.WELL_ABOVE
+    assert B.combo_read([B.ABOVE, B.PASS]) == B.PASS

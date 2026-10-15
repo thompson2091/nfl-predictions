@@ -92,6 +92,26 @@ def roi_money(roi_pct: float | None) -> str:
 
 
 #: What a row reads as when we rate a player *below* the price. Its own label
+#: What a row reads as when we rate a player above the price, the price pays,
+#: and NOTHING MEASURED SAYS THAT IS A BET. Descriptions, not instructions.
+#:
+#: `rank_economics.fit_edge_rule` asks three things of a candidate cut-off:
+#: that bets above it turn a profit whose clustered interval excludes zero,
+#: that bets below it do not, and that the kept set is profitable in every
+#: season separately. On both touchdown markets it returns None — there is no
+#: cut-off that passes. The board already falls back to the percentile labels
+#: when that happens, and the percentile is a measure of how unusual our
+#: disagreement is, not of whether the bet pays. So the fallback was still
+#: printing "Strong call" on 87 live rows of a market whose own economics
+#: verdict is `negative`.
+#:
+#: These are the same two tiers with the betting words taken out. They say
+#: what is true — our number is above the de-vigged price, by a lot or a
+#: little — and claim nothing about money.
+ABOVE = "Above book"
+WELL_ABOVE = "Well above book"
+
+
 #: rather than a share of "Strong call", because the two are opposite
 #: instructions and the gap being large does not make them the same size of
 #: opinion — it makes them a bet and a refusal.
@@ -106,7 +126,8 @@ PASS = "Pass"
 
 
 def confidence(edge_pp: float, lo: float, hi: float,
-               ev_pct: float | None = None) -> str:
+               ev_pct: float | None = None,
+               rule_fitted: bool = True) -> str:
     """Label what the model is doing, not how sure it is.
 
     These read as verdicts, so the wording matters. Calling a large gap "Low
@@ -150,6 +171,22 @@ def confidence(edge_pp: float, lo: float, hi: float,
     screen than it did in the backtest. See `prediction/bets.py`.
 
     Omitting `ev_pct` keeps the old behavior, for a caller that has no price.
+
+    **AND A VERDICT NEEDS A FITTED RULE BEHIND IT, which these cuts are not.**
+    `lo` and `hi` are percentiles of our own disagreement. The project already
+    has the honest version of this question for the over/under markets: a cut
+    fitted on past seasons by return, with a floor on bets, saved with
+    provenance — `prop_edge.fit_threshold`, which is what the Gaps rule runs
+    on. The touchdown equivalent is `rank_economics.fit_edge_rule`, and it is
+    stricter again: profitable above the cut, NOT profitable below it, and
+    profitable in every season separately.
+
+    It returns None on both touchdown markets. Every band of the 2023-2025
+    edge curve is negative or indistinguishable from zero, and anytime TD's
+    own economics verdict is `negative`. So `rule_fitted` is False there, and
+    the two betting tiers become descriptions: a row can say our number is
+    above the price without telling anybody to bet it. Pass it True only where
+    a fitted rule exists.
     """
     d = abs(edge_pp) / 100.0
     if d <= lo:
@@ -158,6 +195,8 @@ def confidence(edge_pp: float, lo: float, hi: float,
         return VETO
     if ev_pct is not None and float(ev_pct) <= 0.0:
         return PASS
+    if not rule_fitted:
+        return ABOVE if d <= hi else WELL_ABOVE
     return "Leans" if d <= hi else "Strong call"
 
 
@@ -169,7 +208,8 @@ def confidence(edge_pp: float, lo: float, hi: float,
 #: `PASS` sits above `VETO` and below `Matches book`: a leg whose price kills
 #: it is not a bet, which is a stronger instruction than having no opinion and
 #: a weaker one than being told to take the other side.
-READ_ORDER = (VETO, PASS, "Matches book", "Leans", "Strong call")
+READ_ORDER = (VETO, PASS, "Matches book", ABOVE, "Leans",
+              WELL_ABOVE, "Strong call")
 
 
 def combo_read(reads) -> str:

@@ -1043,8 +1043,29 @@ def test_a_verdict_cannot_be_drawn_over_the_button_beside_it():
     pill = pill[:pill.index("}")]
     assert "max-width:100%" in pill and "overflow:hidden" in pill, (
         "bounded to its cell, the longest verdict can only be trimmed")
-    assert "{ w: '100px', label: 'Read'" in d.JS_WEEK, (
-        "and wide enough that the ordinary case is not trimmed at all")
+    # THE CLAIM, NOT THE NUMBER IT HAPPENED TO BE. This pinned the literal
+    # '100px', which was the track sized for "Strong call" — and it failed on
+    # 2026-10-15 when the verdicts became descriptions and the longest grew
+    # to "Well above book". A test that has to be renumbered every time the
+    # wording moves gets renumbered without being read. What has to hold is
+    # that the track fits the longest verdict the board can actually emit.
+    import re as _re
+
+    from src.presentation.board import READ_ORDER
+
+    got = _re.search(r"\{ w: '(\d+)px', label: 'Read'", d.JS_WEEK)
+    assert got, "the Read column no longer declares a fixed track"
+    track = int(got.group(1))
+    longest = max(READ_ORDER, key=len)
+    # 11 characters of 12px semibold overran 92px and fitted 100, so a
+    # character costs a shade over 9 points of track in the font that measures
+    # widest. Derived from the case that was actually observed, not chosen.
+    need = round(len(longest) * (100 / len("Strong call")))
+    assert track >= need, (
+        f"the Read track is {track}px and the longest verdict the board can "
+        f"emit is {longest!r} at {len(longest)} characters, which needs about "
+        f"{need}px. A cell wider than its track draws over the column beside "
+        f"it rather than clipping.")
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")

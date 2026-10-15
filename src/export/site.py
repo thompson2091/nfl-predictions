@@ -2590,14 +2590,18 @@ function tdTable(rows, f, view) {
         d.appendChild(el('span', { class: has(v) ? (v >= 0 ? 'pos' : 'neg') : 'dim',
           text: has(v) ? money(v) : '\u2014' }));
       } },
-    // 100, not 92. "Strong call" is 11 characters of 12px semibold and it
-    // measures wider in iOS Safari's system font than in the desktop one, so
-    // it overran a 92px track on a phone and only on a phone. The pill is
+    // 132, not 100. The track was sized for "Strong call" — 11 characters of
+    // 12px semibold, which already overran 92px in iOS Safari's system font
+    // and only there. "Well above book" is 15, so the same arithmetic puts it
+    // at about 136, so the track is 140. The pill is
     // bounded to its cell in CSS as well; this is so it does not have to be
     // trimmed in the ordinary case.
-    { w: '100px', label: 'Read', sort: 'read',
-      title: 'The verdict in one word. Strong call and Leans are above the price, '
-           + 'Matches book is agreement, Veto is below it.',
+    { w: '140px', label: 'Read', sort: 'read',
+      title: 'What we think of the price. Above book and Well above book mean '
+           + 'our number is higher, with nothing measured saying it is a bet — '
+           + 'no fitted rule clears on these markets. Strong call and Leans '
+           + 'appear only where one does. Pass is above the price at a price '
+           + 'that does not pay, Matches book is agreement, Veto is below it.',
       cell: (d, r) => r.read && d.appendChild(
         el('span', { class: 'pill ' + readClass(r.read), text: r.read })) },
     { w: '44px', label: '', nosort: 1, mob: 'act',
@@ -2805,7 +2809,14 @@ function ouTable(rows, f, key) {
 const READ_CLASS = {
   'strong call': 'p-good',      // we rate him well above the price
   'leans': 'p-lean',            // above it, but not by much
+  // The same two tiers where no fitted rule stands behind them, which on
+  // both touchdown markets is everywhere. Deliberately quieter than the
+  // betting pair: green reads as "take this", and nothing has earned that
+  // here. See `presentation.board.confidence`.
+  'well above book': 'p-lean',
+  'above book': 'p-mut',
   'matches book': 'p-mut',      // we and the market agree
+  'pass': 'p-mut',              // above the price, and the price does not pay
   'veto': 'p-bad',              // we rate him below the price
 };
 function readClass(read) {

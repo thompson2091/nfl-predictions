@@ -508,10 +508,14 @@ def players(season: int, week: int, target_type: str, model: str,
                 "model_only": model_only,
                 "book": _f(r.get("market_prob")),
                 "diff": _f(r.get("edge_pp")),
-                # The percentile AND the money. `confidence` is a spread, not
-                # a price — see its docstring for the 84-of-166 measurement.
+                # The percentile AND the money AND whether anything has
+                # earned the right to call it a bet. `rule` is
+                # `rank_economics.fit_edge_rule`, which returns None on both
+                # touchdown markets — so the two betting tiers read as
+                # descriptions there. See `presentation.board.confidence`.
                 "read": bp.confidence(float(r.get("edge_pp") or 0), lo, hi,
-                                      _f(r.get("ev_model_pct"))),
+                                      _f(r.get("ev_model_pct")),
+                                      rule_fitted=rule is not None),
                 "bet_rank": int(r["bet_rank"]),
                 "bet_edge": _f(r.get("model_edge_pp")),
                 "ev": _f(r.get("ev_model_pct")),
