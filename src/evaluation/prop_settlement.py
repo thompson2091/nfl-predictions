@@ -169,3 +169,54 @@ def settle_rows(season: int, market: str, rows: list[dict],
                         else (0.0 > float(line)) == (side == "over"))
         out.append(r)
     return out
+
+
+def stat_lookup(season: int, week: int, stat: str):
+    """A function from a board row's player to his `stat` that week, or None.
+
+    **BY PLAYER ID, THEN BY THE BOARD'S OWN NAME, THEN BY THE BOX SCORE'S.**
+    Every grader used to look the result up by `player_display_name`, which
+    is the box score's spelling, while a board row carries the feature
+    matrix's. They differ: "Kenny Gainwell" against "Kenneth Gainwell", and
+    in 2026 "Jalen Cropper" against "Jalen Moreno-Cropper". A miss there is
+    not a missing result — the snap counts, keyed by the board's spelling,
+    say he played, so `settle_rows` and `forward_record` grade him at ZERO.
+    That is a winning under that never happened.
+
+    So the id comes first: from the row when it carries one, else from that
+    week's feature matrix, which is where the board's names come from. The
+    display name is the last resort, so nothing that matched before stops
+    matching. A name two players share is never used for either step.
+    """
+    from src.utils.paths import get_path
+
+    try:
+        ws = (pl.scan_parquet(get_path("raw") / "weekly_stats.parquet")
+              .filter((pl.col("season") == season) & (pl.col("week") == week))
+              .select(["player_id", "player_display_name", stat]).collect())
+    except Exception:                                            # noqa: BLE001
+        return lambda name, player_id=None: None
+    by_id = {i: v for i, v in zip(ws["player_id"].to_list(), ws[stat].to_list())
+             if i is not None}
+    shown = ws["player_display_name"].to_list()
+    by_shown = {n: v for n, v in zip(shown, ws[stat].to_list())
+                if n and shown.count(n) == 1}
+
+    name_to_id: dict = {}
+    try:
+        f = (pl.scan_parquet(get_path("processed", "anytime_td") / "features.parquet")
+             .filter((pl.col("season") == season) & (pl.col("week") == week))
+             .select(["player_name", "player_id"]).unique().collect())
+        ids = f.group_by("player_name").agg(pl.col("player_id").n_unique().alias("n"),
+                                             pl.col("player_id").first())
+        name_to_id = {r["player_name"]: r["player_id"]
+                      for r in ids.filter(pl.col("n") == 1).iter_rows(named=True)}
+    except Exception:                                            # noqa: BLE001
+        pass
+
+    def get(name, player_id=None):
+        pid = player_id or name_to_id.get(name)
+        if pid is not None and pid in by_id:
+            return by_id[pid]
+        return by_shown.get(name)
+    return get

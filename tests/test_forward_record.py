@@ -138,8 +138,9 @@ def test_the_forward_record_grades_each_pick_at_its_own_price(monkeypatch):
              player="Late Man", game="E @ F", odds=-110, side="over",
              line=60.5, model=0.6),
     ]
-    monkeypatch.setattr(FR, "_actuals", lambda season, week, market: {
-        "Win Man": 52.0, "Lose Man": 5.0})
+    acts = {"Win Man": 52.0, "Lose Man": 5.0}
+    monkeypatch.setattr(FR, "_actuals", lambda season, week, market:
+                        lambda name, player_id=None: acts.get(name))
     monkeypatch.setattr("src.evaluation.prop_settlement.participation",
                         lambda season: {})
     monkeypatch.setattr("src.evaluation.tracked_rules.unfinished",

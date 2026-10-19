@@ -545,29 +545,21 @@ def ou_week(season: int, week: int, market: str,
     if not rows:
         return []
 
-    stat = OU_STAT.get(market)
-    ws = (pl.scan_parquet(get_path("raw") / "weekly_stats.parquet")
-          .filter((pl.col("season") == season) & (pl.col("week") == week))
-          .select(["player_display_name", stat])
-          .rename({"player_display_name": "player_name", stat: "actual"})
-          .collect())
-    # Two players can share a display name in one week — "Byron Young" and
-    # "Marcus Harris" both appear twice in 2026 week 1. `dict(zip(...))` keeps
-    # whichever came last and grades one man against the other's stat line,
-    # silently. An ambiguous name is left ungraded instead: a wrong result is
-    # worse than a missing one, because only the missing one is visible.
-    dupes = (ws.group_by("player_name").agg(pl.len().alias("_n"))
-             .filter(pl.col("_n") > 1)["player_name"].to_list())
-    actual = {k: v for k, v in zip(ws["player_name"].to_list(),
-                                   ws["actual"].to_list())
-              if k not in set(dupes)}
+    from src.evaluation.prop_settlement import stat_lookup
+
+    # By player id first, then name — see `stat_lookup` for the spelling that
+    # graded a played game at zero. Two players sharing a display name in one
+    # week ("Byron Young", "Marcus Harris" in 2026 week 1) are never matched
+    # by that name: a wrong result is worse than a missing one, because only
+    # the missing one is visible.
+    actual = stat_lookup(season, week, OU_STAT.get(market))
 
     out = []
     for r in rows:
         line = r.get("point") if r.get("point") is not None else r.get("open_point")
         if line is None:
             continue
-        got = actual.get(r.get("player_name"))
+        got = actual(r.get("player_name"), r.get("player_id"))
         ours = r.get("ours")
         # The side our number implies, then whether that side landed. A row
         # we had no opinion on is carried with `won` null rather than dropped:

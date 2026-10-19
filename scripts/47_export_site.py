@@ -176,18 +176,21 @@ def _ou_results(season: int, week: int) -> dict:
         return out
     if ws.height == 0 or "player_display_name" not in ws.columns:
         return out
-    names = ws["player_display_name"].to_list()
-    dupes = {n for n in names if names.count(n) > 1}
+    from src.evaluation.prop_settlement import stat_lookup
+
     for key, market in _OU_RESULT_KEYS.items():
         if market not in ws.columns:
             continue
-        stat = dict(zip(names, ws[market].to_list()))
+        # By player id first; see `stat_lookup` for the spelling that hid a
+        # played game. The key stays the board's name, which the page reads.
+        stat = stat_lookup(season, week, market)
         board = PF.frozen(season, week, market)
         for rows in board.values():
             for r in rows:
                 n = r.get("player_name")
-                if n and n not in dupes and stat.get(n) is not None:
-                    out[f"{week}|{key}|{n}"] = float(stat[n])
+                got = stat(n, r.get("player_id")) if n else None
+                if got is not None:
+                    out[f"{week}|{key}|{n}"] = float(got)
     return out
 
 
@@ -367,7 +370,7 @@ def yards(market: str, season: int | None, week: int | None,
 
     board, msg = board_for_week(market, season, week, allow_open=allow_open)
     out["problem"] = msg
-    keep = ["player_name", "team", "game_id", "proj", "lo", "hi", "point",
+    keep = ["player_name", "player_id", "team", "game_id", "proj", "lo", "hi", "point",
             "odds", "implied_prob", "overround", "fair_prob", "model_only",
             "ours", "edge_pp", "ev", "n_books", "thin", "price_snapshot"]
     priced: set[str] = set()

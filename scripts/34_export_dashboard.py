@@ -970,7 +970,7 @@ def receptions(season: int | None, week: int | None,
         # Without them a row carries one price while the board sells two
         # sides, and the under leg was being paid at the over's number — which
         # is near enough at -110/-110 and badly wrong at -160.
-        keep = ["player_name", "team", "game_id", "mu", "point", "odds",
+        keep = ["player_name", "player_id", "team", "game_id", "mu", "point", "odds",
                 "implied_prob", "overround",
                 "fair_prob", "model_only", "ours", "edge_pp", "ev",
                 "n_books", "thin", "price_snapshot",

@@ -55,3 +55,17 @@ def test_a_broken_ladder_is_dropped_whole(tmp_path, monkeypatch):
     r = safe_legs.rungs([2025]).sort("point")
     assert r["n_books"].to_list() == [1, 1]
     assert r["odds"].to_list() == [-1300, -260]
+
+
+def test_a_result_is_found_by_id_when_the_spellings_differ():
+    """Box score "Kenny Gainwell", board and snaps "Kenneth Gainwell"."""
+    from src.evaluation.prop_settlement import stat_lookup
+
+    try:
+        got = stat_lookup(2025, 11, "rushing_yards")
+    except Exception:                                            # noqa: BLE001
+        pytest.skip("no raw data")
+    if got("Kenny Gainwell") is None:
+        pytest.skip("2025 week 11 not in weekly_stats")
+    assert got("Kenneth Gainwell") == got("Kenny Gainwell") == 24
+    assert got("Kenneth Gainwell", "00-0036919") == 24

@@ -47,21 +47,11 @@ STAT = {"receptions": "receptions", "receiving_yards": "receiving_yards",
         "rushing_yards": "rushing_yards", "passing_yards": "passing_yards"}
 
 
-def _actuals(season: int, week: int, market: str) -> dict:
-    """Display name -> stat, leaving out a name two players share that week
-    (see `week_history.ou_week` for why a wrong result is worse than none)."""
-    from src.utils.paths import get_path
+def _actuals(season: int, week: int, market: str):
+    """(name, player_id) -> stat, by id first; see `prop_settlement.stat_lookup`."""
+    from src.evaluation.prop_settlement import stat_lookup
 
-    try:
-        ws = (pl.scan_parquet(get_path("raw") / "weekly_stats.parquet")
-              .filter((pl.col("season") == season) & (pl.col("week") == week))
-              .select(["player_display_name", STAT[market]]).collect())
-    except Exception:                                            # noqa: BLE001
-        return {}
-    names = ws["player_display_name"].to_list()
-    dupes = {n for n in names if names.count(n) > 1}
-    return {n: v for n, v in zip(names, ws[STAT[market]].to_list())
-            if n not in dupes}
+    return stat_lookup(season, week, STAT[market])
 
 
 def _picks_from_boards(season: int) -> list[dict]:
@@ -95,7 +85,8 @@ def _picks_from_boards(season: int) -> list[dict]:
                     base = {"season": season, "week": int(wk), "market": market,
                             "player": player, "game": f"{away} @ {home}",
                             "line": r["point"], "model": r.get("model_only"),
-                            "source": r.get("source")}
+                            "source": r.get("source"),
+                            "player_id": r.get("player_id")}
                     ms = r.get("model_side")
                     price = r.get("price_over") if ms == "over" else r.get("price_under")
                     if ms and price is not None:
@@ -153,7 +144,7 @@ def graded(season: int, picks: list[dict] | None = None) -> tuple[list, int]:
             side = r.get("side")
             away, _, home = (r.get("game") or "").partition(" @ ")
             gid = f"{season}_{week:02d}_{away}_{home}"
-            got = acts.get(r["player"])
+            got = acts(r["player"], r.get("player_id"))
             snapped = (gid, n) in played or got is not None
             if not snapped:
                 continue                                  # void
