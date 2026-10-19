@@ -48,7 +48,7 @@ def _to_rows(odds: dict, markets=DEFAULT_MARKETS) -> pl.DataFrame:
                     "n_books": p.get("n_books"),
                     "overround": p.get("overround"),
                 })
-    return pl.DataFrame(rows) if rows else pl.DataFrame()
+    return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
 
 
 if __name__ == "__main__":

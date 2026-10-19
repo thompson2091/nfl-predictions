@@ -323,7 +323,7 @@ def main() -> int:
             time.sleep(args.sleep)
             continue
 
-        snap = pl.DataFrame(rows).with_columns(pl.lit(row["game_id"]).alias("game_id"))
+        snap = pl.DataFrame(rows, infer_schema_length=None).with_columns(pl.lit(row["game_id"]).alias("game_id"))
         append_snapshot(snap, season=row["season"], week=row["week"],
                         snapshot=args.snapshot, regions=args.regions)
         # Same response, no extra credits, unbuyable afterwards.
