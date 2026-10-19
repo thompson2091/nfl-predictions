@@ -1,0 +1,24 @@
+# Safe legs: alternate-ladder rungs priced as near-certain, and the parlays
+# built from them. Kept out of settings.yaml so nothing here can move a model.
+#
+# Read by src/evaluation/safe_legs.py. A script can override any value for one
+# run (for example --min-prob 0.95) without editing this file.
+
+# The lowest hit probability a leg needs before the board shows it. 0.90 means
+# "hits nine times in ten". Applies to our estimate, not the book's price; a
+# leg also has to beat the price (min_edge below) to be shown.
+min_prob: 0.90
+
+# How far our estimate has to sit above the price's implied probability, in
+# probability points. Over-only ladders carry the whole vig on one side, so a
+# zero edge is a losing bet.
+min_edge: 0.02
+
+# The backtest reports every one of these, so you can see what moving
+# min_prob would have done before you move it.
+report_thresholds: [0.85, 0.90, 0.95]
+
+# Player history: how many graded games back the hit rate looks, and how few
+# it accepts before it refuses to estimate at all.
+history_games: 50
+history_min_games: 10
