@@ -125,7 +125,7 @@ if (weeks.length) {
 const cards = (DATA.games || {}).cards || [];
 if (cards.length) {
   V.tab = 'games'; V.game = cards[0].game_id;
-  ['notes', 'players', 'bets', 'score'].forEach(gt => {
+  ['notes', 'players', 'bets', 'score', 'roster'].forEach(gt => {
     V.gameTab = gt;
     let e = null, html = '';
     try { render(); html = app(); } catch (ex) { e = ex; }
@@ -424,7 +424,7 @@ if (cards.length) {
 // Attributes owned by a listener other than the click one: the selects
 // (`change`), the text fields (`input`), and the ask form (`submit`).
 const handled = new Set(V3CLICKS.concat(
-  ['v3week', 'v3gamesel', 'v3sortsel', 'v3gameto', 'v3q', 'v3q2', 'v3l',
+  ['v3week', 'v3gamesel', 'v3sortsel', 'v3gameto', 'v3q', 'v3q2', 'v3l', 'v3lr',
    'v3askform',
    // The board's and the game's angle controls: two selects, a search box and
    // a range, none of them a click.
@@ -3768,8 +3768,10 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
   // The segmented control itself stays exactly as it was; only the wrapper
   // is new. (The CSS side is checked in tests/test_v3_export.py, which can
   // read the stylesheet.)
+  // Six sections since Roster joined the bar.
   ok('and the control inside it is unchanged',
-     app().indexOf('class="seg seg--5"') >= 0);
+     app().indexOf('class="seg seg--6"') >= 0
+     && app().indexOf('data-v3gtab="roster"') >= 0);
   V.game = null; V.tab = 'props';
 }
 
@@ -4731,5 +4733,30 @@ if (cards.length) {
      settle(gone).status === 'Won');
 }
 
+
+// ── The ladder, a price per step ────────────────────────────────────────
+//
+// The default fills every step; a typed step keeps its own price and moves
+// every row below it. Six steps at +100 from $10 is $640 at 1 in 64.
+{
+  V.tab = 'ladder'; V.game = null; V.lstake = 10; V.lodds = 100; V.rungs = 6;
+  V.lsteps = []; render();
+  const L = app();
+  ok('the ladder is a tab again', L.indexOf('data-v3tab="ladder"') >= 0);
+  ok('it draws one price field per step',
+     (L.match(/data-v3lr="/g) || []).length === 6);
+  ok('six evens from $10 is $640 at 1 in 64',
+     x.v3LadderSummary().indexOf('$640.00') >= 0
+     && x.v3LadderSummary().indexOf('1 in 64') >= 0);
+  // Step 1 at -200: $10 -> $15, and 1.5 x 2^5 = $480.
+  V.lsteps = [-200]; render();
+  ok('a typed step changes every row below it',
+     x.v3LadderSummary().indexOf('$480.00') >= 0);
+  V.lodds = 150; render();
+  ok('and keeps its price when the default moves',
+     app().indexOf('value="\u2212200"') >= 0);
+  ok('with a way back to the default', app().indexOf('data-v3lreset') >= 0);
+  V.lsteps = []; V.lodds = 100; V.tab = 'props';
+}
 
 done();

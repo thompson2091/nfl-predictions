@@ -1566,6 +1566,22 @@ def payload_v3():
                        "model_all": {"bets": 131, "roi": 0.0144,
                                      "lo": -0.11, "hi": 0.14}},
         }
+    # One full team and one with an empty slot, so both kinds of row draw.
+    def slots(full):
+        out = [{"slot": "QB1", "pos": "QB", "player": "Q One",
+                "pass_yds": 231.4, "pass_yds_line": 224.5, "rush_yds": 12.0,
+                "td": 0.18, "ftd": 0.03}]
+        for pos, n in (("RB", 3), ("WR", 5), ("TE", 2)):
+            for i in range(n):
+                row = {"slot": f"{pos}{i + 1}", "pos": pos}
+                if full or i < n - 1:
+                    row.update({"player": f"{pos} {i + 1}", "rec": 3.1,
+                                "rec_yds": 40.2, "rush_yds": 50.6,
+                                "td": 0.3, "ftd": 0.05,
+                                "status": "Out" if i == 2 else None})
+                out.append(row)
+        return out
+    p["roster"] = {"ATL_GB": {"ATL": slots(True), "GB": slots(False)}}
     return p
 
 
@@ -2787,7 +2803,10 @@ def test_the_cleared_tag_is_context_and_counts_only_played_games():
 def test_the_streak_filter_is_reachable_and_has_an_empty_state():
     src = _v3js()
     assert "['streak', 'Streaks']" in src, "the Streaks segment is gone"
-    assert "seg--5" in src, "the filter bar still claims four segments"
+    # The filter bar's own class. A bare "seg--5" anywhere in the source was
+    # satisfied by the game's section bar, which is not this control.
+    assert "'<div class=\"seg seg--6\">'\n    + v3Seg('v3filter'" in src, \
+        "the filter bar's segment count does not match its options"
     assert "V.filter === 'streak'" in src, "the Streaks segment filters nothing"
     assert "Nobody on this market went one way in" in src, \
         "the Streaks filter has no empty state"
@@ -3208,3 +3227,14 @@ def test_every_projection_row_sits_on_the_same_columns():
     assert "var(--proj-l)" in rule, "the label column sizes to its own row again"
     assert "minmax(0,auto) 52px" not in rule, "the old auto track is back"
     assert "--proj-l:" in css, "the label width is not declared anywhere"
+
+
+def test_the_roster_tab_draws_every_slot_and_says_where_the_order_comes_from():
+    """ESPN supplies the players and our projection orders them, so the page
+    has to say which, and the tab has to be reachable from the game bar."""
+    src = _v3js()
+    i = src.index("function v3Roster(c)")
+    body = src[i:src.index("\n}\n", i)]
+    assert "ordered by our projection" in body
+    assert "['roster', 'Roster']" in src, "the Roster tab is not on the game bar"
+    assert "V.gameTab === 'roster' ? v3Roster(c)" in src

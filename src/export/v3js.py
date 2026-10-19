@@ -46,6 +46,10 @@ const V3TABS = [
   // is the opposite: twenty splits, every one of them graded, and the
   // headline is that none of them clears.
   ['angles', 'Angles', 'M4 19h16M4 19l5-7 4 3 6-9'],
+  // BACK, AS A PRICE PER STEP. The old ladder took one price for every rung,
+  // which no real ladder has. Still a calculator — nothing on it is measured
+  // and it says so.
+  ['ladder', 'Ladder', 'M7 3v18M17 3v18M7 7h10M7 12h10M7 17h10'],
   // "Record", not "Scorecard": a fifth column on a 375px phone has about
   // six characters before the label wraps under its own icon.
   ['record', 'Record', 'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5'],
@@ -190,6 +194,10 @@ const V = Object.assign({
   week: null, game: null, gameTab: 'odds', cat: 'all',
   picks: {}, betType: 'twos', stake: 10, shown: V3SHOW,
   lodds: 100, rungs: 6, q: '', half: 'full', metric: 'all',
+  //: The ladder's own stake, not the slip's: changing one used to change
+  //: the other. `lsteps` holds the steps whose price was typed over the
+  //: default, by index; a hole means "use the default".
+  lstake: 10, lsteps: [],
   //: The board opens on what each pattern is WORTH over its own
   //: composition. It opened on `season`, which on the live week is one
   //: game for a third of the rows — so 86 patterns measured over 87 to
@@ -306,7 +314,7 @@ function v3Save() {
       // The saved picks themselves, not a flag. `V.saved` used to be a
       // boolean that nothing read and nothing kept.
       saved: V.saved, savedGone: V.savedGone, savedFilter: V.savedFilter,
-      lodds: V.lodds, rungs: V.rungs });
+      lodds: V.lodds, rungs: V.rungs, lstake: V.lstake, lsteps: V.lsteps });
     // A WRITE THAT CHANGES NOTHING IS NOT MADE. Every write fires `storage`
     // in every other open tab; skipping the no-op ones keeps that event
     // meaning "something changed".
@@ -414,7 +422,8 @@ function v3Weeks() {
   // Slip and Ladder do not vary by week, so they offer none — and because
   // this one function decides, the header hides the control and `v3Do` drops
   // a stale week on the way in, from the same answer.
-  if (V.tab === 'picks' || V.tab === 'angles' || V.tab === 'record')
+  if (V.tab === 'picks' || V.tab === 'angles' || V.tab === 'record'
+      || V.tab === 'ladder')
     return [];
   if (V.tab === 'games') {
     return Object.keys(((DATA.games || {}).past) || {})
@@ -536,6 +545,7 @@ function v3Screen() {
     case 'props': return v3Week();
     case 'picks': return v3Picks();
     case 'angles': return v3AnglesPage();
+    case 'ladder': return v3Ladder();
     case 'record': return v3RecordPage();
     default: return V.game ? v3Game(V.game) : v3Games();
   }
@@ -2026,7 +2036,7 @@ function v3Game(gid) {
     + ' aria-label="Ask about this game">'
     + '<span>Ask</span><i>\u2192</i></button>'
     + '</div>'
-    + '<div class="seg seg--5">'
+    + '<div class="seg seg--6">'
     // ORDERED BY WHAT YOU ARE DECIDING, not by how the sections were built.
     //
     // The three things you can bet come first and sit together — the game
@@ -2042,6 +2052,7 @@ function v3Game(gid) {
     // two boards. The KEYS are unchanged: they are in saved state and in
     // links, and renaming a label is not a reason to break those.
     + v3Seg('v3gtab', [['odds', 'Odds'], ['players', 'Props'],
+                       ['roster', 'Roster'],
                        ['notes', 'Notes'], ['edge', 'Matchup'],
                        ['angles', 'Angles']], V.gameTab)
     + '</div></div>'
@@ -2055,6 +2066,7 @@ function v3Game(gid) {
     // a control and the rows it controls.
     + (V.gameTab === 'odds' ? v3GameOdds(c, gid)
      : V.gameTab === 'players' ? v3GamePlayers(gid)
+     : V.gameTab === 'roster' ? v3Roster(c)
      : V.gameTab === 'edge' ? v3GameMatchup(c)
      : V.gameTab === 'angles' ? v3Angles(c)
      : v3GameNotes(c, gid, cats, shown))
@@ -3813,6 +3825,84 @@ function v3GameMatchup(c) {
   return v3Matchup(c);
 }
 
+// THE DEPTH CHART, SLOT BY SLOT, WITH WHAT WE PROJECT FOR EACH.
+//
+// Built server-side by `src/export/roster.py`, joined on player id. The
+// PLAYERS are ESPN's; the ORDER inside a position is ours — rushing yards for
+// backs, receiving yards for receivers and tight ends — because ESPN numbers
+// receivers within formation slots and its rank 3 can be a team's top target.
+// The QB keeps the chart's order.
+//
+// EVERY SLOT IS DRAWN, filled or not. A team two backs deep shows an empty
+// RB3 rather than a shorter list, so a row means the same position on every
+// card and a gap is something you can see.
+//
+// FOUR FIGURES PER POSITION, not every projection on every row. A receiver's
+// passing yards are zero and a quarterback's catches are noise, and a 375px
+// row holds four numbers beside a name. The book's line sits under its
+// projection where one is posted; nothing is colored, because a projection
+// above a line is not a tested reason to bet it.
+const V3ROSTCOLS = {
+  QB: [['pass_yds', 'Pass'], ['rush_yds', 'Rush'], ['td', 'TD'], ['ftd', '1st TD']],
+  RB: [['rush_yds', 'Rush'], ['rec_yds', 'Rec yds'], ['td', 'TD'], ['ftd', '1st TD']],
+  WR: [['rec', 'Catches'], ['rec_yds', 'Rec yds'], ['td', 'TD'], ['ftd', '1st TD']],
+  TE: [['rec', 'Catches'], ['rec_yds', 'Rec yds'], ['td', 'TD'], ['ftd', '1st TD']],
+};
+
+function v3RosterCell(s, k) {
+  if (!s.player) return '<span></span>';
+  const v = s[k];
+  if (!has(v)) return '<span class="num rost__v rost__v--none">\u2014</span>';
+  const txt = (k === 'td' || k === 'ftd') ? v3Pct(v)
+    : k === 'rec' ? v.toFixed(1) : String(Math.max(0, Math.round(v)));
+  const line = s[k + '_line'];
+  return '<span class="num rost__v">' + txt
+    + (has(line) ? '<i>' + esc(String(line)) + '</i>' : '') + '</span>';
+}
+
+function v3RosterTeam(team, slots) {
+  let out = '<div class="card rostc"><div class="eyebrow">' + esc(team)
+    + '</div>';
+  let pos = null;
+  slots.forEach(s => {
+    const cols = V3ROSTCOLS[s.pos] || V3ROSTCOLS.WR;
+    if (s.pos !== pos) {
+      pos = s.pos;
+      out += '<div class="rost rost--h"><span></span>'
+        + cols.map(c => '<span class="rost__hd">' + esc(c[1]) + '</span>')
+              .join('') + '</div>';
+    }
+    const st = s.status
+      ? ' \u00b7 <b class="' + (s.status === 'Out' ? 'bad' : 'warn') + '">'
+        + esc(s.status) + '</b>' : '';
+    // An unnumbered row is Out or Doubtful. Its figures are what the model
+    // would project if he played, so they are greyed rather than read.
+    out += '<div class="rost' + (s.player ? '' : ' rost--empty')
+      + (/\d/.test(s.slot) ? '' : ' rost--held') + '">'
+      + '<span class="rost__n"><span class="rost__p">'
+      + (s.player ? esc(s.player) : '\u2014') + '</span>'
+      + '<span class="rost__s">' + esc(s.slot) + st + '</span></span>'
+      + cols.map(c => v3RosterCell(s, c[0])).join('') + '</div>';
+  });
+  return out + '</div>';
+}
+
+function v3Roster(c) {
+  const R = (DATA.roster || {})[c.game_id];
+  const teams = R ? [c.away, c.home].filter(t => R[t] && R[t].length) : [];
+  if (!teams.length) {
+    return '<div class="card"><p class="lede" style="font-size:15px">No depth '
+      + 'chart for this game yet.</p></div>';
+  }
+  return teams.map(t => v3RosterTeam(t, R[t])).join('')
+    + '<p class="sub" style="margin:8px 4px">Players come from the ESPN depth '
+    + 'chart. Within a position they are ordered by our projection: rushing '
+    + 'yards for backs, receiving yards for receivers and tight ends. Out and '
+    + 'Doubtful players are listed after their position, unnumbered. The '
+    + 'small figure under a number is '
+    + 'the book\u2019s line.</p>';
+}
+
 function v3GameOutcome(c, gid) {
   return v3ThinNote(c) + v3GameScores(c) + v3GameBets(gid);
 }
@@ -5026,12 +5116,13 @@ function v3Outcomes(legs, stake) {
 
 // ── screen: ladder ──────────────────────────────────────────────────────
 
-// THE LADDER, DRIVEN BY WHAT YOU TYPE.
+// THE LADDER, A PRICE PER STEP.
 //
-// It used to offer four stakes and three canned "kinds" of pick, which meant
-// the one question it exists to answer — what does MY bet at MY price turn
-// into — could only be asked in twelve ways. Stake, odds and the number of
-// rungs are fields now, and the table follows them.
+// The first version took one price for every rung, so the only ladder it
+// could describe was six bets at the same odds — which is not how anyone
+// builds one: a -300 opener, a -150, a plus-money closer. Now the default
+// fills every step and any step can be typed over. A typed step keeps its
+// price when the default changes; Reset puts every step back on it.
 //
 // The table is patched in place on every keystroke rather than re-rendered,
 // for the same reason the search box is: replacing the input being typed
@@ -5041,18 +5132,17 @@ function v3LadderInputs() {
     '<label class="lfield"><span class="eyebrow">' + esc(label) + '</span>'
     + '<input data-v3l="' + key + '" inputmode="' + mode + '" value="'
     + esc(String(val)) + '" aria-label="' + esc(label) + '">'
-    + (hint ? '<i>' + esc(hint) + '</i>' : '') + '</label>';
+    + (hint ? '<i id="v3lhint">' + esc(hint) + '</i>' : '') + '</label>';
   return '<div class="lfields">'
-    + f('stake', 'Start with', '$' + V.stake, '', 'decimal')
-    + f('odds', 'Odds each step', v3Dash(american(V.lodds)),
+    + f('stake', 'Start with', '$' + V.lstake, '', 'decimal')
+    + f('odds', 'Default odds', v3Dash(american(V.lodds)),
         v3OddsHint(), 'text')
     + f('rungs', 'Steps', V.rungs, '', 'numeric')
     + '</div>';
 }
 
 function v3OddsHint() {
-  const d = amToDec(V.lodds);
-  return 'about ' + Math.round(100 / d) + '% each';
+  return 'about ' + Math.round(100 / amToDec(V.lodds)) + '% each';
 }
 
 //: Parsed leniently — "+150", "150", "-150", "$25", "25" all mean something
@@ -5063,34 +5153,75 @@ function v3Num(v) {
   return isFinite(n) ? n : null;
 }
 
-function v3Rungs() {
-  const d = amToDec(V.lodds), p = 1 / d, start = V.stake;
-  const n = Math.max(1, Math.min(20, V.rungs));
-  let out = '';
-  for (let k = 1; k <= n; k++) {
-    const pk = Math.pow(p, k), bank = start * Math.pow(d, k);
-    out += '<div class="rung' + ((k - 1) % 2 ? ' rung--alt' : '') + '">'
-      + '<span class="num" style="font-weight:600;color:var(--mut)">' + k
-      + '</span>'
-      + '<span class="num" style="font-size:17px;font-weight:600">$'
-      + (bank >= 1000 ? Math.round(bank).toLocaleString() : bank.toFixed(2))
-      + '</span>'
-      + '<span><span class="num" style="font-weight:600">' + v3Pct(pk)
-      + '</span><br><span class="sub num">about 1 in '
-      + Math.max(1, Math.round(1 / pk)) + '</span></span></div>';
+//: An american price of 0 or between -100 and 100 is not a price.
+const v3IsOdds = n => has(n) && (n >= 100 || n <= -100);
+
+function v3LSteps() {
+  return Math.max(1, Math.min(20, Math.round(V.rungs) || 1));
+}
+
+//: Step k's price: what was typed over it, else the default.
+function v3LOdds(k) {
+  const o = (V.lsteps || [])[k];
+  return v3IsOdds(o) ? o : V.lodds;
+}
+
+//: Each step's bankroll and the chance of getting there, at the price's
+//: own implied probability.
+function v3LadderMath() {
+  const out = [];
+  let bank = V.lstake, p = 1;
+  for (let k = 0; k < v3LSteps(); k++) {
+    const d = amToDec(v3LOdds(k));
+    bank *= d; p /= d;
+    out.push({ odds: v3LOdds(k), bank: bank, p: p,
+               typed: v3IsOdds((V.lsteps || [])[k]) });
   }
   return out;
 }
 
+function v3LMoney(x) {
+  return '$' + (x >= 1000 ? Math.round(x).toLocaleString() : x.toFixed(2));
+}
+
+function v3RungChance(r) {
+  return '<span class="num" style="font-weight:600">' + v3Pct(r.p)
+    + '</span><br><span class="sub num">about 1 in '
+    + Math.max(1, Math.round(1 / r.p)) + '</span>';
+}
+
+function v3Rungs() {
+  return v3LadderMath().map((r, k) =>
+    '<div class="rung' + (k % 2 ? ' rung--alt' : '') + '">'
+    + '<span class="num" style="font-weight:600;color:var(--mut)">' + (k + 1)
+    + '</span>'
+    + '<input class="rodds' + (r.typed ? ' rodds--typed' : '') + '" data-v3lr="'
+    + k + '" inputmode="text" value="'
+    + esc(v3Dash(american(r.odds))) + '" aria-label="Odds for step '
+    + (k + 1) + '">'
+    + '<span class="num" id="v3lb' + k + '" style="font-size:17px;'
+    + 'font-weight:600">' + v3LMoney(r.bank) + '</span>'
+    + '<span id="v3lc' + k + '">' + v3RungChance(r) + '</span></div>').join('');
+}
+
 function v3LadderSummary() {
-  const d = amToDec(V.lodds);
-  const n = Math.max(1, Math.min(20, V.rungs));
-  const end = V.stake * Math.pow(d, n);
-  const p = Math.pow(1 / d, n);
-  return n + ' wins in a row turns $' + V.stake.toFixed(2) + ' into $'
-    + (end >= 1000 ? Math.round(end).toLocaleString() : end.toFixed(2))
-    + ' \u2014 about ' + v3Pct(p) + ', or 1 in '
-    + Math.max(1, Math.round(1 / p)) + '.';
+  const m = v3LadderMath(), last = m[m.length - 1];
+  return m.length + ' wins in a row turns ' + v3LMoney(V.lstake) + ' into '
+    + v3LMoney(last.bank) + ' \u2014 about ' + v3Pct(last.p) + ', or 1 in '
+    + Math.max(1, Math.round(1 / last.p)) + '.';
+}
+
+//: Every figure that depends on the prices, rewritten without touching the
+//: inputs. A typed step changes every row below it, not only its own.
+function v3LadderPatch() {
+  v3LadderMath().forEach((r, k) => {
+    const b = document.getElementById('v3lb' + k);
+    if (b) b.textContent = v3LMoney(r.bank);
+    const c = document.getElementById('v3lc' + k);
+    if (c) c.innerHTML = v3RungChance(r);
+  });
+  const sum = document.getElementById('v3lsum');
+  if (sum) sum.textContent = v3LadderSummary();
 }
 
 
@@ -7644,22 +7775,29 @@ function v3AnglesPage() {
 }
 
 function v3Ladder() {
+  const typed = (V.lsteps || []).some(v3IsOdds);
   return '<div class="wrap"><h1 class="h1">The ladder</h1>'
     + '<p class="lede">Start small. Each time a bet wins, the whole amount '
-    + 'rides on the next one. Climb as high as you like and stop whenever you '
-    + 'want. One loss and you are back to the start.</p>'
+    + 'rides on the next one. Set a default price for every step, then type '
+    + 'over any step to give it its own. One loss and you are back to the '
+    + 'start.</p>'
     + v3LadderInputs()
     + '<div class="list"><div class="rung" style="border:0">'
     + '<span class="eyebrow">Step</span>'
+    + '<span class="eyebrow">Odds</span>'
     + '<span class="eyebrow">You\u2019d have</span>'
     + '<span class="eyebrow">Chance</span></div>'
     + '<div id="v3rungs">' + v3Rungs() + '</div></div>'
+    + (typed ? '<button class="btn" data-v3lreset="1" '
+        + 'style="margin-top:10px">Put every step back on the default</button>'
+      : '')
     + '<div class="card"><div class="name" id="v3lsum">'
     + esc(v3LadderSummary()) + '</div>'
     + '<p class="lede" style="font-size:15px;margin-top:6px">Each row assumes '
-    + 'every step above it won. The chance is how often you would get that '
-    + 'far if every pick is priced fairly \u2014 which is the generous '
-    + 'assumption, because the book\u2019s cut means they are not.</p>'
+    + 'every step above it won. The chance is the one each price implies, '
+    + 'which is generous: the book\u2019s cut is inside every price, so the '
+    + 'real chance is lower. On 2024-25, legs the book priced at 90% or more '
+    + 'still lost about $6 per $100.</p>'
     + '</div></div>';
 }
 
@@ -7995,7 +8133,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3pastn', 'v3tlall', 'v3tln',
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
                   'v3anglemin', 'v3angleredundant', 'v3anglemore',
-                  'v3sortpick',
+                  'v3sortpick', 'v3lreset',
                   'v3recwho', 'v3recseries', 'v3recmore',
                   'v3recqx', 'v3recview', 'v3recside', 'v3recopen',
                   'v3recmkt', 'v3rectake', 'v3recmin', 'v3recres',
@@ -8042,17 +8180,32 @@ document.addEventListener('input', ev => {
     const which = t.getAttribute('data-v3l');
     const n = v3Num(t.value);
     if (n != null) {
-      if (which === 'stake') V.stake = Math.max(0.01, n);
+      if (which === 'stake') V.lstake = Math.max(0.01, n);
       else if (which === 'rungs') V.rungs = Math.max(1, Math.min(20, Math.round(n)));
-      // An american price of 0 or between -100 and 100 is not a price. Left
-      // alone rather than coerced, so a half-typed "-1" on the way to "-150"
-      // does not snap the table to something the reader did not ask for.
-      else if (which === 'odds' && (n >= 100 || n <= -100)) V.lodds = n;
+      // Not a price is left alone rather than coerced, so a half-typed "-1"
+      // on the way to "-150" does not snap the table to something the
+      // reader did not ask for.
+      else if (which === 'odds' && v3IsOdds(n)) V.lodds = n;
     }
+    // The step fields are redrawn, which is safe: the caret is up here.
     const rows = document.getElementById('v3rungs');
     if (rows) rows.innerHTML = v3Rungs();
-    const sum = document.getElementById('v3lsum');
-    if (sum) sum.textContent = v3LadderSummary();
+    const hint = document.getElementById('v3lhint');
+    if (hint) hint.textContent = v3OddsHint();
+    v3LadderPatch();
+    v3Save();
+    return;
+  }
+  if (t && t.getAttribute && t.getAttribute('data-v3lr') !== null) {
+    // One step's own price. Only the figures are patched — the caret is in
+    // this row. Cleared, the step goes back to the default.
+    const k = Number(t.getAttribute('data-v3lr'));
+    const n = v3Num(t.value);
+    V.lsteps = (V.lsteps || []).slice();
+    if (String(t.value).trim() === '') V.lsteps[k] = null;
+    else if (v3IsOdds(n)) V.lsteps[k] = n;
+    t.classList.toggle('rodds--typed', v3IsOdds(V.lsteps[k]));
+    v3LadderPatch();
     v3Save();
     return;
   }
@@ -8401,6 +8554,7 @@ function v3Do(kind, v) {
     // slip itself became the sheet.
     case 'v3type': V.betType = v; V.sheet = 'slip'; break;
     case 'v3stake': V.stake = Number(v); V.sheet = 'slip'; break;
+    case 'v3lreset': V.lsteps = []; break;
     case 'v3ask': {
       const qs = v3Questions(V.game);
       V.answer = (qs[Number(v)] || {}).a || '';

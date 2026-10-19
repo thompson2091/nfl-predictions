@@ -427,7 +427,8 @@ def _yards_projections(payload: dict, market: str, season: int, week: int) -> No
         if eligible and name not in eligible:
             continue
         extra.append({
-            "player_name": name, "team": row["team"],
+            "player_name": name, "player_id": row.get("player_id"),
+            "team": row["team"],
             "game_id": row.get("game_id"),
             "proj": float(med[i]), "lo": float(lo[i]), "hi": float(hi[i]),
             "point": None, "odds": None, "fair_prob": None, "ours": None,
@@ -971,7 +972,8 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
         if eligible and row["player_name"] not in eligible:
             continue
         extra.append({
-            "player_name": row["player_name"], "team": row["team"],
+            "player_name": row["player_name"], "player_id": row.get("player_id"),
+            "team": row["team"],
             "game_id": row.get("game_id"), "mu": row["mu"],
             "lo": float(row["lo"]), "hi": float(row["hi"]),
             "point": None, "odds": None, "fair_prob": None, "ours": None,
@@ -2363,6 +2365,15 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
             payload["injuries"] = flat
     payload["bets"] = bets(s)
     payload["models"] = model_cards()
+    # Each game's depth chart with the projections above, so it runs after
+    # every board is final. See `src/export/roster.py`.
+    try:
+        from src.export.roster import build as roster_build
+        rost = roster_build(payload, s, w)
+        if rost:
+            payload["roster"] = rost
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  roster unavailable ({e})", file=sys.stderr)
 
     # Earlier weeks, so the board can be looked back at. Only weeks whose
     # play-by-play is on disk: an unplayed week carries `target = 0` on every

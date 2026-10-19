@@ -1420,9 +1420,16 @@ button{cursor:pointer}
   grid-template-areas:'a b' 'c c'}}
 
 /* ---- ladder ---- */
-.rung{display:grid;grid-template-columns:56px minmax(0,1fr) minmax(0,1fr);
+.rung{display:grid;
+  grid-template-columns:32px 84px minmax(0,1fr) minmax(0,1fr);gap:8px;
   align-items:center;min-height:56px;padding:6px 16px;
   border-top:1px solid var(--line)}
+/* A step's own price. Typed over the default, it carries the accent, so a
+   ladder of six reads at a glance as "four on default, two of mine". */
+.rodds{width:100%;height:36px;border-radius:10px;border:1px solid var(--btnline);
+  background:var(--card);color:var(--ink);font:inherit;font-size:15px;
+  font-weight:600;text-align:center;font-variant-numeric:tabular-nums}
+.rodds--typed{border-color:var(--ours);color:var(--ours)}
 .rung span:nth-child(n+2){text-align:right}
 .rung--alt{background:var(--inset)}
 
@@ -1626,6 +1633,30 @@ button{cursor:pointer}
   /* The drawer's leg lines follow the table they open under. */
   .pgd__l{grid-template-columns:minmax(160px,max-content) repeat(4,minmax(0,1fr))}
 }
+
+/* ---- a game's roster ----
+   A name and four fixed figure columns. 375px less the gutters and the card
+   leaves about 310px: four 46px columns and their gaps take 208, so the name
+   keeps a hundred and wraps under its slot rather than pushing a column off. */
+.rostc{padding-bottom:6px}
+.rost{display:grid;grid-template-columns:minmax(0,1fr) repeat(4,46px);
+  gap:0 6px;align-items:start;padding:7px 0;border-top:1px solid var(--line3)}
+.rost--h{padding:12px 0 4px;border-top:0}
+.rost__hd{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--mut);font-weight:700;text-align:right;white-space:nowrap}
+.rost__n{display:flex;flex-direction:column;min-width:0}
+.rost__p{font-size:14px;line-height:19px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.rost__s{font-size:11.5px;line-height:15px;color:var(--mut)}
+.rost__s b{font-weight:600}
+.rost__s b.bad{color:var(--bad)}
+.rost__s b.warn{color:var(--warn)}
+.rost__v{font-size:14px;line-height:19px;text-align:right;
+  display:flex;flex-direction:column;align-items:flex-end}
+.rost__v i{font-style:normal;font-size:11px;line-height:15px;color:var(--mut)}
+.rost__v--none{color:var(--mut)}
+.rost--empty .rost__p{color:var(--mut);font-weight:400}
+.rost--held .rost__p,.rost--held .rost__v{color:var(--mut);font-weight:400}
 """
 
 

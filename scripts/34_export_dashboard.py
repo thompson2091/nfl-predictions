@@ -490,6 +490,8 @@ def players(season: int, week: int, target_type: str, model: str,
                 model_only = _f(r.get("probability"))
             rows.append({
                 "player": r["player_name"], "team": r.get("team"),
+                "player_id": (r.get("player_id")
+                              if isinstance(r.get("player_id"), str) else None),
                 "game": r.get("game_label"), "game_id": r.get("game_id"),
                 "priced": True,
                 "odds": _american(r.get("odds")),
@@ -536,6 +538,9 @@ def players(season: int, week: int, target_type: str, model: str,
         for r in unpriced.to_pandas().itertuples():
             rows.append({
                 "player": r.player_name, "team": getattr(r, "team", None),
+                "player_id": (getattr(r, "player_id", None)
+                              if isinstance(getattr(r, "player_id", None), str)
+                              else None),
                 "game": getattr(r, "game_label", None),
                 "game_id": getattr(r, "game_id", None),
                 "priced": False,
