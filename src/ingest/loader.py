@@ -254,6 +254,39 @@ def load_ngs_rushing(seasons: list[int]) -> pl.DataFrame:
     return _load_ngs("rushing", seasons, "ngs_rushing.parquet")
 
 
+#: FTN's charting starts with the 2022 season.
+FTN_FIRST_SEASON = 2022
+
+
+def load_ftn_charting(seasons: list[int]) -> pl.DataFrame:
+    """FTN's hand charting of every play: box count, pass rushers, blitzers,
+    play action, screens, catchable and contested throws.
+
+    The in-season source for what participation used to give. nflverse's
+    participation feed carries coverage and pressure but publishes a season
+    behind — asking it for 2026 errors with "Season must be between 2016 and
+    2025" — while FTN is published daily during the season. It has no
+    man/zone or coverage type; those still wait for participation.
+
+    Per season and not required, for the reason `load_injuries` gives: one
+    unavailable season must not empty the others.
+    """
+    seasons = [s for s in seasons if s >= FTN_FIRST_SEASON]
+    if not seasons:
+        return pl.DataFrame()
+    print(f"Loading FTN charting for {seasons[0]}-{seasons[-1]}...")
+    frames = [f for f in (_load(f"ftn_charting {s}", nfl.load_ftn_charting, [s],
+                                required=False) for s in seasons) if f.height]
+    if not frames:
+        return pl.DataFrame()
+    df = (pl.concat(frames, how="diagonal_relaxed")
+          .rename({"nflverse_game_id": "game_id", "nflverse_play_id": "play_id"})
+          .unique(subset=["game_id", "play_id"], keep="last"))
+    _report_coverage("FTN charting", df, seasons)
+    return _write(_keep_other_seasons(df, "ftn_charting.parquet"),
+                  "ftn_charting.parquet")
+
+
 def load_injuries(seasons: list[int]) -> pl.DataFrame:
     """Injury reports, per season so one unavailable year cannot empty the rest.
 
@@ -378,6 +411,9 @@ def ingest_all(test_mode: bool = False):
     # see it — injuries are sparse, so a training null rate of 0.942 makes total
     # absence look like a 0.058 change against a 0.35 threshold.
     load_injuries(fwd)
+    # `fwd`: the predict season is the one FTN covers that participation
+    # does not. See `load_ftn_charting`.
+    load_ftn_charting(fwd)
 
     # Backstop: if the weekly feed ever lags play-by-play again, rebuild the
     # missing seasons from PBP rather than leaving player_* features null.

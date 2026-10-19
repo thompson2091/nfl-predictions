@@ -2126,8 +2126,13 @@ function v3Matchup(c) {
   // rate"; the injury report asks "which of them is actually playing". Same
   // question, same control — and as its own tab it was one more thing to
   // find, on a bar that already had five.
-  const views = halves.concat([['inj', 'Injury']]);
+  // UNITS, POSITION GROUP AGAINST POSITION GROUP, sits before Injury: it
+  // is the same question as the halves — how do these sides rate — asked of
+  // the receivers, the backs and the lines rather than the whole offense.
+  const views = halves.concat(m.units ? [['units', 'Units']] : [],
+                              [['inj', 'Injury']]);
   const on = V.half === 'inj' ? 'inj'
+           : (V.half === 'units' && m.units) ? 'units'
            : (m.splits && m.splits[V.half]) ? V.half : 'full';
   const rows = (m.splits && m.splits[on]) || m.rows || [];
   // STICKY, and offset by the height of the bar above it. `--gtabs-h` is
@@ -2175,15 +2180,16 @@ function v3Matchup(c) {
     + '</div>'
     // The injury report has no metrics to filter, so the chooser is absent
     // rather than present and inert.
-    + (on === 'inj' ? '' : sel) + '</div>';
+    + (on === 'inj' || on === 'units' ? '' : sel) + '</div>';
   const pct = v => (v * 100).toFixed(1) + '%';
-  const fmt = (k, v) => k === 'epa_play' ? (v >= 0 ? '+' : '') + v.toFixed(3)
+  const isEpa = k => /epa/.test(k);
+  const fmt = (k, v) => isEpa(k) ? (v >= 0 ? '+' : '') + v.toFixed(3)
     : pct(v);
   const row = (r, p) => {
     // The bar is the EDGE, centered: right of the middle is an advantage for
     // the offense, left is the defense winning it.
-    const e = r.key === 'epa_play' ? p.edge * 100 : p.edge * 100;
-    const w = Math.min(50, Math.abs(e) * (r.key === 'epa_play' ? 3 : 2.2));
+    const e = p.edge * 100;
+    const w = Math.min(50, Math.abs(e) * (isEpa(r.key) ? 3 : 2.2));
     const good = p.edge > 0;
     return '<div class="mx">'
       + '<div class="mx__h"><span>' + esc(p.offense) + ' offense <i>vs</i> '
@@ -2193,7 +2199,10 @@ function v3Matchup(c) {
       + '<div class="mx__b"><i class="' + (good ? 'r' : 'l') + '" style="width:'
       + Math.max(2, w) + '%"></i></div>'
       + '<div class="mx__f num">' + fmt(r.key, p.off_val) + ' against '
-      + fmt(r.key, p.def_val) + ' allowed</div>'
+      + fmt(r.key, p.def_val) + ' allowed'
+      // The sample, on the units view: 72 targets is a rate, 9 is an anecdote.
+      + (has(p.off_n) ? ' \u00b7 ' + p.off_n + ' and ' + p.def_n + ' plays'
+         : '') + '</div>'
       + '</div>';
   };
   // The "Based on" card and the "Not shown, and why" list are both gone.
@@ -2209,6 +2218,7 @@ function v3Matchup(c) {
   // keeps the same banner every other thin sample in the app uses.
   return seg
     + (on === 'inj' ? v3Injuries(c, true)
+       : on === 'units' ? v3Units(m, row)
        : (m.thin ? '<div class="thin" role="note"><b>Two games or fewer</b>'
             + '<span>Treat every number here as a first impression rather '
             + 'than a rate.</span></div>' : '')
@@ -2220,6 +2230,26 @@ function v3Matchup(c) {
             + '<p class="help">' + esc(r.note) + '</p>'
             + '<div class="card">' + r.sides.map(p => row(r, p)).join('')
             + '</div>').join(''));
+}
+
+// POSITION GROUPS, by who got the ball rather than who covered him: the
+// play-by-play records the target, not the defender. Built by
+// `unit_matchups`; the note under each unit says what it measures.
+function v3Units(m, row) {
+  return (m.thin ? '<div class="thin" role="note"><b>Two games or fewer</b>'
+      + '<span>Treat every number here as a first impression rather than a '
+      + 'rate.</span></div>' : '')
+    + m.units.map(u =>
+      '<h2 class="h1" style="font-size:17px;line-height:22px;margin-top:20px">'
+      + esc(u.label) + '</h2><p class="help">' + esc(u.note) + '</p>'
+      + '<div class="card">' + u.rows.map(r =>
+          '<div class="eyebrow" style="margin-top:8px">' + esc(r.label) + '</div>'
+          + r.sides.map(p => row(r, p)).join('')).join('')
+      + '</div>').join('')
+    + '<p class="help" style="margin-top:12px">From the games each team has '
+    + 'played before this one. Who covered whom is not in the data until the '
+    + 'season is over, so a receiver row is throws to that position, not '
+    + 'routes against a named defender.</p>';
 }
 
 function v3Injuries(c, full) {

@@ -1536,6 +1536,14 @@ if (cards.length) {
   // The control itself stays, or there is no way back to the numbers.
   ok('and the view control still there to leave by',
      app().indexOf('data-v3half="full"') >= 0);
+  V.half = 'units'; render();
+  ok('position groups are a view of the matchup',
+     app().indexOf('data-v3half="units"') >= 0
+     && app().indexOf('Receivers against the secondary') >= 0);
+  ok('with EPA in its own units and the sample beside it',
+     app().indexOf('+0.210') >= 0 && app().indexOf('72 and 64 plays') >= 0);
+  ok('and says who covered whom is not in the data',
+     app().indexOf('Who covered whom is not in the data') >= 0);
   V.half = 'full'; render();
   // A saved `inj` must land on the section that absorbed it rather than
   // falling through to whatever is first.

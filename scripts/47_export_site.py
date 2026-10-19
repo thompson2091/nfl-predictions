@@ -1559,6 +1559,13 @@ def _attach_matchup(cards: dict, season: int | None,
         return
     if not stats:
         return
+    try:
+        from src.models.unit_matchups import build as unit_build
+        from src.models.unit_matchups import matchup as unit_matchup
+        ustats = unit_build(season, week)
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  unit matchups unavailable ({e})", file=sys.stderr)
+        ustats = None
     for c in cards.values():
         splits = {}
         for split, _label, _half in HALVES:
@@ -1581,6 +1588,12 @@ def _attach_matchup(cards: dict, season: int | None,
                         for t in (c.get("home"), c.get("away")) if t in stats),
             "missing": [{"what": w, "why": y} for w, y in MISSING],
         }
+        # Position group against position group, the fifth view. See
+        # `unit_matchups` for what "receivers against the secondary" can and
+        # cannot mean without coverage data.
+        units = unit_matchup(c, ustats) if ustats else None
+        if units:
+            c["matchup"]["units"] = units
 
 
 def _attach_coaching(cards: dict, season: int | None,
