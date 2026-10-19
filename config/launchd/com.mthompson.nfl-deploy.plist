@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.mthompson.nfl-deploy</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/mthompson/projects/personal/nfl-predictions/scripts/site_deploy.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions</string>
+  <!-- Runs when a capture touches the trigger, never on a clock. Its own job
+       so a slow deploy cannot hold the capture job and cost the next slot;
+       see scripts/site_deploy.sh for what happened when it did. -->
+  <key>WatchPaths</key>
+  <array>
+    <string>/Users/mthompson/projects/personal/nfl-predictions/logs/.deploy_requested</string>
+  </array>
+  <key>StandardOutPath</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions/logs/launchd_deploy.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/mthompson/projects/personal/nfl-predictions/logs/launchd_deploy.err</string>
+</dict>
+</plist>

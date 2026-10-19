@@ -60,6 +60,10 @@ MARKET_SETS: dict[str, tuple[str, ...]] = {
     "rush_yards": ("rushing_yards",),
     "rec_yards": ("receiving_yards",),
     "pass_yards": ("passing_yards",),
+    # The alternate ladders, added 2026-10-19. Nothing archived them live
+    # before that date, so every past week has to be bought.
+    "alternates": ("passing_yards_alt", "receiving_yards_alt",
+                   "rushing_yards_alt", "receptions_alt"),
     "yards": ("rushing_yards", "receiving_yards", "passing_yards"),
     "all": tuple(sp.market for sp in MARKET_SPECS),
 }

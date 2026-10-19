@@ -90,7 +90,25 @@ MARKET_SPECS: tuple[MarketSpec, ...] = (
     MarketSpec("player_rush_yds", "rushing_yards", "over_under"),
     MarketSpec("player_reception_yds", "receiving_yards", "over_under"),
     MarketSpec("player_pass_yds", "passing_yards", "over_under"),
+    # The alternate ladders: the same four stats at every line a book will
+    # sell, not only its main one — "Lawrence over 150.5", "Collins 40+".
+    # Archived under their own names so nothing graded on the main line can
+    # pick up an alternate by accident: every reader of the four markets above
+    # filters on the exact market name. Added 2026-10-19 with no model behind
+    # them, on the rule in DEFAULT_MARKETS below. Many alternate rungs are sold
+    # on the over only, so expect a null `fair_prob` far more often than on a
+    # main line; `implied_prob` is still the price you would have paid.
+    MarketSpec("player_pass_yds_alternate", "passing_yards_alt", "over_under"),
+    MarketSpec("player_reception_yds_alternate", "receiving_yards_alt", "over_under"),
+    MarketSpec("player_rush_yds_alternate", "rushing_yards_alt", "over_under"),
+    MarketSpec("player_receptions_alternate", "receptions_alt", "over_under"),
 )
+
+#: The alternate ladders, fetched in their own call after the main props
+#: (`weekly_odds.sh`) so that a failure or a slow response there cannot cost
+#: the markets the models already read.
+ALT_MARKETS: tuple[str, ...] = ("passing_yards_alt", "receiving_yards_alt",
+                                "rushing_yards_alt", "receptions_alt")
 SPEC_BY_MARKET = {s.market: s for s in MARKET_SPECS}
 
 #: Bookmaker regions to ask for. Credits are billed markets x regions, so this
@@ -411,7 +429,32 @@ def _cache_path(week_start: str, markets: Sequence[str] = DEFAULT_MARKETS,
     # 11-book consensus that was asked for.
     if regions != _LEGACY_REGIONS:
         suffix += "__" + regions.replace(",", "+")
-    return CACHE_DIR / f"td_props_{week_start}{suffix}.json"
+    # THE ALTERNATE LADDERS GET THEIR OWN PREFIX. Every reader of this
+    # directory finds its file by globbing `td_props_*` and taking the newest
+    # name — `load_cached_odds` feeds the touchdown model's prices from it —
+    # and an alternates cache written the same day sorts beside the main one.
+    # Under another prefix none of them can see it.
+    prefix = "alt_props" if set(markets) <= set(ALT_MARKETS) else "td_props"
+    return CACHE_DIR / f"{prefix}_{week_start}{suffix}.json"
+
+
+def load_book_quotes_for(markets: Sequence[str] = DEFAULT_MARKETS,
+                         regions: str = DEFAULT_REGIONS,
+                         week_start: str | None = None) -> list[dict]:
+    """Per-book quotes from the fetch for exactly these markets, today.
+
+    `load_cached_book_quotes` takes the newest `td_props_*` file by name,
+    which is right for the main fetch and wrong for any other: run after the
+    alternates fetch it would archive the main quotes a second time and the
+    alternates' never.
+    """
+    week_start = week_start or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    cache = _cache_path(week_start, markets, regions)
+    books = cache.with_name(cache.stem + "_books.json")
+    if not books.exists():
+        return []
+    with open(books) as f:
+        return json.load(f)
 
 
 def fetch_week_td_props(week_start: str = None, force_refresh: bool = False,

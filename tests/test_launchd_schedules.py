@@ -20,7 +20,7 @@ INSTALLED = Path.home() / "Library" / "LaunchAgents"
 #: written, not the day someone notices it was never committed.
 JOBS = ("nfl-odds-open", "nfl-odds-close", "nfl-inactives",
         "nfl-public-money", "nfl-week-rollover", "nfl-sharp-gate",
-        "nfl-sunday-wrap", "nfl-backup")
+        "nfl-sunday-wrap", "nfl-backup", "nfl-deploy")
 
 
 def _path(name: str) -> Path:
@@ -54,6 +54,15 @@ def test_every_schedule_fires_at_some_point(job):
     """`StartCalendarInterval` missing entirely is a job that never runs, and
     launchd loads it without complaint."""
     d = plistlib.loads(_path(job).read_bytes())
+    # A job started by a file rather than a clock: `nfl-deploy` runs when a
+    # capture touches its trigger. The path has to be inside this repo, or
+    # nothing here can ever touch it.
+    watched = d.get("WatchPaths")
+    if watched and not d.get("StartCalendarInterval"):
+        repo = str(Path(__file__).resolve().parents[1])
+        assert all(w.startswith(repo) for w in watched), (
+            f"{job} watches {watched}, outside {repo}")
+        return
     cal = d.get("StartCalendarInterval")
     assert cal, f"{job} has no StartCalendarInterval — it would never fire"
     entries = cal if isinstance(cal, list) else [cal]

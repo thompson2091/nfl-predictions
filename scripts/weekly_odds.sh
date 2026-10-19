@@ -176,6 +176,17 @@ fi
             echo "  game lines failed (exit $?) — props are archived, which is what matters"
         fi
     fi
+
+    # The alternate ladders — every line a book sells on the four over/under
+    # stats, not only its main one. Last, for the reason game lines come after
+    # the props: nothing reads them yet, and their own call means a failure
+    # here cannot cost a market something does read. 4 markets x 2 regions,
+    # ~110 credits a firing. Added 2026-10-19; see odds_api.ALT_MARKETS.
+    if ! run_capped "$PY" scripts/07_odds.py --week "$WEEK" --snapshot "$SNAPSHOT" \
+            --markets passing_yards_alt receiving_yards_alt rushing_yards_alt receptions_alt \
+            ${FORCE:+--force-refresh}; then
+        echo "  alternate lines failed (exit $?) — main props are archived"
+    fi
 } 2>&1 | tee -a "$LOG"
 
 STATUS=${PIPESTATUS[0]}
@@ -214,6 +225,18 @@ if feat.exists():
 print(n)
 PYEOF
 )
+# A DEPLOY STILL RUNNING IS STOPPED, NOT WAITED FOR. The steps below write the
+# frozen boards, and so does the v3 build inside a deploy; the freeze file is
+# written whole from each writer's own copy, so overlapping them drops records.
+# The capture has already landed above; the deploy is asked for again at the
+# end. See scripts/site_deploy.sh.
+DEPLOY_JOB="gui/$(id -u)/com.mthompson.nfl-deploy"
+STOPPED_DEPLOY=0
+if launchctl print "$DEPLOY_JOB" 2>/dev/null | grep -q "state = running"; then
+    launchctl kill TERM "$DEPLOY_JOB" 2>/dev/null && STOPPED_DEPLOY=1
+    echo "  stopped a deploy in progress; it is re-requested below" | tee -a "$LOG"
+fi
+
 WEEK_READY=1
 if [[ "${BUILT:-}" =~ ^[0-9]+$ ]] && [ "$BUILT" -le 200 ]; then
     WEEK_READY=0
@@ -251,7 +274,7 @@ fi
 # feature on it is legitimately empty. Only a board built AFTER a close carries
 # them.
 #
-# Close only, and only when the capture actually fetched: the window guard at
+# Only when the capture actually fetched: the window guard at
 # the top exits before this on a slot with no kickoff in range, so reaching
 # here means a real snapshot landed. `site/v2` is rebuilt alongside `site/`
 # because the two are the same payload and a stale one of them is worse than
@@ -259,9 +282,13 @@ fi
 #
 # Never allowed to fail the capture, for the reason above it: the prices are
 # the irreplaceable half, and a board is one `make board` away.
-if [ "$STATUS" -eq 0 ] && [ "$SNAPSHOT" = "close" ]; then
+#
+# The open rebuilds too, since 2026-10-16: the site prices over/under boards
+# off the open until a close exists, and the deploy below ships what this
+# writes. Only for a built week, which the Tuesday open usually is not.
+if [ "$STATUS" -eq 0 ] && [ "$WEEK_READY" -eq 1 ]; then
     {
-        echo "--- rebuilding the board on the closing prices"
+        echo "--- rebuilding the board on the $SNAPSHOT prices"
         "$PY" scripts/47_export_site.py \
             || echo "  board rebuild failed (exit $?) — prices are archived, run \`make board\`"
         "$PY" scripts/51_export_app.py --out site/v2 --brand "${BRAND:-Pick Six}" \
@@ -283,6 +310,22 @@ if [ "$STATUS" -eq 0 ] && [ "$WEEK_READY" -eq 1 ]; then
         "$PY" scripts/64_prop_picks.py --week "$WEEK" \
             || echo "  prop picks failed (exit $?) — run it by hand before kickoff"
     } 2>&1 | tee -a "$LOG"
+fi
+
+# PUT THE NEW PRICES ON THE LIVE SITE — by asking, not by doing it here.
+#
+# Until 2026-10-16 nothing here deployed, so the live app showed whatever the
+# Tuesday rollover or a manual run had last shipped; on 2026-10-15 that hid
+# all 22 of the night's Gaps picks. The first fix ran the deploy right here,
+# and on 2026-10-18 it held this job for twelve hours on a sleeping Mac and
+# cost three closing captures. So this touches a file and exits;
+# com.mthompson.nfl-deploy watches it and runs scripts/site_deploy.sh.
+#
+# Also asked for when a deploy was stopped above, whatever else happened, so
+# stopping one never quietly cancels it.
+if { [ "$STATUS" -eq 0 ] && [ "$WEEK_READY" -eq 1 ]; } || [ "$STOPPED_DEPLOY" -eq 1 ]; then
+    touch "$LOG_DIR/.deploy_requested"
+    echo "--- deploy requested (com.mthompson.nfl-deploy)" | tee -a "$LOG"
 fi
 
 ls -1t "$LOG_DIR"/odds_*.log 2>/dev/null | tail -n +41 | xargs -r rm -f

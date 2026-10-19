@@ -630,6 +630,21 @@ backup-off:
 		launchctl disable "gui/$$UID/com.mthompson.nfl-backup"; \
 		echo "disabled com.mthompson.nfl-backup"
 
+# Site deploy on request: weekly_odds.sh touches logs/.deploy_requested and
+# this job runs scripts/site_deploy.sh. Usage: make deploy-on · make deploy-off
+deploy-on:
+	@cp config/launchd/com.mthompson.nfl-deploy.plist $$HOME/Library/LaunchAgents/
+	@launchctl bootout "gui/$$UID/com.mthompson.nfl-deploy" 2>/dev/null; \
+		launchctl enable "gui/$$UID/com.mthompson.nfl-deploy"; \
+		launchctl bootstrap "gui/$$UID" \
+			"$$HOME/Library/LaunchAgents/com.mthompson.nfl-deploy.plist" \
+		&& echo "loaded com.mthompson.nfl-deploy"
+
+deploy-off:
+	@launchctl bootout "gui/$$UID/com.mthompson.nfl-deploy" 2>/dev/null; \
+		launchctl disable "gui/$$UID/com.mthompson.nfl-deploy"; \
+		echo "disabled com.mthompson.nfl-deploy"
+
 test-ingest:
 	$(PYTHON) scripts/01_ingest.py --test-mode
 

@@ -17,7 +17,7 @@ import polars as pl
 
 from src.ingest.odds_api import (DEFAULT_MARKETS, DEFAULT_REGIONS,
                                  fetch_week_td_props, build_odds_parquet,
-                                 load_cached_book_quotes)
+                                 load_book_quotes_for)
 from src.ingest.odds_history import append_snapshot, append_book_quotes
 from src.utils.config import get_config
 
@@ -91,7 +91,8 @@ if __name__ == "__main__":
                     week=args.week, snapshot=args.snapshot,
                     regions=args.regions)
     # Same response, no extra credits, and unbuyable afterwards.
-    append_book_quotes(load_cached_book_quotes(), season=args.season,
+    append_book_quotes(load_book_quotes_for(markets, args.regions),
+                       season=args.season,
                        week=args.week, snapshot=args.snapshot,
                        regions=args.regions)
     build_odds_parquet()
