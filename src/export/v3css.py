@@ -1439,7 +1439,10 @@ button{cursor:pointer}
    targets into 56px of a bar that looked 84px tall and left a slab of empty
    white under the labels. v2 adds the inset to the height and pads by exactly
    the inset, so the targets stay full size and nothing is wasted. */
-.tabbar{flex:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+/* ONE COLUMN PER TAB, however many there are. It was `repeat(5,...)`, and
+   when Ladder came back as a sixth the last tab wrapped onto a second row. */
+.tabbar{flex:none;display:grid;grid-auto-flow:column;
+  grid-auto-columns:minmax(0,1fr);
   height:calc(56px + env(safe-area-inset-bottom,0px));
   padding-bottom:env(safe-area-inset-bottom,0px);
   padding-left:env(safe-area-inset-left,0px);

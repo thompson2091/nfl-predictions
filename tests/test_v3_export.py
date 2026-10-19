@@ -3262,3 +3262,12 @@ def test_no_two_functions_in_the_v3_bundle_share_a_name():
     dup = {k: n for k, n in Counter(
         re.findall(r"^(?:function|const|let) (\w+)\b", js, re.M)).items() if n > 1}
     assert not dup, f"defined more than once: {dup}"
+
+
+def test_the_tab_bar_takes_its_column_count_from_the_tabs():
+    """A fixed `repeat(5,...)` broke the bar when Ladder made six."""
+    from src.export import v3css
+    css = v3css.css()
+    i = css.index(".tabbar{flex:none")
+    rule = css[i:css.index("}", i)]
+    assert "grid-auto-flow:column" in rule and "repeat(" not in rule
