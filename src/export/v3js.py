@@ -3837,70 +3837,123 @@ function v3GameMatchup(c) {
 // RB3 rather than a shorter list, so a row means the same position on every
 // card and a gap is something you can see.
 //
-// FOUR FIGURES PER POSITION, not every projection on every row. A receiver's
-// passing yards are zero and a quarterback's catches are noise, and a 375px
-// row holds four numbers beside a name. The book's line sits under its
-// projection where one is posted; nothing is colored, because a projection
-// above a line is not a tested reason to bet it.
-const V3ROSTCOLS = {
-  QB: [['pass_yds', 'Pass'], ['rush_yds', 'Rush'], ['td', 'TD'], ['ftd', '1st TD']],
-  RB: [['rush_yds', 'Rush'], ['rec_yds', 'Rec yds'], ['td', 'TD'], ['ftd', '1st TD']],
-  WR: [['rec', 'Catches'], ['rec_yds', 'Rec yds'], ['td', 'TD'], ['ftd', '1st TD']],
-  TE: [['rec', 'Catches'], ['rec_yds', 'Rec yds'], ['td', 'TD'], ['ftd', '1st TD']],
-};
+// SIDE BY SIDE, SLOT AGAINST SLOT. Asked for as a comparison: the away
+// team's RB1 beside the home team's RB1, so reading across a row is reading
+// a matchup and reading down a side is reading a depth chart. Each side gets
+// one summary line rather than four columns — two teams of four columns do
+// not fit a phone.
+//
+// TAP A PLAYER FOR HIS MARKETS: the projection, the book's line and price,
+// and the three estimates under the names the Props board uses — Model,
+// Book and Adjusted. Nothing is colored: a projection above a line is not a
+// tested reason to bet it, and the record page is where that gets graded.
+const V3ROSTPOS = [['QB', 'Quarterbacks'], ['RB', 'Running backs'],
+                   ['WR', 'Receivers'], ['TE', 'Tight ends']];
 
-function v3RosterCell(s, k) {
-  if (!s.player) return '<span></span>';
-  const v = s[k];
-  if (!has(v)) return '<span class="num rost__v rost__v--none">\u2014</span>';
-  const txt = (k === 'td' || k === 'ftd') ? v3Pct(v)
+//: The markets each position opens to, in order: key and label.
+const V3ROSTMKTS = {
+  QB: [['pass_yds', 'Pass yds'], ['rush_yds', 'Rush yds'], ['td', 'Any TD'],
+       ['ftd', '1st TD']],
+  RB: [['rush_yds', 'Rush yds'], ['rec_yds', 'Rec yds'], ['rec', 'Catches'],
+       ['td', 'Any TD'], ['ftd', '1st TD']],
+  WR: [['rec', 'Catches'], ['rec_yds', 'Rec yds'], ['td', 'Any TD'],
+       ['ftd', '1st TD']],
+};
+V3ROSTMKTS.TE = V3ROSTMKTS.WR;
+
+function v3RostFig(k, v) {
+  if (!has(v)) return null;
+  return (k === 'td' || k === 'ftd') ? v3Pct(v)
     : k === 'rec' ? v.toFixed(1) : String(Math.max(0, Math.round(v)));
-  const line = s[k + '_line'];
-  return '<span class="num rost__v">' + txt
-    + (has(line) ? '<i>' + esc(String(line)) + '</i>' : '') + '</span>';
 }
 
-function v3RosterTeam(team, slots) {
-  let out = '<div class="card rostc"><div class="eyebrow">' + esc(team)
-    + '</div>';
-  let pos = null;
-  slots.forEach(s => {
-    const cols = V3ROSTCOLS[s.pos] || V3ROSTCOLS.WR;
-    if (s.pos !== pos) {
-      pos = s.pos;
-      out += '<div class="rost rost--h"><span></span>'
-        + cols.map(c => '<span class="rost__hd">' + esc(c[1]) + '</span>')
-              .join('') + '</div>';
-    }
-    const st = s.status
-      ? ' \u00b7 <b class="' + (s.status === 'Out' ? 'bad' : 'warn') + '">'
-        + esc(s.status) + '</b>' : '';
-    // An unnumbered row is Out or Doubtful. Its figures are what the model
-    // would project if he played, so they are greyed rather than read.
-    out += '<div class="rost' + (s.player ? '' : ' rost--empty')
-      + (/\d/.test(s.slot) ? '' : ' rost--held') + '">'
-      + '<span class="rost__n"><span class="rost__p">'
-      + (s.player ? esc(s.player) : '\u2014') + '</span>'
-      + '<span class="rost__s">' + esc(s.slot) + st + '</span></span>'
-      + cols.map(c => v3RosterCell(s, c[0])).join('') + '</div>';
-  });
-  return out + '</div>';
+//: One line under the name: the three figures a reader compares across.
+function v3RostLine(s) {
+  const parts = {
+    QB: [['pass_yds', ' pass'], ['rush_yds', ' rush'], ['td', ' TD']],
+    RB: [['rush_yds', ' rush'], ['rec_yds', ' rec'], ['td', ' TD']],
+    WR: [['rec', ' catches'], ['rec_yds', ' yds'], ['td', ' TD']],
+  }[s.pos === 'TE' ? 'WR' : s.pos] || [];
+  return parts.map(p => {
+    const f = v3RostFig(p[0], s[p[0]]);
+    return f == null ? null : f + p[1];
+  }).filter(Boolean).join(' · ');
+}
+
+function v3RostSide(s, side) {
+  if (!s || !s.player) {
+    return '<span class="rcmp__p rcmp__p--' + side + ' rcmp__p--empty">'
+      + '—</span>';
+  }
+  const open = V.rostOpen && V.rostOpen === s.player_id;
+  const st = s.status
+    ? ' <b class="' + (s.status === 'Out' ? 'bad' : 'warn') + '">'
+      + esc(s.status) + '</b>' : '';
+  return '<button class="rcmp__p rcmp__p--' + side + (open ? ' rcmp__p--open' : '')
+    + (/\d/.test(s.slot) ? '' : ' rcmp__p--held')
+    + '" data-v3rost="' + esc(s.player_id || '') + '" aria-expanded="' + !!open
+    + '"><span class="rcmp__n">' + esc(s.player) + st + '</span>'
+    + '<span class="rcmp__f num">' + esc(v3RostLine(s) || 'No projection')
+    + '</span></button>';
+}
+
+function v3RostDetail(s, team) {
+  const mk = V3ROSTMKTS[s.pos] || V3ROSTMKTS.WR;
+  const cell = (v, cls) => '<span class="num' + (cls ? ' ' + cls : '') + '">'
+    + (v == null ? '—' : esc(String(v))) + '</span>';
+  const pct = v => has(v) ? v3Pct(v, 1) : null;
+  const row = m => {
+    const k = m[0], td = k === 'td' || k === 'ftd';
+    const line = td ? (has(s[k + '_odds']) ? v3Dash(american(s[k + '_odds'])) : null)
+      : (has(s[k + '_line']) ? s[k + '_line'] : null);
+    return '<div class="rdet">' + '<span>' + esc(m[1]) + '</span>'
+      + cell(td ? null : v3RostFig(k, s[k]))
+      + cell(line, 'mut')
+      + cell(pct(s[k + '_model'])) + cell(pct(s[k + '_book']))
+      + cell(pct(s[k + '_adj'])) + '</div>';
+  };
+  return '<div class="rdetw"><div class="eyebrow">' + esc(s.player) + ' · '
+    + esc(team) + '</div>'
+    + '<div class="rdet rdet--h"><span></span><span>Proj</span>'
+    + '<span>Line</span><span>Model</span><span>Book</span><span>Adj</span></div>'
+    + mk.map(row).join('')
+    + '<p class="sub" style="margin-top:6px">For yards and catches the three '
+    + 'chances are for the over at that line; for touchdowns, for scoring. '
+    + 'Line is the touchdown price. A dash means no book has posted it.</p></div>';
 }
 
 function v3Roster(c) {
   const R = (DATA.roster || {})[c.game_id];
-  const teams = R ? [c.away, c.home].filter(t => R[t] && R[t].length) : [];
-  if (!teams.length) {
+  if (!R || !(R[c.away] || R[c.home])) {
     return '<div class="card"><p class="lede" style="font-size:15px">No depth '
       + 'chart for this game yet.</p></div>';
   }
-  return teams.map(t => v3RosterTeam(t, R[t])).join('')
+  const A = R[c.away] || [], H = R[c.home] || [];
+  let out = '<div class="card rostc"><div class="rcmp rcmp--h">'
+    + '<b>' + esc(c.away) + '</b><span></span><b>' + esc(c.home) + '</b></div>';
+  V3ROSTPOS.forEach(pp => {
+    const a = A.filter(s => s.pos === pp[0]), h = H.filter(s => s.pos === pp[0]);
+    const n = Math.max(a.length, h.length);
+    if (!n) return;
+    out += '<div class="rcmp__g eyebrow">' + esc(pp[1]) + '</div>';
+    for (let i = 0; i < n; i++) {
+      const x = a[i], y = h[i];
+      const slot = [x, y].map(s => s && s.slot).filter(v => v && /\d/.test(v))[0]
+        || '';
+      out += '<div class="rcmp">' + v3RostSide(x, 'l')
+        + '<span class="rcmp__s">' + esc(slot) + '</span>'
+        + v3RostSide(y, 'r') + '</div>';
+      const o = [[x, c.away], [y, c.home]].filter(z => z[0] && z[0].player_id
+        && z[0].player_id === V.rostOpen)[0];
+      if (o) out += v3RostDetail(o[0], o[1]);
+    }
+  });
+  return out + '</div>'
     + '<p class="sub" style="margin:8px 4px">Players come from the ESPN depth '
     + 'chart. Within a position they are ordered by our projection: rushing '
     + 'yards for backs, receiving yards for receivers and tight ends. Out and '
-    + 'Doubtful players are listed after their position, unnumbered. The '
-    + 'small figure under a number is '
-    + 'the book\u2019s line.</p>';
+    + 'Doubtful players are listed after their position, unnumbered. Tap a '
+    + 'player for his lines.</p>';
 }
 
 function v3GameOutcome(c, gid) {
@@ -8137,7 +8190,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3pastn', 'v3tlall', 'v3tln',
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
                   'v3anglemin', 'v3angleredundant', 'v3anglemore',
-                  'v3sortpick',
+                  'v3sortpick', 'v3rost',
                   'v3recwho', 'v3recseries', 'v3recmore',
                   'v3recqx', 'v3recview', 'v3recside', 'v3recopen',
                   'v3recmkt', 'v3rectake', 'v3recmin', 'v3recres',
@@ -8558,6 +8611,7 @@ function v3Do(kind, v) {
     // slip itself became the sheet.
     case 'v3type': V.betType = v; V.sheet = 'slip'; break;
     case 'v3stake': V.stake = Number(v); V.sheet = 'slip'; break;
+    case 'v3rost': V.rostOpen = V.rostOpen === v ? null : v; break;
     case 'v3ask': {
       const qs = v3Questions(V.game);
       V.answer = (qs[Number(v)] || {}).a || '';

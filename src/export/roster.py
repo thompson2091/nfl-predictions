@@ -86,32 +86,55 @@ def feature_ids(season: int, week: int) -> dict[tuple, str]:
 def projections(payload: dict, ids: dict | None = None) -> dict[str, dict]:
     """Every projection on the payload, keyed by player_id.
 
-    A touchdown row without an id is resolved through `ids`; any other row
-    without one is skipped rather than matched by name.
+    Per market: the projection, and where a book has priced it, the line,
+    the price and the board's three estimates — `_model` (the model with no
+    sight of the price), `_book` (the de-vigged price) and `_adj` (the
+    blend). The same three, under the same names, the Props board shows.
+
+    A yardage board carries a row per (player, line); only the one
+    `_mark_consensus_lines` flagged is used, so this tab and Props quote the
+    same line. A touchdown row without an id is resolved through `ids`; any
+    other row without one is skipped rather than matched by name.
     """
     out: dict[str, dict] = {}
     ids = ids or {}
 
-    def put(pid, key, val, line=None):
-        if not pid or val is None:
+    def num(v, d=3):
+        return round(float(v), d) if v is not None else None
+
+    def put(pid, key, val, r=None, line=None, book=None):
+        if not pid:
             return
         p = out.setdefault(pid, {})
-        p[key] = round(float(val), 3)
-        if line is not None:
-            p[key + "_line"] = float(line)
+        if val is not None:
+            p[key] = num(val)
+        if r is None:
+            return
+        got = {"_line": line, "_odds": r.get("odds_num", r.get("odds")),
+               "_model": r.get("model_only"), "_book": book,
+               "_adj": r.get("ours")}
+        for suf, v in got.items():
+            if isinstance(v, (int, float)):
+                p[key + suf] = num(v, 4)
+
+    def ou(rows, key, val_col):
+        for r in rows or []:
+            line = r.get("point") if r.get("point") is not None else r.get("open_point")
+            # One line per player: the consensus where there are several.
+            priced = line is not None and r.get("best_line") is not False
+            put(r.get("player_id"), key, r.get(val_col),
+                r if priced else None, line, r.get("fair_prob"))
 
     for key, mk in _YARDS.items():
-        for r in ((payload.get("yards") or {}).get(mk) or {}).get("rows") or []:
-            put(r.get("player_id"), key, r.get("proj"), r.get("point"))
-    for r in (payload.get("receptions") or {}).get("rows") or []:
-        put(r.get("player_id"), "rec", r.get("mu"), r.get("point"))
+        ou(((payload.get("yards") or {}).get(mk) or {}).get("rows"), key, "proj")
+    ou((payload.get("receptions") or {}).get("rows"), "rec", "mu")
     for m in payload.get("markets") or []:
         key = {"anytime_td": "td", "first_td": "ftd"}.get(m.get("key"))
         if not key:
             continue
         for r in m.get("players") or []:
-            put(r.get("player_id") or ids.get((r.get("team"), r.get("player"))),
-                key, r.get("ours"))
+            pid = r.get("player_id") or ids.get((r.get("team"), r.get("player")))
+            put(pid, key, r.get("ours"), r, None, r.get("book"))
     return out
 
 

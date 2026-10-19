@@ -4734,6 +4734,25 @@ if (cards.length) {
 }
 
 
+// ── The roster, side by side ────────────────────────────────────────────
+if (cards.length && (DATA.roster || {})[cards[0].game_id]) {
+  V.tab = 'games'; V.game = cards[0].game_id; V.gameTab = 'roster';
+  V.rostOpen = null; render();
+  const R = app();
+  ok('the roster puts both teams on one row', R.indexOf('class="rcmp"') >= 0
+     && R.indexOf('rcmp__p--l') >= 0 && R.indexOf('rcmp__p--r') >= 0);
+  ok('and a short team shows an empty side, not a shorter list',
+     R.indexOf('rcmp__p--empty') >= 0);
+  x.v3Do('v3rost', 'q1'); render();
+  const D = app();
+  ok('tapping a player opens Model, Book and Adjusted for him',
+     D.indexOf('rdetw') >= 0 && D.indexOf('<span>Model</span>') >= 0
+     && D.indexOf('61.0%') >= 0 && D.indexOf('+400') >= 0);
+  x.v3Do('v3rost', 'q1'); render();
+  ok('and tapping again closes it', app().indexOf('rdetw') < 0);
+  V.game = null; V.tab = 'props'; V.gameTab = 'notes';
+}
+
 // ── The ladder, a price per step ────────────────────────────────────────
 //
 // The default fills every step; a typed step keeps its own price and moves

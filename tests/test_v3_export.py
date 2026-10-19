@@ -1569,13 +1569,18 @@ def payload_v3():
     # One full team and one with an empty slot, so both kinds of row draw.
     def slots(full):
         out = [{"slot": "QB1", "pos": "QB", "player": "Q One",
-                "pass_yds": 231.4, "pass_yds_line": 224.5, "rush_yds": 12.0,
-                "td": 0.18, "ftd": 0.03}]
+                "player_id": "q1" if full else "q2",
+                "pass_yds": 231.4, "pass_yds_line": 224.5,
+                "pass_yds_odds": -115, "pass_yds_model": 0.61,
+                "pass_yds_book": 0.5, "pass_yds_adj": 0.53, "rush_yds": 12.0,
+                "td": 0.18, "td_odds": 400, "td_model": 0.2, "td_book": 0.17,
+                "td_adj": 0.18, "ftd": 0.03}]
         for pos, n in (("RB", 3), ("WR", 5), ("TE", 2)):
             for i in range(n):
                 row = {"slot": f"{pos}{i + 1}", "pos": pos}
                 if full or i < n - 1:
-                    row.update({"player": f"{pos} {i + 1}", "rec": 3.1,
+                    row.update({"player": f"{pos} {i + 1}",
+                                "player_id": f"{pos}{i}{full}", "rec": 3.1,
                                 "rec_yds": 40.2, "rush_yds": 50.6,
                                 "td": 0.3, "ftd": 0.05,
                                 "status": "Out" if i == 2 else None})
@@ -3236,6 +3241,8 @@ def test_the_roster_tab_draws_every_slot_and_says_where_the_order_comes_from():
     i = src.index("function v3Roster(c)")
     body = src[i:src.index("\n}\n", i)]
     assert "ordered by our projection" in body
+    assert "'Model'" in src or "<span>Model</span>" in body, \
+        "the player detail lost its Model column"
     assert "['roster', 'Roster']" in src, "the Roster tab is not on the game bar"
     assert "V.gameTab === 'roster' ? v3Roster(c)" in src
 

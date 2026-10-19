@@ -60,6 +60,23 @@ def test_projections_join_on_id_and_resolve_touchdown_rows_by_team():
             {"player": "A", "team": "LA", "ours": 0.99}]}],
     }
     got = roster.projections(payload, {("SF", "A"): "a"})
-    assert got["a"] == {"rec_yds": 55.0, "rec_yds_line": 49.5, "rec": 4.2,
-                        "td": 0.31}
+    assert got["a"]["rec_yds"] == 55.0 and got["a"]["rec_yds_line"] == 49.5
+    assert got["a"]["rec"] == 4.2 and got["a"]["td"] == 0.31
     assert len(got) == 1, "a row without an id was matched by name"
+
+
+def test_each_market_carries_model_book_and_adjusted_off_the_consensus_line():
+    """A player can have six yardage rows; the tab quotes the one Props leads with."""
+    row = {"player_id": "a", "proj": 60.0, "model_only": 0.7, "ours": 0.55}
+    payload = {"yards": {"rushing_yards": {"rows": [
+        dict(row, point=52.5, odds=-110, fair_prob=0.5, best_line=True),
+        dict(row, point=58.5, odds=120, fair_prob=0.44, best_line=False)]}},
+        "markets": [{"key": "anytime_td", "players": [
+            {"player_id": "a", "ours": 0.4, "model_only": 0.45, "book": 0.38,
+             "odds_num": 140.0}]}]}
+    got = roster.projections(payload)["a"]
+    assert (got["rush_yds_line"], got["rush_yds_odds"]) == (52.5, -110)
+    assert (got["rush_yds_model"], got["rush_yds_book"], got["rush_yds_adj"]) == (
+        0.7, 0.5, 0.55)
+    assert (got["td_model"], got["td_book"], got["td_adj"], got["td_odds"]) == (
+        0.45, 0.38, 0.4, 140.0)

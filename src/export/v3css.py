@@ -1634,29 +1634,38 @@ button{cursor:pointer}
   .pgd__l{grid-template-columns:minmax(160px,max-content) repeat(4,minmax(0,1fr))}
 }
 
-/* ---- a game's roster ----
-   A name and four fixed figure columns. 375px less the gutters and the card
-   leaves about 310px: four 46px columns and their gaps take 208, so the name
-   keeps a hundred and wraps under its slot rather than pushing a column off. */
+/* ---- a game's roster, side by side ----
+   Away on the left, home on the right, the slot between them, so a row reads
+   as a matchup. Each side right- or left-aligned toward the middle. */
 .rostc{padding-bottom:6px}
-.rost{display:grid;grid-template-columns:minmax(0,1fr) repeat(4,46px);
-  gap:0 6px;align-items:start;padding:7px 0;border-top:1px solid var(--line3)}
-.rost--h{padding:12px 0 4px;border-top:0}
-.rost__hd{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
-  color:var(--mut);font-weight:700;text-align:right;white-space:nowrap}
-.rost__n{display:flex;flex-direction:column;min-width:0}
-.rost__p{font-size:14px;line-height:19px;font-weight:600;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.rost__s{font-size:11.5px;line-height:15px;color:var(--mut)}
-.rost__s b{font-weight:600}
-.rost__s b.bad{color:var(--bad)}
-.rost__s b.warn{color:var(--warn)}
-.rost__v{font-size:14px;line-height:19px;text-align:right;
-  display:flex;flex-direction:column;align-items:flex-end}
-.rost__v i{font-style:normal;font-size:11px;line-height:15px;color:var(--mut)}
-.rost__v--none{color:var(--mut)}
-.rost--empty .rost__p{color:var(--mut);font-weight:400}
-.rost--held .rost__p,.rost--held .rost__v{color:var(--mut);font-weight:400}
+.rcmp{display:grid;grid-template-columns:minmax(0,1fr) 34px minmax(0,1fr);
+  gap:0 6px;align-items:center;border-top:1px solid var(--line3)}
+.rcmp--h{border-top:0;padding-bottom:4px}
+.rcmp--h b:first-child{text-align:right}
+.rcmp__g{padding:14px 0 4px;text-align:center}
+.rcmp__s{font-size:11px;font-weight:700;color:var(--mut);text-align:center}
+.rcmp__p{display:flex;flex-direction:column;min-width:0;padding:7px 6px;
+  background:none;border:0;border-radius:10px;font:inherit;color:inherit;
+  cursor:pointer}
+.rcmp__p:hover,.rcmp__p--open{background:var(--inset)}
+.rcmp__p--l{text-align:right;align-items:flex-end}
+.rcmp__p--r{text-align:left;align-items:flex-start}
+.rcmp__p--empty{color:var(--mut);cursor:default}
+.rcmp__p--held .rcmp__n,.rcmp__p--held .rcmp__f{color:var(--mut);font-weight:400}
+.rcmp__n{font-size:14px;line-height:19px;font-weight:600;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcmp__n b{font-size:11.5px;font-weight:600}
+.rcmp__n b.bad{color:var(--bad)}
+.rcmp__n b.warn{color:var(--warn)}
+.rcmp__f{font-size:12px;line-height:16px;color:var(--mut)}
+/* A player's markets, opened under his row across both columns. */
+.rdetw{background:var(--inset);border-radius:10px;padding:8px 10px;margin:2px 0 6px}
+.rdet{display:grid;grid-template-columns:minmax(0,1fr) repeat(5,42px);gap:0 6px;
+  align-items:baseline;padding:4px 0;font-size:13px}
+.rdet span:nth-child(n+2){text-align:right}
+.rdet--h span{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--mut);font-weight:700}
+.rdet .mut{color:var(--mut)}
 """
 
 
