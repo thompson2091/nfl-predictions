@@ -106,16 +106,24 @@ def book_ladders(seasons: list[int], snapshot: str = "close") -> pl.DataFrame:
 
 
 def rungs(seasons: list[int], snapshot: str = "close") -> pl.DataFrame:
-    """Every alternate rung: the median and best clean over price across books."""
+    """Every alternate rung: the median and best clean over price across books.
+
+    Carries the player's gsis id, resolved from the book's name through that
+    season's roster. A name the roster cannot place is dropped here rather
+    than matched later by spelling; see `game_logs` for what spelling cost.
+    """
+    from src.ingest.odds_history import _resolve_player_id
+
     b = book_ladders(seasons, snapshot)
     k = ["season", "week", "game_id", "player_name_norm", "market", "point"]
-    return (b.group_by(k).agg(
+    r = (b.group_by(k).agg(
                 pl.col("player_name_raw").first(),
                 pl.col("implied_prob").median().alias("implied_prob"),
                 pl.col("implied_prob").min().alias("best_implied"),
                 pl.col("odds").sort_by("implied_prob").first().alias("best_odds"),
                 pl.col("bookmaker").n_unique().alias("n_books"))
              .with_columns(_american(pl.col("implied_prob")).alias("odds")))
+    return r.with_columns(_resolve_player_id(r)).filter(pl.col("player_id").is_not_null())
 
 
 def _american(p: pl.Expr) -> pl.Expr:
@@ -127,42 +135,52 @@ def _american(p: pl.Expr) -> pl.Expr:
 def game_logs() -> pl.DataFrame:
     """Every game a player took an offensive snap or recorded a stat, all seasons.
 
-    Keyed by normalized name, because snap counts and the books both are.
     A snap with no stat line is a real zero; see the module docstring.
+
+    **KEYED BY PLAYER ID, NEVER BY NAME.** The first version joined box scores
+    to snap counts by normalized name. The box score calls him "Kenny
+    Gainwell", the snap counts and every book "Kenneth Gainwell", so none of
+    his 2025 carries matched: his snaps filled in zeros, his last ten games
+    read 0 rushing yards, and every under on him was "missed in 10 of 10" and
+    graded a winner. Over 2024-25 that faked +55 per $100 on main-line unders.
+    The zero fill has to be keyed by an id, because a zero that should not be
+    there is graded rather than dropped. Snap counts carry a PFR id, mapped to
+    gsis through the roster; a snap the roster cannot map is left out.
     """
-    from src.prediction.predict import _norm_name_expr
     from src.utils.paths import get_path
 
     raw = get_path("raw")
     cols = list(dict.fromkeys(ALT_STAT.values()))
     ws = (pl.scan_parquet(raw / "weekly_stats.parquet")
-          .select(["season", "week", "game_id", "player_display_name", *cols])
-          .with_columns(_norm_name_expr("player_display_name").alias("player_name_norm"))
-          .drop("player_display_name").collect())
+          .select(["season", "week", "game_id", "player_id", *cols]).collect())
+    pfr = (pl.scan_parquet(raw / "rosters.parquet")
+           .select(pl.col("pfr_id"), pl.col("gsis_id").alias("player_id"))
+           .drop_nulls().unique("pfr_id").collect())
     sn = (pl.scan_parquet(raw / "snap_counts.parquet")
           .filter(pl.col("offense_snaps") > 0)
-          .select(["season", "week", "game_id", "player"])
-          .with_columns(_norm_name_expr("player").alias("player_name_norm"),
-                        pl.col("season").cast(pl.Int64), pl.col("week").cast(pl.Int64))
-          .drop("player").unique(["game_id", "player_name_norm"]).collect())
+          .select(["season", "week", "game_id", pl.col("pfr_player_id").alias("pfr_id")])
+          .collect()
+          .join(pfr, on="pfr_id", how="inner").drop("pfr_id")
+          .with_columns(pl.col("season").cast(pl.Int64), pl.col("week").cast(pl.Int64))
+          .unique(["game_id", "player_id"]))
     ws = ws.with_columns(pl.col("season").cast(pl.Int64), pl.col("week").cast(pl.Int64))
-    zero_only = sn.join(ws.select(["game_id", "player_name_norm"]),
-                        on=["game_id", "player_name_norm"], how="anti")
+    zero_only = sn.join(ws.select(["game_id", "player_id"]),
+                        on=["game_id", "player_id"], how="anti")
     zero_only = zero_only.with_columns([pl.lit(0.0).alias(c) for c in cols])
     out = pl.concat([ws.with_columns([pl.col(c).cast(pl.Float64) for c in cols]),
                      zero_only.select(ws.columns)], how="vertical")
     return (out.with_columns([pl.col(c).fill_null(0.0) for c in cols])
-               .unique(["game_id", "player_name_norm"], keep="first")
-               .sort(["player_name_norm", "season", "week"]))
+               .unique(["game_id", "player_id"], keep="first")
+               .sort(["player_id", "season", "week"]))
 
 
 def settle(r: pl.DataFrame, logs: pl.DataFrame) -> pl.DataFrame:
     """Attach the result. Void (no snap, no stat) and push rows are dropped."""
-    long = logs.unpivot(index=["game_id", "player_name_norm"],
+    long = logs.unpivot(index=["game_id", "player_id"],
                         on=list(dict.fromkeys(ALT_STAT.values())),
                         variable_name="stat", value_name="actual")
     r = r.with_columns(pl.col("market").replace_strict(ALT_STAT).alias("stat"))
-    j = r.join(long, on=["game_id", "player_name_norm", "stat"], how="inner")
+    j = r.join(long, on=["game_id", "player_id", "stat"], how="inner")
     return (j.filter(pl.col("actual") != pl.col("point"))
              .with_columns((pl.col("actual") > pl.col("point")).cast(pl.Int8).alias("hit")))
 
@@ -175,13 +193,13 @@ def history_rates(r: pl.DataFrame, logs: pl.DataFrame, n_games: int,
     because 47-of-50 is a two-and-a-half-season window.
     """
     by_player: dict[str, tuple[np.ndarray, dict]] = {}
-    for (name,), g in logs.group_by(["player_name_norm"]):
+    for (name,), g in logs.group_by(["player_id"]):
         key = (g["season"] * 100 + g["week"]).to_numpy()
         by_player[name] = (key, {c: g[c].to_numpy() for c in set(ALT_STAT.values())})
 
     hits = np.full(r.height, -1, dtype=np.int32)
     games = np.zeros(r.height, dtype=np.int32)
-    names = r["player_name_norm"].to_list()
+    names = r["player_id"].to_list()
     keys = (r["season"] * 100 + r["week"]).to_numpy()
     stats = r["stat"].to_list()
     points = r["point"].to_numpy()
@@ -220,8 +238,8 @@ def model_probs(r: pl.DataFrame) -> pl.DataFrame:
                 ex = rec.expected_counts(season, week, rart)
                 if ex is None:
                     continue
-                j = sub.join(ex.select(["game_id", "player_name_norm", "mu"]),
-                             on=["game_id", "player_name_norm"], how="inner")
+                j = sub.join(ex.select(["game_id", "player_id", "mu"]),
+                             on=["game_id", "player_id"], how="inner")
                 if j.height == 0:
                     continue
                 over, push = count.prob_over(j["mu"].to_numpy(), j["point"].to_numpy(),
@@ -233,8 +251,8 @@ def model_probs(r: pl.DataFrame) -> pl.DataFrame:
                     continue
                 ids, q = got
                 ids = ids.with_row_index("_q")
-                j = sub.join(ids.select(["game_id", "player_name_norm", "_q"]),
-                             on=["game_id", "player_name_norm"], how="inner")
+                j = sub.join(ids.select(["game_id", "player_id", "_q"]),
+                             on=["game_id", "player_id"], how="inner")
                 if j.height == 0:
                     continue
                 over, push = ymod.prob_over(q[j["_q"].to_numpy()], j["point"].to_numpy(),
@@ -242,10 +260,10 @@ def model_probs(r: pl.DataFrame) -> pl.DataFrame:
                                                   or ymod.QUANTILE_LEVELS))
                 j = j.drop("_q")
             p = np.clip(over / np.clip(1.0 - push, 1e-9, None), 0.0, 1.0)
-            parts.append(j.select(["game_id", "player_name_norm", "market", "point"])
+            parts.append(j.select(["game_id", "player_id", "market", "point"])
                           .with_columns(pl.Series("p_model_raw", p)))
-    m = pl.concat(parts).unique(["game_id", "player_name_norm", "market", "point"])
-    return r.join(m, on=["game_id", "player_name_norm", "market", "point"], how="left")
+    m = pl.concat(parts).unique(["game_id", "player_id", "market", "point"])
+    return r.join(m, on=["game_id", "player_id", "market", "point"], how="left")
 
 
 # --------------------------------------------------------------------------
@@ -302,5 +320,5 @@ def best_rung(d: pl.DataFrame, est_col: str) -> pl.DataFrame:
     """One leg per player, market and game: the qualifying rung with most edge."""
     return (d.with_columns((pl.col(est_col) - pl.col("implied_prob")).alias("_e"))
              .sort("_e", descending=True)
-             .unique(["game_id", "player_name_norm", "market"], keep="first")
+             .unique(["game_id", "player_id", "market"], keep="first")
              .drop("_e"))
