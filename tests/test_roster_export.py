@@ -80,3 +80,16 @@ def test_each_market_carries_model_book_and_adjusted_off_the_consensus_line():
         0.7, 0.5, 0.55)
     assert (got["td_model"], got["td_book"], got["td_adj"], got["td_odds"]) == (
         0.45, 0.38, 0.4, 140.0)
+
+
+def test_the_team_line_adds_averages_of_the_numbered_slots_only():
+    """Medians of the shown receivers read 50 yards under Purdy; averages add."""
+    slots = [{"slot": "QB1", "pos": "QB", "player": "Q", "player_id": "q"},
+             {"slot": "WR1", "pos": "WR", "player": "A", "player_id": "a"},
+             {"slot": "WR2", "pos": "WR"},
+             {"slot": "WR", "pos": "WR", "player": "Hurt", "player_id": "h"}]
+    avg = {"q": {"pass_avg": 254.0}, "a": {"rec_avg": 80.0},
+           "h": {"rec_avg": 40.0}}
+    got = roster.team_line(slots, avg)
+    assert got == {"rec_avg": 80.0, "pass_avg": 254.0, "n": 1, "qb": "Q"}, (
+        "an Out player or an empty slot was counted")

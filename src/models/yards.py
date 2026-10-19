@@ -233,6 +233,22 @@ def quantile_at(q: np.ndarray, level: float,
     return q[:, j] + w * (q[:, j + 1] - q[:, j])
 
 
+def mean_of(q: np.ndarray,
+            levels: tuple[float, ...] = QUANTILE_LEVELS) -> np.ndarray:
+    """Each row's mean, integrated over its fitted quantile curve.
+
+    The tails past the outer levels are held flat, so this slightly
+    understates a long right tail. It exists for totals: medians of skewed
+    yardage add to far less than the team's total (196 against 224 receiving
+    yards a team-game on 2025), and means are what add.
+    """
+    q = rearrange(q)
+    a = np.asarray(levels, dtype=float)
+    x = np.concatenate([[0.0], a, [1.0]])
+    y = np.concatenate([q[:, :1], q, q[:, -1:]], axis=1)
+    return np.trapezoid(y, x, axis=1)
+
+
 def interval(q: np.ndarray, lo: float = 0.15, hi: float = 0.85,
              levels: tuple[float, ...] = QUANTILE_LEVELS
              ) -> tuple[np.ndarray, np.ndarray]:

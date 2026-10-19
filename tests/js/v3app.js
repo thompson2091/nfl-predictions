@@ -4743,6 +4743,9 @@ if (cards.length && (DATA.roster || {})[cards[0].game_id]) {
      && R.indexOf('rcmp__p--l') >= 0 && R.indexOf('rcmp__p--r') >= 0);
   ok('and a short team shows an empty side, not a shorter list',
      R.indexOf('rcmp__p--empty') >= 0);
+  ok('the team line adds averages and says they are averages',
+     R.indexOf('241 rec') >= 0 && R.indexOf('230 pass') >= 0
+     && R.indexOf('as averages') >= 0);
   x.v3Do('v3rost', 'q1'); render();
   const D = app();
   ok('tapping a player opens Model, Book and Adjusted for him',

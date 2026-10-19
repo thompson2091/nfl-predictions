@@ -41,20 +41,13 @@ import polars as pl
 from scipy.optimize import minimize
 
 from src.evaluation import safe_legs as sl
-from src.models.yards import QUANTILE_LEVELS, cdf, prob_over, rearrange
+from src.models.yards import QUANTILE_LEVELS, cdf, mean_of, prob_over, rearrange
 from src.prediction.yards import expected_quantiles
 from src.utils.paths import get_path
 
 FIT, TEST = 2024, 2025
 WEEKS = range(3, 19)
 LV = np.asarray(QUANTILE_LEVELS)
-
-
-def mean_of(q: np.ndarray) -> np.ndarray:
-    """The mean of a fitted quantile curve, tails held flat past 2% and 98%."""
-    x = np.concatenate([[0.0], LV, [1.0]])
-    y = np.concatenate([q[:, :1], q, q[:, -1:]], axis=1)
-    return np.trapezoid(y, x, axis=1)
 
 
 def season_frame(season: int, logs: pl.DataFrame) -> tuple[pl.DataFrame, np.ndarray]:

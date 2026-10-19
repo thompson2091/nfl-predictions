@@ -3948,6 +3948,28 @@ function v3Roster(c) {
       if (o) out += v3RostDetail(o[0], o[1]);
     }
   });
+  // THE TEAM LINE, AS AVERAGES. A column of receiver medians under a
+  // quarterback's median reads fifty yards short when it is not: medians of
+  // lopsided outcomes add to far less than the total. Averages add, so this
+  // line uses them and says so; the player figures above stay the medians
+  // Props shows.
+  const T = R._totals || {};
+  const tl = t => {
+    const x = T[t];
+    return x ? '<span class="rcmp__p rcmp__p--' + (t === c.away ? 'l' : 'r')
+        + ' rcmp__p--tot"><span class="rcmp__n num">' + Math.round(x.rec_avg)
+        + ' rec \u00b7 ' + Math.round(x.pass_avg) + ' pass</span>'
+        + '<span class="rcmp__f">' + x.n + ' receivers \u00b7 ' + esc(x.qb)
+        + '</span></span>'
+      : '<span></span>';
+  };
+  if (T[c.away] || T[c.home]) {
+    out += '<div class="rcmp__g eyebrow">Passing game, as averages</div>'
+      + '<div class="rcmp">' + tl(c.away) + '<span></span>' + tl(c.home)
+      + '</div><p class="sub" style="margin:4px 6px 0">The receivers listed, '
+      + 'added up, beside their quarterback. Averages, not the medians above: '
+      + 'medians of uneven outcomes add to far less than the total.</p>';
+  }
   return out + '</div>'
     + '<p class="sub" style="margin:8px 4px">Players come from the ESPN depth '
     + 'chart. Within a position they are ordered by our projection: rushing '

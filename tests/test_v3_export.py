@@ -1586,7 +1586,9 @@ def payload_v3():
                                 "status": "Out" if i == 2 else None})
                 out.append(row)
         return out
-    p["roster"] = {"ATL_GB": {"ATL": slots(True), "GB": slots(False)}}
+    p["roster"] = {"ATL_GB": {"ATL": slots(True), "GB": slots(False),
+                              "_totals": {"ATL": {"rec_avg": 241.3, "pass_avg": 230.2,
+                                                  "n": 10, "qb": "Q One"}}}}
     return p
 
 

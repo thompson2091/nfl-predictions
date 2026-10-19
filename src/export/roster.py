@@ -138,6 +138,46 @@ def projections(payload: dict, ids: dict | None = None) -> dict[str, dict]:
     return out
 
 
+def averages(season: int, week: int) -> dict[str, dict]:
+    """Each player's AVERAGE passing and receiving yards, by player_id.
+
+    Not shown per player — the player figures stay the medians Props shows,
+    which is what a line is compared with. These exist for the team line:
+    medians of skewed yardage add to far less than the total, so a column of
+    receiver medians under a quarterback's median looks fifty yards short
+    when it is not. Averages add.
+    """
+    from src.models.yards import mean_of
+    from src.prediction.yards import expected_quantiles
+
+    out: dict[str, dict] = {}
+    for key, mk in (("pass_avg", "passing_yards"), ("rec_avg", "receiving_yards")):
+        try:
+            got = expected_quantiles(mk, season, week)
+        except Exception:                                        # noqa: BLE001
+            got = None
+        if got is None:
+            continue
+        ids, q = got
+        for pid, m in zip(ids["player_id"].to_list(), mean_of(q).tolist()):
+            if pid:
+                out.setdefault(pid, {})[key] = m
+    return out
+
+
+def team_line(slots: list[dict], avg: dict) -> dict | None:
+    """The receivers shown, added as averages, beside their QB1's average."""
+    live = [s for s in slots if s.get("player_id") and any(ch.isdigit() for ch in s["slot"])]
+    qb = next((s for s in live if s["pos"] == "QB"), None)
+    rec = [avg.get(s["player_id"], {}).get("rec_avg") for s in live if s["pos"] != "QB"]
+    rec = [r for r in rec if r is not None]
+    pas = avg.get(qb["player_id"], {}).get("pass_avg") if qb else None
+    if not rec or pas is None:
+        return None
+    return {"rec_avg": round(sum(rec), 1), "pass_avg": round(pas, 1),
+            "n": len(rec), "qb": qb["player"]}
+
+
 def _status(season: int, week: int) -> dict[str, str]:
     try:
         from src.prediction.availability import status_for
@@ -204,6 +244,7 @@ def build(payload: dict, season: int | None, week: int | None) -> dict:
         return {}
     proj = projections(payload, feature_ids(season, week))
     status = _status(season, week)
+    avg = averages(season, week)
     out = {}
     for c in cards:
         # Cards are keyed "AWAY_HOME"; the schedule's id carries the week.
@@ -211,6 +252,10 @@ def build(payload: dict, season: int | None, week: int | None) -> dict:
         ch = chart.get(gid) or chart.get(f"{season}_{int(week):02d}_{gid}")
         if ch is None:
             continue
-        out[c["game_id"]] = {t: team_slots(ch, t, proj, status)
-                             for t in (c.get("away"), c.get("home")) if t}
+        teams = {t: team_slots(ch, t, proj, status)
+                 for t in (c.get("away"), c.get("home")) if t}
+        # Under `_totals`, a key no team code can be.
+        lines = {t: team_line(v, avg) for t, v in teams.items()}
+        teams["_totals"] = {t: v for t, v in lines.items() if v}
+        out[c["game_id"]] = teams
     return out

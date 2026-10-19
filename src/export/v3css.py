@@ -1661,6 +1661,8 @@ button{cursor:pointer}
 .rcmp__n b.bad{color:var(--bad)}
 .rcmp__n b.warn{color:var(--warn)}
 .rcmp__f{font-size:12px;line-height:16px;color:var(--mut)}
+.rcmp__p--tot{cursor:default}
+.rcmp__p--tot:hover{background:none}
 /* A player's markets, opened under his row across both columns. */
 .rdetw{background:var(--inset);border-radius:10px;padding:8px 10px;margin:2px 0 6px}
 .rdet{display:grid;grid-template-columns:minmax(0,1fr) repeat(5,42px);gap:0 6px;
