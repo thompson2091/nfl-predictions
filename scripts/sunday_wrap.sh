@@ -115,6 +115,10 @@ run ingest     "$PY" scripts/01_ingest.py     || exit 1
 run targets    "$PY" scripts/02_targets.py    || exit 1
 run candidates "$PY" scripts/03_candidates.py || exit 1
 run features   "$PY" scripts/04_features.py   || exit 1
+# The safe-legs paper record: judges each newly final game once and freezes
+# it. Reads the archive and spends no credits; a failure does not stop the wrap.
+run safe_legs  "$PY" scripts/70_safe_legs_forward.py \
+    || say "     safe-legs record failed — see $LOG"
 
 AFTER="$("$PY" - <<'PYEOF' 2>>"$LOG"
 import sys
