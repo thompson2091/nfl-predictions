@@ -341,7 +341,8 @@ def _attach_open_rows(market: str, rows: list, opens: dict, norm) -> None:
             r["open_books"] = o.get("n_books")
 
 
-def yards(market: str, season: int | None, week: int | None) -> dict:
+def yards(market: str, season: int | None, week: int | None,
+          allow_open: bool = False) -> dict:
     """One yardage board, in the shape the page already reads for receptions.
 
     The same two blocks and the same column names, because the page's `ou`
@@ -364,11 +365,11 @@ def yards(market: str, season: int | None, week: int | None) -> dict:
         out["problem"] = "no slate to show"
         return out
 
-    board, msg = board_for_week(market, season, week)
+    board, msg = board_for_week(market, season, week, allow_open=allow_open)
     out["problem"] = msg
     keep = ["player_name", "team", "game_id", "proj", "lo", "hi", "point",
             "odds", "implied_prob", "overround", "fair_prob", "model_only",
-            "ours", "edge_pp", "ev", "n_books", "thin"]
+            "ours", "edge_pp", "ev", "n_books", "thin", "price_snapshot"]
     priced: set[str] = set()
     if board is not None and board.height:
         out["rows"] = board.select([c for c in keep if c in board.columns]).to_dicts()
@@ -2252,7 +2253,10 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     payload["yards"] = {}
     for mk in sorted(YARD_MARKETS):
         print(f"  {mk}: {s} week {w}", file=sys.stderr)
-        payload["yards"][mk] = yards(mk, s, w)
+        # The site build, so a week with no close yet shows its open. The
+        # record reaches `yards` through `week_history.ou_board`, which
+        # does not.
+        payload["yards"][mk] = yards(mk, s, w, allow_open=True)
         if s and w:
             from src.prediction.yards import expected_quantiles
             got = expected_quantiles(mk, s, w)

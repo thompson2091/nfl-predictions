@@ -445,6 +445,11 @@ def ou_board(season: int, week: int, market: str) -> list[dict]:
 
     Split out of `ou_week` so the freeze can take the same rows before
     kickoff that `ou_week` regrades after it.
+
+    CLOSING PRICES ONLY, said explicitly. The site falls back to the open
+    early in the week; every pick this feeds is graded at the close, so
+    this never does. `allow_open=False` is the default as well, and is
+    written out so a changed default cannot reach the record.
     """
     import importlib.util
     from pathlib import Path
@@ -467,9 +472,9 @@ def ou_board(season: int, week: int, market: str) -> list[dict]:
             / "scripts/34_export_dashboard.py")
         dash = _il.module_from_spec(spec2)
         spec2.loader.exec_module(dash)
-        blk = dash.receptions(season, week)
+        blk = dash.receptions(season, week, allow_open=False)
     else:
-        blk = mod.yards(market, season, week)
+        blk = mod.yards(market, season, week, allow_open=False)
     return (blk or {}).get("rows") or []
 
 

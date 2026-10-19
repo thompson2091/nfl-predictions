@@ -986,6 +986,9 @@ function v3Row(row) {
     + (v[0] ? '<span class="' + v[1] + '">' + v[0] + '</span>' : '')
     + warn
     + (row.thin ? '<span class="tag tag--warn">Thin market</span>' : '')
+    // No close captured yet, so this is the opening price. It is not on the
+    // record: tracked picks are taken at the first close capture.
+    + (row.opening ? '<span class="tag tag--warn">Opening price</span>' : '')
     // A CONTRADICTION, NOT A DISAGREEMENT. The market declining to quote the
     // passer we have as this team's lead, while pricing someone we rate below
     // him, is the books knowing he is not playing — so our number for the man

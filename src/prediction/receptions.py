@@ -179,11 +179,16 @@ def expected_counts(season: int, week: int, art: dict | None = None
     ]).with_columns(pl.Series("mu", mu))
 
 
-def board_for_week(season: int, week: int, snapshot: str = "close"
-                   ) -> tuple[pl.DataFrame, str]:
+def board_for_week(season: int, week: int, snapshot: str = "close",
+                   allow_open: bool = False) -> tuple[pl.DataFrame, str]:
     """Every posted receptions line, with what we make it against what it pays.
 
     Returns `(board, message)`; an empty board always carries a reason.
+
+    `allow_open` lets a week with no closing capture yet be priced off its
+    open, every row stamped `price_snapshot="open"`. For the site only: the
+    record is graded at the close, so nothing that freezes or records a pick
+    may pass it. See `src.evaluation.week_history.ou_board`.
     """
     from src.ingest.odds_history import (HISTORY_PATH, drop_in_play,
                                         resolve_game_ids)
@@ -201,9 +206,14 @@ def board_for_week(season: int, week: int, snapshot: str = "close"
 
     if not HISTORY_PATH.exists():
         return pl.DataFrame(), "no odds archive on disk"
-    lines = drop_in_play(resolve_game_ids(pl.read_parquet(HISTORY_PATH))).filter(
+    week_lines = drop_in_play(resolve_game_ids(pl.read_parquet(HISTORY_PATH))).filter(
         (pl.col("season") == season) & (pl.col("week") == week)
-        & (pl.col("market") == "receptions") & (pl.col("snapshot") == snapshot))
+        & (pl.col("market") == "receptions"))
+    lines = week_lines.filter(pl.col("snapshot") == snapshot)
+    if lines.height == 0 and allow_open and snapshot != "open":
+        lines = week_lines.filter(pl.col("snapshot") == "open")
+        if lines.height:
+            snapshot = "open"
     if lines.height == 0:
         return pl.DataFrame(), (
             f"no receptions prices archived for {season} week {week} "
@@ -246,6 +256,7 @@ def board_for_week(season: int, week: int, snapshot: str = "close"
         pl.Series("model_only", raw),
         pl.Series("ours", blended),
         pl.lit(w).alias("blend_weight"),
+        pl.lit(snapshot).alias("price_snapshot"),
     ])
 
     return b.with_columns([

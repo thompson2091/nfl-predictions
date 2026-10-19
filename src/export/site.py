@@ -880,6 +880,9 @@ function rowsFor(key, view) {
       // Priced means a book has quoted this player, not that the row exists.
       // Most of this board is a projection with no line against it.
       thin: !!r.thin, nBooks: r.n_books,
+      // Priced off the open because no close has been captured yet. Shown,
+      // never recorded: every tracked pick is taken at the close.
+      opening: r.price_snapshot === 'open',
       // How many games the projection is built from. Published as context,
       // not as a warning: measured over 2024-2026 the model is about as
       // accurate on thin-history players as on established ones (bias +0.16

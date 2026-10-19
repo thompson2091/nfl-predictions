@@ -927,7 +927,8 @@ def clean(x):
     return x
 
 
-def receptions(season: int | None, week: int | None) -> dict:
+def receptions(season: int | None, week: int | None,
+               allow_open: bool = False) -> dict:
     """The count market, which does not fit the shape every other tab assumes.
 
     Every pane on this page reads `M()` — one of `DATA.markets` — and every one
@@ -961,7 +962,7 @@ def receptions(season: int | None, week: int | None) -> dict:
         out["problem"] = "no slate to show"
         return out
 
-    board, msg = board_for_week(season, week)
+    board, msg = board_for_week(season, week, allow_open=allow_open)
     out["problem"] = msg
     if board is not None and board.height:
         # `implied_prob` and `overround` are the over's vigged price and the
@@ -972,7 +973,7 @@ def receptions(season: int | None, week: int | None) -> dict:
         keep = ["player_name", "team", "game_id", "mu", "point", "odds",
                 "implied_prob", "overround",
                 "fair_prob", "model_only", "ours", "edge_pp", "ev",
-                "n_books", "thin",
+                "n_books", "thin", "price_snapshot",
                 # How many games the projection is built from. A rolling mean
                 # of one game and of fifty are the same number on screen
                 # otherwise, which is how a player with a single career game
@@ -996,7 +997,10 @@ def build(season: int | None, week: int | None) -> dict:
     return clean({
         "built": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "markets": [market(k, label, season, week) for k, label in MARKETS],
-        "receptions": receptions(season, week),
+        # The site build, so a week with no close yet shows its open. The
+        # record reaches `receptions` through `week_history.ou_board`,
+        # which does not.
+        "receptions": receptions(season, week, allow_open=True),
     })
 
 
