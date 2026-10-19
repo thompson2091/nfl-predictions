@@ -2771,6 +2771,19 @@ def test_the_streak_tag_is_not_colored_like_a_recommendation():
         and "tag--warn" not in body, "the streak tag grades the player"
 
 
+def test_the_cleared_tag_is_context_and_counts_only_played_games():
+    """"Over 150 in 9 of 10" lost money on 2024-25; it may not look like a pick."""
+    src = _v3js()
+    i = src.index("function v3ClearedTag(row)")
+    body = src[i:i + 700]
+    assert "tag--good" not in body and "tag--bad" not in body \
+        and "tag--warn" not in body, "the cleared tag grades the player"
+    assert "not a pick" in body, "the cleared tag no longer says it is context"
+    j = src.index("function v3Cleared(row)")
+    assert "r[7]" in src[j:j + 600], "a week he sat out counts as a miss"
+    assert "+ v3ClearedTag(row)" in src, "the cleared tag is never drawn"
+
+
 def test_the_streak_filter_is_reachable_and_has_an_empty_state():
     src = _v3js()
     assert "['streak', 'Streaks']" in src, "the Streaks segment is gone"

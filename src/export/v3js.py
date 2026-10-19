@@ -1001,6 +1001,7 @@ function v3Row(row) {
     // Recent form, before the tap rather than after it. Asked for: "identify
     // potential outliers before clicking the player name".
     + v3StreakTag(row)
+    + v3ClearedTag(row)
     + '<span class="tag">' + (open ? 'Hide detail' : 'More') + '</span>'
     + '</div></div></button>'
     + '<div class="rowacts">'
@@ -1189,6 +1190,40 @@ function v3StreakTag(row) {
     + 'each week, not this week\u2019s. Recent form is not an edge this '
     + 'project has measured \u2014 it is here to be seen, not acted on.">'
     + st.n + ' of ' + st.of + ' ' + what + '</span>';
+}
+
+// HOW OFTEN HE CLEARED THIS WEEK'S LINE, not the line he was quoted each week,
+// which is what the streak tag counts. Asked for on 2026-10-19 as context for
+// legs like "Lawrence over 150, 47 of his last 50".
+//
+// CONTEXT, MEASURED NOT TO BE AN EDGE. On 2024-25 main lines, overs on a man
+// who cleared in 8+ of his last 10 lost 11.6 to 14.5 per $100 — no better than
+// every over — and unders after 8+ misses were break-even (scripts/69 and the
+// safe-legs memory). So it is drawn in the neutral tag style, never green, and
+// the title says so.
+//
+// Played games only: a week he sat out is a void at the book, and counting it
+// as a miss would make a returning starter look like a fade. Fewer than five
+// played games is silent rather than a shaky fraction.
+function v3Cleared(row) {
+  if (!row || row.kind !== 'ou' || !has(row.line)) return null;
+  const mk = v3PastMarket();
+  const rows = (((DATA.pastlines || {}).players || {})[row.player] || {})[mk];
+  if (!rows || !rows.length) return null;
+  const played = rows.filter(r => (r.length > 7 ? r[7] : 1) !== 0 && has(r[6]))
+    .slice(0, 10);
+  if (played.length < 5) return null;
+  const n = played.filter(r => r[6] > row.line).length;
+  return { n: n, of: played.length };
+}
+
+function v3ClearedTag(row) {
+  const c = v3Cleared(row);
+  if (!c) return '';
+  return '<span class="tag" title="Games, out of his last ' + c.of + ' played, '
+    + 'in which he went over ' + esc(String(row.line)) + '. Tested on 2024-25: '
+    + 'betting on this alone lost money, so it is context, not a pick.">'
+    + 'Over ' + esc(String(row.line)) + ' in ' + c.n + ' of ' + c.of + '</span>';
 }
 
 function v3PastMarket() {
