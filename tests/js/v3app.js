@@ -18,7 +18,7 @@ const x = loadPage(process.argv[2], process.argv[3],
    // v1's null guard, so a check here reads the same way the page does.
    'has', 'KIND', 'v3Diff', 'v3MktLines',
    'isFav', 'toggleFav', 'v3Slipbar', 'v3Sheet', 'V3SHEETS', 'v3Rungs',
-   'v3Num', 'v3Rows', 'v3LadderSummary', 'v3Questions', 'v3AskSend',
+   'v3Num', 'v3LNum', 'v3Rows', 'v3LadderSummary', 'v3Questions', 'v3AskSend',
    'V3BETTYPES',
    'v3GameMkt', 'v3GameMkts', 'v3MarketForGame', 'v3GameEmpty',
    'v3Had', 'v3Ord', 'v3Graded', 'v3PastRow',
@@ -4752,10 +4752,28 @@ if (cards.length) {
   V.lsteps = [-200]; render();
   ok('a typed step changes every row below it',
      x.v3LadderSummary().indexOf('$480.00') >= 0);
-  V.lodds = 150; render();
-  ok('and keeps its price when the default moves',
-     app().indexOf('value="\u2212200"') >= 0);
-  ok('with a way back to the default', app().indexOf('data-v3lreset') >= 0);
+  // THROUGH THE INPUT HANDLER, the way a reader changes it. Every check
+  // above sets V directly, which is how $NaN shipped with all of them green.
+  const typeInto = (attr, key, value) => globalThis.fireDoc('input', {
+    target: { value: value, classList: { toggle() {} },
+              getAttribute: a => a === attr ? key : null } });
+  V.lsteps = []; V.lodds = 100; render();
+  typeInto('data-v3l', 'stake', '$100');
+  ok('typing "$100" as the stake is $100', V.lstake === 100
+     && x.v3LadderSummary().indexOf('$100.00 into') >= 0);
+  typeInto('data-v3lr', '0', '-200');
+  ok('typing a step\u2019s price recalculates the ladder',
+     V.lsteps[0] === -200 && x.v3LadderSummary().indexOf('$4,800') >= 0);
+  typeInto('data-v3l', 'odds', '+150');
+  ok('a new default rewrites every step, typed ones too',
+     V.lodds === 150 && !(V.lsteps || []).some(x.has));
+  V.lstake = 10;
+  ok('a typed "$100" is 100', x.v3LNum('$100') === 100);
+  V.lstake = null;
+  ok('a stake saved as null reads as $10, not $0',
+     x.v3LadderSummary().indexOf('$10.00 into') >= 0);
+  V.lstake = 10;
+  ok('and a typed "-150" is -150', x.v3LNum('-150') === -150);
   V.lsteps = []; V.lodds = 100; V.tab = 'props';
 }
 

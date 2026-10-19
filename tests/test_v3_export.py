@@ -3238,3 +3238,20 @@ def test_the_roster_tab_draws_every_slot_and_says_where_the_order_comes_from():
     assert "ordered by our projection" in body
     assert "['roster', 'Roster']" in src, "the Roster tab is not on the game bar"
     assert "V.gameTab === 'roster' ? v3Roster(c)" in src
+
+
+def test_no_two_functions_in_the_v3_bundle_share_a_name():
+    """The later one wins silently. A spread formatter named `v3Num` replaced
+    the ladder's parser of the same name, and every bankroll read $NaN."""
+    import re
+    from collections import Counter
+
+    from src.export import site as v1
+    from src.export import v3js
+
+    js = "\n".join([v1.JS_CORE, v1.JS_SHARED, v1.JS_SLIPVIEW, v1.JS_WEEK,
+                    v1.JS_COMBOS, v1.JS_SAVED, v1.JS_LADDER, v1.JS_MODEL,
+                    v3js.js()])
+    dup = {k: n for k, n in Counter(
+        re.findall(r"^(?:function|const|let) (\w+)\b", js, re.M)).items() if n > 1}
+    assert not dup, f"defined more than once: {dup}"

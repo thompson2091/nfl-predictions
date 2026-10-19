@@ -5121,8 +5121,9 @@ function v3Outcomes(legs, stake) {
 // The first version took one price for every rung, so the only ladder it
 // could describe was six bets at the same odds — which is not how anyone
 // builds one: a -300 opener, a -150, a plus-money closer. Now the default
-// fills every step and any step can be typed over. A typed step keeps its
-// price when the default changes; Reset puts every step back on it.
+// fills every step and any step can be typed over. Changing the default
+// sets EVERY step to it again, typed or not — asked for that way: the
+// default is the quick way to rebuild the whole ladder.
 //
 // The table is patched in place on every keystroke rather than re-rendered,
 // for the same reason the search box is: replacing the input being typed
@@ -5134,7 +5135,7 @@ function v3LadderInputs() {
     + esc(String(val)) + '" aria-label="' + esc(label) + '">'
     + (hint ? '<i id="v3lhint">' + esc(hint) + '</i>' : '') + '</label>';
   return '<div class="lfields">'
-    + f('stake', 'Start with', '$' + V.lstake, '', 'decimal')
+    + f('stake', 'Start with', '$' + v3LStake(), '', 'decimal')
     + f('odds', 'Default odds', v3Dash(american(V.lodds)),
         v3OddsHint(), 'text')
     + f('rungs', 'Steps', V.rungs, '', 'numeric')
@@ -5148,13 +5149,20 @@ function v3OddsHint() {
 //: Parsed leniently — "+150", "150", "-150", "$25", "25" all mean something
 //: obvious, and a field that rejects "$25" because of the dollar sign is a
 //: field that makes the reader do the app's job.
-function v3Num(v) {
+function v3LNum(v) {
   const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
   return isFinite(n) ? n : null;
 }
 
 //: An american price of 0 or between -100 and 100 is not a price.
 const v3IsOdds = n => has(n) && (n >= 100 || n <= -100);
+
+//: The stake, or $10 when what was saved is not one. The `v3Num` clash
+//: saved NaN, which storage keeps as null and which read back as $0.00.
+function v3LStake() {
+  const n = Number(V.lstake);
+  return isFinite(n) && n > 0 && V.lstake !== null ? n : 10;
+}
 
 function v3LSteps() {
   return Math.max(1, Math.min(20, Math.round(V.rungs) || 1));
@@ -5170,7 +5178,7 @@ function v3LOdds(k) {
 //: own implied probability.
 function v3LadderMath() {
   const out = [];
-  let bank = V.lstake, p = 1;
+  let bank = v3LStake(), p = 1;
   for (let k = 0; k < v3LSteps(); k++) {
     const d = amToDec(v3LOdds(k));
     bank *= d; p /= d;
@@ -5206,7 +5214,7 @@ function v3Rungs() {
 
 function v3LadderSummary() {
   const m = v3LadderMath(), last = m[m.length - 1];
-  return m.length + ' wins in a row turns ' + v3LMoney(V.lstake) + ' into '
+  return m.length + ' wins in a row turns ' + v3LMoney(v3LStake()) + ' into '
     + v3LMoney(last.bank) + ' \u2014 about ' + v3Pct(last.p) + ', or 1 in '
     + Math.max(1, Math.round(1 / last.p)) + '.';
 }
@@ -7775,12 +7783,11 @@ function v3AnglesPage() {
 }
 
 function v3Ladder() {
-  const typed = (V.lsteps || []).some(v3IsOdds);
   return '<div class="wrap"><h1 class="h1">The ladder</h1>'
     + '<p class="lede">Start small. Each time a bet wins, the whole amount '
-    + 'rides on the next one. Set a default price for every step, then type '
-    + 'over any step to give it its own. One loss and you are back to the '
-    + 'start.</p>'
+    + 'rides on the next one. The default price fills every step; type over '
+    + 'any step to give it its own. Changing the default resets them all. '
+    + 'One loss and you are back to the start.</p>'
     + v3LadderInputs()
     + '<div class="list"><div class="rung" style="border:0">'
     + '<span class="eyebrow">Step</span>'
@@ -7788,9 +7795,6 @@ function v3Ladder() {
     + '<span class="eyebrow">You\u2019d have</span>'
     + '<span class="eyebrow">Chance</span></div>'
     + '<div id="v3rungs">' + v3Rungs() + '</div></div>'
-    + (typed ? '<button class="btn" data-v3lreset="1" '
-        + 'style="margin-top:10px">Put every step back on the default</button>'
-      : '')
     + '<div class="card"><div class="name" id="v3lsum">'
     + esc(v3LadderSummary()) + '</div>'
     + '<p class="lede" style="font-size:15px;margin-top:6px">Each row assumes '
@@ -8133,7 +8137,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3pastn', 'v3tlall', 'v3tln',
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
                   'v3anglemin', 'v3angleredundant', 'v3anglemore',
-                  'v3sortpick', 'v3lreset',
+                  'v3sortpick',
                   'v3recwho', 'v3recseries', 'v3recmore',
                   'v3recqx', 'v3recview', 'v3recside', 'v3recopen',
                   'v3recmkt', 'v3rectake', 'v3recmin', 'v3recres',
@@ -8178,14 +8182,14 @@ document.addEventListener('input', ev => {
   const t = ev.target;
   if (t && t.getAttribute && t.getAttribute('data-v3l') !== null) {
     const which = t.getAttribute('data-v3l');
-    const n = v3Num(t.value);
+    const n = v3LNum(t.value);
     if (n != null) {
       if (which === 'stake') V.lstake = Math.max(0.01, n);
       else if (which === 'rungs') V.rungs = Math.max(1, Math.min(20, Math.round(n)));
       // Not a price is left alone rather than coerced, so a half-typed "-1"
       // on the way to "-150" does not snap the table to something the
       // reader did not ask for.
-      else if (which === 'odds' && v3IsOdds(n)) V.lodds = n;
+      else if (which === 'odds' && v3IsOdds(n)) { V.lodds = n; V.lsteps = []; }
     }
     // The step fields are redrawn, which is safe: the caret is up here.
     const rows = document.getElementById('v3rungs');
@@ -8200,7 +8204,7 @@ document.addEventListener('input', ev => {
     // One step's own price. Only the figures are patched — the caret is in
     // this row. Cleared, the step goes back to the default.
     const k = Number(t.getAttribute('data-v3lr'));
-    const n = v3Num(t.value);
+    const n = v3LNum(t.value);
     V.lsteps = (V.lsteps || []).slice();
     if (String(t.value).trim() === '') V.lsteps[k] = null;
     else if (v3IsOdds(n)) V.lsteps[k] = n;
@@ -8554,7 +8558,6 @@ function v3Do(kind, v) {
     // slip itself became the sheet.
     case 'v3type': V.betType = v; V.sheet = 'slip'; break;
     case 'v3stake': V.stake = Number(v); V.sheet = 'slip'; break;
-    case 'v3lreset': V.lsteps = []; break;
     case 'v3ask': {
       const qs = v3Questions(V.game);
       V.answer = (qs[Number(v)] || {}).a || '';
