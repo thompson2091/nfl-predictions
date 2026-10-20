@@ -1,0 +1,170 @@
+{
+ "kind": "rushing_yards_edge_threshold",
+ "threshold_pp": 1.0,
+ "fit_roi": 0.017295989024547903,
+ "fit_n": 868,
+ "blend_weight": 0.06,
+ "fitted_on": [
+  2024,
+  2025
+ ],
+ "min_bets": 150,
+ "fit_date": "2026-10-19",
+ "curve": [
+  {
+   "threshold_pp": 0.0,
+   "n": 3442,
+   "roi": -0.027372959618015103
+  },
+  {
+   "threshold_pp": 0.5,
+   "n": 1835,
+   "roi": 0.000687241845742456
+  },
+  {
+   "threshold_pp": 1.0,
+   "n": 868,
+   "roi": 0.017295989024547903
+  },
+  {
+   "threshold_pp": 1.5,
+   "n": 408,
+   "roi": 0.01009147581840493
+  },
+  {
+   "threshold_pp": 2.0,
+   "n": 213,
+   "roi": -0.05094950388703694
+  },
+  {
+   "threshold_pp": 2.5,
+   "n": 107,
+   "roi": -0.1727973466239841
+  },
+  {
+   "threshold_pp": 3.0,
+   "n": 61,
+   "roi": -0.16472571705902309
+  },
+  {
+   "threshold_pp": 3.5,
+   "n": 35,
+   "roi": -0.24821080895210582
+  },
+  {
+   "threshold_pp": 4.0,
+   "n": 20,
+   "roi": -0.25073703458007074
+  },
+  {
+   "threshold_pp": 4.5,
+   "n": 10,
+   "roi": -0.4357670578009561
+  },
+  {
+   "threshold_pp": 5.0,
+   "n": 6,
+   "roi": -0.6944444444444443
+  },
+  {
+   "threshold_pp": 5.5,
+   "n": 5,
+   "roi": -0.6333333333333333
+  },
+  {
+   "threshold_pp": 6.0,
+   "n": 3,
+   "roi": -0.38888888888888884
+  },
+  {
+   "threshold_pp": 6.5,
+   "n": 1,
+   "roi": 0.8333333333333334
+  },
+  {
+   "threshold_pp": 7.0,
+   "n": 1,
+   "roi": 0.8333333333333334
+  },
+  {
+   "threshold_pp": 7.5,
+   "n": 1,
+   "roi": 0.8333333333333334
+  },
+  {
+   "threshold_pp": 8.0,
+   "n": 1,
+   "roi": 0.8333333333333334
+  },
+  {
+   "threshold_pp": 8.5,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 9.0,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 9.5,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 10.0,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 10.5,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 11.0,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 11.5,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 12.0,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 12.5,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 13.0,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 13.5,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 14.0,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 14.5,
+   "n": 0,
+   "roi": NaN
+  },
+  {
+   "threshold_pp": 15.0,
+   "n": 0,
+   "roi": NaN
+  }
+ ]
+}

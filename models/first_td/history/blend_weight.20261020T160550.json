@@ -1,0 +1,41 @@
+{
+  "kind": "first_td_blend",
+  "method": "geometric_within_game",
+  "source": "fitted",
+  "market_weight": 0.5069029235937206,
+  "nll_winner": 2.686418453130141,
+  "nll_winner_model_only": 2.7239631284684718,
+  "nll_winner_market_only": 2.7347455152486138,
+  "n_games": 796,
+  "n_rows": 19664,
+  "seasons": [
+    2023,
+    2024,
+    2025
+  ],
+  "fit_date": "2026-10-06",
+  "out_of_sample": {
+    "metric": "mean -log p(first scorer), games whose scorer was priced; blend minus other, negative favours the blend",
+    "fit_2023_score_2024": {
+      "w": 0.604,
+      "games": 266,
+      "vs_model": -0.0229,
+      "vs_market": -0.0739
+    },
+    "fit_2023_2024_score_2025": {
+      "w": 0.496,
+      "games": 262,
+      "vs_model": -0.0417,
+      "vs_market": -0.0454
+    },
+    "fit_2023_2025_score_2026_wk1_4": {
+      "w": 0.507,
+      "games": 61,
+      "vs_model": -0.0915,
+      "se_model": 0.0337,
+      "vs_market": 0.0283,
+      "se_market": 0.0324
+    },
+    "gated": "2026-10-06"
+  }
+}

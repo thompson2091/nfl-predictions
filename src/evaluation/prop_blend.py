@@ -54,6 +54,17 @@ def _backtest(market: str, season: int) -> pl.DataFrame | None:
     need = {"p_model", "fair_prob", "y_over"}
     if not need <= set(d.columns):
         return None
+    # The SERVED calibration, where the backtest kept the raw number: the
+    # file's own `p_model` is calibrated by the validation-only fit, which is
+    # right for scoring the test season and not what the board serves.
+    # See `src/models/ou_calibration.py`.
+    if "p_model_raw" in d.columns:
+        from src.models import ou_calibration
+
+        cal = ou_calibration.load(market)
+        if cal and cal.get("kind", "").endswith("_served"):
+            d = d.with_columns(pl.Series(
+                "p_model", ou_calibration.apply(d["p_model_raw"].to_numpy(), cal)))
     return d.drop_nulls(list(need))
 
 

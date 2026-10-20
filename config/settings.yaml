@@ -344,7 +344,7 @@ models:
     - build_receiver_features
     - build_rushing_efficiency_features
     - build_score_first_features
-    - build_situational_features
+    - build_roster_situational_features  # renamed 2026-09-24; same 8 columns
     - build_snap_features
     - build_td_proxy_features
     - build_td_streak_features

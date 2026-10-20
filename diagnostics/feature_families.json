@@ -1,7 +1,7 @@
 {
-  "n_features": 236,
-  "n_columns_mapped": 355,
-  "n_families": 39,
+  "n_features": 239,
+  "n_columns_mapped": 362,
+  "n_families": 41,
   "unattributed": [
     "has_scored_td",
     "is_high_snap",
@@ -296,6 +296,9 @@
       "practice_full",
       "practice_limited"
     ],
+    "build_projected_starter_features": [
+      "is_projected_qb1"
+    ],
     "build_qb_features": [
       "team_qb_rush_td_rate_avg_5g",
       "team_qb_rush_td_rate_szn_avg",
@@ -322,6 +325,16 @@
       "ngs_percent_share_of_intended_air_yards_avg_5g",
       "ngs_percent_share_of_intended_air_yards_szn_avg"
     ],
+    "build_roster_situational_features": [
+      "career_seasons",
+      "is_new_team",
+      "is_post_bye",
+      "is_revenge_game",
+      "is_role_change",
+      "is_season_opener",
+      "rest_advantage",
+      "weeks_since_last_game"
+    ],
     "build_rushing_efficiency_features": [
       "ngs_efficiency_avg_3g",
       "ngs_efficiency_avg_5g",
@@ -340,16 +353,6 @@
       "team_home_scored_first_rate_szn",
       "team_team_scored_first_flag_rate_5g",
       "team_team_scored_first_flag_rate_szn"
-    ],
-    "build_situational_features": [
-      "career_seasons",
-      "is_new_team",
-      "is_post_bye",
-      "is_revenge_game",
-      "is_role_change",
-      "is_season_opener",
-      "rest_advantage",
-      "weeks_since_last_game"
     ],
     "build_snap_features": [
       "snap_pct"
@@ -410,6 +413,14 @@
       "team_target_was_rush_rate_szn",
       "team_team_scored_target_rate_5g",
       "team_team_scored_target_rate_szn"
+    ],
+    "build_vacated_share": [
+      "vac_rush_share",
+      "vac_rush_share_inherit",
+      "vac_rush_share_pos",
+      "vac_target_share",
+      "vac_target_share_inherit",
+      "vac_target_share_pos"
     ],
     "build_vegas_features": [
       "implied_team_total",

@@ -240,6 +240,13 @@ def board_for_week(market: str, season: int, week: int,
     # comes out before ours is set beside theirs. On this market that is almost
     # always a no-op: every line in the first archived sample was a half-point.
     raw = np.clip(over / np.clip(1.0 - push, 1e-9, None), 0.0, 1.0)
+    # Calibrated: the distribution is too narrow, so its raw over probability
+    # is several times too extreme. Monotone, so no line or player reorders.
+    # `model_uncalibrated` keeps the number before it. See
+    # src/models/ou_calibration.py.
+    from src.models import ou_calibration
+    uncal = raw
+    raw = ou_calibration.apply(uncal, ou_calibration.load(market))
 
     w = load_blend(market)
     blended = raw if w is None else blend_to_market(raw, b["fair_prob"].to_numpy(), w)
@@ -248,6 +255,7 @@ def board_for_week(market: str, season: int, week: int,
         pl.Series("p_over_raw", over),
         pl.Series("p_push", push),
         pl.Series("model_only", raw),
+        pl.Series("model_uncalibrated", uncal),
         # No Adjusted without a fair price: where only one side was posted
         # the blend had nothing to weigh and returned the raw model, which
         # then read as "Adjusted" on 0.3-0.4% of closes.

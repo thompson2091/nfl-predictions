@@ -2748,18 +2748,13 @@ def test_candidate_filter_thresholds_actually_bite():
                 f"candidate_filter {cfg} changed nothing")
 
 
-def test_an_unplayed_game_is_not_a_game_where_nobody_scored():
-    """`target.is_not_null()` does not mean "this game was played".
+def test_an_unplayed_game_has_no_target():
+    """An unplayed game is null, a played one is 0 or 1 — never the reverse.
 
-    Rows for the upcoming season carry `target = 0`, not null. Filtering on
-    nullity therefore counts every unplayed fixture as a game in which nobody
-    scored. That is how a real 99.3% scorer coverage read as 80.2% and made the
-    plan's ceiling figures look wrong when they were right to the decimal.
-
-    Nothing in the modeling path is affected — training and the walk-forward
-    select on `season`, not on target nullity — so this is a guard for the
-    analysis code that keeps being written against these frames, which is where
-    it actually bit.
+    Until 2026-10-20 rows for unplayed games carried `target = 0`, so every
+    `target.is_not_null()` filter counted unplayed fixtures as games in which
+    nobody scored (a real 99.3% scorer coverage read as 80.2%). The candidate
+    builder now nulls them (`candidates.null_unplayed`); this keeps it so.
     """
     import polars as pl
     from src.utils.config import get_config
@@ -2771,41 +2766,15 @@ def test_an_unplayed_game_is_not_a_game_where_nobody_scored():
     if upcoming.height == 0:
         pytest.skip(f"no {predict_season} candidate rows yet")
 
-    assert upcoming["target"].null_count() == 0, (
-        "if unplayed rows ever become null, delete this test and the workaround "
-        "it documents")
-
-    # Per week, not per season. This used to assert the predict season held no
-    # scorer at all, which was true only while the season had not started — on
-    # 2026-09-15, week 1 having been played and extracted, it failed on 73
-    # perfectly correct anytime-TD scorers. A played week in the predict season
-    # is supposed to have them; that is what makes the week gradeable.
-    pbp_weeks = (pl.scan_parquet(get_path("raw") / "pbp.parquet")
-                 .filter(pl.col("season") == predict_season)
-                 .select("week").unique().collect()["week"].to_list())
-    played = sorted(int(w) for w in pbp_weeks)
-
-    unplayed = upcoming.filter(~pl.col("week").is_in(played))
-    assert unplayed["target"].sum() == 0, (
-        "an unplayed week cannot contain a scorer")
-
-    # The other half of the same invariant, and the one that would have caught
-    # 02_targets.py extracting only the configured market: a week whose
-    # play-by-play is on disk must have produced labels from it.
-    for wk in played:
-        scorers = upcoming.filter(pl.col("week") == wk)["target"].sum()
-        assert scorers > 0, (
-            f"{predict_season} week {wk} has play-by-play but no scorer in the "
-            "candidate matrix — targets were not extracted for this market")
-
-    # The correct test for "played" is the season, not the target.
-    played = df.filter(pl.col("season") < predict_season)
-    games = played["game_id"].n_unique()
-    scored = played.filter(pl.col("target") == 1)["game_id"].n_unique()
-    assert scored / games > 0.95, (
-        f"only {scored / games:.1%} of played games have a scorer; either "
-        "coverage has collapsed or unplayed rows are being counted again")
-
+    pbp_games = set(pl.scan_parquet(get_path("raw") / "pbp.parquet")
+                    .filter(pl.col("season") == predict_season)
+                    .select("game_id").unique().collect()["game_id"].to_list())
+    played = upcoming.filter(pl.col("game_id").is_in(list(pbp_games)))
+    unplayed = upcoming.filter(~pl.col("game_id").is_in(list(pbp_games)))
+    assert unplayed["target"].null_count() == unplayed.height, (
+        "an unplayed game carries a target")
+    assert played["target"].null_count() == 0, (
+        "a played game lost its target")
 
 def test_kickoff_time_is_eastern_and_converted_to_an_instant():
     """The schedule's `gametime` is US Eastern for every game, including London.

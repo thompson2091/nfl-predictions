@@ -1,14 +1,14 @@
 {
  "kind": "passing_yards_market_blend_served",
- "weight": 0.31,
+ "weight": 0.51,
  "n": 10094,
- "fit_log_loss": 0.6737481635537815,
- "model_log_loss": 0.6882001314180294,
+ "fit_log_loss": 0.6724989208756913,
+ "model_log_loss": 0.6767636061226476,
  "market_log_loss": 0.6768469244994533,
- "fit_date": "2026-10-19",
+ "fit_date": "2026-10-20",
  "fitted_on": [
   2024,
   2025
  ],
- "validation_weight": 0.39
+ "validation_weight": 0.53
 }

@@ -1,0 +1,16 @@
+{
+ "a": 0.03900378072538615,
+ "b": 0.6650011910466395,
+ "n": 7370,
+ "log_loss_raw": 0.6706703622268717,
+ "log_loss_calibrated": 0.6629441864448965,
+ "kind": "receptions_ou_calibration",
+ "fitted_on": [
+  2024
+ ],
+ "scored_on": 2025,
+ "test_log_loss_raw": 0.6945536483685569,
+ "test_log_loss_calibrated": 0.6834296276765546,
+ "test_log_loss_book": 0.6743248900496848,
+ "fit_date": "2026-10-20"
+}

@@ -20,7 +20,9 @@ from src.features.td_proxy_features import build_td_proxy_features
 from src.features.receiver_features import build_receiver_features
 from src.features.rushing_efficiency_features import build_rushing_efficiency_features
 from src.features.matchup_features import build_matchup_interaction_features
-from src.features.injury_features import build_injury_features, build_vacated_share
+from src.features.injury_features import (build_injury_features,
+                                          build_projected_starter_features,
+                                          build_vacated_share)
 from src.features.pace_features import build_pace_features
 from src.features.score_first_features import build_score_first_features
 from src.features.td_streak_features import build_td_streak_features
@@ -256,6 +258,30 @@ def _carry_forward_team(team_feats: pl.DataFrame, predict_season: int,
                           within_season=within_season)
 
 
+def _to_next_game(feats: pl.DataFrame, schedules: pl.DataFrame) -> pl.DataFrame:
+    """Relabel each (player, team, week) row onto that team's NEXT game.
+
+    Snap share is "last game's share", and was moved there with `week + 1`.
+    After a bye, week + 1 IS the bye: the value landed on a week with no game,
+    and the game after the bye read null, which the model takes as 0 (audit
+    2026-10-19: 95% null on post-bye rows vs 5.3% otherwise; 10% of the anytime
+    LGBM's split importance). The team's own schedule says which week is next.
+    A row with no later game in its season (the last one) has nowhere to go
+    and is dropped, as week + 1 dropped it before.
+    """
+    games = schedules.select("season", "week", "home_team", "away_team")
+    tw = (pl.concat([games.select("season", "week", pl.col("home_team").alias("team")),
+                     games.select("season", "week", pl.col("away_team").alias("team"))])
+          .unique().sort(["team", "season", "week"])
+          .with_columns(pl.col("week").shift(-1).over(["team", "season"]).alias("_next"))
+          .drop_nulls("_next")
+          .with_columns(pl.col("season").cast(feats["season"].dtype),
+                        pl.col("week").cast(feats["week"].dtype),
+                        pl.col("_next").cast(feats["week"].dtype)))
+    return (feats.join(tw, on=["team", "season", "week"], how="inner")
+            .with_columns(pl.col("_next").alias("week")).drop("_next"))
+
+
 def _load_optional_parquet(name: str) -> pl.DataFrame:
     """Load a parquet file, returning empty DataFrame if missing."""
     path = get_path("raw") / f"{name}.parquet"
@@ -301,8 +327,9 @@ def assemble_features() -> pl.DataFrame:
     # own shift(1) gives that game a row holding every game played. Without
     # it the carry-forward projected a row that was already shifted, and the
     # upcoming board read team form one game stale. Player builders and the
-    # schedule-driven ones (coach, score-first) do not need it; the opening-
-    # drive family is left on the carry. So are coverage and personnel: 2026
+    # schedule-driven ones (coach, score-first) do not need it, and the
+    # opening-drive family reads the schedule itself (an as-of join onto every
+    # team-game). Coverage and personnel stay on the carry: 2026
     # play-by-play has no participation data for them, so a next-game row
     # rolls over nothing and comes out null (served as 0.0), where the carry
     # at least holds the end-of-2025 rate. See `src/features/next_game.py`
@@ -317,8 +344,8 @@ def assemble_features() -> pl.DataFrame:
 
     game_feats = build_game_features(schedules)
 
-    snap_feats = build_snap_features(snap_counts, rosters)
-    snap_feats = snap_feats.with_columns((pl.col("week") + 1).alias("week"))
+    snap_raw = build_snap_features(snap_counts, rosters)
+    snap_feats = _to_next_game(snap_raw, schedules)
 
     dc_feats = build_depth_chart_features(depth_charts)
 
@@ -392,7 +419,7 @@ def assemble_features() -> pl.DataFrame:
     print(f"  Goal line features: {goalline_feats.shape}")
 
     # === Opening drive features ===
-    od_team_feats, od_player_feats = build_opening_drive_features(pbp, spine)
+    od_team_feats, od_player_feats = build_opening_drive_features(pbp, spine, schedules)
     print(f"  Opening drive team features: {od_team_feats.shape}")
     print(f"  Opening drive player features: {od_player_feats.shape}")
 
@@ -423,6 +450,10 @@ def assemble_features() -> pl.DataFrame:
     print(f"  Starter lookup: {starters.shape} "
           f"({starters['season'].n_unique()} seasons)")
     injury_player_feats, injury_team_feats = build_injury_features(injuries, starters)
+    projected_qb_feats = (build_projected_starter_features(
+        depth_charts, dc_new, schedules, injuries)
+        if not injuries.is_empty() else pl.DataFrame())
+    print(f"  Projected-starter features: {projected_qb_feats.shape}")
     # Its own family so it can be ablated on its own; see practice_features.
     practice_feats = build_practice_features(injuries)
     print(f"  Practice-report features: {practice_feats.shape}")
@@ -525,14 +556,10 @@ def assemble_features() -> pl.DataFrame:
         team_ftd_feats = _carry_forward_team(team_ftd_feats, predict_season, "team")
         team_rz_feats = _carry_forward_team(team_rz_feats, predict_season, "team")
         opp_pos_feats = _carry_forward_team(opp_pos_feats, predict_season, "opponent")
-        # Projected, despite the family being sparse by construction — measured
-        # both ways on 2026 week 2. Opting out leaves all 32 teams at 1.00 null
-        # against a 0.47 training rate, which tells the model no team has ever
-        # scored on an opening drive: 7 skew warnings and a 1.0 SD shift toward
-        # zero. Projecting gives every team a real rate — 1 skew warning and a
-        # 1.2 SD shift the other way. Neither matches training, because who
-        # receives is a coin toss and cannot be known before kickoff; this is
-        # the less wrong of the two.
+        # No longer sparse: since 2026-10-20 the builder gives every scheduled
+        # team-game the rate over receiving games strictly before it, so the
+        # null-when-kicking leak is gone and unplayed games already have rows.
+        # The carry is a no-op here, kept so a schedule gap still gets filled.
         od_team_feats = _carry_forward_team(od_team_feats, predict_season, "team")
         qb_feats = _carry_forward_team(qb_feats, predict_season, "team")
 
@@ -547,8 +574,10 @@ def assemble_features() -> pl.DataFrame:
 
         # Carry forward snaps — but override with depth chart for predict season
         # Raw carry-forward: last known snap_pct from prior season
+        # From the game-labeled frame: the relabeled one has already dropped
+        # each season's last game, which has no next game in that season.
         last_snaps = (
-            snap_feats.filter(pl.col("season") == predict_season - 1)
+            snap_raw.filter(pl.col("season") == predict_season - 1)
             .sort(["player_id", "week"]).group_by("player_id").last()
             .with_columns([
                 pl.lit(predict_season).alias("season").cast(snap_feats["season"].dtype),
@@ -674,6 +703,11 @@ def assemble_features() -> pl.DataFrame:
     if not injury_player_feats.is_empty():
         df = df.join(injury_player_feats, on=["player_id", "season", "week"], how="left")
 
+    if not projected_qb_feats.is_empty():
+        df = df.join(projected_qb_feats.with_columns(
+            pl.col("season").cast(df["season"].dtype),
+            pl.col("week").cast(df["week"].dtype)),
+            on=["player_id", "season", "week"], how="left")
     if not practice_feats.is_empty():
         before = df.height
         df = df.join(practice_feats, on=["player_id", "season", "week"], how="left")

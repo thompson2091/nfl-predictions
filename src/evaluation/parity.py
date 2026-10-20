@@ -101,6 +101,20 @@ def compare(season: int, week: int, target_type: str,
     if served is None:
         return None
 
+    # THE MODEL PATH, NOT THE PRICE SOURCE. Replaying a past week through the
+    # served path prices it from the LIVE odds cache, which holds a stray
+    # handful of rows for an old week (13 of 375 on 2025 week 1), while the
+    # backtest frame is priced from the archive. Those rows are blended
+    # against a different price on each side and disagree by design (up to
+    # 0.22 on 2026-10-20), while every unpriced row agreed to 0.0. Comparing
+    # them turned a price-source difference into a parity failure, so priced
+    # rows are set aside and counted; the blend has its own tests.
+    priced_out = 0
+    if "has_market_price" in served.columns:
+        priced = served["has_market_price"].cast(pl.Boolean).fill_null(False)
+        priced_out = int(priced.sum())
+        served = served.filter(~priced)
+
     keep = [c for c in ("prob_calibrated", "final") if c in bt.columns]
     joined = served.select(["game_id", "player_name", "probability"]).join(
         bt.select(["game_id", "player_name"] + keep),
@@ -112,6 +126,7 @@ def compare(season: int, week: int, target_type: str,
     out = {
         "target_type": target_type, "season": season, "week": week,
         "model": model_name, "n": int(joined.height),
+        "priced_set_aside": priced_out,
     }
     for col in keep:
         gap = (joined["probability"] - joined[col]).abs()

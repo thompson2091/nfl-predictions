@@ -171,3 +171,74 @@ def build_vacated_share(df: pl.DataFrame) -> pl.DataFrame:
               .alias(f"{k}_inherit"))
     return d.drop([c for c in d.columns if c.startswith(("_t_", "_p_"))]
                   + ["_vpos", "_vout"])
+
+
+def build_projected_starter_features(
+    depth_charts_old: pl.DataFrame | None,
+    depth_charts_new: pl.DataFrame | None,
+    schedules: pl.DataFrame,
+    injuries: pl.DataFrame,
+) -> pl.DataFrame:
+    """`is_projected_qb1`: the best-ranked chart quarterback not ruled out.
+
+    `is_starter` is the depth chart's own rank-1 flag, and when a starter is
+    hurt the chart usually still lists him first that week. The backup who
+    plays then reads `is_starter = 0`, the yardage models' top input, and is
+    projected as a clipboard holder (audit 2026-10-19: every 2026 QB1 projected
+    under 160 passing yards was such a backup, median 99 against 177 thrown;
+    McKee 103.5 against a 201.5 line, 215 thrown). The injury report already
+    says the starter is Out — `starter_out_at_position` — but only on rows of
+    players who are themselves on the report, so the backup never sees it.
+
+    This walks the chart in rank order and skips anyone listed Out or
+    Doubtful for that week. Both are published before kickoff, as the chart
+    is (the new-format chart is the last snapshot strictly before kickoff,
+    see `dc_new_weekly`). Every chart quarterback gets 1 or 0; a quarterback
+    the chart does not list gets null, which is what "no chart" means.
+    """
+    from src.features.context_features import dc_new_weekly
+
+    frames = []
+    if (depth_charts_old is not None and not depth_charts_old.is_empty()
+            and "depth_team" in depth_charts_old.columns):
+        frames.append(
+            depth_charts_old.filter(pl.col("position") == "QB").select(
+                pl.col("gsis_id").alias("player_id"),
+                pl.col("season").cast(pl.Int64), pl.col("week").cast(pl.Int64),
+                pl.col("club_code").alias("team"),
+                pl.col("depth_team").cast(pl.Float64, strict=False)
+                  .cast(pl.Int32).alias("rank")))
+    if (depth_charts_new is not None and not depth_charts_new.is_empty()
+            and "pos_rank" in depth_charts_new.columns):
+        weekly = dc_new_weekly(depth_charts_new, schedules)
+        if not weekly.is_empty():
+            frames.append(weekly.filter(pl.col("position") == "QB").select(
+                "player_id", pl.col("season").cast(pl.Int64),
+                pl.col("week").cast(pl.Int64), "team",
+                pl.col("depth_rank").cast(pl.Int32).alias("rank")))
+    empty = pl.DataFrame(schema={"player_id": pl.Utf8, "season": pl.Int64,
+                                 "week": pl.Int64, "is_projected_qb1": pl.Int8})
+    if not frames:
+        return empty
+    chart = (pl.concat(frames, how="vertical_relaxed")
+             .filter(pl.col("player_id").is_not_null() & pl.col("rank").is_not_null())
+             .group_by(["player_id", "season", "week", "team"])
+             .agg(pl.col("rank").min()))
+
+    ruled_out = (injuries.filter(pl.col("report_status").is_in(["Out", "Doubtful"]))
+                 .select(pl.col("gsis_id").alias("player_id"),
+                         pl.col("season").cast(pl.Int64), pl.col("week").cast(pl.Int64))
+                 .drop_nulls().unique()
+                 .with_columns(pl.lit(True).alias("_out")))
+    chart = (chart.join(ruled_out, on=["player_id", "season", "week"], how="left")
+             .with_columns(pl.col("_out").fill_null(False)))
+    first = (chart.filter(~pl.col("_out"))
+             .sort(["rank", "player_id"])
+             .group_by(["season", "week", "team"]).first()
+             .select("season", "week", "team",
+                     pl.col("player_id").alias("_qb1")))
+    return (chart.join(first, on=["season", "week", "team"], how="left")
+            .with_columns((pl.col("player_id") == pl.col("_qb1")).fill_null(False)
+                          .cast(pl.Int8).alias("is_projected_qb1"))
+            .unique(subset=["player_id", "season", "week"], keep="first")
+            .select("player_id", "season", "week", "is_projected_qb1"))

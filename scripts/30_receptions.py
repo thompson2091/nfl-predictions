@@ -251,6 +251,11 @@ def main() -> int:
         if r:
             results.append(r)
 
+    # The model's own over probability, put on the scale it lands on, then
+    # the blends refit on it. See src/models/ou_calibration.py.
+    from src.models.ou_calibration import calibrate_market
+    calibrate_market("receptions")
+
     # The SERVED weight, refitted on both backtests just written. The
     # validation-only `blend` above stays what the summary reports.
     from src.evaluation.prop_blend import refit_served

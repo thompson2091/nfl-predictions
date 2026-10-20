@@ -1,5 +1,8 @@
 {
   "kind": "team_td_rate",
+  "shutout_k": 1.18,
+  "shutout_said": 0.06714469738370882,
+  "shutout_actual": 0.0677379983726607,
   "design_cols": [
     "intercept",
     "implied_team_total",
@@ -7,10 +10,10 @@
     "abs_spread"
   ],
   "coef": [
-    -0.47161893122427656,
-    0.051946064988492455,
-    0.0038043281545868924,
-    -0.002897730935066331
+    -0.4716189312231562,
+    0.05194606498847572,
+    0.0038043281545714056,
+    -0.002897730935067387
   ],
   "seasons_used": [
     2015,
@@ -25,8 +28,10 @@
   ],
   "n_team_games": 4916,
   "mean_team_tds": 2.4283970707892597,
-  "fitted_mean": 2.428397070789258,
-  "rmse": 1.297881054309718,
-  "fit_date": "2026-10-19",
-  "source": "nflverse play-by-play; lines from nflverse schedules"
+  "fitted_mean": 2.42839707078928,
+  "rmse": 1.2978810543097155,
+  "fit_date": "2026-10-20",
+  "source": "nflverse play-by-play; lines from nflverse schedules",
+  "served": false,
+  "note": "not on the served path for first TD"
 }

@@ -1,10 +1,11 @@
 {
  "kind": "rushing_yards_market_blend",
- "weight": 0.0,
+ "weight": 0.21,
  "n": 9980,
- "fit_log_loss": 0.6689163362975933,
- "model_log_loss": 0.738339379628194,
+ "fit_log_loss": 0.6677784773790306,
+ "model_log_loss": 0.6858568017200147,
  "market_log_loss": 0.6689163362975933,
- "fit_date": "2026-10-19",
- "fitted_on": 2024
+ "fit_date": "2026-10-20",
+ "fitted_on": 2024,
+ "on": "calibrated"
 }

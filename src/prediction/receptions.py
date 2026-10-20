@@ -245,6 +245,13 @@ def board_for_week(season: int, week: int, snapshot: str = "close",
     # Over 5.0 price is a claim about the two outcomes that resolve, not all
     # three, so the push mass comes out before ours is set beside theirs.
     raw = fair_two_way(over, push)
+    # Calibrated: the distribution is too narrow, so its raw over probability
+    # is several times too extreme. Monotone, so no line or player reorders.
+    # `model_uncalibrated` keeps the number before it. See
+    # src/models/ou_calibration.py.
+    from src.models import ou_calibration
+    uncal = raw
+    raw = ou_calibration.apply(uncal, ou_calibration.load("receptions"))
 
     # And ours after. The count model loses to this market on its own — 0.690
     # against 0.673 on 2025 — and wins by a little once shrunk toward it, at a
@@ -259,6 +266,7 @@ def board_for_week(season: int, week: int, snapshot: str = "close",
         pl.Series("p_over_raw", over),
         pl.Series("p_push", push),
         pl.Series("model_only", raw),
+        pl.Series("model_uncalibrated", uncal),
         # No Adjusted without a fair price: where only one side was posted
         # the blend had nothing to weigh and returned the raw model, which
         # then read as "Adjusted" on 0.3-0.4% of closes.

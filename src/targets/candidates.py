@@ -3,6 +3,25 @@ from src.utils.config import get_config
 from src.utils.paths import get_path
 
 
+def null_unplayed(candidates: pl.DataFrame, schedules: pl.DataFrame,
+                  pbp_games: pl.Series) -> pl.DataFrame:
+    """Set `target` null on every game not yet played.
+
+    AN UNPLAYED GAME HAS NO TARGET, NOT A ZERO. Both target branches read "no
+    touchdown found" as 0, which is also what a game nobody has played yet
+    looks like, so weeks 7-18 of 2026 carried target 0 on every row and every
+    `target.is_not_null()` guard downstream passed them as played (audit
+    2026-10-19: 55 WAS @ SF rows during Monday night, 404 D/ST rows).
+    Played means the schedule has a score AND the play-by-play has the game:
+    a score with no plays would grade every candidate 0 from missing data.
+    """
+    scored = schedules.filter(pl.col("home_score").is_not_null())["game_id"]
+    played = pl.col("game_id").is_in(scored.implode()) & pl.col("game_id").is_in(pbp_games.implode())
+    return candidates.with_columns(
+        pl.when(played).then(pl.col("target")).otherwise(None)
+        .cast(pl.Int8).alias("target"))
+
+
 def build_candidates(target_type: str = None) -> pl.DataFrame:
     cfg = get_config()
     if target_type is None:
@@ -132,6 +151,10 @@ def build_candidates(target_type: str = None) -> pl.DataFrame:
             .alias("target")
         ).drop(["_off_scored", "_defst_scored"])
 
+    pbp_games = (pl.scan_parquet(get_path("raw") / "pbp.parquet")
+                 .select("game_id").unique().collect()["game_id"])
+    candidates = null_unplayed(candidates, schedules, pbp_games)
+
     # Deduplicate
     candidates = candidates.unique(subset=["game_id", "player_id"])
 
@@ -145,10 +168,13 @@ def build_candidates(target_type: str = None) -> pl.DataFrame:
     n_defst_positive = candidates.filter(
         (pl.col("target") == 1) & (pl.col("position") == "DEFST")
     ).shape[0]
-    pos_rate = n_positive / n_rows * 100 if n_rows > 0 else 0
+    n_played = candidates.filter(pl.col("target").is_not_null()).shape[0]
+    pos_rate = n_positive / n_played * 100 if n_played > 0 else 0
 
     print(f"Candidates ({target_type}): {n_rows:,} rows, {n_games:,} games -> {path}")
-    print(f"  Positive rate: {n_positive:,} / {n_rows:,} = {pos_rate:.2f}%")
+    n_unplayed = candidates.filter(pl.col("target").is_null()).shape[0]
+    print(f"  Positive rate: {n_positive:,} / {n_played:,} played = {pos_rate:.2f}%")
+    print(f"  Unplayed (target null): {n_unplayed:,} rows")
     print(f"  Offensive TDs: {n_positive - n_defst_positive}")
     print(f"  DEF/ST TDs: {n_defst_positive}")
 

@@ -437,6 +437,12 @@ def run(market: str, skip_train: bool) -> dict:
                (backtest(m, df, fcols, s, market, blend)
                 for s in (cfg["splits"]["val_season"], cfg["splits"]["test_season"]))
                if r]
+    # The model's own over probability, put on the scale it lands on, then
+    # the blends refit on it. Rewrites the backtests just written; `results`
+    # above stay the RAW model's record. See src/models/ou_calibration.py.
+    from src.models.ou_calibration import calibrate_market
+    calibration = calibrate_market(market)
+
     # The SERVED weight, refitted on both backtests just written. The
     # validation-only `blend` above stays what the summary reports.
     from src.evaluation.prop_blend import refit_served
@@ -457,6 +463,8 @@ def run(market: str, skip_train: bool) -> dict:
         "beats_market": bool(results) and all(
             r["model_beats_market"] for r in results),
         "blend": blend,
+        "calibration": calibration and calibration["calibration"]["report"],
+        "blend_calibrated": calibration and calibration["blend"],
         "blend_beats_market": bool(results) and all(
             r.get("blend_beats_market") for r in results),
     }

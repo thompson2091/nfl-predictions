@@ -1,0 +1,16 @@
+{
+ "a": -0.02098353732473539,
+ "b": 0.23701273165513065,
+ "n": 9980,
+ "log_loss_raw": 0.7388835151437178,
+ "log_loss_calibrated": 0.6858568017200147,
+ "kind": "rushing_yards_ou_calibration",
+ "fitted_on": [
+  2024
+ ],
+ "scored_on": 2025,
+ "test_log_loss_raw": 0.71619944724397,
+ "test_log_loss_calibrated": 0.6897277388906179,
+ "test_log_loss_book": 0.692688458529823,
+ "fit_date": "2026-10-20"
+}
