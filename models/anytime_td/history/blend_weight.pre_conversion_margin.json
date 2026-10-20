@@ -1,0 +1,16 @@
+{
+  "kind": "blend_weight",
+  "source": "fitted",
+  "market_weight": 0.6719844965945794,
+  "log_loss": 0.3726901960149656,
+  "log_loss_model_only": 0.3794109368443769,
+  "log_loss_market_only": 0.37473736092183935,
+  "n_rows": 7086,
+  "seasons": [
+    2025
+  ],
+  "fit_date": "2026-10-19",
+  "min_season": 2025,
+  "max_season": 2025,
+  "eligible_rows": 10048
+}
