@@ -245,6 +245,13 @@ def build(payload: dict, season: int | None, week: int | None) -> dict:
     proj = projections(payload, feature_ids(season, week))
     status = _status(season, week)
     avg = averages(season, week)
+    try:
+        from src.models.score_dist import history
+        from src.models.scenarios import fit as scen_fit
+        from src.models.scenarios import for_card as scen_card
+        sfits, shist = scen_fit(), history()
+    except Exception:                                            # noqa: BLE001
+        sfits = shist = None
     out = {}
     for c in cards:
         # Cards are keyed "AWAY_HOME"; the schedule's id carries the week.
@@ -257,5 +264,11 @@ def build(payload: dict, season: int | None, week: int | None) -> dict:
         # Under `_totals`, a key no team code can be.
         lines = {t: team_line(v, avg) for t, v in teams.items()}
         teams["_totals"] = {t: v for t, v in lines.items() if v}
+        # How the game might go, for the scenario picker. See
+        # `src/models/scenarios.py`; absent rather than flat when the
+        # comparable games are too few.
+        sc = scen_card(c, sfits, shist) if sfits else None
+        if sc:
+            teams["_scen"] = sc
         out[c["game_id"]] = teams
     return out

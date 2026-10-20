@@ -1596,7 +1596,12 @@ def payload_v3():
         return out
     p["roster"] = {"ATL_GB": {"ATL": slots(True), "GB": slots(False),
                               "_totals": {"ATL": {"rec_avg": 241.3, "pass_avg": 230.2,
-                                                  "n": 10, "qb": "Q One"}}}}
+                                                  "n": 10, "qb": "Q One"}},
+                              "_scen": {"cells": [{"key": "won big|over", "p": 0.3},
+                                                  {"key": "close|under", "p": 0.7}],
+                                        "teams": {"ATL": {"QB|passing_yards": {
+                                            "cells": [[2.0, 0.4], [0.571, 0.5]],
+                                            "h1": 0.46}}}}}}
     return p
 
 

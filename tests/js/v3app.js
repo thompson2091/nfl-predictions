@@ -425,6 +425,7 @@ if (cards.length) {
 // (`change`), the text fields (`input`), and the ask form (`submit`).
 const handled = new Set(V3CLICKS.concat(
   ['v3week', 'v3gamesel', 'v3sortsel', 'v3gameto', 'v3q', 'v3q2', 'v3l', 'v3lr',
+   'v3rscen',
    'v3askform',
    // The board's and the game's angle controls: two selects, a search box and
    // a range, none of them a click.
@@ -4761,6 +4762,19 @@ if (cards.length && (DATA.roster || {})[cards[0].game_id]) {
      && D.indexOf('61.0%') >= 0 && D.indexOf('+400') >= 0);
   x.v3Do('v3rost', 'q1'); render();
   ok('and tapping again closes it', app().indexOf('rdetw') < 0);
+  // THE SCENARIO PICKER. The fixture's ATL QB passes 231.4; the
+  // "won big|over" cell doubles him, and the first half takes 40% of that.
+  V.rscen = ''; V.rhalf = 'game'; render();
+  ok('the roster offers scenarios and halves',
+     app().indexOf('data-v3rscen') >= 0 && app().indexOf('data-v3rhalf="h1"') >= 0);
+  ok('as projected, a figure is the Props median', app().indexOf('231 pass') >= 0);
+  globalThis.fireDoc('change', { target: { value: 'won big|over',
+    getAttribute: a => a === 'data-v3rscen' ? '' : null } });
+  ok('choosing a scenario shifts the figure', app().indexOf('463 pass') >= 0);
+  x.v3Do('v3rhalf', 'h1'); render();
+  ok('and the first half takes its share of it', app().indexOf('185 pass') >= 0
+     && app().indexOf('first half only') >= 0);
+  V.rscen = ''; V.rhalf = 'game';
   V.game = null; V.tab = 'props'; V.gameTab = 'notes';
 }
 

@@ -1641,6 +1641,7 @@ button{cursor:pointer}
    Away on the left, home on the right, the slot between them, so a row reads
    as a matchup. Each side right- or left-aligned toward the middle. */
 .rostc{padding-bottom:6px}
+.rsc{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
 .rcmp{display:grid;grid-template-columns:minmax(0,1fr) 34px minmax(0,1fr);
   gap:0 6px;align-items:center;border-top:1px solid var(--line3)}
 .rcmp--h{border-top:0;padding-bottom:4px}

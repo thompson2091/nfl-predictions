@@ -3897,6 +3897,34 @@ function v3RostFig(k, v) {
     : k === 'rec' ? v.toFixed(1) : String(Math.max(0, Math.round(v)));
 }
 
+// IF THE GAME GOES THIS WAY. Built by `src/models/scenarios.py`: per
+// position and stat, what players produced in games that ended in each
+// margin band, over or under, and how much of it came in the first half.
+// Weighted back over this game's odds the scenarios ARE the Props
+// projection, so the picker cannot drift from it. Touchdown chances are
+// whole-game figures and do not move with it.
+const V3SCENSTAT = {pass_yds: 'passing_yards', rush_yds: 'rushing_yards',
+                    rec_yds: 'receiving_yards', rec: 'receptions'};
+
+function v3ScenLabel(key, c, total) {
+  const b = key.split('|')[0], side = key.split('|')[1];
+  const m = {'won big': c.home + ' by 14+', 'won': c.home + ' by 4\u201313',
+             'close': 'Within 3', 'lost': c.away + ' by 4\u201313',
+             'lost big': c.away + ' by 14+'}[b] || b;
+  return m + ', ' + side + (has(total) ? ' ' + total : '');
+}
+
+//: The factor for one figure: the chosen scenario's shift times the half's
+//: share. 1 when nothing is chosen or the stat was not fitted for the spot.
+function v3ScenFactor(sc, team, pos, k) {
+  if (!sc || !V3SCENSTAT[k]) return 1;
+  const f = ((sc.teams || {})[team] || {})[pos + '|' + V3SCENSTAT[k]];
+  const i = (sc.cells || []).findIndex(x => x.key === V.rscen);
+  let m = 1, h1 = f ? f.h1 : 0.5;
+  if (f && i >= 0) { m = f.cells[i][0]; h1 = f.cells[i][1]; }
+  return m * (V.rhalf === 'h1' ? h1 : V.rhalf === 'h2' ? 1 - h1 : 1);
+}
+
 //: One line under the name: the three figures a reader compares across.
 function v3RostLine(s) {
   const parts = {
@@ -3905,7 +3933,8 @@ function v3RostLine(s) {
     WR: [['rec', ' catches'], ['rec_yds', ' yds'], ['td', ' TD']],
   }[s.pos === 'TE' ? 'WR' : s.pos] || [];
   return parts.map(p => {
-    const f = v3RostFig(p[0], s[p[0]]);
+    const f = v3RostFig(p[0], has(s[p[0]]) ? s[p[0]] * (s._f ? s._f(p[0]) : 1)
+                                          : s[p[0]]);
     return f == null ? null : f + p[1];
   }).filter(Boolean).join(' · ');
 }
@@ -3958,8 +3987,30 @@ function v3Roster(c) {
     return '<div class="card"><p class="lede" style="font-size:15px">No depth '
       + 'chart for this game yet.</p></div>';
   }
-  const A = R[c.away] || [], H = R[c.home] || [];
-  let out = '<div class="card rostc"><div class="rcmp rcmp--h">'
+  const sc = R._scen;
+  if (V.rscen && !(sc && sc.cells.some(x => x.key === V.rscen))) V.rscen = '';
+  const shifted = !!V.rscen || (V.rhalf && V.rhalf !== 'game');
+  const withF = (rows, team) => rows.map(s => Object.assign({}, s, {
+    _f: k => v3ScenFactor(sc, team, s.pos, k)}));
+  const A = withF(R[c.away] || [], c.away), H = withF(R[c.home] || [], c.home);
+  const ctl = '<div class="rsc">'
+    + (sc ? '<div class="picker mxsel"><select data-v3rscen aria-label="If the '
+        + 'game goes this way"><option value=""' + (V.rscen ? '' : ' selected')
+        + '>As projected</option>'
+        + sc.cells.map(x => '<option value="' + esc(x.key) + '"'
+            + (x.key === V.rscen ? ' selected' : '') + '>'
+            + esc(v3ScenLabel(x.key, c, c.total)) + ' \u00b7 ' + v3Pct(x.p)
+            + '</option>').join('') + '</select></div>' : '')
+    + '<div class="seg seg--3">' + v3Seg('v3rhalf', [['game', 'Game'],
+        ['h1', '1st half'], ['h2', '2nd half']], V.rhalf || 'game') + '</div>'
+    + (shifted ? '<p class="sub" style="margin:6px 2px 0">Yards and catches '
+        + 'shifted to what players at each position produced in games that '
+        + (V.rscen ? 'ended ' + esc(v3ScenLabel(V.rscen, c, c.total)) : 'went as this one is priced')
+        + (V.rhalf === 'h1' ? ', first half only' : V.rhalf === 'h2' ? ', second half only' : '')
+        + '. Touchdown chances stay whole-game. Tap a player for the lines, '
+        + 'which are always the full game as projected.</p>' : '')
+    + '</div>';
+  let out = ctl + '<div class="card rostc"><div class="rcmp rcmp--h">'
     + '<b>' + esc(c.away) + '</b><span></span><b>' + esc(c.home) + '</b></div>';
   V3ROSTPOS.forEach(pp => {
     const a = A.filter(s => s.pos === pp[0]), h = H.filter(s => s.pos === pp[0]);
@@ -3987,8 +4038,12 @@ function v3Roster(c) {
   const tl = t => {
     const x = T[t];
     return x ? '<span class="rcmp__p rcmp__p--' + (t === c.away ? 'l' : 'r')
-        + ' rcmp__p--tot"><span class="rcmp__n num">' + Math.round(x.rec_avg)
-        + ' rec \u00b7 ' + Math.round(x.pass_avg) + ' pass</span>'
+        + ' rcmp__p--tot"><span class="rcmp__n num">'
+        // Passing and receiving yards are the same yards, so both take the
+        // quarterback's shift and stay comparable under any scenario.
+        + Math.round(x.rec_avg * v3ScenFactor(sc, t, 'QB', 'pass_yds'))
+        + ' rec \u00b7 ' + Math.round(x.pass_avg * v3ScenFactor(sc, t, 'QB', 'pass_yds'))
+        + ' pass</span>'
         + '<span class="rcmp__f">' + x.n + ' receivers \u00b7 ' + esc(x.qb)
         + '</span></span>'
       : '<span></span>';
@@ -8242,7 +8297,7 @@ const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis
                   'v3pastn', 'v3tlall', 'v3tln',
                   'v3gasort', 'v3gateam', 'v3gascope', 'v3gangle',
                   'v3anglemin', 'v3angleredundant', 'v3anglemore',
-                  'v3sortpick', 'v3rost',
+                  'v3sortpick', 'v3rost', 'v3rhalf',
                   'v3recwho', 'v3recseries', 'v3recmore',
                   'v3recqx', 'v3recview', 'v3recside', 'v3recopen',
                   'v3recmkt', 'v3rectake', 'v3recmin', 'v3recres',
@@ -8380,6 +8435,8 @@ document.addEventListener('change', ev => {
   } else if (t.getAttribute('data-v3gamesel') != null) {
     V.game = t.value === '' ? null : t.value;
     V.shown = V3SHOW; V.open = null; render();
+  } else if (t.getAttribute('data-v3rscen') != null) {
+    V.rscen = t.value || ''; render();
   } else if (t.getAttribute('data-v3anglefrom') != null) {
     V.angleFrom = Number(t.value) || 0; render();
   } else if (t.getAttribute('data-v3angleteam') != null) {
@@ -8664,6 +8721,7 @@ function v3Do(kind, v) {
     case 'v3type': V.betType = v; V.sheet = 'slip'; break;
     case 'v3stake': V.stake = Number(v); V.sheet = 'slip'; break;
     case 'v3rost': V.rostOpen = V.rostOpen === v ? null : v; break;
+    case 'v3rhalf': V.rhalf = v; break;
     case 'v3ask': {
       const qs = v3Questions(V.game);
       V.answer = (qs[Number(v)] || {}).a || '';
