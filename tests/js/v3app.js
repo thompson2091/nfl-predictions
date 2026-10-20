@@ -13,7 +13,7 @@ const x = loadPage(process.argv[2], process.argv[3],
   ['V', 'render', 'v3Screen', 'v3Week', 'v3Games', 'v3Game', 'v3Picks', 'v3SlipBody', 'v3SlipMath',
    'v3SaveSlip', 'v3Saved', 'v3IsSaved',
    'v3Ladder', 'v3Header', 'v3Nav', 'v3Rows', 'v3Do', 'V3TABS', 'V3MKT',
-   'V3CLICKS', 'V3HIST', 'v3Questions', 'v3Value', 'v3Outcomes', 'v3Legs',
+   'V3CLICKS', 'V3HIST', 'v3Questions', 'v3Value', 'v3SameLine', 'v3Outcomes', 'v3Legs',
    'rowsFor', 'served', 'DATA', 'V3SORTS', 'v3Sorted', 'V3CACHE', 'v3Same',
    // v1's null guard, so a check here reads the same way the page does.
    'has', 'KIND', 'v3Diff', 'v3MktLines',
@@ -378,6 +378,13 @@ if (rows.length >= 3) {
 // ── The value verdict never claims more than it has ─────────────────────
 ok('a row with no price gets no verdict',
    v3Value({ kind: 'td', ours: 0.5, dec: null })[0] === '');
+// On the adjusted chance, not the raw model: on 2024-25 the raw model's Good
+// value rows returned -$12 to +$1 per $100 against a claimed +$20.
+ok('a price move is only counted at one line',
+   !x.v3SameLine({ openLine: 49.5, line: 54.5 })
+   && x.v3SameLine({ openLine: 54.5, line: 54.5 }) && x.v3SameLine({}));
+ok('the value verdict reads the adjusted chance, not the raw model',
+   v3Value({ kind: 'td', ours: 0.40, modelOnly: 0.70, dec: 2.0 })[0] === 'Pricey');
 
 // ── Every control the screens emit is handled ───────────────────────────
 //

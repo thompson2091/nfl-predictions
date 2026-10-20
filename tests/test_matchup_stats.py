@@ -194,3 +194,19 @@ def test_every_matchup_metric_has_a_group():
     # The labels are what fit on a phone: five buttons across, so short.
     for _g, label, _m in GROUPS:
         assert len(label) <= 9, f"{label!r} is too long for a five-way segment"
+
+
+def test_league_rates_are_offensive_plays_and_red_zone_is_per_trip():
+    """Special teams diluted every rate: red-zone TD% read 13%, plays 80.6."""
+    import statistics
+
+    try:
+        st = ms.build(2025, 19)
+    except Exception:                                            # noqa: BLE001
+        pytest.skip("no play-by-play")
+    if not st:
+        pytest.skip("no 2025 play-by-play")
+    rz = statistics.mean(t["full"]["off"]["rz_td_pct"] for t in st.values())
+    ppg = statistics.mean(t["full"]["off"]["plays_per_game"] for t in st.values())
+    assert 0.45 < rz < 0.75, rz
+    assert 55 < ppg < 70, ppg

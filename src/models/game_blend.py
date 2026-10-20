@@ -214,7 +214,18 @@ def center_cards(cards: dict, weights: dict) -> None:
             if c.get("model_total") is not None and c.get("total") is not None]
     if not both:
         return
-    gap = sum(float(c["model_total"]) - float(c["total"]) for c in both) / len(both)
+    # THE GAP FROM GAMES STILL TO COME. A started card here carries a model
+    # total recomputed after kickoff (the freeze swaps its own back in later),
+    # and those fed the Monday-night game's centering: WAS @ SF was served
+    # 48.0 on a gap of +0.14 where the frozen totals gave -0.47. A started
+    # card's own centered number is served from the freeze.
+    try:
+        from src.export.projection_freeze import started
+        ahead = [c for c in both if not started(c)]
+    except Exception:                                            # noqa: BLE001
+        ahead = both
+    basis = ahead or both
+    gap = sum(float(c["model_total"]) - float(c["total"]) for c in basis) / len(basis)
     for c in both:
         c["model_total_centered"] = round(float(c["model_total"])
                                           - cen["c"] * gap, 1)

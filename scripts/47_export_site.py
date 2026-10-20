@@ -1230,6 +1230,11 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     # freezing one without the other would leave a card whose adjusted number
     # disagrees with the model number it was adjusted from.
     _freeze_projections(cards, season, week)
+    # AFTER THE FREEZE AND THE BLEND. The ladder's "ours" row reads the blend
+    # and falls back to the model, and built before either it read the model
+    # recomputed today: SEA @ DEN's frozen total was 39.5, its blend 40.2,
+    # and the ladder marked ours at 42.9.
+    _attach_ladders(cards)
     _attach_matchup(cards, season, week)
     # Sorted by kickoff where it is known, so the list reads as a weekend
     # rather than as an alphabet. Games with no time sort last rather than
@@ -1273,6 +1278,20 @@ def _freeze_projections(cards: dict, season: int | None,
               f"{recorded} recorded", file=sys.stderr)
 
 
+def _attach_ladders(cards: dict) -> None:
+    """The line ladders, once the card's own numbers are final."""
+    try:
+        from src.models.score_dist import history, ladders_for_card
+        hist = history()
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  ladders unavailable ({e})", file=sys.stderr)
+        return
+    for c in cards.values():
+        lad = ladders_for_card(c, hist)
+        if lad:
+            c["ladders"] = lad
+
+
 def _attach_scores(cards: dict) -> None:
     """The empirical final-score distribution for every game that has a line.
 
@@ -1282,7 +1301,6 @@ def _attach_scores(cards: dict) -> None:
     """
     try:
         from src.models.score_dist import (for_card, history,
-                                            ladders_for_card,
                                             scenarios_for_card, win_curve,
                                             win_prob)
         hist = history()
@@ -1296,9 +1314,6 @@ def _attach_scores(cards: dict) -> None:
         got = for_card(c, hist)
         if got:
             c["scores"] = got
-        lad = ladders_for_card(c, hist)
-        if lad:
-            c["ladders"] = lad
         unf = scenarios_for_card(c, hist)
         if unf:
             c["unfold"] = unf

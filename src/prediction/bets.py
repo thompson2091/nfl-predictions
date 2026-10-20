@@ -147,13 +147,59 @@ def board_for_week(season: int, week: int, target_type: str, model_name: str,
     games = wk.group_by("game_id").agg(
         [pl.col("total_line").first(), pl.col("spread_line").first()]
     )
+    preds = _dst_keyed(result.with_columns(
+        _norm_name_expr("player_name").alias("player_name_norm")))
+    market = _dst_keyed_market(market)
+    # DE-VIGGED OVER THE PLAYERS ON THE BOARD, as the blend's own book is
+    # (`predict._load_market`). The one-sided normalization divides by the
+    # sum of every implied probability in the game, so a cache that also
+    # holds "no scorer", duplicate D/ST names and players we do not rate
+    # drags every favorite down: McCaffrey's Book read 57.0% here against
+    # the 64.3% the blend used, and the difference became edge.
+    scored = market.join(preds.select(["game_id", "player_name_norm"]).unique(),
+                         on=["game_id", "player_name_norm"], how="inner")
+    if scored.height >= 5:
+        market = scored
     market = devig_market(market, expected_scorers(prior, games))
 
-    preds = result.with_columns(_norm_name_expr("player_name").alias("player_name_norm"))
     board = build_board(preds, market, bankroll)
     if board.height == 0:
         return board, "No players could be matched to a sportsbook price."
     return board, ""
+
+
+#: A team's defense on the board is "DEF/ST"; the books write "<Team> d/st"
+#: or "<Team> defense". Both become one per-team key, because "DEF/ST" alone
+#: is the same name on both sides of every game and a name join would pair
+#: each defense with both prices.
+def _dst_key(team: pl.Expr) -> pl.Expr:
+    return pl.lit("def/st|") + team
+
+
+def _dst_keyed(preds: pl.DataFrame) -> pl.DataFrame:
+    if "team" not in preds.columns:
+        return preds
+    return preds.with_columns(
+        pl.when(pl.col("player_name_norm") == "def/st")
+          .then(_dst_key(pl.col("team")))
+          .otherwise(pl.col("player_name_norm")).alias("player_name_norm"))
+
+
+def _dst_keyed_market(market: pl.DataFrame) -> pl.DataFrame:
+    from src.features.odds_features import TEAM_ABBREV
+
+    full = {k.lower(): v for k, v in TEAM_ABBREV.items()}
+    n = pl.col("player_name_norm")
+    team = (n.str.replace(r"\s+(d/st|dst|defense)$", "")
+             .replace_strict(full, default=None))
+    is_dst = n.str.contains(r"\s(d/st|dst|defense)$")
+    out = market.with_columns(
+        pl.when(is_dst & team.is_not_null()).then(_dst_key(team))
+          .otherwise(n).alias("player_name_norm"))
+    # Not a player: books price these outcomes in the same list.
+    out = out.filter(~pl.col("player_name_norm").str.contains(
+        r"^no (touchdown )?scorer|^no touchdown|^no td"))
+    return out.unique(subset=["game_id", "player_name_norm"], keep="first")
 
 
 def build_board(predictions: pl.DataFrame, market: pl.DataFrame,

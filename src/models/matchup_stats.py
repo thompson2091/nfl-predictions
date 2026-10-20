@@ -149,6 +149,13 @@ def _plays(seasons: list[int] | None = None) -> pl.DataFrame:
         d = d.filter(pl.col("season").is_in(seasons))
     d = d.filter(pl.col("posteam").is_not_null()
                  & pl.col("defteam").is_not_null())
+    # OFFENSIVE PLAYS ONLY. Kickoffs, punts, extra points and no-plays carry a
+    # posteam too, and every rate here was diluted by them: "plays per game"
+    # read 80.6 against 60.6 snaps, and red-zone TD% read 13% because extra
+    # points counted as red-zone plays. Sacks are `pass` in nflverse, so they
+    # stay; kneels and spikes go.
+    if "play_type" in have:
+        d = d.filter(pl.col("play_type").is_in(["pass", "run"]))
     if "season_type" in have:
         d = d.filter(pl.col("season_type") == "REG")
     return d.collect()
@@ -181,9 +188,15 @@ def _per_game(d: pl.DataFrame, by: str) -> pl.DataFrame:
         (pl.col("down") == 2).sum().alias("d2_n"),
         ((pl.col("down") == 2)
          & (pl.col("yards_gained") >= pl.col("ydstogo"))).sum().alias("d2_k"),
-        (pl.col("yardline_100") <= 20).sum().alias("rz_n"),
-        ((pl.col("yardline_100") <= 20) & (pl.col("touchdown") == 1)).sum()
-            .alias("rz_k"),
+        # TRIPS, NOT PLAYS: a drive that reached the 20 counts once, and
+        # counts as a touchdown if it ended in one. "Trips inside the 20 that
+        # end in a touchdown" is what the label says; per play it read 13%
+        # against a true drive rate near 61%.
+        pl.col("fixed_drive").filter(pl.col("yardline_100") <= 20)
+          .n_unique().alias("rz_n"),
+        pl.col("fixed_drive").filter((pl.col("yardline_100") <= 20)
+                                     & (pl.col("fixed_drive_result") == "Touchdown"))
+          .n_unique().alias("rz_k"),
         (pl.col("yards_gained") >= 15).sum().alias("exp_k"),
         pl.col("epa").sum().alias("epa_sum"),
         pl.col("epa").is_not_null().sum().alias("epa_n"),
@@ -197,10 +210,10 @@ def _per_game(d: pl.DataFrame, by: str) -> pl.DataFrame:
         (two_min & pl.col("epa").is_not_null()).sum().alias("tm_epa_n"),
         # DRIVES, not plays: a drive is counted once however long it ran, so
         # these are counted on the drive id rather than summed over snaps.
-        pl.when(late_half).then(pl.col("fixed_drive")).otherwise(None)
-            .n_unique().alias("lh_n"),
-        pl.when(late_half & scored).then(pl.col("fixed_drive")).otherwise(None)
-            .n_unique().alias("lh_k"),
+        # `filter`, not `when(...).otherwise(None)`: `n_unique` counts the
+        # null as one more value, so every team-game had a phantom drive.
+        pl.col("fixed_drive").filter(late_half).n_unique().alias("lh_n"),
+        pl.col("fixed_drive").filter(late_half & scored).n_unique().alias("lh_k"),
         pl.lit(1).alias("game_n"),
     ]).rename({by: "team"})
 

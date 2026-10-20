@@ -685,6 +685,8 @@ function moveTxt(row) {
   // difference would be the margin rather than the market.
   const now = has(row.dec) ? 1 / row.dec : null;
   if (!has(row.openImplied) || !has(now)) return '';
+  // Only a move at one line is a move; see `v3SameLine`.
+  if (has(row.openLine) && has(row.line) && row.openLine !== row.line) return '';
   const d = (now - row.openImplied) * 100;
   if (Math.abs(d) < 0.05) return 'opened here and has not moved';
   const toward = has(row.ours) && ((row.ours > row.book) === (d > 0));

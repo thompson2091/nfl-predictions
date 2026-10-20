@@ -371,13 +371,21 @@ const v3Dash = s => String(s == null ? '' : s).replace(/-/g, '−');
 // $100 are wide enough that a row has to disagree with the book clearly
 // before it is labeled, which is the point.
 //
-// ON THE MODEL'S OWN NUMBER, on every market. This read `ev100`, which prefers
-// the model-only probability on a touchdown market and the blend on a yardage
-// one — so the same tag was computed from a different quantity depending on
-// the tab, and on a yardage row it graded a number with the book baked into it
-// against that book. `v3EvModel` is one basis everywhere.
+// ON THE ADJUSTED NUMBER, on every market. It read the raw model, which is
+// two to six times too sure of itself on the over/unders (calibration slopes
+// 0.16-0.58 fitted on 2024). Measured on 2024-25 main lines, rows tagged Good
+// value on the raw model claimed about +$20 per $100 and returned between
+// -$12 (rushing) and +$1; on the adjusted number the same tag returned +$6
+// to +$19. The raw model stays the headline column; it does not grade the
+// price. One basis everywhere, still, as when this read `ev100`.
+//: Whether a row's open and its current price are quotes on one line. A
+//: market with no line (touchdowns) always is.
+function v3SameLine(row) {
+  return !has(row.openLine) || !has(row.line) || row.openLine === row.line;
+}
+
 function v3Value(row) {
-  const evu = v3EvModel(row);
+  const evu = v3EvAdj(row);
   const ev = has(evu) ? evu * 100 : null;
   const scr = v3Script(row);
   if (!has(ev)) return ['', ''];
@@ -1548,7 +1556,11 @@ function v3Detail(row) {
   add('Opened at', has(row.openOdds) ? v3Dash(american(row.openOdds)) : null);
   // Raw against raw. See `v3NowImplied`: against `book` this read the
   // overround and flipped the sign on 316 of 814 rows.
-  if (has(row.openImplied) && has(v3NowImplied(row))) {
+  // AT THE SAME LINE OR NOT AT ALL. The open is attached per player, at
+  // whatever line he opened; on 89-95% of yardage rows the line had moved,
+  // and a 49.5 price set against a 54.5 one read as a 5-7pp "move" where the
+  // same-line move was about 1pp.
+  if (has(row.openImplied) && has(v3NowImplied(row)) && v3SameLine(row)) {
     const mv = (v3NowImplied(row) - row.openImplied) * 100;
     add('Moved', (mv > 0 ? '+' : '') + mv.toFixed(1) + 'pp since open');
   }
@@ -1692,7 +1704,8 @@ function v3Explainer() {
     + '<p class="lede" style="font-size:15px;line-height:20px">'
     + '<b style="color:var(--ink)">Our chance</b> is how often we think it '
     + 'happens. <b style="color:var(--ink)">Good value</b> means that at this '
-    + 'price, the bet should come out ahead over time if our chance is right. '
+    + 'price, the bet should come out ahead over time on our adjusted chance, '
+    + 'the one that already weighs the book\u2019s price. '
     + '<b style="color:var(--ink)">Pricey</b> means the sportsbook is charging '
     + 'too much. A likely pick can still be pricey. We rate prices; you decide '
     + 'what to bet.</p>'
@@ -4968,6 +4981,7 @@ function v3Clv(rows) {
   for (const r of rows || []) {
     const open = r.openImplied, now = v3NowImplied(r), ours = betProb(r);
     if (!has(open) || !has(now) || !has(ours)) continue;
+    if (!v3SameLine(r)) continue;        // a different line is not a move
     if (ours <= open) continue;          // we did not rate it above the open
     n++;
     if (now > open) toward++;
