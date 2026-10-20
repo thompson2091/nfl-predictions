@@ -378,6 +378,13 @@ const v3Dash = s => String(s == null ? '' : s).replace(/-/g, '−');
 // -$12 (rushing) and +$1; on the adjusted number the same tag returned +$6
 // to +$19. The raw model stays the headline column; it does not grade the
 // price. One basis everywhere, still, as when this read `ev100`.
+//
+// RARE, AND NOT PROVEN. Since the over/under calibration (2026-10-20) the
+// adjusted chance seldom clears +5 on those markets. Out of sample on 2025
+// overs (calibration and blend fitted on 2024 only): 4 of about 23,000
+// catches, receiving and rushing lines tagged; passing yards 135 of 3,234,
+// returning +22.6 per $100 [-9.9, +51.3] — indistinguishable from zero. The
+// explainer says so rather than letting the tag read as a found edge.
 //: Whether a row's open and its current price are quotes on one line. A
 //: market with no line (touchdowns) always is.
 function v3SameLine(row) {
@@ -1721,7 +1728,10 @@ function v3Explainer() {
     + '<b style="color:var(--ink)">Our chance</b> is how often we think it '
     + 'happens. <b style="color:var(--ink)">Good value</b> means that at this '
     + 'price, the bet should come out ahead over time on our adjusted chance, '
-    + 'the one that already weighs the book\u2019s price. '
+    + 'the one that already weighs the book\u2019s price. It is rare, and '
+    + 'its record is not proven: on last season\u2019s lines it fired on about '
+    + '1 in 25 passing-yards lines and almost never elsewhere, and what it '
+    + 'returned could still be luck. '
     + '<b style="color:var(--ink)">Pricey</b> means the sportsbook is charging '
     + 'too much. A likely pick can still be pricey. We rate prices; you decide '
     + 'what to bet.</p>'
@@ -4412,21 +4422,27 @@ function v3GameScores(c) {
          + '\u2014 ' + d.scores_n + ' games \u2014 because a scoreline needs far '
          + 'more history behind it than a margin band does.</p>' : '')
     + '<div class="two" style="margin-top:12px">'
+    // HOW OFTEN, NOT HOW LIKELY. These are the share of those past games
+    // that went each way, and read as "to win" they disagreed with the
+    // card's win chance by 3.6pp on average, 5+ on 27 of 93 cards (audit
+    // 2026-10-19: LAC @ BUF 64.1% here against 74.5% on the card).
     + '<div class="box' + wonTone + '"><span class="eyebrow">' + esc(winTeam)
-    + ' to win</span><b class="num">' + winPct.toFixed(0) + '%</b>'
+    + '\u2019s side won</span><b class="num">' + winPct.toFixed(0) + '%</b>'
     + '<span class="sub num">'
     + (played ? (tied ? 'it ended level'
                  : winHit ? esc(winTeam) + ' did' : esc(winTeam) + ' did not')
               : winLo.toFixed(0) + '\u2013' + winHi.toFixed(0) + '% range')
     + '</span></div>'
-    + '<div class="box' + overTone + '"><span class="eyebrow">'
-    + (overFav ? 'Over ' : 'Under ') + d.total + '</span>'
+    + '<div class="box' + overTone + '"><span class="eyebrow">Went '
+    + (overFav ? 'over ' : 'under ') + d.total + '</span>'
     + '<b class="num">' + totPct.toFixed(0) + '%</b>'
     + '<span class="sub num">'
     + (played ? 'finished ' + finalTot
                 + (push ? ', push' : wentOver ? ', over' : ', under')
               : totLo.toFixed(0) + '\u2013' + totHi.toFixed(0) + '% range')
     + '</span></div></div>'
+    + '<p class="help">Both are how often it happened in those games, not our '
+    + 'win chance or total \u2014 those are on the game card.</p>'
     + '<p class="help">Average result in those games: '
     + d.mean_total + ' total points, winner by '
     + Math.abs(d.mean_margin) + '.</p></div>'

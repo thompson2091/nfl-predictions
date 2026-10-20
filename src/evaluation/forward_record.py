@@ -39,7 +39,12 @@ RULES: tuple[tuple[str, str], ...] = (
 
 #: The two selection rules are subsets of `model side`. Where each was found
 #: decides the first week that can test it — see `tracked_rules.RULES`.
-SINCE = {"model confident": 2, "model under": 6}
+#: "model under" was read off weeks 2-4, so week 5 is its first unseen week,
+#: and its picks were recorded before those games. It started at 6, which
+#: dropped the one week that pulls its interval across zero (audit
+#: 2026-10-19: week 6 alone +0.49 [+0.16, +0.82]; with week 5 +0.21
+#: [-0.04, +0.46]).
+SINCE = {"model confident": 2, "model under": 5}
 UNDER_MARKETS = ("receptions", "rushing_yards")
 
 #: The stat each market settles against, in `weekly_stats`.

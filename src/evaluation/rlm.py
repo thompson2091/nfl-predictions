@@ -226,9 +226,13 @@ def evaluate(seasons: list[int] | None = None,
         # CLUSTERED BY GAME. One game carries up to five of these bets and
         # they settle on the same afternoon; counted as independent, 1,453
         # rows from 787 games claimed the precision of 1,453. CR0 over games.
+        # The archive's `game_id` here is the matchup ("DET_IND"), so a
+        # repeat across seasons shared one cluster: 895 games in 594
+        # clusters (audit 2026-10-19). Season and week make it the game.
+        keys = [k for k in ("season", "week", "game_id") if k in s.columns]
         if "game_id" in s.columns and n > 1:
             per_game = (s.with_columns(per_bet.alias("_r"))
-                         .group_by("game_id").agg(pl.col("_r").sum().alias("t"),
+                         .group_by(keys).agg(pl.col("_r").sum().alias("t"),
                                                   pl.len().alias("k")))
             G = per_game.height
             mean_r = float(per_bet.mean())

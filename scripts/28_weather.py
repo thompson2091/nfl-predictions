@@ -156,7 +156,11 @@ def fetch(seasons: list[int] | None = None) -> "pl.DataFrame":
     a dozen seasons is a few hundred calls against a free service, where one
     call per game would be several thousand.
     """
-    sched = pl.read_parquet(get_path("raw") / "schedules.parquet")
+    from src.features.weather_features import with_usual_roof
+
+    # An unplayed game at a retractable roof has a null roof; the stadium's
+    # usual state decides whether it needs a forecast. See `with_usual_roof`.
+    sched = with_usual_roof(pl.read_parquet(get_path("raw") / "schedules.parquet"))
     games = sched.filter(
         pl.col("roof").is_in(["outdoors", "open"])
         & pl.col("gameday").is_not_null() & pl.col("gametime").is_not_null())

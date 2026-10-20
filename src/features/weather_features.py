@@ -55,6 +55,29 @@ def available(weather_path: Path | None = None) -> bool:
     return (Path(weather_path) if weather_path else WEATHER_PATH).exists()
 
 
+def with_usual_roof(schedules: pl.DataFrame) -> pl.DataFrame:
+    """`roof` with a null filled by the stadium's most common recorded roof.
+
+    nflverse records a retractable roof's state once the game is played, so
+    every unplayed game at one carries null, and null fell through to
+    "outdoor": 29 games in 2026, 3 in week 7 (SF @ ATL, NYG @ HOU, DEN @ ARI)
+    scored on outdoor weather under a roof that is usually closed. The usual
+    state is counted from the stadium's own played games, not declared; a
+    stadium with no history (a new international venue) stays null.
+    """
+    if "stadium" not in schedules.columns or "roof" not in schedules.columns:
+        return schedules
+    usual = (schedules.filter(pl.col("roof").is_not_null()
+                              & pl.col("stadium").is_not_null())
+             .group_by(["stadium", "roof"]).len()
+             .sort(["stadium", "len", "roof"], descending=[False, True, False])
+             .group_by("stadium", maintain_order=True).first()
+             .select("stadium", pl.col("roof").alias("_usual_roof")))
+    return (schedules.join(usual, on="stadium", how="left")
+            .with_columns(pl.coalesce(["roof", "_usual_roof"]).alias("roof"))
+            .drop("_usual_roof"))
+
+
 def build_weather_features(schedules: pl.DataFrame,
                            weather_path: Path | None = None) -> pl.DataFrame:
     """One row per game: forecast conditions, neutralised for indoor venues."""
@@ -69,7 +92,8 @@ def build_weather_features(schedules: pl.DataFrame,
     wx = pl.read_parquet(path).select(
         ["game_id", "wx_temp_f", "wx_wind_mph", "wx_precip_mm"])
 
-    games = schedules.select(["game_id", "roof"]).unique(subset=["game_id"])
+    games = with_usual_roof(schedules).select(["game_id", "roof"]).unique(
+        subset=["game_id"])
     df = games.join(wx, on="game_id", how="left")
 
     indoor = pl.col("roof").is_in(INDOOR).fill_null(False)

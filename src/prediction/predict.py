@@ -419,6 +419,11 @@ def _first_td_market_blend(result: pl.DataFrame, week_df: pl.DataFrame,
 
 def _norm_name_expr(col: str) -> pl.Expr:
     e = pl.col(col).str.to_lowercase().str.strip_chars()
+    # A team in brackets: "Michael Thomas (NO)", 216 rows of 2023 that
+    # matched nobody (audit 2026-10-19). Before the generational suffix,
+    # which it would otherwise hide.
+    # Also "Michael (Saints) Thomas", 122 more.
+    e = e.str.replace_all(r"\s*\([a-z]{2,10}\)", "").str.replace_all(r"\s+", " ")
     for suffix in [" jr.", " sr.", " ii", " iii", " iv", " jr", " sr"]:
         e = e.str.replace(rf"{suffix}$", "")
     return e.str.replace_all(r"\.", "").str.strip_chars()

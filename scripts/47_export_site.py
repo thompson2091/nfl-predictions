@@ -1238,7 +1238,7 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     _attach_coaching(cards, season, week)
     _attach_scores(cards, season, week)
     _attach_injuries(cards, season, week)
-    script_fits = _attach_script_risk(cards)
+    script_fits = _attach_script_risk(cards, season, week)
     _attach_blend(cards)
     # AFTER THE BLEND, because the blend is derived from the model spread and
     # freezing one without the other would leave a card whose adjusted number
@@ -1514,17 +1514,27 @@ _SCRIPT_MARKETS = {"rush": "rushing_yards", "recyds": "receiving_yards",
                    "rec": "receptions", "passyds": "passing_yards"}
 
 
-def _attach_script_risk(cards: dict) -> dict:
+def _attach_script_risk(cards: dict, season: int | None = None,
+                        week: int | None = None) -> dict:
     """Per game and side: which markets are riding on how the game goes.
 
     Fitted once for the whole build — `fit()` reads every player-game since
     2015 — and evaluated per card against that card's own comparable games.
+
+    The comparables are games played BEFORE this week. A past week's card
+    used to read the whole schedule, the game itself included, so its band
+    chances knew the score (audit 2026-10-19). `fit()` keeps every season: it
+    is a slope across thousands of player-games, not a card's own history.
     """
     try:
         from src.models.script_risk import fit, risk
         from src.models.score_dist import history
         fits = fit()
         hist = history()
+        if season is not None and week is not None:
+            hist = hist.filter((pl.col("season") < season)
+                               | ((pl.col("season") == season)
+                                  & (pl.col("week") < week)))
     except Exception as e:                                       # noqa: BLE001
         print(f"  script risk unavailable ({e})", file=sys.stderr)
         return {}

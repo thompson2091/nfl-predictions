@@ -227,15 +227,15 @@ RULES = (
         "name": "model under",
         "market": mkt,
         "kind": "model_under",
-        "since": 6,
-        "status": "unproven — found on this season, so it counts from week 6",
+        "since": 5,
+        "status": "unproven — found on this season, so it counts from week 5",
         "found": "weeks 2-4 of 2026: the model's unders returned +1.96 per "
                  "$100 on catches and +11.07 on rushing yards while its "
                  "overs lost on both — the direction the open-to-close "
                  "drift of every over/under market predicts",
-        "control": "nothing before week 6 counts: the split was read off "
+        "control": "nothing before week 5 counts: the split was read off "
                    "weeks 2-4, so those weeks cannot test it",
-        "out_of_sample": "starts week 6 of 2026",
+        "out_of_sample": "starts week 5 of 2026",
         "expected_per_week": 60,
     }
     for mkt in ("receptions", "rushing_yards")

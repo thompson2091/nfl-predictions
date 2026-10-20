@@ -214,9 +214,30 @@ def stat_lookup(season: int, week: int, stat: str):
     except Exception:                                            # noqa: BLE001
         pass
 
+    # A SNAP WITH NO STAT IS A ZERO, as a book settles it. nflverse writes no
+    # weekly row for a player who played and recorded nothing, so these legs
+    # stayed pending forever: 163 of 2,504 frozen rows in weeks 2-6 (audit
+    # 2026-10-19). `safe_legs.game_logs` is the snap-backed log, keyed by id,
+    # that already reads them as zero; it is the last resort, by id only.
+    played: dict = {}
+    try:
+        from src.evaluation.safe_legs import game_logs
+
+        g = game_logs().filter((pl.col("season") == season)
+                               & (pl.col("week") == week))
+        if stat in g.columns:
+            played = dict(zip(g["player_id"].to_list(), g[stat].to_list()))
+    except Exception:                                            # noqa: BLE001
+        pass
+
     def get(name, player_id=None):
+        # A weekly row can exist with this stat NULL (a receiver's passing
+        # yards); that is the same "played, recorded none" and falls through.
         pid = player_id or name_to_id.get(name)
-        if pid is not None and pid in by_id:
-            return by_id[pid]
-        return by_shown.get(name)
+        got = by_id.get(pid) if pid is not None else None
+        if got is None:
+            got = by_shown.get(name)
+        if got is None and pid is not None:
+            got = played.get(pid)
+        return got
     return get

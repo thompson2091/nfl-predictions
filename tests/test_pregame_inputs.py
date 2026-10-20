@@ -134,3 +134,32 @@ def test_unplayed_games_have_no_target():
                           "home_score": [24, 17, None]})
     out = null_unplayed(cands, sched, pl.Series(["played"]))
     assert out["target"].to_list() == [0, None, None]
+
+
+def test_an_unplayed_game_under_a_retractable_roof_takes_the_usual_state():
+    from src.features.weather_features import with_usual_roof
+
+    s = pl.DataFrame({
+        "game_id": ["a", "b", "c", "d", "e"],
+        "stadium": ["Dome X", "Dome X", "Dome X", "Dome X", "New Venue"],
+        "roof": ["closed", "closed", "open", None, None],
+    })
+    out = dict(zip(*with_usual_roof(s).select("game_id", "roof").to_dict(as_series=False).values()))
+    assert out["d"] == "closed"          # the stadium's usual state
+    assert out["c"] == "open"            # a recorded state is never replaced
+    assert out["e"] is None              # no history: unknown, not outdoor
+
+
+def test_the_three_name_normalizers_agree_and_drop_a_bracketed_team():
+    from src.features.odds_features import _normalize_name
+    from src.ingest.odds_history import _norm_expr
+    from src.prediction.predict import _norm_name_expr
+
+    names = ["Michael Thomas (NO)", "Michael (Saints) Thomas",
+             "Odell Beckham Jr. (MIA)", "A.J. Brown", "Kenneth Walker III"]
+    d = pl.DataFrame({"n": names})
+    a = d.select(_norm_expr("n"))["n"].to_list()
+    b = d.select(_norm_name_expr("n"))["n"].to_list()
+    c = [_normalize_name(x) for x in names]
+    assert a == b == c
+    assert a[:3] == ["michael thomas", "michael thomas", "odell beckham"]

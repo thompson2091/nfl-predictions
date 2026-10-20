@@ -1,4 +1,5 @@
 """Build player-level sportsbook odds features from cached TD prop data."""
+import re
 import polars as pl
 from src.utils.paths import get_path
 
@@ -27,6 +28,8 @@ TEAM_ABBREV = {
 def _normalize_name(name: str) -> str:
     """Normalize for matching: lowercase, strip suffixes."""
     name = name.lower().strip()
+    # "Michael Thomas (NO)": a team in brackets. See odds_history._norm_expr.
+    name = re.sub(r"\s+", " ", re.sub(r"\s*\([a-z]{2,10}\)", "", name))
     for suffix in [" jr.", " sr.", " ii", " iii", " iv", " jr", " sr"]:
         if name.endswith(suffix):
             name = name[: -len(suffix)].strip()

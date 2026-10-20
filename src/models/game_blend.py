@@ -72,7 +72,9 @@ def fit(refit: bool = False) -> dict:
             # A cache from before the centering fit existed is refitted
             # rather than served without it, or the centered total would be
             # silently absent on every card until somebody passed `refit`.
+            # Likewise a centering fit from before its weight was gated.
             if (got.get("n", 0) >= MIN_GAMES and "center" in got
+                    and "oos_gain" in (got.get("center") or {"oos_gain": 0})
                     and "win" in got):
                 return got
         except json.JSONDecodeError:
@@ -202,6 +204,12 @@ def model_win_home(model_spread: float, win: dict) -> float | None:
 #     centered  MAE 10.734   over/under 53.70%   over picked 51.6%
 #     paired MAE -0.114 +/- 0.039, paired hit +1.26pp +/- 0.74
 #
+# Re-measured 2026-10-20 over 1,615 walk-forward games: centered MAE 11.04
+# against 11.12 raw, but over/under 51.72% against 51.78% — the hit-rate gain
+# is gone and neither clears the 52.4% break-even. The blend weight on the
+# centered total fails its own out-of-sample check (-0.067) and is served at
+# zero; the centered total itself is still shown, as a number, not a bet.
+#
 # The season-to-date gap was the other candidate and lost to the slate on
 # every line of that table. **The raw total stays the model's number** — this
 # is an extra figure beside it, never a replacement.
@@ -237,7 +245,15 @@ def fit_center(d: pl.DataFrame) -> dict:
                   ("total_model", "_gap", "total_market", "total_actual"))
     c, _ = _sweep_c(m, g, a)
     cen = m - c * g
-    w, e, base = _sweep(cen, k, a)
+    w_fit, e, base = _sweep(cen, k, a)
+    # THE SAME GATE AS THE TOTAL'S. The blend weight on the centered total was
+    # served at 0.1 with an out-of-sample gain of -0.036 (audit 2026-10-19):
+    # a weight the sweep always finds in sample and that loses when chosen on
+    # earlier seasons is zero. `c` is fitted on every season here, so this
+    # tests the weight, not the centering, which has its own figures below.
+    oos_w = _oos(d.with_columns(pl.Series("_cen", cen)),
+                 "_cen", "total_market", "total_actual")
+    w = w_fit if oos_w > 0 else 0.0
 
     # Out of sample: c chosen on earlier seasons, scored on the next.
     raw_e = cen_e = 0.0
@@ -265,7 +281,8 @@ def fit_center(d: pl.DataFrame) -> dict:
     if not n:
         return {}
     return {
-        "c": round(c, 3), "w": round(w, 3), "mae": round(e, 3),
+        "c": round(c, 3), "w": round(w, 3), "w_in_sample": round(w_fit, 3),
+        "oos_gain": round(oos_w, 4), "mae": round(e, 3),
         "market_mae": round(base, 3), "gain": round(base - e, 4),
         "oos": {"n": n, "raw_mae": round(raw_e / n, 3),
                 "centered_mae": round(cen_e / n, 3),

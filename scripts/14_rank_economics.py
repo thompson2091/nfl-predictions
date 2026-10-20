@@ -81,6 +81,12 @@ def main(target_type: str, headline_n: int, model: str | None) -> int:
             print("         But the ten biggest winners carry "
                   f"{h['concentration']:.0%} of the profit. Treat this as a "
                   "description of those results, not a rate.")
+    elif h and h["verdict"] == "negative":
+        # Its own wording: "includes zero" printed under -15.3 [-23.8, -6.9]
+        # (audit 2026-10-19), which says the opposite of the interval.
+        print(f"VERDICT: LOSES. Backing the top {stats['headline_n']} returned "
+              f"{h['roi']:+.1f}% [{h['lo']:+.1f}, {h['hi']:+.1f}] — the whole "
+              f"interval is below zero.")
     else:
         print(f"VERDICT: NO EDGE DEMONSTRATED. Backing the top "
               f"{stats['headline_n']} returned {h['roi']:+.1f}% "
