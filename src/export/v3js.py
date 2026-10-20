@@ -7612,6 +7612,16 @@ function v3RecPlayers(p, S, span) {
          + 'to clear for Gaps: ' + thrs.join(', ') + '.</p>' : '')
     + (td.length ? '<p class="help" style="margin-top:8px">Touchdowns, '
        + 'predicted against actual: ' + td.join(' · ') + '.</p>' : '')
+    // SAID, NOT HIDDEN. A board frozen before the injury report kept players
+    // it then ruled Out; they are void here, as a book voids them.
+    + ((p.out_on_board || []).length
+       ? '<p class="help" style="margin-top:8px">Some touchdown boards were '
+         + 'saved before that week\u2019s injury report: '
+         + p.out_on_board.map(x => 'week ' + x.week + ' carried '
+             + x.priced_out + ' priced player' + (x.priced_out === 1 ? '' : 's')
+             + ' later ruled Out').join(', ')
+         + '. They are void here, as a sportsbook voids a player who does '
+         + 'not play.</p>' : '')
     + '<p class="help" style="margin-top:8px"><b style="color:var(--ink)">'
     + '“had been going over” or “under”</b> in a '
     + 'player’s games marks a week he went into having run one way in '

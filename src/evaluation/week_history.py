@@ -356,9 +356,11 @@ def _with_book(df: pl.DataFrame, season: int, week: int,
     A second de-vig invented here would put a different number beside the same
     player on two screens.
 
-    So the whole week is de-vigged together and the board's rows are selected
-    afterwards. Narrowing first would shrink the denominator and inflate every
-    price on the page.
+    So the week is de-vigged over the same population the served path uses —
+    the week's whole candidate pool, never just the board's top rows — and
+    the board's rows are selected afterwards. Narrowing to the board would
+    shrink the denominator and inflate every price on the page; widening to
+    every archived quote put a second, lower number beside the same player.
     """
     from src.features.odds_features import _normalize_name
     from src.ingest.odds_history import BOOKS_PATH, resolve_game_ids
@@ -416,6 +418,23 @@ def _with_book(df: pl.DataFrame, season: int, week: int,
               .group_by(["game_id", "player_name_norm"])
               .agg(pl.col("implied_prob").median().alias("implied_prob")))
         exp = expected_scorers(prior, lines)
+        # ONE SET WITH THE SERVED PATH. `predict._load_market` and the
+        # backtest both de-vig over the week's candidate pool, which leaves
+        # out deep longshots and every D/ST (a book's "<team> d/st" matches
+        # no candidate name or id). This de-vigged the whole archived week,
+        # so the same player carried two book numbers: McCaffrey 61.6% here
+        # against 64.8% on the board (audit 2026-10-19).
+        pool = (pl.scan_parquet(get_path("processed", target_type)
+                                / "features.parquet")
+                .filter((pl.col("season") == season) & (pl.col("week") == week))
+                .select(["game_id", "player_name"]).unique().collect()
+                .with_columns(pl.col("player_name").map_elements(
+                    _normalize_name, return_dtype=pl.Utf8)
+                    .alias("player_name_norm"))
+                .select(["game_id", "player_name_norm"]).unique())
+        scored = o.join(pool, on=["game_id", "player_name_norm"], how="semi")
+        if scored.height >= 5:
+            o = scored
         fair = devig_market(o, exp)
     except Exception as e:                                       # noqa: BLE001
         print(f"  book prices unavailable for week {week}: {e}")
@@ -662,3 +681,38 @@ def ou_payload(season: int, market: str,
                            "expected": None}
     return {"weeks": weeks, "played": sorted(int(k) for k in weeks),
             "accuracy": acc, "top_n": top_n, "kind": "ou"}
+
+
+def out_on_frozen(season: int, market: str = "anytime_td") -> list[dict]:
+    """Per week: priced players on the frozen board who were ruled Out.
+
+    A board frozen before Friday's injury report keeps a player the report
+    then rules Out, at a book price. The record voids him, as a book does,
+    so no grade is wrong — but the page should say the board carried him
+    (audit 2026-10-19: weeks 5 and 6 held 17 and 19). Matched by name and
+    team, because boards frozen before 2026-10-20 carry no player id.
+    """
+    from src.export import prediction_freeze as PF
+    from src.features.odds_features import _normalize_name
+    from src.utils.paths import get_path
+
+    try:
+        inj = (pl.scan_parquet(get_path("raw") / "injuries.parquet")
+               .filter((pl.col("season") == season)
+                       & (pl.col("report_status") == "Out"))
+               .select([pl.col("week").cast(pl.Int64), "full_name", "team"])
+               .collect())
+    except Exception:                                            # noqa: BLE001
+        return []
+    store = PF.load(int(season))
+    out = []
+    for wk in sorted(store, key=int):
+        rows = [r for g in (store[wk].get(market) or {}).values() for r in g]
+        ruled = {(_normalize_name(n), t) for n, t in
+                 inj.filter(pl.col("week") == int(wk))
+                    .select(["full_name", "team"]).iter_rows() if n}
+        hit = [r for r in rows if r.get("has_market_price")
+               and (_normalize_name(r.get("player_name") or ""), r.get("team")) in ruled]
+        if hit:
+            out.append({"week": int(wk), "priced_out": len(hit)})
+    return out

@@ -263,3 +263,31 @@ def settle(rows: list[dict], season: int, week: int, market: str,
             continue
         out.append(r)
     return (out, served, recorded)
+
+
+def serve_started(df, season: int, week: int, market: str,
+                  now: datetime | None = None):
+    """`df` with every started game's rows replaced by its frozen board.
+
+    Read-only: unlike `settle` it records nothing, so a caller that scores a
+    week for display (the dashboard's Teams pane) can show what each started
+    game kicked off with without becoming another writer of the freeze. A
+    started game with nothing frozen keeps the rows it was given. Columns the
+    frozen rows lack (anything not in `fields_for`) come back null for those
+    games rather than borrowed from the recomputed row they replace.
+    """
+    import polars as pl
+
+    if df is None or getattr(df, "height", 0) == 0 or "game_id" not in df.columns:
+        return df
+    kept = frozen(season, week, market)
+    live = started_games(season, week, now) & set(kept)
+    if not live:
+        return df
+    rows = [dict(r, game_id=gid) for gid in live for r in kept[gid]]
+    fz = pl.DataFrame(rows, infer_schema_length=None)
+    cols = [c for c in df.columns if c in fz.columns]
+    fz = fz.select(cols).with_columns(
+        [pl.col(c).cast(df.schema[c], strict=False) for c in cols])
+    return pl.concat([df.filter(~pl.col("game_id").is_in(list(live))), fz],
+                     how="diagonal_relaxed").select(df.columns)

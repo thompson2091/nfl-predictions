@@ -216,3 +216,20 @@ def test_an_over_under_game_stops_moving_at_its_own_kickoff():
 def test_the_touchdown_fields_are_unchanged_by_the_over_under_ones():
     assert PF.fields_for("anytime_td") == PF.FIELDS
     assert PF.fields_for("receptions") == PF.OU_FIELDS
+
+
+def test_serve_started_swaps_in_the_frozen_board_and_records_nothing(monkeypatch):
+    import polars as pl
+    from src.export import prediction_freeze as PF
+
+    monkeypatch.setattr(PF, "frozen", lambda s, w, m: {
+        "g1": [{"player_name": "A", "team": "X", "probability": 0.862}]})
+    monkeypatch.setattr(PF, "started_games", lambda s, w, now=None: {"g1"})
+    monkeypatch.setattr(PF, "record", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("serve_started must not record")))
+    df = pl.DataFrame({"game_id": ["g1", "g2"], "player_name": ["A", "B"],
+                       "team": ["X", "Y"], "probability": [0.968, 0.4],
+                       "extra": [1.0, 2.0]})
+    out = PF.serve_started(df, 2026, 6, "anytime_td").sort("game_id")
+    assert out["probability"].to_list() == [0.862, 0.4]
+    assert out["extra"].to_list() == [None, 2.0]

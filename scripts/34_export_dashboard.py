@@ -641,6 +641,11 @@ def teams(season: int, week: int, target_type: str) -> dict:
         try:
             preds[tt] = predict(season, week, model_name=production_model(tt),
                                 target_type=tt, persist=False)
+            # A started game shows what it kicked off with, as the board
+            # does: this pane recomputed it (Kyren Williams 96.8% here
+            # against 86.2% frozen on the board, audit 2026-10-19).
+            from src.export.prediction_freeze import serve_started
+            preds[tt] = serve_started(preds[tt], season, week, tt)
         except Exception as e:                               # noqa: BLE001
             preds[tt] = None
             problems.append(f"{tt} predictions: {e}")

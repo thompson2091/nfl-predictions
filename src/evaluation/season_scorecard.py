@@ -894,15 +894,26 @@ def build(season: int) -> dict:
     td_by_week = {(mk, w): _td_week(season, w, mk)
                   for mk, _ in TD_MARKETS for w in played}
 
+    # Priced players a frozen board carried and the injury report then
+    # ruled Out, per week; the page says so beside the touchdown record.
+    try:
+        from src.evaluation.week_history import out_on_frozen
+        oob = out_on_frozen(season)
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  out-on-board count unavailable: {e}")
+        oob = []
+
     ranges: dict = {}
     for i, a in enumerate(played):
         for b in played[i:]:
             sel = [w for w in played if a <= w <= b]
             g = [r for r in grows if a <= r["week"] <= b]
+            pb = players_block(cache, sel, td_by_week)
+            pb["out_on_board"] = [x for x in oob if x["week"] in sel]
             ranges[f"{a}-{b}"] = {
                 "weeks": sel,
                 "games": games_block(g),
-                "players": players_block(cache, sel, td_by_week),
+                "players": pb,
             }
     # Weeks a game record cannot exist for, said once rather than per range.
     missing = [{"week": w,
