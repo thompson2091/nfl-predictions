@@ -104,7 +104,8 @@ def load_model(market: str, model_dir=None) -> dict | None:
 
 
 def expected_quantiles(market: str, season: int, week: int,
-                       art: dict | None = None) -> tuple[pl.DataFrame, np.ndarray] | None:
+                       art: dict | None = None, vacated: bool = True,
+                       ) -> tuple[pl.DataFrame, np.ndarray] | None:
     """The fitted distribution for every candidate in a week.
 
     Returns `(ids, quantiles)` — one row per player, before any line is
@@ -148,6 +149,15 @@ def expected_quantiles(market: str, season: int, week: int,
     q = rearrange(np.asarray(
         art["model"].predict(design_matrix(df, list(art["feature_names"]))),
         dtype=float))
+    # An Out teammate's work, handed to whoever will do it. A no-op unless
+    # scripts/72_vacated.py has fitted and kept a strength for this market;
+    # `vacated=False` is how that script reads the model's own numbers.
+    from src.models import vacated as vac
+    beta = vac.load_beta(market) if vacated and market in vac.RULES else None
+    if beta:
+        from src.models.yards import mean_of
+        m = mean_of(q)
+        q = vac.scale_quantiles(q, m, vac.allocation(df, m, market), beta)
     ids = df.select([
         "season", "week", "game_id", "player_id", "player_name", "team",
         _norm_name_expr("player_name").alias("player_name_norm"),

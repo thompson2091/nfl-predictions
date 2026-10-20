@@ -121,8 +121,8 @@ def load_model(model_dir=None) -> dict | None:
     return art
 
 
-def expected_counts(season: int, week: int, art: dict | None = None
-                    ) -> pl.DataFrame | None:
+def expected_counts(season: int, week: int, art: dict | None = None,
+                    vacated: bool = True) -> pl.DataFrame | None:
     """Expected receptions for every candidate in a week.
 
     One row per player, before any line is applied. Separate from the board
@@ -157,6 +157,11 @@ def expected_counts(season: int, week: int, art: dict | None = None
     # starter who is never thrown to. See `design_matrix`.
     mu = np.clip(art["model"].predict(design_matrix(df, list(art["feature_names"]))),
                  1e-6, None)
+    # An Out teammate's catches, handed on. See `src/models/vacated.py`.
+    from src.models import vacated as vac
+    beta = vac.load_beta("receptions") if vacated else None
+    if beta:
+        mu = mu + beta * vac.allocation(df, mu, "receptions")
 
     # How many games that projection is built from, carried to the board.
     #
