@@ -2,28 +2,28 @@
  "kind": "receptions_shrinkage",
  "k_games": 0.0,
  "prior_by_position": {
-  "RB": 1.2857,
-  "QB": 1.2857,
-  "TE": 1.2857,
-  "OTHER": 1.7317
+  "TE": 1.0485,
+  "QB": 1.0485,
+  "RB": 1.0485,
+  "OTHER": 1.4792
  },
  "prior_debut_rows": {
-  "RB": 26,
+  "TE": 22,
   "QB": 6,
-  "TE": 11,
-  "OTHER": 41
+  "RB": 27,
+  "OTHER": 48
  },
- "global_prior": 1.2857,
+ "global_prior": 1.0485,
  "debut_games_threshold": 1,
- "n": 6236,
- "fit_deviance": 1.2087812731389154,
- "unshrunk_deviance": 1.2087812731389154,
- "thin_rows": 172,
- "thin_deviance_before": 1.3840822341072248,
- "thin_deviance_after": 1.3840822341072248,
- "thin_mean_mu_before": 1.5492039892205232,
- "thin_mean_mu_after": 1.5492039892205232,
- "thin_mean_actual": 1.436046511627907,
+ "n": 7145,
+ "fit_deviance": 1.2558216945769942,
+ "unshrunk_deviance": 1.2558216945769942,
+ "thin_rows": 202,
+ "thin_deviance_before": 1.4259841940261675,
+ "thin_deviance_after": 1.4259841940261675,
+ "thin_mean_mu_before": 1.299591721750169,
+ "thin_mean_mu_after": 1.299591721750169,
+ "thin_mean_actual": 1.2227722772277227,
  "seasons_used": [
   2024
  ],

@@ -130,7 +130,7 @@ def build_team_redzone_features(pbp: pl.DataFrame) -> pl.DataFrame:
         & pl.col("posteam").is_not_null()
     )
 
-    team_rz = (
+    counts = (
         rz.group_by(["season", "week", "posteam"])
         .agg([
             pl.len().alias("rz_plays"),
@@ -138,10 +138,25 @@ def build_team_redzone_features(pbp: pl.DataFrame) -> pl.DataFrame:
             pl.col("rush_touchdown").sum().alias("rz_rush_tds"),
             pl.col("pass_touchdown").sum().alias("rz_pass_tds"),
         ])
+    )
+    # EVERY GAME THE TEAM PLAYED, not only the ones it reached the 20 in.
+    # Built from red-zone plays alone, a row existed only when the offense
+    # got there, so a null on the joined feature meant "never reached the red
+    # zone in THIS game": on 2024-25 every such player row had a scoring rate
+    # of exactly zero against 8.6%. The game model's leak screen had caught
+    # this family; the player models had not. A game with no red-zone snap is
+    # zero trips and zero touchdowns, and an undefined rate.
+    played = (pbp.filter(pl.col("posteam").is_not_null())
+              .select(["season", "week", "posteam"]).unique())
+    cnt = ["rz_plays", "rz_tds_scored", "rz_rush_tds", "rz_pass_tds"]
+    team_rz = (
+        played.join(counts, on=["season", "week", "posteam"], how="left")
+        .with_columns([pl.col(c).fill_null(0) for c in cnt])
         .rename({"posteam": "team"})
         .with_columns(
-            (pl.col("rz_tds_scored") / pl.col("rz_plays").cast(pl.Float64).clip(lower_bound=1))
-            .alias("rz_td_pct")
+            pl.when(pl.col("rz_plays") > 0)
+              .then(pl.col("rz_tds_scored") / pl.col("rz_plays").cast(pl.Float64))
+              .otherwise(None).alias("rz_td_pct")
         )
         .sort(["team", "season", "week"])
     )
@@ -151,7 +166,9 @@ def build_team_redzone_features(pbp: pl.DataFrame) -> pl.DataFrame:
         shifted = pl.col(col).shift(1)
         rolling_exprs.extend([
             shifted.rolling_mean(medium, min_samples=3).over("team").alias(f"team_{col}_avg_{medium}g"),
-            (shifted.cum_sum().over("team") / shifted.cum_count().over("team")).alias(f"team_{col}_szn_avg"),
+            # Per season, as named; over the team alone it ran back to 2015.
+            (shifted.cum_sum().over(["team", "season"])
+             / shifted.cum_count().over(["team", "season"])).alias(f"team_{col}_szn_avg"),
         ])
 
     result = (

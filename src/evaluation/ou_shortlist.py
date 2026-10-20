@@ -485,7 +485,16 @@ def apply_to_board(rows: list[dict], art: dict | None) -> dict:
     kept = []
     dropped_side = 0
     for r in deep:
-        gap = (float(r["model_only"]) - float(r["fair_prob"])) * 100.0
+        # AGAINST THE OPEN, as fitted. The floors were chosen on the gap
+        # between the model and the OPENING fair price, judged on how the
+        # close then moved; measured against the close here the board was
+        # serving a different population from the one the rule describes. The
+        # open at this row's own line where it exists, else the current price.
+        same = (r.get("open_point") is None or r.get("point") is None
+                or r.get("open_point") == r.get("point"))
+        base = (r.get("open_fair") if same and r.get("open_fair") is not None
+                else r["fair_prob"])
+        gap = (float(r["model_only"]) - float(base)) * 100.0
         side = "over" if gap > 0 else "under"
         f = floors.get(side)
         if not f or abs(gap) < f["lo"] or (f.get("hi") is not None

@@ -1301,10 +1301,11 @@ def _attach_scores(cards: dict) -> None:
     """
     try:
         from src.models.score_dist import (for_card, history,
-                                            scenarios_for_card, win_curve,
-                                            win_prob)
+                                            scenarios_for_card)
         hist = history()
-        curve = win_curve(hist)
+        from src.models.game_blend import fit as blend_fit
+        from src.models.game_blend import model_win_home
+        mwin = (blend_fit() or {}).get("win") or {}
     except Exception as e:                                       # noqa: BLE001
         print(f"  score distribution unavailable ({e})", file=sys.stderr)
         return
@@ -1336,12 +1337,14 @@ def _attach_scores(cards: dict) -> None:
         # monotone by construction, so the projected score and the win
         # probability can no longer disagree about who is favored.
         if c.get("model_spread") is not None:
-            # The card signs its spread negative when HOME is favored; the
-            # curve is fitted on the schedule's opposite convention.
-            got = win_prob(-float(c["model_spread"]), curve)
+            # FROM OUR MODEL'S OWN CURVE (`game_blend.fit_model_win`), fitted
+            # on walk-forward model margins. The market's curve, applied to
+            # the noisier model margin, was overconfident: served at 29%,
+            # won 41%. `model_win_n` is the games that curve was fitted on.
+            got = model_win_home(c["model_spread"], mwin)
             if got is not None:
                 c["model_win_home"] = round(got, 4)
-                c["model_win_n"] = curve.get("n")
+                c["model_win_n"] = mwin.get("n")
 
 
 #: Positions whose availability moves a player market. The report lists the

@@ -92,3 +92,22 @@ def test_a_live_capture_game_name_resolves_to_the_schedule_id(tmp_path, monkeypa
     except Exception:                                            # noqa: BLE001
         pytest.skip("no schedule on disk")
     assert got["game_id"].to_list() == ["2026_06_WAS_SF"]
+
+
+def test_a_book_name_resolves_to_the_ball_carrier_not_a_namesake():
+    """2025 Quinshon Judkins resolved to an empty id; Michael Carter to a DB."""
+    import polars as pl
+    from src.ingest.odds_history import _resolve_player_id
+
+    h = pl.DataFrame({"season": [2025, 2025], "player_name_norm":
+                      ["quinshon judkins", "michael carter"]})
+    try:
+        ids = _resolve_player_id(h).to_list()
+    except Exception:                                            # noqa: BLE001
+        pytest.skip("no rosters")
+    assert all(i and i.strip() for i in ids), ids
+    r = pl.read_parquet("data/raw/rosters.parquet").filter(
+        pl.col("season") == 2025)
+    for i in ids:
+        got = set(r.filter(pl.col("gsis_id") == i)["position"].to_list())
+        assert got & {"QB", "RB", "FB", "WR", "TE"}, (i, got)

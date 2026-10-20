@@ -765,12 +765,30 @@ def _resolve_player_id(hist: pl.DataFrame) -> pl.Expr:
         return pl.lit(None, dtype=pl.Utf8)
     rosters = pl.read_parquet(roster_path)
     name_col = "player_name" if "player_name" in rosters.columns else "full_name"
+    # A PROP IS ON A PLAYER WHO TOUCHES THE BALL. Kept first among namesakes
+    # was arbitrary: 2024-26 Michael Carter resolved to the defensive back
+    # (723 priced rows), 2023 Michael Thomas likewise, and 2025 Quinshon
+    # Judkins to a roster row whose id is the EMPTY STRING — which survives
+    # `drop_nulls` and graded 1,021 of his rows as no score. Skill positions
+    # first, then the player's latest listing; an empty id is no id.
+    pos = (pl.col("position").is_in(["QB", "RB", "FB", "WR", "TE"])
+           if "position" in rosters.columns else pl.lit(True))
+    order = ["season", "player_name_norm", "_skill"]
+    desc = [False, False, True]
+    if "week" in rosters.columns:
+        order.append("week")
+        desc.append(True)
     lookup = (
-        rosters.select(["season", name_col, "player_id"])
-        .drop_nulls()
-        .with_columns(_norm_expr(name_col).alias("player_name_norm"))
-        .select(["season", "player_name_norm", "player_id"])
+        rosters.select(["season", name_col, "player_id",
+                        *[c for c in ("position", "week") if c in rosters.columns]])
+        .filter(pl.col("player_id").is_not_null()
+                & (pl.col("player_id").cast(pl.Utf8).str.strip_chars() != "")
+                & pl.col(name_col).is_not_null())
+        .with_columns(_norm_expr(name_col).alias("player_name_norm"),
+                      pos.alias("_skill"))
+        .sort(order, descending=desc, nulls_last=True)
         .unique(subset=["season", "player_name_norm"], keep="first")
+        .select(["season", "player_name_norm", "player_id"])
     )
     joined = hist.select(["season", "player_name_norm"]).join(
         lookup, on=["season", "player_name_norm"], how="left"

@@ -213,6 +213,10 @@ RULES = (
                  "p=0.000005",
         "control": "the cut was the top band of a measurement on earlier "
                    "seasons, so weeks 2-4 of 2026 are out of sample for it",
+        "remeasured": "2026-10-19, on the models retrained that day (played "
+                      "zeros labeled, leaks removed): 2025 above 0.75 +9.39 "
+                      "per $100 [+2.35, +16.43] over 624 bets; paired within "
+                      "game +9.07, p=0.00019. The cut stands.",
         "out_of_sample": "weeks 2-4 of 2026: +5.31 per $100 on 79 bets, "
                          "seen before registering; the band was fixed first",
         "expected_per_week": 25,

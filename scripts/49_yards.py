@@ -79,15 +79,14 @@ def _frame(market: str) -> tuple[pl.DataFrame, list[str]]:
     used are the same questions whatever is being predicted, and a second copy
     of an 80MB matrix would only drift from the first.
     """
+    from src.models.prop_frame import feature_cols, labeled
+
     feats = pl.read_parquet(get_path("processed", "anytime_td") / "features.parquet")
-    ws = (pl.scan_parquet(get_path("raw") / "weekly_stats.parquet")
-          .select(["season", "week", "player_id", market]).collect())
-    df = feats.join(ws, on=["season", "week", "player_id"], how="left")
-    # A row with no weekly stat is a player who did not play, and the label is
-    # unknowable rather than zero. nflverse writes 0 rather than null for a
-    # player who played and did none of it, so this filter means "played" and
-    # keeps every honest zero.
-    df = df.filter(pl.col(market).is_not_null())
+    # Played means a snap or a stat line. nflverse writes NO ROW, not a 0,
+    # for a player who took snaps and recorded nothing, so filtering on the
+    # weekly-stats row dropped every such zero (12-14% of receiver and back
+    # snap-games). `labeled` keeps them, keyed by id.
+    df = labeled(feats, market)
     gate = MARKETS[market]["gate"]
     if gate:
         if gate not in df.columns:
@@ -95,8 +94,7 @@ def _frame(market: str) -> tuple[pl.DataFrame, list[str]]:
                            f"feature matrix; refusing to fit {market} on an "
                            f"ungated pool by accident")
         df = df.filter(pl.col(gate) == 1)
-    fcols = [c for c in df.columns if c not in ID_COLS and df[c].dtype.is_numeric()]
-    return df, fcols
+    return df, feature_cols(df, ID_COLS)
 
 
 def train(df: pl.DataFrame, fcols: list[str], market: str) -> XGBQuantileModel:
@@ -145,8 +143,10 @@ def graded_lines(season: int, market: str) -> pl.DataFrame | None:
     if h.height == 0:
         return None
     h = h.with_columns(_resolve_player_id(h)).filter(pl.col("player_id").is_not_null())
-    ws = (pl.scan_parquet(get_path("raw") / "weekly_stats.parquet")
-          .select(["season", "week", "player_id", market]).collect())
+    # Settled as a book settles: a snap with no yards is 0, not a missing row.
+    from src.models.prop_frame import outcomes
+    ws = outcomes(market).with_columns(
+        pl.col("season").cast(h["season"].dtype), pl.col("week").cast(h["week"].dtype))
     # fair_prob is null where only one side was posted. A market comparison
     # over rows the market has no de-vigged number for would be NaN.
     return h.join(ws, on=["season", "week", "player_id"], how="inner").filter(

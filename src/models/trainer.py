@@ -155,7 +155,26 @@ def get_feature_cols(df: pl.DataFrame,
     walk-forward trains both markets under one config, so the default is wrong
     for one of them every time.
     """
-    exclude = set(excluded_families()) | {
+    exclude = excluded_columns()
+    keep = included_families(target_type=target_type)
+    return [c for c in df.columns
+            if c not in exclude
+            and (keep is None or c in keep)
+            and df[c].dtype in (pl.Float64, pl.Float32, pl.Int8, pl.Int16,
+                                pl.Int32, pl.Int64, pl.UInt8, pl.UInt16,
+                                pl.UInt32, pl.UInt64)]
+
+
+def excluded_columns() -> set[str]:
+    """Every column no model may train on: identifiers, leaky or kickoff-time
+    measurements, join artifacts, and excluded families.
+
+    ONE LIST FOR EVERY MODEL. The receptions and yardage scripts took every
+    numeric column instead, so they trained on kickoff `temp` and `wind`,
+    `season_right` and the rest of what is listed here, each excluded from the
+    touchdown models for a measured reason. They call this now.
+    """
+    return set(excluded_families()) | {
         "game_id", "season", "week", "player_id", "player_name",
         "team", "opponent", "home_team", "away_team",
         "target", "game_type", "prob",
@@ -211,13 +230,6 @@ def get_feature_cols(df: pl.DataFrame,
         # defect, one derivation further down.
         "ix_windy_x_rb",
     }
-    keep = included_families(target_type=target_type)
-    return [c for c in df.columns
-            if c not in exclude
-            and (keep is None or c in keep)
-            and df[c].dtype in (pl.Float64, pl.Float32, pl.Int8, pl.Int16,
-                                pl.Int32, pl.Int64, pl.UInt8, pl.UInt16,
-                                pl.UInt32, pl.UInt64)]
 
 
 def prepare_data(df: pl.DataFrame, feature_cols: list[str]):

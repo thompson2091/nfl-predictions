@@ -37,18 +37,17 @@ def test_columns_whose_absence_knows_the_score_are_dropped():
     """
     d = gm.team_games()
     leaks = set(gm.leaky_columns(d))
-    assert "team_rz_td_pct_avg_5g" in leaks
-    assert "opp_tds_allowed_to_wr_szn_avg" in leaks
-    assert len(leaks) >= 15, f"screen went quiet: only {len(leaks)} caught"
-
-    # And the effect it screens on is real and large, measured WITHIN team so
-    # that a column missing more often for bad offenses cannot masquerade.
-    w = (d.with_columns(pl.col("points").mean()
-                        .over(["season", "team"]).alias("_tm"))
-          .with_columns((pl.col("points") - pl.col("_tm")).alias("_vs"))
-          .filter(pl.col("week") >= gm.LEAK_FROM_WEEK))
-    gap = float(w.filter(pl.col("team_rz_td_pct_avg_5g").is_null())["_vs"].mean())
-    assert gap < -10, f"expected a large deficit, got {gap:+.2f}"
+    # Both families are now densified at the source (every game a team
+    # played has a row), so the screen has nothing left to catch in them.
+    # It still has to fire on a column built the old way: see
+    # `test_a_column_missing_at_random_is_not_called_a_leak` for the other
+    # side, and the synthetic check below for this one.
+    assert not {c for c in leaks if c.startswith(("team_rz_", "opp_tds_allowed"))}, (
+        f"a densified family leaks again: {sorted(leaks)}")
+    leaky = d.with_columns(pl.when(pl.col("points") < 10).then(None)
+                           .otherwise(pl.lit(1.0)).alias("_built_from_scores"))
+    assert "_built_from_scores" in set(gm.leaky_columns(
+        leaky, gm.feature_columns(d) + ["_built_from_scores"])), "screen went quiet"
 
 
 def test_a_column_missing_at_random_is_not_called_a_leak():

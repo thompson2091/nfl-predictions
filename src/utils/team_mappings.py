@@ -6,6 +6,9 @@ TEAM_NORMALIZE = {
     "SD": "LAC",
     "STL": "LA",
     "LAR": "LA",  # sometimes coded as LAR
+    # The 2015 roster feed's own codes. Unmapped, the rosters inner join gave
+    # ARI, BAL, CLE, HOU and LA no player candidates at all that season.
+    "ARZ": "ARI", "BLT": "BAL", "CLV": "CLE", "HST": "HOU", "SL": "LA",
 }
 
 

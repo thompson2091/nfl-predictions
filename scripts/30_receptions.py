@@ -47,16 +47,13 @@ ID_COLS = {"game_id", "season", "week", "home_team", "away_team", "game_type",
 
 
 def _frame() -> tuple[pl.DataFrame, list[str]]:
+    from src.models.prop_frame import feature_cols, labeled
+
     feats = pl.read_parquet(get_path("processed", "anytime_td") / "features.parquet")
-    ws = (pl.scan_parquet(get_path("raw") / "weekly_stats.parquet")
-          .select(["season", "week", "player_id", "receptions"]).collect())
-    df = feats.join(ws, on=["season", "week", "player_id"], how="left")
-    # A row with no weekly stat is a player who did not play. For a TD target
-    # those rows train as zeros; for a count label they are simply unknowable
-    # before kickoff WHETHER he plays — but the label itself requires he did.
-    df = df.filter(pl.col("receptions").is_not_null())
-    fcols = [c for c in df.columns if c not in ID_COLS and df[c].dtype.is_numeric()]
-    return df, fcols
+    # The label requires that he played — whether he plays is not knowable
+    # before kickoff — but playing with no catch is a zero, not a gap.
+    df = labeled(feats, "receptions")
+    return df, feature_cols(df, ID_COLS)
 
 
 def train(df: pl.DataFrame, fcols: list[str]) -> XGBCountModel:
@@ -92,9 +89,18 @@ def graded_lines(season: int) -> pl.DataFrame | None:
         & (pl.col("season") == season) & pl.col("point").is_not_null())
     if h.height == 0:
         return None
+    # Prices quoted after kickoff out first: every dedupe here keeps the
+    # newest capture, which selects them (see odds_history.drop_in_play).
+    # This backtest never had the filter the yardage one does.
+    from src.ingest.odds_history import drop_in_play
+    from src.models.prop_frame import outcomes
+    h = drop_in_play(h)
+    if h.height == 0:
+        return None
     h = h.with_columns(_resolve_player_id(h)).filter(pl.col("player_id").is_not_null())
-    ws = (pl.scan_parquet(get_path("raw") / "weekly_stats.parquet")
-          .select(["season", "week", "player_id", "receptions"]).collect())
+    # Settled as a book settles: a snap with no catch is 0, not a missing row.
+    ws = outcomes("receptions").with_columns(
+        pl.col("season").cast(h["season"].dtype), pl.col("week").cast(h["week"].dtype))
     # fair_prob is null where only one side was posted; a market comparison
     # over rows where the market has no de-vigged number would be NaN, which
     # is how the 2025 column first printed as `nan` and read as a broken model

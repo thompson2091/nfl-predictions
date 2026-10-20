@@ -115,6 +115,35 @@ def load_pbp(seasons: list[int]) -> pl.DataFrame:
         print("  WARNING: no participation data — coverage/personnel/box features "
               "will be empty.")
 
+    # FTN'S CHARTING WHERE PARTICIPATION HAS NOTHING. Participation publishes a
+    # season behind, so every 2026 play had no box count or rusher count and
+    # the box features carried each team's 2025 value all season. FTN charts
+    # both, daily (`load_ftn_charting`). Participation wins where it has a
+    # value, so no backfilled season changes.
+    ftn = get_path("raw") / "ftn_charting.parquet"
+    if ftn.exists() and "play_id" in df.columns:
+        f = (pl.read_parquet(ftn)
+             .select(["game_id", "play_id",
+                      pl.col("n_defense_box").alias("_ftn_box"),
+                      pl.col("n_pass_rushers").alias("_ftn_rush")])
+             .unique(subset=["game_id", "play_id"], keep="last"))
+        f = f.with_columns(pl.col("play_id").cast(df["play_id"].dtype))
+        before = df.height
+        df = df.join(f, on=["game_id", "play_id"], how="left")
+        if df.height != before:
+            raise IngestError(f"FTN join fanned out PBP: {before} -> {df.height} rows")
+        for col, src in (("defenders_in_box", "_ftn_box"),
+                         ("number_of_pass_rushers", "_ftn_rush")):
+            if col in df.columns:
+                df = df.with_columns(pl.coalesce([pl.col(col),
+                                                  pl.col(src).cast(df[col].dtype)])
+                                     .alias(col))
+            else:
+                df = df.with_columns(pl.col(src).alias(col))
+        df = df.drop(["_ftn_box", "_ftn_rush"])
+        print(f"  FTN filled box counts on "
+              f"{df['defenders_in_box'].is_not_null().mean():.0%} of plays")
+
     _report_coverage("PBP", df, seasons)
     return _write(_keep_other_seasons(df, "pbp.parquet"), "pbp.parquet")
 
@@ -243,7 +272,9 @@ def _load_ngs(stat_type: str, seasons: list[int], filename: str) -> pl.DataFrame
     team_col = "team_abbr" if "team_abbr" in df.columns else "team"
     df = normalize_teams(df, [team_col])
     _report_coverage(f"NGS {stat_type}", df, seasons)
-    return _write(df, filename)
+    # MERGED, like every season-keyed loader: a one-season call must not
+    # delete the others (`_keep_other_seasons`).
+    return _write(_keep_other_seasons(df, filename), filename)
 
 
 def load_ngs_receiving(seasons: list[int]) -> pl.DataFrame:
@@ -388,6 +419,9 @@ def ingest_all(test_mode: bool = False):
     #
     # The same omission also left `02_targets.py` extracting zero rows for the
     # predict season, so a finished week could not be graded.
+    # FTN before play-by-play, which reads it to fill the box and rusher
+    # counts participation has not published yet.
+    load_ftn_charting(fwd)
     load_pbp(fwd)
     load_weekly_stats(fwd)
 
@@ -399,7 +433,11 @@ def ingest_all(test_mode: bool = False):
     load_snap_counts(fwd)
     load_depth_charts(fwd)
 
-    ngs_seasons = [s for s in seasons if s >= 2016]   # NGS starts in 2016
+    # `fwd`, not `seasons`: nflverse publishes NGS weekly in season, and on
+    # the training range alone every 2026 NGS feature was 2025's final value
+    # carried forward, frozen all season (0% of players varying week to week
+    # against 51% in 2025) while the non-null rate looked healthy.
+    ngs_seasons = [s for s in fwd if s >= 2016]   # NGS starts in 2016
     if ngs_seasons:
         load_ngs_receiving(ngs_seasons)
         load_ngs_rushing(ngs_seasons)
@@ -411,9 +449,6 @@ def ingest_all(test_mode: bool = False):
     # see it — injuries are sparse, so a training null rate of 0.942 makes total
     # absence look like a 0.058 change against a 0.35 threshold.
     load_injuries(fwd)
-    # `fwd`: the predict season is the one FTN covers that participation
-    # does not. See `load_ftn_charting`.
-    load_ftn_charting(fwd)
 
     # Backstop: if the weekly feed ever lags play-by-play again, rebuild the
     # missing seasons from PBP rather than leaving player_* features null.

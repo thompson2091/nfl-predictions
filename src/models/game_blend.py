@@ -72,7 +72,8 @@ def fit(refit: bool = False) -> dict:
             # A cache from before the centering fit existed is refitted
             # rather than served without it, or the centered total would be
             # silently absent on every card until somebody passed `refit`.
-            if got.get("n", 0) >= MIN_GAMES and "center" in got:
+            if (got.get("n", 0) >= MIN_GAMES and "center" in got
+                    and "win" in got):
                 return got
         except json.JSONDecodeError:
             pass
@@ -81,6 +82,16 @@ def fit(refit: bool = False) -> dict:
         d = walk_forward().drop_nulls()
     except Exception:                                            # noqa: BLE001
         return {}
+    # COMPLETED SEASONS ONLY. The weights were fitted on 2019-2026, the
+    # season being bet included, which the record loop forbids: a weight
+    # tuned on this season absorbs the failure it was meant to detect.
+    try:
+        from src.utils.config import get_config
+        cur = get_config()["seasons"].get("predict_season")
+        if cur:
+            d = d.filter(pl.col("season") < int(cur))
+    except Exception:                                            # noqa: BLE001
+        pass
     if d.height < MIN_GAMES:
         return {}
 
@@ -91,17 +102,83 @@ def fit(refit: bool = False) -> dict:
             ("total", "total_model", "total_market", "total_actual")):
         w, e, base = _sweep(d[mc].to_numpy(), d[kc].to_numpy(),
                             d[ac].to_numpy())
-        out[kind] = {"w": round(w, 3), "mae": round(e, 3),
+        oos = _oos(d, mc, kc, ac)
+        # A WEIGHT THAT FAILS ITS OWN OUT-OF-SAMPLE CHECK IS ZERO. The total's
+        # did (-0.0023 on 2026-10-06) and was served at 0.25 anyway; the sweep
+        # always finds an in-sample gain, which is why `_oos` exists.
+        served_w = w if oos > 0 else 0.0
+        out[kind] = {"w": round(served_w, 3), "w_in_sample": round(w, 3),
+                     "mae": round(e, 3),
                      "market_mae": round(base, 3),
                      "gain": round(base - e, 4),
-                     "oos_gain": round(_oos(d, mc, kc, ac), 4)}
+                     "oos_gain": round(oos, 4)}
     center = fit_center(d)
     if center:
         out["center"] = center
+    out["win"] = fit_model_win(d)
     out["fit_date"] = date.today().isoformat()
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     CACHE.write_text(json.dumps(out, indent=1))
     return out
+
+
+def _logistic(x, y):
+    """Two-parameter logistic fit by Newton-Raphson: (a, b)."""
+    import numpy as np
+
+    b = np.zeros(2)
+    X = np.column_stack([np.ones_like(x), x])
+    for _ in range(50):
+        p = 1.0 / (1.0 + np.exp(-(X @ b)))
+        w = np.clip(p * (1 - p), 1e-9, None)
+        step = np.linalg.solve((X * w[:, None]).T @ X, X.T @ (y - p))
+        b = b + step
+        if np.max(np.abs(step)) < 1e-9:
+            break
+    return float(b[0]), float(b[1])
+
+
+def fit_model_win(d: pl.DataFrame) -> dict:
+    """P(home wins) from OUR model's margin, fitted on our model's margins.
+
+    The page applied the curve fitted on the market's closing spread to the
+    model's spread. The model's margin is noisier than the market's, so the
+    same number means less: out of sample the slope on the model margin is
+    about 0.09 against the market's 0.146, and games served at 29% were won
+    41% of the time. Fitted here on walk-forward model margins, completed
+    seasons only, with its own out-of-sample Brier score beside the market's.
+    """
+    import numpy as np
+
+    d = d.filter(pl.col("margin_actual") != 0)
+    x = d["margin_model"].to_numpy().astype(float)
+    y = (d["margin_actual"].to_numpy() > 0).astype(float)
+    a, b = _logistic(x, y)
+    # Walk-forward: each season scored by a curve fitted on the ones before.
+    sq_m, sq_k = [], []
+    for s in sorted(d["season"].unique())[1:]:
+        tr, te = d.filter(pl.col("season") < s), d.filter(pl.col("season") == s)
+        ya = (tr["margin_actual"].to_numpy() > 0).astype(float)
+        yt = (te["margin_actual"].to_numpy() > 0).astype(float)
+        am, bm = _logistic(tr["margin_model"].to_numpy().astype(float), ya)
+        ak, bk = _logistic(tr["margin_market"].to_numpy().astype(float), ya)
+        pm = 1 / (1 + np.exp(-(am + bm * te["margin_model"].to_numpy())))
+        pk = 1 / (1 + np.exp(-(ak + bk * te["margin_market"].to_numpy())))
+        sq_m += list((pm - yt) ** 2)
+        sq_k += list((pk - yt) ** 2)
+    return {"a": round(a, 5), "b": round(b, 5), "n": int(d.height),
+            "oos_brier": round(float(np.mean(sq_m)), 4) if sq_m else None,
+            "market_oos_brier": round(float(np.mean(sq_k)), 4) if sq_k else None}
+
+
+def model_win_home(model_spread: float, win: dict) -> float | None:
+    """The card signs its spread negative when HOME is favored."""
+    import math
+
+    if not win or model_spread is None:
+        return None
+    m = -float(model_spread)
+    return 1.0 / (1.0 + math.exp(-(win["a"] + win["b"] * m)))
 
 
 # ── the total's level, removed and nothing else ──────────────────────────
