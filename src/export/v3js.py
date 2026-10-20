@@ -655,6 +655,14 @@ function v3Week() {
     + '<p class="lede">Our number next to the sportsbook\u2019s.'
     + (V.week == null ? ' Tap a row for everything we know about it.' : '')
     + '</p>'
+    // NO INJURY REPORT YET. Who is Out moves every teammate's projection
+    // (the vacated-workload inputs), and before the report is filed they
+    // read "nobody is Out" for every team.
+    + (V.week == null && DATA.no_injury_report
+       ? '<div class="thin" role="note"><b>No injury report yet</b><span>'
+         + 'Projections assume everyone plays until the league files it '
+         + 'midweek. Backups of players who end up Out will move then.'
+         + '</span></div>' : '')
     + v3BoardBar()
     // UNDER THE PINNED BAR, because the number is per market. Above it, you
     // tapped Rush, the rows redrew, and the one line that also changed was
@@ -1191,6 +1199,9 @@ function v3EdgeNote() {
 function v3Streak(row) {
   const mk = v3PastMarket();
   if (!mk || !row || !row.player) return null;
+  // Computed for the current week only; on a past week it would describe
+  // games played after the one being viewed.
+  if (V.week != null) return null;
   const got = (((DATA.pastlines || {}).streaks || {})[mk] || {})[row.player];
   if (!got) return null;
   const meta = (((DATA.pastlines || {}).markets) || [])
@@ -1228,7 +1239,12 @@ function v3Cleared(row) {
   const mk = v3PastMarket();
   const rows = (((DATA.pastlines || {}).players || {})[row.player] || {})[mk];
   if (!rows || !rows.length) return null;
-  const played = rows.filter(r => (r.length > 7 ? r[7] : 1) !== 0 && has(r[6]))
+  // BEFORE THE WEEK BEING VIEWED. On a past week the history runs to today,
+  // so the count included the viewed game and every one after it.
+  const before = r => V.week == null || r[0] < DATA.season
+    || (r[0] === DATA.season && r[1] < V.week);
+  const played = rows.filter(r => before(r)
+      && (r.length > 7 ? r[7] : 1) !== 0 && has(r[6]))
     .slice(0, 10);
   if (played.length < 5) return null;
   const n = played.filter(r => r[6] > row.line).length;
@@ -3952,6 +3968,28 @@ function v3RostLine(s) {
   }).filter(Boolean).join(' · ');
 }
 
+//: On a played week, what happened, marked against the line on the model's
+//: side: green right, red wrong, plain where there was no line to grade.
+//: A touchdown is a check or a dash. HTML, built here because it is coloured.
+function v3RostGot(s) {
+  if (s.void) return '<span class="rcmp__f">Did not play</span>';
+  const parts = {
+    QB: [['pass_yds', ' pass'], ['rush_yds', ' rush']],
+    RB: [['rush_yds', ' rush'], ['rec_yds', ' rec']],
+    WR: [['rec', ' catches'], ['rec_yds', ' yds']],
+  }[s.pos === 'TE' ? 'WR' : s.pos] || [];
+  const bits = parts.filter(p => has(s[p[0] + '_actual'])).map(p => {
+    const r = s[p[0] + '_right'];
+    const cls = r === true ? 'good' : r === false ? 'bad' : '';
+    return '<b class="' + cls + '">' + String(Math.round(s[p[0] + '_actual']))
+      + p[1] + '</b>';
+  });
+  if (has(s.td_actual)) bits.push('<b class="' + (s.td_actual ? 'good' : '') + '">'
+    + (s.td_actual ? 'TD \u2713' : 'no TD') + '</b>');
+  return bits.length ? '<span class="rcmp__f rcmp__got">Got '
+    + bits.join(' \u00b7 ') + '</span>' : '';
+}
+
 function v3RostSide(s, side) {
   if (!s || !s.player) {
     return '<span class="rcmp__p rcmp__p--' + side + ' rcmp__p--empty">'
@@ -3966,7 +4004,7 @@ function v3RostSide(s, side) {
     + '" data-v3rost="' + esc(s.player_id || '') + '" aria-expanded="' + !!open
     + '"><span class="rcmp__n">' + esc(s.player) + st + '</span>'
     + '<span class="rcmp__f num">' + esc(v3RostLine(s) || 'No projection')
-    + '</span></button>';
+    + '</span>' + (V.week != null ? v3RostGot(s) : '') + '</button>';
 }
 
 function v3RostDetail(s, team) {
@@ -3974,20 +4012,32 @@ function v3RostDetail(s, team) {
   const cell = (v, cls) => '<span class="num' + (cls ? ' ' + cls : '') + '">'
     + (v == null ? '—' : esc(String(v))) + '</span>';
   const pct = v => has(v) ? v3Pct(v, 1) : null;
+  const past = V.week != null;
   const row = m => {
     const k = m[0], td = k === 'td' || k === 'ftd';
+    // On a played week: what happened, and whether the model's side of the
+    // line was right. A touchdown is scored or not.
+    let got = '';
+    if (past) {
+      const a = s[k + '_actual'], r = s[k + '_right'];
+      const txt = !has(a) ? null : td ? (a ? '\u2713' : '\u2014')
+        : (k === 'rec' ? String(a) : String(Math.round(a)));
+      got = cell(txt, td ? (a ? 'good' : '')
+                 : r === true ? 'good' : r === false ? 'bad' : '');
+    }
     const line = td ? (has(s[k + '_odds']) ? v3Dash(american(s[k + '_odds'])) : null)
       : (has(s[k + '_line']) ? s[k + '_line'] : null);
-    return '<div class="rdet">' + '<span>' + esc(m[1]) + '</span>'
+    return '<div class="rdet' + (past ? ' rdet--past' : '') + '">'
+      + '<span>' + esc(m[1]) + '</span>'
       + cell(td ? null : v3RostFig(k, s[k]))
       + cell(line, 'mut')
       + cell(pct(s[k + '_model'])) + cell(pct(s[k + '_book']))
-      + cell(pct(s[k + '_adj'])) + '</div>';
+      + cell(pct(s[k + '_adj'])) + got + '</div>';
   };
   return '<div class="rdetw"><div class="eyebrow">' + esc(s.player) + ' · '
     + esc(team) + '</div>'
-    + '<div class="rdet rdet--h"><span></span><span>Proj</span>'
-    + '<span>Line</span><span>Model</span><span>Book</span><span>Adj</span></div>'
+    + '<div class="rdet rdet--h' + (past ? ' rdet--past' : '') + '"><span></span><span>Proj</span>'
+    + '<span>Line</span><span>Model</span><span>Book</span><span>Adj</span>' + (past ? '<span>Got</span>' : '') + '</div>'
     + mk.map(row).join('')
     + '<p class="sub" style="margin-top:6px">For yards and catches the three '
     + 'chances are for the over at that line; for touchdowns, for scoring. '
@@ -3995,7 +4045,11 @@ function v3RostDetail(s, team) {
 }
 
 function v3Roster(c) {
-  const R = (DATA.roster || {})[c.game_id];
+  // A PAST WEEK SHOWS ITS OWN ROSTER: the board frozen before kickoff,
+  // graded against what happened (`roster.build_past`).
+  const past = V.week != null;
+  const R = (past ? ((((DATA.games || {}).past || {})[String(V.week)] || {}).roster || {})
+                  : (DATA.roster || {}))[c.game_id];
   if (!R || !(R[c.away] || R[c.home])) {
     return '<div class="card"><p class="lede" style="font-size:15px">No depth '
       + 'chart for this game yet.</p></div>';

@@ -746,7 +746,7 @@ def test_the_opening_line_is_the_consensus_not_the_friendliest():
     assert got["n_books"] == 6, got
 
 
-def test_the_consensus_line_is_the_one_the_most_books_drew():
+def test_the_board_leads_with_the_line_the_rules_grade():
     """Which of a player's posted lines the board leads with.
 
     A yardage board carries one row per (player, line) and books scatter: 4.4
@@ -787,13 +787,17 @@ def test_the_consensus_line_is_the_one_the_most_books_drew():
     assert all(r["n_lines"] == 4 for r in rows), rows
     assert other["best_line"] and other["n_lines"] == 1
 
-    # A tie on book count goes to the line nearest that player's median, not
-    # to whichever happened to be first.
-    tied = [row(40.5, 3), row(60.5, 3), row(50.5, 1)]
-    mod._mark_consensus_lines({"yards": {"rushing_yards": {"rows": tied}}})
-    picked = [r for r in tied if r["best_line"]]
-    assert len(picked) == 1 and picked[0]["point"] in (40.5, 60.5), picked
-    assert abs(picked[0]["point"] - 50.5) == 10.0, picked
+    # THE LINE THE RULES GRADE, since 2026-10-19: nearest the player's
+    # median line, a tie to the lower, as `prop_edge.main_lines` and the
+    # forward record choose. Book count no longer leads, so the board cannot
+    # show one line while the record grades another.
+    spread = [row(40.5, 3), row(60.5, 3), row(50.5, 1)]
+    mod._mark_consensus_lines({"yards": {"rushing_yards": {"rows": spread}}})
+    picked = [r for r in spread if r["best_line"]]
+    assert [r["point"] for r in picked] == [50.5], picked
+    tie = [row(40.5, 1), row(45.5, 1), row(50.5, 1), row(55.5, 1)]
+    mod._mark_consensus_lines({"yards": {"rushing_yards": {"rows": tie}}})
+    assert [r["point"] for r in tie if r["best_line"]] == [45.5]
 
 
 def test_a_row_showing_only_an_opening_line_still_counts_as_a_line():

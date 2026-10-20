@@ -233,9 +233,7 @@ def walk_forward(d: pl.DataFrame | None = None, first: int = 2019,
     from src.utils.paths import get_path
 
     d = team_games() if d is None else d
-    feats = feature_columns(d)
-    if drop_leaks:
-        feats = [c for c in feats if c not in set(leaky_columns(d, feats))]
+    all_feats = feature_columns(d)
 
     # The market, joined for comparison only — never for training.
     mkt = (pl.scan_parquet(get_path("processed", "anytime_td")
@@ -250,6 +248,11 @@ def walk_forward(d: pl.DataFrame | None = None, first: int = 2019,
         te = d.filter(pl.col("season") == season)
         if te.is_empty() or tr.height < 500:
             continue
+        # THE LEAK SCREEN SEES ONLY THE TRAINING SEASONS. Run once over every
+        # season, it chose columns with the outcomes of the season it then
+        # scored — mild, but selection on the test set all the same.
+        feats = ([c for c in all_feats if c not in set(leaky_columns(tr, all_feats))]
+                 if drop_leaks else all_feats)
         m = lgb.LGBMRegressor(n_estimators=400, learning_rate=0.05,
                               num_leaves=31, min_child_samples=40,
                               subsample=0.8, colsample_bytree=0.6,

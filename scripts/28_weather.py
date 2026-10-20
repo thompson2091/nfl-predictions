@@ -454,11 +454,18 @@ def main() -> int:
                          "disk is kept. Omit to rebuild the whole archive.")
     ap.add_argument("--fetch", action="store_true",
                     help="build data/processed/weather.parquet")
+    ap.add_argument("--current", action="store_true",
+                    help="with --fetch: only the season being predicted, for "
+                         "the scheduled runs before each feature build")
     ap.add_argument("--limit", type=int, default=None,
                     help="check only the N busiest stadiums")
     a = ap.parse_args()
     if a.fetch:
-        fetch([int(x) for x in a.seasons.split(",")] if a.seasons else None)
+        if a.current:
+            from src.utils.config import get_config
+            fetch([int(get_config()["seasons"]["predict_season"])])
+        else:
+            fetch([int(x) for x in a.seasons.split(",")] if a.seasons else None)
         return 0
     if not a.validate:
         ap.print_help()

@@ -261,7 +261,12 @@ def week_view(season: int, week: int) -> dict:
     have = load()
     if have.is_empty():
         return {}
-    d = have.filter((pl.col("season") == season) & (pl.col("week") == week))
+    from src.ingest.public_money import pre_kickoff
+
+    # Before each game's own kickoff: 93% of the "latest" rows shown were
+    # captured during the game. See `public_money.pre_kickoff`.
+    d = pre_kickoff(have.filter((pl.col("season") == season)
+                                & (pl.col("week") == week)), season, week)
     if d.is_empty():
         return {}
     first = (d.sort("captured_at")

@@ -160,6 +160,10 @@ run() {
 run ingest    "$PY" scripts/01_ingest.py    || exit 1
 run targets   "$PY" scripts/02_targets.py   || exit 1
 run candidates "$PY" scripts/03_candidates.py || exit 1
+# THE FORECASTS FIRST. Nothing scheduled refreshed them: the last fetch was
+# 2026-10-14 and every week after it got the dome fill. Never fatal — a
+# missed forecast leaves the previous one, which is better than no board.
+run weather "$PY" scripts/28_weather.py --fetch --current || echo "  weather fetch failed; features use the last forecast"
 run features  "$PY" scripts/04_features.py  || exit 1
 
 for TT in anytime_td first_td; do

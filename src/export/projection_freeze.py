@@ -119,7 +119,8 @@ def started(card: dict, now: datetime | None = None) -> bool:
         kick = datetime.strptime(when[:16], "%Y-%m-%d %H:%M")
     except ValueError:
         return False
-    return (now or datetime.now()) >= kick
+    from src.evaluation.tracked_rules import eastern_now
+    return (now or eastern_now()) >= kick
 
 
 def settle(cards: dict, season: int | None, week: int | None,

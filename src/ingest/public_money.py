@@ -434,6 +434,34 @@ def _write_lines(frames: list, stamp: str) -> None:
     tmp.replace(LINES)
 
 
+def pre_kickoff(d: pl.DataFrame, season: int, week: int) -> pl.DataFrame:
+    """Only captures taken before the row's own game kicked off.
+
+    Every "latest" figure on the card was the newest capture, and 93-94% of
+    those were taken after kickoff: the split as it stood during the game,
+    shown as the split going in. The kickoff is the schedule's
+    (`tracked_rules.kickoffs`, Eastern), compared in UTC; a game whose kickoff
+    cannot be read keeps everything.
+    """
+    from datetime import timezone
+    from zoneinfo import ZoneInfo
+
+    from src.evaluation.tracked_rules import kickoffs
+
+    if d.is_empty() or "captured_at" not in d.columns:
+        return d
+    et = ZoneInfo("America/New_York")
+    kick = {}
+    for gid, k in kickoffs(season, week).items():
+        utc = k.replace(tzinfo=et).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        kick[gid] = utc
+        kick[gid.split("_", 2)[-1]] = utc          # "AWAY_HOME", as these feeds key it
+    if not kick:
+        return d
+    k = pl.col("game_id").replace_strict(kick, default=None)
+    return d.filter(k.is_null() | (pl.col("captured_at") <= k))
+
+
 def line_view(season: int, week: int) -> dict:
     """Per game and market: where the line opened and where it is now.
 
@@ -444,6 +472,7 @@ def line_view(season: int, week: int) -> dict:
         return {}
     d = pl.read_parquet(LINES).filter(
         (pl.col("season") == season) & (pl.col("week") == week))
+    d = pre_kickoff(d, season, week)
     if d.is_empty():
         return {}
     d = d.sort("captured_at").unique(subset=["game_id", "market"], keep="last")
@@ -480,30 +509,38 @@ def week_view(season: int, week: int) -> dict:
     d = load()
     if d.is_empty():
         return {}
-    d = d.filter((pl.col("season") == season) & (pl.col("week") == week))
+    d = pre_kickoff(d.filter((pl.col("season") == season)
+                             & (pl.col("week") == week)), season, week)
     if d.is_empty():
         return {}
-    first = d["captured_at"].min()
-    last = d["captured_at"].max()
-    now = d.filter(pl.col("captured_at") == last)
-    then = (d.filter(pl.col("captured_at") == first)
-            .select(["game_id", "market", "side",
-                     pl.col("pick_pct").alias("open_pct")]))
-    j = now.join(then, on=["game_id", "market", "side"], how="left")
+    # Per game: each one's first and last capture before ITS kickoff, so a
+    # Thursday game is not read off a Sunday capture.
+    key = ["game_id", "market", "side"]
+    d = d.sort("captured_at")
+    now = d.group_by(key).last()
+    then = d.group_by(key).first().select(key + [pl.col("pick_pct").alias("open_pct"),
+                                                 pl.col("captured_at").alias("_first")])
+    j = now.join(then, on=key, how="left")
+    span = d.group_by("game_id").agg(pl.col("captured_at").min().alias("_f"),
+                                     pl.col("captured_at").max().alias("_l"),
+                                     pl.col("captured_at").n_unique().alias("_n"))
+    span = {r["game_id"]: r for r in span.iter_rows(named=True)}
     out: dict = {}
     for r in j.iter_rows(named=True):
         g = out.setdefault(r["game_id"], {})
         m = g.setdefault(r["market"], {"sides": [], "captures": 1})
+        sp = span[r["game_id"]]
         m["sides"].append({
             "side": r["side"], "pct": r["pick_pct"],
             "open_pct": r["open_pct"],
-            "drift": (None if r["open_pct"] is None or first == last
+            "drift": (None if r["open_pct"] is None or sp["_f"] == sp["_l"]
                       else round(r["pick_pct"] - r["open_pct"], 1)),
         })
-    for g in out.values():
+    for gid, g in out.items():
+        sp = span[gid]
         for m in g.values():
             m["sides"].sort(key=lambda s: -(s["pct"] or 0))
-            m["captures"] = int(d["captured_at"].n_unique())
-            m["first_seen"] = first
-            m["last_seen"] = last
+            m["captures"] = int(sp["_n"])
+            m["first_seen"] = sp["_f"]
+            m["last_seen"] = sp["_l"]
     return out

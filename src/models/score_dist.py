@@ -504,9 +504,11 @@ def scenarios(spread: float, total: float, home: str, away: str,
     # Margin from the FAVORITE's point of view, so the bands read the same
     # way whichever side is favored.
     m = pl.col("margin") if spread > 0 else -pl.col("margin")
+    # 14, two scores, as `script_risk` and the roster scenarios draw it, so
+    # one card does not carry two definitions of a blowout.
     bands = [
-        ("pulls away", f"{fav} pulls away", m >= 15),
-        ("comfortable", f"{fav} wins comfortably", (m >= 8) & (m < 15)),
+        ("pulls away", f"{fav} pulls away", m >= 14),
+        ("comfortable", f"{fav} wins comfortably", (m >= 8) & (m < 14)),
         ("narrow", f"{fav} edges it", (m >= 1) & (m < 8)),
         ("upset", f"{dog} wins outright", m <= -1),
         ("tie", "It ends level", m == 0),
@@ -540,8 +542,8 @@ def scenarios(spread: float, total: float, home: str, away: str,
         {"key": "upset", "short": f"{dog} wins"},
         {"key": "tie", "short": "Level"},
         {"key": "narrow", "short": f"{fav} by 1-7"},
-        {"key": "comfortable", "short": f"{fav} by 8-14"},
-        {"key": "pulls away", "short": f"{fav} by 15+"},
+        {"key": "comfortable", "short": f"{fav} by 8-13"},
+        {"key": "pulls away", "short": f"{fav} by 14+"},
     ]
 
     # The headline numbers a reader wants without reading a table. These DO

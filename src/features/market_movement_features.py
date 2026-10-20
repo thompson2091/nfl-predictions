@@ -66,12 +66,13 @@ def build_market_movement_features(target_type: str = "anytime_td"
     mv = line_movement(target_type)
     if mv is None or mv.height == 0:
         return pl.DataFrame(schema={
-            "season": pl.Int64, "week": pl.Int64, "player_name_norm": pl.Utf8,
+            "season": pl.Int64, "week": pl.Int64, "game_id": pl.Utf8,
+            "player_name_norm": pl.Utf8,
             "mkt_move_pp": pl.Float64, "mkt_move_z": pl.Float64,
             "mkt_move_abs_z": pl.Float64,
         })
 
-    mv = mv.select(["season", "week", "player_name_norm",
+    mv = mv.select(["season", "week", "game_id", "player_name_norm",
                     (pl.col("move") * 100).alias("mkt_move_pp")])
 
     # Center and scale within the week. `std` over one row is null and over a

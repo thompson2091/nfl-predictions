@@ -122,12 +122,16 @@ def projections(payload: dict, ids: dict | None = None) -> dict[str, dict]:
             line = r.get("point") if r.get("point") is not None else r.get("open_point")
             # One line per player: the consensus where there are several.
             priced = line is not None and r.get("best_line") is not False
-            put(r.get("player_id"), key, r.get(val_col),
+            val = r.get(val_col)
+            if val is None and key == "rec":
+                val = r.get("mu")       # a board built before the median
+            put(r.get("player_id"), key, val,
                 r if priced else None, line, r.get("fair_prob"))
 
     for key, mk in _YARDS.items():
         ou(((payload.get("yards") or {}).get(mk) or {}).get("rows"), key, "proj")
-    ou((payload.get("receptions") or {}).get("rows"), "rec", "mu")
+    # The median, as Props now shows it for catches.
+    ou((payload.get("receptions") or {}).get("rows"), "rec", "proj")
     for m in payload.get("markets") or []:
         key = {"anytime_td": "td", "first_td": "ftd"}.get(m.get("key"))
         if not key:
@@ -271,4 +275,142 @@ def build(payload: dict, season: int | None, week: int | None) -> dict:
         if sc:
             teams["_scen"] = sc
         out[c["game_id"]] = teams
+    return out
+
+
+#: Over/under market -> (projection key, the game-log stat that settles it).
+_OU = {"passing_yards": ("pass_yds", "passing_yards"),
+       "rushing_yards": ("rush_yds", "rushing_yards"),
+       "receiving_yards": ("rec_yds", "receiving_yards"),
+       "receptions": ("rec", "receptions")}
+
+
+def frozen_projections(season: int, week: int) -> dict[str, dict]:
+    """A played week's projections, from what was frozen BEFORE kickoff.
+
+    Never recomputed: a past week shows what the board said going in, from
+    `prediction_freeze`, so the grade below is of a forecast and not of a
+    number rebuilt afterwards. One line per player per market, chosen the way
+    the forward record chooses it — nearest his median line, a tie to the
+    lower — and the model's side on it.
+    """
+    import statistics
+
+    from src.export import prediction_freeze as PF
+
+    ids = feature_ids(season, week)
+    out: dict[str, dict] = {}
+
+    def pid_of(r):
+        return r.get("player_id") or ids.get((r.get("team"), r.get("player_name")))
+
+    for market, (key, _stat) in _OU.items():
+        per: dict = {}
+        for rows in PF.frozen(season, week, market).values():
+            for r in rows:
+                pid = pid_of(r)
+                if pid and r.get("point") is not None:
+                    per.setdefault(pid, []).append(r)
+        for pid, rs in per.items():
+            med = statistics.median(x["point"] for x in rs)
+            r = min(rs, key=lambda x: (abs(x["point"] - med), x["point"]))
+            p = out.setdefault(pid, {})
+            p[key] = r.get("proj")
+            p[key + "_line"] = r["point"]
+            for suf, col in (("_model", "model_only"), ("_book", "fair_prob"),
+                             ("_adj", "ours")):
+                if r.get(col) is not None:
+                    p[key + suf] = r[col]
+            side = r.get("model_side") or (
+                None if r.get("model_only") is None
+                else ("over" if r["model_only"] >= 0.5 else "under"))
+            p[key + "_side"] = side
+            price = r.get("price_over") if side == "over" else r.get("price_under")
+            if price is not None:
+                p[key + "_odds"] = price
+    for market, key in (("anytime_td", "td"), ("first_td", "ftd")):
+        for rows in PF.frozen(season, week, market).values():
+            for r in rows:
+                pid = pid_of(r)
+                if not pid:
+                    continue
+                p = out.setdefault(pid, {})
+                p[key] = r.get("probability")
+                for suf, col in (("_model", "prob_model"), ("_book", "book"),
+                                 ("_odds", "odds"), ("_adj", "probability")):
+                    if r.get(col) is not None:
+                        p[key + suf] = r[col]
+    return out
+
+
+def actuals(season: int, week: int) -> dict[str, dict]:
+    """What each player did, by id: the four stats, and whether he scored.
+
+    Absent for a player with no snap and no stat line — a void at the book,
+    so nothing on his row is graded.
+    """
+    from src.evaluation.safe_legs import game_logs
+
+    out: dict[str, dict] = {}
+    logs = game_logs().filter((pl.col("season") == season) & (pl.col("week") == week))
+    for r in logs.iter_rows(named=True):
+        out[r["player_id"]] = {key: r.get(stat) for key, stat in _OU.values()}
+    for key, target in (("td", "anytime_td"), ("ftd", "first_td")):
+        path = get_path("processed", target) / f"tds_{target}.parquet"
+        if not path.exists():
+            continue
+        sc = set(pl.scan_parquet(path)
+                 .filter((pl.col("season") == season) & (pl.col("week") == week))
+                 .select("td_player_id").collect()["td_player_id"].drop_nulls().to_list())
+        for pid, a in out.items():
+            a[key] = 1 if pid in sc else 0
+    return out
+
+
+def grade(proj: dict, got: dict | None) -> dict:
+    """The projection with what happened beside it, and right or wrong.
+
+    A line is graded on the model's own side of it, as the Record grades the
+    unblended model; a touchdown chance is graded as scored or not. A tie
+    with the line is a push and graded neither way.
+    """
+    p = dict(proj)
+    if not got:
+        p["void"] = True
+        return p
+    for key, _stat in _OU.values():
+        a = got.get(key)
+        if a is None:
+            continue
+        p[key + "_actual"] = a
+        line, side = p.get(key + "_line"), p.get(key + "_side")
+        if line is not None and side and a != line:
+            p[key + "_right"] = (a > line) == (side == "over")
+    for key in ("td", "ftd"):
+        if got.get(key) is not None and p.get(key) is not None:
+            p[key + "_actual"] = got[key]
+    return p
+
+
+def build_past(season: int, week: int, cards: list[dict]) -> dict:
+    """A played week's roster: the frozen board, graded against the result."""
+    from src.evaluation.tracked_rules import kickoffs
+
+    if not cards:
+        return {}
+    chart = charts(kickoffs(season, week))
+    if not chart:
+        return {}
+    proj = frozen_projections(season, week)
+    got = actuals(season, week)
+    graded = {pid: grade(p, got.get(pid)) for pid, p in proj.items()}
+    status = _status(season, week)
+    out = {}
+    for c in cards:
+        gid = c.get("game_id") or ""
+        ch = chart.get(gid) or chart.get(f"{season}_{int(week):02d}_{gid}")
+        if ch is None:
+            continue
+        out[gid] = {t: team_slots(ch, t, graded, status)
+                    for t in (c.get("away"), c.get("home")) if t}
     return out

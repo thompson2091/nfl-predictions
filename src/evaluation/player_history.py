@@ -163,11 +163,40 @@ def _weekly() -> pl.DataFrame:
             "receptions", "receiving_yards", "rushing_yards", "passing_yards",
             "receiving_tds", "rushing_tds"]
     have = [c for c in keep if c in w.columns]
-    return (w.select(have + ["player_id"])
-            .rename({"player_id": "pid"})
-            # One stat line per man per game. A duplicate would turn one bet
-            # into two rows.
-            .unique(subset=["game_id", "pid"], keep="first"))
+    w = (w.select(have + ["player_id"])
+          .rename({"player_id": "pid"})
+          # One stat line per man per game. A duplicate would turn one bet
+          # into two rows.
+          .unique(subset=["game_id", "pid"], keep="first"))
+    # AND EVERY GAME HE TOOK A SNAP AND RECORDED NOTHING, as a zero. nflverse
+    # writes no row for those, so "over in 9 of 10" skipped exactly the
+    # games that missed: 3.2-3.7% of priced catch and receiving-yards games.
+    # Same rule as settlement (`safe_legs.game_logs`).
+    try:
+        from src.evaluation.safe_legs import game_logs
+
+        z = (game_logs().select(["game_id", "season", "week", "player_id"])
+             .rename({"player_id": "pid"})
+             .join(w.select(["game_id", "pid"]), on=["game_id", "pid"], how="anti"))
+        if z.height and "team" in w.columns:
+            team = (w.group_by(["season", "pid"])
+                     .agg(pl.col("team").mode().first().alias("team")))
+            z = z.join(team.with_columns(pl.col("season").cast(z["season"].dtype)),
+                       on=["season", "pid"], how="inner")
+            parts = z["game_id"].str.split("_")
+            away, home = parts.list.get(2, null_on_oob=True), parts.list.get(3, null_on_oob=True)
+            z = z.with_columns(away.alias("_a"), home.alias("_h")).with_columns(
+                pl.when(pl.col("team") == pl.col("_h")).then(pl.col("_a"))
+                  .otherwise(pl.col("_h")).alias("opponent_team")).drop(["_a", "_h"])
+            stats = [c for c in have if c not in ("game_id", "season", "week",
+                                                  "team", "opponent_team")]
+            z = z.with_columns([pl.lit(0).alias(c) for c in stats])
+            z = z.select(w.columns).with_columns(
+                [pl.col(c).cast(w[c].dtype) for c in w.columns])
+            w = pl.concat([w, z], how="vertical")
+    except Exception:                                            # noqa: BLE001
+        pass
+    return w
 
 
 def _first_td() -> pl.DataFrame:

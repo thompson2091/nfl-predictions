@@ -482,6 +482,12 @@ def refit_conversion(df, train_seasons, splits, feature_cols, model_dir,
             conv["observed_min_priced_share"] = round(float(per["share"].min()), 4)
             conv["median_priced_share"] = round(med, 4)
             conv["priced_share_weeks"] = int(per.height)
+    # First TD publishes the calibrated classifier's within-game share and
+    # never reads this file; written anyway for the harness, it looked served.
+    conv["served"] = target_type == "anytime_td"
+    if not conv["served"]:
+        conv["note"] = ("not on the served path for this market: first TD is "
+                        "published from the classifier's within-game share")
     save_conversion(conv, model_dir / "td_conversion.json")
     print(f"TD conversion: level {conv['level']}, dispersion "
           f"{conv['dispersion']} (log loss {conv['poisson_log_loss']:.5f} "
@@ -899,6 +905,9 @@ def train_all(target_type: str = None, splits: dict | None = None,
     from src.models.joint import fit_team_rate, save_team_rate
     try:
         team_model = fit_team_rate(df, train_seasons)
+        if target_type != "anytime_td":
+            team_model = dict(team_model, served=False,
+                              note="not on the served path for first TD")
         save_team_rate(team_model, model_dir / "team_td_rate.json")
         print(f"Team TD rate: {team_model['mean_team_tds']:.2f} TDs/team-game over "
               f"{team_model['n_team_games']:,} team-games (RMSE "

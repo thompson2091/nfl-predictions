@@ -259,7 +259,11 @@ def board_for_week(season: int, week: int, snapshot: str = "close",
         pl.Series("p_over_raw", over),
         pl.Series("p_push", push),
         pl.Series("model_only", raw),
-        pl.Series("ours", blended),
+        # No Adjusted without a fair price: where only one side was posted
+        # the blend had nothing to weigh and returned the raw model, which
+        # then read as "Adjusted" on 0.3-0.4% of closes.
+        pl.when(pl.col("fair_prob").is_not_null())
+          .then(pl.Series("ours", blended)).otherwise(None).alias("ours"),
         pl.lit(w).alias("blend_weight"),
         pl.lit(snapshot).alias("price_snapshot"),
     ])

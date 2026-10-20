@@ -686,13 +686,18 @@ def assemble_features() -> pl.DataFrame:
         mkt_move = None
     if mkt_move is not None and not mkt_move.is_empty():
         before = df.height
-        mkt_move = mkt_move.unique(subset=["season", "week", "player_name_norm"],
-                                   keep="last")
+        # ON THE GAME, not the week: two players sharing a name that week
+        # (2026 has a WR and an LB Justin Jefferson) gave one the other's move.
+        key = (["season", "week", "game_id", "player_name_norm"]
+               if "game_id" in mkt_move.columns else
+               ["season", "week", "player_name_norm"])
+        mkt_move = mkt_move.unique(subset=key, keep="last")
         df = df.with_columns(
             _norm_name_expr("player_name").alias("_mm_name")
         ).join(
             mkt_move.rename({"player_name_norm": "_mm_name"}),
-            on=["season", "week", "_mm_name"], how="left",
+            on=[k if k != "player_name_norm" else "_mm_name" for k in key],
+            how="left",
         ).drop("_mm_name")
         assert df.height == before, (
             f"market-movement join fanned out: {before} -> {df.height}. The "

@@ -461,9 +461,16 @@ def players(season: int, week: int, target_type: str, model: str,
     b = board.to_pandas() if board.height else None
     if b is not None:
         if shop is not None and "player_name_norm" in b.columns:
+            # ON THE GAME AS WELL. By name alone a player listed in two games
+            # (week 1 had three) fanned the board out, and "no scorer", in
+            # every game, matched every game's price.
+            key = (["game_id", "player_name_norm"]
+                   if "game_id" in b.columns and "game_id" in shop.columns
+                   else ["player_name_norm"])
+            shop = shop.drop_duplicates(subset=key)
             b = b.merge(
-                shop[["player_name_norm", "best_odds", "best_book", "n_best"]],
-                on="player_name_norm", how="left")
+                shop[key + ["best_odds", "best_book", "n_best"]],
+                on=key, how="left")
         if inj is not None and "player_id" in b.columns and "player_id" in inj.columns:
             b = b.merge(inj[["player_id", "report_status", "is_blocked"]],
                         on="player_id", how="left")
@@ -723,10 +730,32 @@ def market(target_type: str, label: str, season: int | None,
     # Where "Leans" and "Strong call" sit, read off the backtested season's own
     # spread rather than chosen — so the label means "unusually far from the
     # market for this model" and moves when the model does.
-    bt = get_path("output", target_type) / f"backtest_{cfg['splits']['test_season']}.csv"
+    # ON THE SAME BASIS AS THE LIVE `diff`: the served model's own backtest
+    # file, and the published number minus the book. The untagged file was
+    # read, and on first TD its `edge` was the UNBLENDED model's — about twice
+    # the size of the blended diff it was then compared with, so the labels
+    # leaned "Matches book". First TD's backtest is re-blended here with the
+    # served weight; anytime's `final` already is the published number.
+    test = cfg["splits"]["test_season"]
+    bt = get_path("output", target_type) / f"backtest_{model}_{test}.csv"
+    if not bt.exists():
+        bt = get_path("output", target_type) / f"backtest_{test}.csv"
     cuts = (0.02, 0.05)
     if bt.exists():
-        diffs = pl.read_csv(bt)["edge"].abs().drop_nulls().to_numpy()
+        b = pl.read_csv(bt)
+        if target_type == "first_td" and {"prob_calibrated", "market_prob"} <= set(b.columns):
+            try:
+                from src.prediction.blend import blend_first_td, load_blend_weight
+                wgt = load_blend_weight(get_path("models", "first_td") / "blend_weight.json")
+                if wgt:
+                    b = blend_first_td(b, "prob_calibrated", "market_prob", wgt,
+                                       out_col="final")
+            except Exception:                                    # noqa: BLE001
+                pass
+        if {"final", "market_prob"} <= set(b.columns):
+            diffs = (b["final"] - b["market_prob"]).abs().drop_nulls().to_numpy()
+        else:
+            diffs = b["edge"].abs().drop_nulls().to_numpy()
         if len(diffs) > 100:
             cuts = (float(np.quantile(diffs, 0.33)), float(np.quantile(diffs, 0.66)))
 

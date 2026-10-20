@@ -104,9 +104,13 @@ def team_scoring_rate(team_lambda: pl.DataFrame,
     as. Averaged it lands near 8.8% against an actual shut-out rate of 7.7%,
     which is close enough to publish and not close enough to call exact.
     """
+    # The fitted shutout where the rate carries one (`joint.team_rate`,
+    # P(0) = exp(-k * lambda)); the bare Poisson only for an older model.
+    shut = (pl.col("shutout_pct") if "shutout_pct" in team_lambda.columns
+            else (-pl.col(lambda_col)).exp())
     return team_lambda.with_columns([
         pl.col(lambda_col).alias("expected_tds"),
-        (-pl.col(lambda_col)).exp().alias("shutout_pct"),
+        shut.alias("shutout_pct"),
     ])
 
 

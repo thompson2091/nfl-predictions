@@ -56,18 +56,25 @@ UNITS = [
 ]
 
 
-def _positions(season: int) -> pl.DataFrame:
-    """gsis id to position, the player's latest listing in the season."""
+def _positions(season: int, week: int | None = None) -> pl.DataFrame:
+    """gsis id to position, the player's latest listing up to `week`.
+
+    As of the week shown, so a past week does not read a move made later.
+    """
     r = (pl.scan_parquet(get_path("raw") / "rosters.parquet")
          .filter(pl.col("season") == season)
          .select(["gsis_id", "position", "week"]).collect())
+    if week is not None and "week" in r.columns:
+        early = r.filter(pl.col("week").is_null() | (pl.col("week") <= week))
+        if early.height:
+            r = early
     if "week" in r.columns:
         r = r.sort("week", nulls_last=False)
     return (r.drop_nulls("gsis_id").group_by("gsis_id")
              .agg(pl.col("position").last()))
 
 
-def _plays(season: int) -> pl.DataFrame:
+def _plays(season: int, week: int | None = None) -> pl.DataFrame:
     want = ["season", "week", "game_id", "play_id", "posteam", "defteam",
             "play_type", "pass", "sack", "qb_hit", "epa", "success",
             "yards_gained", "receiver_player_id", "rusher_player_id",
@@ -80,7 +87,7 @@ def _plays(season: int) -> pl.DataFrame:
     if "season_type" in have:
         d = d.filter(pl.col("season_type") == "REG")
     d = d.collect()
-    pos = _positions(season)
+    pos = _positions(season, week)
     d = (d.join(pos.rename({"gsis_id": "receiver_player_id", "position": "rec_pos"}),
                 on="receiver_player_id", how="left")
           .join(pos.rename({"gsis_id": "rusher_player_id", "position": "rush_pos"}),
@@ -132,7 +139,7 @@ def _per_game(d: pl.DataFrame, by: str) -> pl.DataFrame:
 
 def build(season: int, week: int) -> dict:
     """{team: {"games": n, "off": {metric: (rate, n)}, "def": {...}}}."""
-    d = _plays(season)
+    d = _plays(season, week)
     if d.is_empty():
         return {}
     out: dict = {}

@@ -343,6 +343,19 @@ def kickoffs(season: int, week: int) -> dict[str, "datetime"]:
     return out
 
 
+def eastern_now():
+    """Now on the Eastern clock, naive, to compare with `kickoffs`.
+
+    Kickoffs are read as Eastern wall-clock times. Compared with a bare
+    `datetime.now()` they were right only because this machine runs on
+    Eastern time; on a UTC host every freeze would land four hours late.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo("America/New_York")).replace(tzinfo=None)
+
+
 def first_kickoff(season: int, week: int):
     """When this week's earliest game starts, or None if it cannot be read."""
     times = kickoffs(season, week).values()
@@ -368,7 +381,7 @@ def week_has_started(season: int, week: int, now=None) -> bool:
         # Unreadable schedule: record, which is the old behavior. A guard that
         # silently stops recording is worse than one that never fires.
         return False
-    return (now or datetime.now()) >= kick
+    return (now or eastern_now()) >= kick
 
 
 def _label(game_id: str) -> str:
@@ -381,7 +394,7 @@ def started_labels(season: int, week: int, now=None) -> set[str]:
     """`"AWAY @ HOME"` for every game this week that has kicked off."""
     from datetime import datetime
 
-    at = now or datetime.now()
+    at = now or eastern_now()
     return {_label(gid) for gid, kick in kickoffs(season, week).items()
             if at >= kick}
 
@@ -437,7 +450,7 @@ def record(rows: list[dict], *, season: int, week: int, market: str,
     """
     from datetime import datetime
 
-    at = now or datetime.now()
+    at = now or eastern_now()
     if rows and not allow_late and market in PER_GAME_MARKETS:
         gone = started_labels(season, week, at)
         late = [r for r in rows if (r.get("game") or "") in gone]

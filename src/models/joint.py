@@ -140,8 +140,23 @@ def fit_team_rate(features: pl.DataFrame, train_seasons: list[int]) -> dict:
     coef = _poisson_irls(X, y)
 
     lam = np.exp(X @ coef)
+    # SCORELESS GAMES ARE RARER THAN A POISSON SAYS. exp(-lambda) put the
+    # shutout at ~10% a team-game against 6-8% actual: touchdowns are not
+    # independent arrivals, and a team that scores once tends to score again.
+    # P(0) = exp(-k * lambda), k fitted by maximum likelihood on the same
+    # seasons as the rate, so the page's shutout number is calibrated rather
+    # than borrowed from the Poisson the rate happens to be fitted as.
+    zero = (y == 0).astype(float)
+    ks = np.arange(0.8, 2.01, 0.01)
+    ll = [float(-np.mean(zero * np.log(np.clip(np.exp(-k * lam), 1e-9, 1))
+                         + (1 - zero) * np.log(np.clip(1 - np.exp(-k * lam), 1e-9, 1))))
+          for k in ks]
+    shutout_k = float(ks[int(np.argmin(ll))])
     return {
         "kind": "team_td_rate",
+        "shutout_k": round(shutout_k, 3),
+        "shutout_said": float(np.exp(-shutout_k * lam).mean()),
+        "shutout_actual": float(zero.mean()),
         "design_cols": TEAM_DESIGN,
         "coef": coef.tolist(),
         "seasons_used": sorted(train_seasons),
@@ -184,8 +199,10 @@ def team_rate(model: dict, games: pl.DataFrame) -> pl.DataFrame:
     """Expected offensive touchdowns for each team-game."""
     coef = np.asarray(model["coef"], dtype=float)
     lam = np.exp(np.clip(_team_design(games) @ coef, -10, 10))
+    k = float(model.get("shutout_k", 1.0))
     return games.select(["game_id", "team"]).with_columns(
-        pl.Series("team_lambda", lam)
+        pl.Series("team_lambda", lam),
+        pl.Series("shutout_pct", np.exp(-k * lam)),
     )
 
 

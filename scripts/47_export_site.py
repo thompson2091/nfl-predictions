@@ -846,8 +846,12 @@ def _mark_consensus_lines(payload: dict) -> None:
             def line_of(r):
                 return r["point"] if r.get("point") is not None else r["open_point"]
             med = statistics.median([line_of(r) for r in group])
-            best = max(group, key=lambda r: ((r.get("n_books") or 0),
-                                             -abs(line_of(r) - med)))
+            # THE LINE THE RULES GRADE: nearest the player's median line, a
+            # tie to the lower (`prop_edge.main_lines`, the forward record,
+            # the Record). Led by book count instead, the board showed one
+            # line and graded another on 182 of 364 multi-line catch
+            # player-weeks and 631 of 1,134 receiving.
+            best = min(group, key=lambda r: (abs(line_of(r) - med), line_of(r)))
             for r in group:
                 r["best_line"] = r is best
                 r["n_lines"] = len(group)
@@ -975,7 +979,13 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
     # come from. A mean alone cannot be read: 4.2 from a target hog and 4.2
     # from a deep threat are different bets, and the dispersion is what knows.
     lo, hi = count_interval(mus["mu"].to_numpy(), float(art["dispersion"]))
-    mus = mus.with_columns([pl.Series("lo", lo), pl.Series("hi", hi)])
+    # THE MEDIAN, as every yardage board shows. `mu` is a mean, and on a
+    # skewed count it sat above the line while the model's own P(over) was
+    # under a half on 257 of 1,576 priced 2026 rows: "projects over, leans
+    # under" on one row. The median is where that probability crosses 50%.
+    med, _ = count_interval(mus["mu"].to_numpy(), float(art["dispersion"]), 0.5, 0.5)
+    mus = mus.with_columns([pl.Series("lo", lo), pl.Series("hi", hi),
+                            pl.Series("proj", med)])
 
     # Held to the same population the touchdown board shows, which has already
     # had the low-activity and availability filters applied. Without it this is
@@ -983,12 +993,12 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
     # carrying a projected reception count, which is noise wearing a number.
     eligible = {p.get("player") for m in payload.get("markets") or []
                 for p in m.get("players") or []}
-    rng = {r["player_name"]: (float(r["lo"]), float(r["hi"]))
+    rng = {r["player_name"]: (float(r["lo"]), float(r["hi"]), float(r["proj"]))
            for r in mus.iter_rows(named=True)}
     for r in rec.get("rows") or []:
         got = rng.get(r.get("player_name"))
         if got:
-            r["lo"], r["hi"] = got
+            r["lo"], r["hi"], r["proj"] = got
     priced = {r.get("player_name") for r in rec.get("rows") or []}
     extra = []
     for row in mus.sort("mu", descending=True).iter_rows(named=True):
@@ -1000,6 +1010,7 @@ def _receptions_projections(payload: dict, season: int, week: int) -> None:
             "player_name": row["player_name"], "player_id": row.get("player_id"),
             "team": row["team"],
             "game_id": row.get("game_id"), "mu": row["mu"],
+            "proj": float(row["proj"]),
             "lo": float(row["lo"]), "hi": float(row["hi"]),
             "point": None, "odds": None, "fair_prob": None, "ours": None,
             "model_only": None, "edge_pp": None, "n_books": 0, "thin": False,
@@ -1222,7 +1233,7 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     _attach_model(cards, season, week)
     _attach_kickoff(cards, season, week)
     _attach_coaching(cards, season, week)
-    _attach_scores(cards)
+    _attach_scores(cards, season, week)
     _attach_injuries(cards, season, week)
     script_fits = _attach_script_risk(cards)
     _attach_blend(cards)
@@ -1234,7 +1245,7 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
     # and falls back to the model, and built before either it read the model
     # recomputed today: SEA @ DEN's frozen total was 39.5, its blend 40.2,
     # and the ladder marked ours at 42.9.
-    _attach_ladders(cards)
+    _attach_ladders(cards, season, week)
     _attach_matchup(cards, season, week)
     # Sorted by kickoff where it is known, so the list reads as a weekend
     # rather than as an alphabet. Games with no time sort last rather than
@@ -1278,11 +1289,26 @@ def _freeze_projections(cards: dict, season: int | None,
               f"{recorded} recorded", file=sys.stderr)
 
 
-def _attach_ladders(cards: dict) -> None:
+def _history_before(hist, season, week):
+    """Comparable games played before this week, nothing later.
+
+    A past week's card was built from every graded game, its own included:
+    the distribution an archived card showed knew how that game ended.
+    """
+    import polars as pl
+
+    if hist is None or hist.is_empty() or not season or not week:
+        return hist
+    return hist.filter((pl.col("season") < int(season))
+                       | ((pl.col("season") == int(season))
+                          & (pl.col("week") < int(week))))
+
+
+def _attach_ladders(cards: dict, season=None, week=None) -> None:
     """The line ladders, once the card's own numbers are final."""
     try:
         from src.models.score_dist import history, ladders_for_card
-        hist = history()
+        hist = _history_before(history(), season, week)
     except Exception as e:                                       # noqa: BLE001
         print(f"  ladders unavailable ({e})", file=sys.stderr)
         return
@@ -1292,7 +1318,7 @@ def _attach_ladders(cards: dict) -> None:
             c["ladders"] = lad
 
 
-def _attach_scores(cards: dict) -> None:
+def _attach_scores(cards: dict, season=None, week=None) -> None:
     """The empirical final-score distribution for every game that has a line.
 
     `history()` is read ONCE and passed down. Read per card it is sixteen
@@ -1302,7 +1328,7 @@ def _attach_scores(cards: dict) -> None:
     try:
         from src.models.score_dist import (for_card, history,
                                             scenarios_for_card)
-        hist = history()
+        hist = _history_before(history(), season, week)
         from src.models.game_blend import fit as blend_fit
         from src.models.game_blend import model_win_home
         mwin = (blend_fit() or {}).get("win") or {}
@@ -2226,6 +2252,16 @@ def games_past(season: int | None, current: int | None) -> dict:
             r["won"] = won.get(k)
         if rows:
             out[str(wk)] = {"rows": rows, "cards": cards}
+            # THE ROSTER AS IT WENT IN, GRADED. The frozen pre-kickoff board
+            # beside what each player did: lines right or wrong on the
+            # model's side, touchdowns scored or not. See `roster.build_past`.
+            try:
+                from src.export.roster import build_past
+                rost = build_past(season, wk, cards)
+                if rost:
+                    out[str(wk)]["roster"] = rost
+            except Exception as e:                               # noqa: BLE001
+                print(f"  week {wk} roster unavailable ({e})", file=sys.stderr)
     return out
 
 
@@ -2485,6 +2521,17 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
                                              "r": bool(r.get("rest"))}
         if flat:
             payload["injuries"] = flat
+    # Whether this week's injury report exists. Until it does, the
+    # vacated-workload inputs read "nobody Out" for every team, silently.
+    if s and w:
+        try:
+            from src.prediction.availability import status_for
+            if status_for(s, w) is None:
+                payload["no_injury_report"] = True
+                print(f"  !! no injury report for {s} week {w}: projections "
+                      f"assume nobody is Out", file=sys.stderr)
+        except Exception:                                        # noqa: BLE001
+            pass
     payload["bets"] = bets(s)
     payload["models"] = model_cards()
     # Each game's depth chart with the projections above, so it runs after

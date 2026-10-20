@@ -1672,6 +1672,14 @@ button{cursor:pointer}
 .rdet--h span{font-size:10px;letter-spacing:.05em;text-transform:uppercase;
   color:var(--mut);font-weight:700}
 .rdet .mut{color:var(--mut)}
+/* A played week adds what happened: green where the model's side of the
+   line was right, red where it was wrong. */
+.rdet--past{grid-template-columns:minmax(0,1fr) repeat(6,38px)}
+.rdet .good{color:var(--good);font-weight:600}
+.rdet .bad{color:var(--bad);font-weight:600}
+.rcmp__got b{font-weight:600}
+.rcmp__got b.good{color:var(--good)}
+.rcmp__got b.bad{color:var(--bad)}
 """
 
 

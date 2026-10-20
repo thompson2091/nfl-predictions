@@ -133,7 +133,8 @@ def started_games(season: int, week: int, now: datetime | None = None) -> set:
     """
     from src.evaluation.tracked_rules import kickoffs
 
-    at = now or datetime.now()
+    from src.evaluation.tracked_rules import eastern_now
+    at = now or eastern_now()
     return {gid for gid, kick in kickoffs(season, week).items() if at >= kick}
 
 
