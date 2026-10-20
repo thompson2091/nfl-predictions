@@ -317,3 +317,15 @@ def test_the_shipped_weight_is_the_fallback_not_a_default_of_one(monkeypatch):
     r = F.record(2026)
     assert r["weights"]["1"] == pytest.approx(0.23), (
         "an unevidenced week is served the shipped weight, not the raw model")
+
+
+def test_the_live_blend_is_fitted_on_the_calibrated_number():
+    """`graded` re-prices from the distribution, which is too narrow; the board
+    serves the calibrated number, so the live blend must be fitted on that one.
+    A weight fitted on the uncalibrated probability would be applied to the
+    calibrated one and shrink the wrong distance."""
+    import inspect
+
+    src = inspect.getsource(F.graded)
+    assert "ou_calibration.apply" in src
+    assert 'pl.Series("p_model_raw", raw)' in src

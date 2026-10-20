@@ -92,7 +92,14 @@ def graded(season: int, snapshot: str = "close") -> pl.DataFrame | None:
 
     over, push = prob_over(j["mu"].to_numpy(), j["point"].to_numpy(),
                            float(art["dispersion"]))
-    raw = fair_two_way(over, push)
+    uncal = fair_two_way(over, push)
+    # Calibrated as the board's `model_only` is, so the live blend refit and
+    # the walk-forward weights are fitted on the number they are applied to.
+    # A weight fitted on the uncalibrated probability (about twice as extreme
+    # in log-odds) would be applied to the calibrated one and shrink the
+    # wrong distance. See src/models/ou_calibration.py.
+    from src.models import ou_calibration
+    raw = ou_calibration.apply(uncal, ou_calibration.load("receptions"))
     # Graded on what the board serves, which is the blend. Grading the raw
     # model would report a number nobody is shown and would keep saying the
     # market is better after the change that made it not be.
@@ -100,6 +107,7 @@ def graded(season: int, snapshot: str = "close") -> pl.DataFrame | None:
     served = raw if w is None else blend_to_market(raw, j["fair_prob"].to_numpy(), w)
     return j.with_columns([
         pl.Series("p_model_raw", raw),
+        pl.Series("p_model_uncalibrated", uncal),
         pl.Series("p_model", served),
         (pl.col("receptions") > pl.col("point")).cast(pl.Float64).alias("y_over"),
         (pl.col("receptions") == pl.col("point")).alias("push"),
