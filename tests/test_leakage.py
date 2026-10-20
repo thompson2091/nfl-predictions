@@ -1891,7 +1891,13 @@ def test_served_path_matches_the_evaluated_path(capsys):
             ok, msg = check(target, season)
         if not ok:
             failures.append(msg)
-        elif "features are newer" in msg or "skipped" in msg:
+        elif "features are newer" in msg:
+            # STALE IS A FAILURE, NOT A SKIP. A skip here read green after
+            # every `make features`, which is to say almost always (audit
+            # 2026-10-19). The rollover now rebuilds the frames right after
+            # the matrix, so a stale frame means a rebuild that skipped it.
+            failures.append(msg + "\n    Run `make parity-frame`.")
+        elif "skipped" in msg:
             skipped.append(msg)
     assert not failures, "\n".join(failures)
     if skipped and len(skipped) == 2:

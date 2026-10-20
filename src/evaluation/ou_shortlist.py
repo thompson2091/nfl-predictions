@@ -217,6 +217,15 @@ def model_probs(market: str, pr: pl.DataFrame) -> pl.DataFrame | None:
         p = np.clip(over / np.clip(1.0 - push, 1e-9, None), 0.0, 1.0)
         rows = rows.drop([f"_q{i}" for i in range(q.shape[1])])
 
+    # ON THE BOARD'S SCALE. The board's `model_only` is calibrated
+    # (src/models/ou_calibration.py) and the gap is measured against it there,
+    # so the floors are fitted on the same number; fitted on the raw one they
+    # would be about twice too wide for every row they are applied to. The
+    # served calibration includes the held-out season: two parameters, fitted
+    # on outcomes, so the graded return carries that much in-sample.
+    from src.models import ou_calibration
+    p = ou_calibration.apply(p, ou_calibration.load(market))
+
     ws = (pl.scan_parquet(get_path("raw") / "weekly_stats.parquet")
           .select(["season", "week", "player_id", market]).collect())
     rows = rows.with_columns(pl.Series("p_model", p)).join(
@@ -362,6 +371,19 @@ def fit(market: str) -> dict:
     fitted = bands(rows, d, seasons=[val])
     floors = {s: floor_for(fitted, s) for s in ("over", "under")}
     held = sorted(s for s in rows["season"].unique().to_list() if s > val)
+    # WITHHELD WHERE IT LOSES. A side is chosen on closing-line value, never
+    # on return, and that stays true; but a side whose held-out return has an
+    # interval wholly below zero is not served, however the close moved. The
+    # 2026-10-19 audit found the receiving over band at -14.5 [-26.9, -2.2]
+    # per $100 and on the board.
+    withheld = {}
+    for side in ("over", "under"):
+        if not floors.get(side) or not held:
+            continue
+        g = _grade(rows, d, {side: floors[side]}, held)[-1]
+        if g.get("roi_hi") is not None and g["roi_hi"] < 0:
+            withheld[side] = dict(floors[side], held_out=g)
+            floors[side] = None
     return {
         "market": market, "problem": "",
         "drift_pp": d,
@@ -369,6 +391,7 @@ def fit(market: str) -> dict:
         "n_pairs": int(rows.height),
         "bands": fitted,
         "floors": floors,
+        "withheld": withheld,
         # What the fitted rule returned on seasons it was not fitted on. One
         # entry per held-out season, plus the pooled one, because a rule that
         # only worked in the year after the fit is a rule that decayed.
@@ -482,19 +505,27 @@ def apply_to_board(rows: list[dict], art: dict | None) -> dict:
             "dropped": len(deep), "left": 0})
         return out
 
+    # SAME LINE OR NOT AT ALL. The floors were fitted on the gap to the open
+    # AT THE SAME NUMBER; a row whose open sat on another line used to fall
+    # back to the current price, which is a different population (176 of
+    # 324 live picks on 2026-10-19). Dropped and counted instead.
+    same_line = [r for r in deep
+                 if r.get("open_fair") is not None
+                 and (r.get("open_point") is None or r.get("point") is None
+                      or r.get("open_point") == r.get("point"))]
+    out["dropped"].append({
+        "filter": "no opening price at this line to measure against",
+        "dropped": len(deep) - len(same_line), "left": len(same_line)})
+
     kept = []
     dropped_side = 0
-    for r in deep:
+    for r in same_line:
         # AGAINST THE OPEN, as fitted. The floors were chosen on the gap
         # between the model and the OPENING fair price, judged on how the
         # close then moved; measured against the close here the board was
         # serving a different population from the one the rule describes. The
         # open at this row's own line where it exists, else the current price.
-        same = (r.get("open_point") is None or r.get("point") is None
-                or r.get("open_point") == r.get("point"))
-        base = (r.get("open_fair") if same and r.get("open_fair") is not None
-                else r["fair_prob"])
-        gap = (float(r["model_only"]) - float(base)) * 100.0
+        gap = (float(r["model_only"]) - float(r["open_fair"])) * 100.0
         side = "over" if gap > 0 else "under"
         f = floors.get(side)
         if not f or abs(gap) < f["lo"] or (f.get("hi") is not None

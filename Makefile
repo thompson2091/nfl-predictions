@@ -39,8 +39,11 @@ targets:
 candidates:
 	$(PYTHON) scripts/03_candidates.py
 
+# The parity frames follow the matrix: a frame older than it fails
+# test_served_path_matches_the_evaluated_path. About 5 seconds.
 features:
 	$(PYTHON) scripts/04_features.py
+	$(MAKE) parity-frame
 
 train:
 	$(PYTHON) scripts/05_train.py

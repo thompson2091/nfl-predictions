@@ -165,6 +165,12 @@ run candidates "$PY" scripts/03_candidates.py || exit 1
 # missed forecast leaves the previous one, which is better than no board.
 run weather "$PY" scripts/28_weather.py --fetch --current || echo "  weather fetch failed; features use the last forecast"
 run features  "$PY" scripts/04_features.py  || exit 1
+# The parity frames are scored on the matrix just built. A rebuilt matrix
+# leaves them older than it, and the served-vs-evaluated parity test then
+# had nothing current to compare and skipped, every week (audit 2026-10-19).
+# About 5 seconds; never fatal, the board does not depend on it.
+run parity make PYTHON="$PY" parity-frame \
+    || say "     parity frames not rebuilt — run \`make parity-frame\`"
 
 for TT in anytime_td first_td; do
     run "predict_${TT}" "$PY" scripts/06_predict.py \

@@ -255,6 +255,47 @@ def by_edge(rows: pl.DataFrame, prob_col: str = CLEAN_PROB_COL) -> list[dict]:
     return out
 
 
+def _prefer_frozen(rows: list[pl.DataFrame], target_type: str
+                   ) -> list[pl.DataFrame]:
+    """Swap each frozen game's rows in for the weekly CSV's.
+
+    The CSV is rewritten by every later run, so for a played week it holds a
+    board rebuilt after the games, by whatever model is served now — on
+    2026-10-19, weeks 1-4 differed from the frozen pre-kickoff board by 1.0-2.4
+    points on average, on 1,445 of 2,145 rows. Closing-line value asks what we
+    said BEFORE the line moved, which is what the freeze kept
+    (`src.export.prediction_freeze`). A game the freeze does not hold keeps the
+    CSV's rows, which is the best there is for it.
+    """
+    try:
+        from src.export import prediction_freeze as PF
+    except Exception:                                            # noqa: BLE001
+        return rows
+    out = []
+    for d in rows:
+        if d.height == 0 or "game_id" not in d.columns:
+            out.append(d)
+            continue
+        season, week = int(d["season"][0]), int(d["week"][0])
+        kept = PF.frozen(season, week, target_type)
+        got = [dict(r, game_id=gid) for gid, rs in kept.items() for r in rs
+               if r.get("prob_model") is not None or r.get("probability") is not None]
+        if not got:
+            out.append(d)
+            continue
+        f = (pl.DataFrame(got, infer_schema_length=None)
+             .with_columns(pl.coalesce([c for c in ("prob_model", "probability")
+                                        if c in {k for r in got for k in r}])
+                           .cast(pl.Float64).alias("prob_calibrated"))
+             .select([c for c in ("game_id", "player_name", "player_id", "team",
+                                  "prob_calibrated") if c in {k for r in got for k in r} | {"prob_calibrated"}])
+             .with_columns([pl.lit(season).alias("season"), pl.lit(week).alias("week"),
+                            pl.lit(1).alias("_src_rank"), pl.lit(True).alias("frozen")]))
+        out.append(d.filter(~pl.col("game_id").is_in(list(kept))))
+        out.append(f)
+    return out
+
+
 def published_predictions(target_type: str) -> pl.DataFrame | None:
     """Every published prediction and backtest frame, keyed for the archive.
 
@@ -288,6 +329,7 @@ def published_predictions(target_type: str) -> pl.DataFrame | None:
             # the dedup note in clv.hit_rows.
             pl.lit(1).alias("_src_rank"),
         ]))
+    rows = _prefer_frozen(rows, target_type)
     from src.features.odds_features import _normalize_name  # noqa
 
     # Always add the backtest frames alongside any weekly prediction files.

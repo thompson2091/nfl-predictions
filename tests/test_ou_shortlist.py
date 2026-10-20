@@ -146,13 +146,36 @@ def test_an_over_under_board_has_no_veto_only_a_side():
            "graded": []}
     rows = [
         {"player_name": "Low Ball", "point": 40.5, "fair_prob": 0.60,
+         "open_point": 40.5, "open_fair": 0.60,
          "model_only": 0.40, "n_books": 5},          # 20pp under
         {"player_name": "High Ball", "point": 70.5, "fair_prob": 0.40,
+         "open_point": 70.5, "open_fair": 0.40,
          "model_only": 0.60, "n_books": 5},          # 20pp over
     ]
     out = ous.apply_to_board(rows, art)
     got = {r["player_name"]: r["side"] for r in out["rows"]}
     assert got == {"Low Ball": "under", "High Ball": "over"}
+
+
+def test_a_line_with_no_open_at_that_number_is_not_measured_against_the_current_price():
+    """The floors were fitted on the gap to the open AT THE SAME LINE. A row
+    whose open sat on another number, or that has none, is a different
+    population; it is dropped and counted, never measured against the close."""
+    art = {"floors": {"over": {"lo": 2.0, "hi": None},
+                      "under": {"lo": 2.0, "hi": None}}, "graded": []}
+    rows = [
+        {"player_name": "Moved", "point": 41.5, "open_point": 39.5,
+         "open_fair": 0.50, "fair_prob": 0.50, "model_only": 0.70, "n_books": 5},
+        {"player_name": "No Open", "point": 41.5, "fair_prob": 0.50,
+         "model_only": 0.70, "n_books": 5},
+        {"player_name": "Same", "point": 41.5, "open_point": 41.5,
+         "open_fair": 0.50, "fair_prob": 0.45, "model_only": 0.70, "n_books": 5},
+    ]
+    out = ous.apply_to_board(rows, art)
+    assert [r["player_name"] for r in out["rows"]] == ["Same"]
+    assert out["rows"][0]["gap_pp"] == pytest.approx(20.0)
+    step = next(d for d in out["dropped"] if "opening price" in d["filter"])
+    assert step["dropped"] == 2
 
 
 def test_a_line_one_book_drew_is_not_a_line_the_rule_takes():
