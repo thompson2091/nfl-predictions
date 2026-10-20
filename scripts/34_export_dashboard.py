@@ -389,6 +389,17 @@ def _f(x):
     return None if not np.isfinite(v) else round(v, 6)
 
 
+def _blocked(v) -> bool:
+    """Whether the injury report blocks this player: True only for a real True.
+
+    NOT bool(v). A player the report does not name comes out of the left merge
+    as NaN, and bool(NaN) is True — which marked every healthy player blocked
+    and hid him from the board (32 WAS @ SF rows, 2026 week 6). Compared with
+    `==` rather than `is` so numpy's True counts as well.
+    """
+    return bool(v == True)  # noqa: E712
+
+
 def players(season: int, week: int, target_type: str, model: str,
             rates: dict, rule: dict | None, cuts: tuple[float, float]) -> dict:
     """Every player the model rates this week — priced and unpriced in one list.
@@ -538,11 +549,17 @@ def players(season: int, week: int, target_type: str, model: str,
                 "backing": (tier_list[i] if tier_list is not None else None),
                 "status": (r.get("report_status")
                            if isinstance(r.get("report_status"), str) else None),
-                "blocked": bool(r.get("is_blocked")) if "is_blocked" in b.columns else False,
+                "blocked": _blocked(r.get("is_blocked")),
             })
 
+    # The unpriced rows get the same injury flags. Hard-coded empty, an Out
+    # player with no price (Croskey-Merritt, 2026 week 6) showed unflagged.
+    inj_by_id = ({r["player_id"]: r for r in inj.to_dict("records")}
+                 if inj is not None and "player_id" in inj.columns else {})
     if unpriced is not None and getattr(unpriced, "height", 0):
         for r in unpriced.to_pandas().itertuples():
+            pid = getattr(r, "player_id", None)
+            rep = inj_by_id.get(pid) if isinstance(pid, str) else None
             rows.append({
                 "player": r.player_name, "team": getattr(r, "team", None),
                 "player_id": (getattr(r, "player_id", None)
@@ -559,7 +576,10 @@ def players(season: int, week: int, target_type: str, model: str,
                 "book": None, "diff": None, "read": None,
                 "bet_rank": None, "bet_edge": None, "ev": None,
                 "ev_adj": None,
-                "backing": None, "status": None, "blocked": False,
+                "backing": None,
+                "status": (rep["report_status"] if rep is not None
+                           and isinstance(rep.get("report_status"), str) else None),
+                "blocked": _blocked(rep.get("is_blocked") if rep is not None else None),
             })
 
     # One ladder over everyone in the game, assigned after the merge so the

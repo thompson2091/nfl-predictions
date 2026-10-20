@@ -437,3 +437,42 @@ def test_a_started_game_shows_the_touchdown_board_it_kicked_off_with(monkeypatch
     assert (k["ours"], k["model_only"], k["book"], k["priced"]) == (0.86, 0.97, 0.51, True)
     assert k["odds"] == "-188" and k["diff"] == 35.0 and k["read"] is None
     assert rows[1]["ours"] == 0.3, "a game still to come was touched"
+
+
+def test_a_started_games_defense_matches_its_frozen_row(monkeypatch):
+    """The board names it "LA DEF/ST", the freeze "DEF/ST": 28 of 28 missed."""
+    import importlib.util
+    from pathlib import Path as _P
+
+    spec = importlib.util.spec_from_file_location(
+        "e47c", _P(__file__).resolve().parents[1] / "scripts" / "47_export_site.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    from src.export import prediction_freeze as PF
+
+    monkeypatch.setattr(PF, "started_games", lambda s, w: {"2026_06_ARI_LA"})
+    monkeypatch.setattr(PF, "missing", lambda s, w, k: [])
+    monkeypatch.setattr(PF, "frozen", lambda s, w, k: {"2026_06_ARI_LA": [
+        {"player_name": "DEF/ST", "team": "LA", "probability": 0.1137,
+         "prob_model": 0.1137, "has_market_price": False}]})
+    rows = [{"player": m.qualified_name("DEF/ST", "LA"), "team": "LA",
+             "game_id": "2026_06_ARI_LA", "ours": 0.1485, "model_only": 0.1485}]
+    m._serve_frozen_td([{"key": "anytime_td", "players": rows}], 2026, 6)
+    assert rows[0]["ours"] == 0.1137 and rows[0].get("frozen") is True
+
+
+def test_a_cards_main_line_is_where_the_books_stand_not_where_they_stood():
+    """KC @ MIA 2026 week 3 carded 11.5, Tuesday's line, against a 9.5 close."""
+    import polars as pl
+    from src.evaluation import matchups as M
+
+    b = M.board(2026, 3)
+    if b.is_empty():
+        import pytest
+        pytest.skip("no 2026 week 3 odds archive")
+    s = b.filter(pl.col("game_id").str.contains("KC") & pl.col("game_id").str.contains("MIA")
+                 & (pl.col("market") == "spreads") & (pl.col("outcome") == "MIA"))
+    by_books = s.sort("n_books", descending=True)["point"][0]
+    by_now = s.sort(["n_current", "n_books"], descending=True)["point"][0]
+    assert by_books == 11.5, "the archive changed; re-measure this case"
+    assert by_now == 9.5

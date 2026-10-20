@@ -270,3 +270,18 @@ def test_the_two_grading_paths_cannot_disagree_about_what_has_finished():
     assert "unfinished" in src and "read_parquet" not in src, (
         "week_history reads the schedule itself again instead of delegating "
         "to tracked_rules.unfinished")
+
+
+def test_a_board_frozen_without_ids_still_voids_players_who_did_not_play():
+    """Weeks 1-6 were frozen without player_id, and the void silently skipped:
+    207 players with no snap graded as misses."""
+    import polars as pl
+    from src.evaluation.week_history import week_board
+
+    b = week_board(2026, 5, "anytime_td")
+    if b.is_empty() or "scored" not in b.columns:
+        import pytest
+        pytest.skip("no 2026 week 5 board on disk")
+    assert b["scored"].null_count() > 0, "nobody voided: the void did not run"
+    d = b.filter(pl.col("player_name") == "DEF/ST")
+    assert d["scored"].null_count() == 0, "a defense always plays"

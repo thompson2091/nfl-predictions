@@ -107,9 +107,14 @@ def week_board(season: int, week: int, target_type: str = "anytime_td",
     key = ["player_id"] if by_id else ["player_name", "team"]
     feats = (pl.scan_parquet(get_path("processed", target_type) / "features.parquet")
              .filter((pl.col("season") == season) & (pl.col("week") == week))
-             .select(list({*key, "target"}))
+             .select(list({*key, "player_id", "target"}))
              .collect()
              .unique(subset=key, keep="last"))
+    if not by_id:
+        # Boards frozen before the id was kept (2026 weeks 1-6) take it from
+        # the feature matrix, whose names are the board's own spelling. Without
+        # it the void below could not run, and did not, silently.
+        df = df.drop("player_id", strict=False)
     before = df.height
     out = df.join(feats, on=key, how="left")
     assert out.height == before, (
@@ -119,18 +124,26 @@ def week_board(season: int, week: int, target_type: str = "anytime_td",
     # A PLAYER WHO NEVER TOOK THE FIELD DID NOT "FAIL TO SCORE": a book voids
     # him. Graded as a zero, every inactive name on the board pulled the
     # calibration rows down. Null, by id, where the week's snaps are known.
-    if by_id:
-        try:
-            from src.evaluation.safe_legs import game_logs
-            took = set(game_logs().filter(
-                (pl.col("season") == season) & (pl.col("week") == week)
-            )["player_id"].to_list())
-        except Exception:                                        # noqa: BLE001
-            took = set()
-        if took:
-            out = out.with_columns(
-                pl.when(pl.col("player_id").is_in(list(took)))
-                  .then(pl.col("scored")).otherwise(None).alias("scored"))
+    try:
+        from src.evaluation.safe_legs import game_logs
+        took = set(game_logs().filter(
+            (pl.col("season") == season) & (pl.col("week") == week)
+        )["player_id"].to_list())
+    except Exception as e:                                       # noqa: BLE001
+        took = set()
+        print(f"  week {week} {target_type}: game logs unreadable ({e})",
+              file=sys.stderr)
+    if took:
+        out = out.with_columns(
+            # A team's defense has no snap row of its own and always plays.
+            pl.when(pl.col("player_id").is_in(list(took))
+                    | (pl.col("player_name") == "DEF/ST"))
+              .then(pl.col("scored")).otherwise(None).alias("scored"))
+    else:
+        # SAID OUT LOUD: with no snaps to read, every inactive player on this
+        # board grades as a miss.
+        print(f"  week {week} {target_type}: no game logs, so players who did "
+              f"not play are graded as misses", file=sys.stderr)
 
     # A WEEK IS NOT A GAME, AND THIS FUNCTION'S WHOLE POINT IS THE DIFFERENCE.
     #

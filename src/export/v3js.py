@@ -3972,6 +3972,7 @@ function v3RostLine(s) {
 //: side: green right, red wrong, plain where there was no line to grade.
 //: A touchdown is a check or a dash. HTML, built here because it is coloured.
 function v3RostGot(s) {
+  if (s.pending) return '<span class="rcmp__f">Pending</span>';
   if (s.void) return '<span class="rcmp__f">Did not play</span>';
   const parts = {
     QB: [['pass_yds', ' pass'], ['rush_yds', ' rush']],

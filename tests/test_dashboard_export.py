@@ -1124,3 +1124,14 @@ def test_an_ablation_for_a_different_feature_set_is_not_attached():
     assert not mod.read_ablation(art, {})[1]["fresh"]
     assert not mod.read_ablation({"families": fams}, {"feature_hash": "aaaa"})[1]["fresh"]
     assert mod.read_ablation(None, {"feature_hash": "aaaa"}) == ({}, None)
+
+
+def test_a_player_the_injury_report_does_not_name_is_not_blocked(mod):
+    """bool(NaN) is True: every healthy player read as blocked and was hidden."""
+    np = pytest.importorskip("numpy")
+    assert mod._blocked(float("nan")) is False
+    assert mod._blocked(None) is False
+    assert mod._blocked(False) is False
+    assert mod._blocked(np.bool_(False)) is False
+    assert mod._blocked(True) is True
+    assert mod._blocked(np.bool_(True)) is True

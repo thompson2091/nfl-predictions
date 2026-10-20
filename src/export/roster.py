@@ -394,7 +394,7 @@ def grade(proj: dict, got: dict | None) -> dict:
 
 def build_past(season: int, week: int, cards: list[dict]) -> dict:
     """A played week's roster: the frozen board, graded against the result."""
-    from src.evaluation.tracked_rules import kickoffs
+    from src.evaluation.tracked_rules import kickoffs, unfinished
 
     if not cards:
         return {}
@@ -404,13 +404,19 @@ def build_past(season: int, week: int, cards: list[dict]) -> dict:
     proj = frozen_projections(season, week)
     got = actuals(season, week)
     graded = {pid: grade(p, got.get(pid)) for pid, p in proj.items()}
+    # A game with no final is not graded: with no box score yet, every player
+    # in it would read "Did not play". The Record calls these pending too.
+    open_ids, _ = unfinished(season, week)
+    pending = {pid: dict(p, pending=True) for pid, p in proj.items()}
     status = _status(season, week)
     out = {}
     for c in cards:
         gid = c.get("game_id") or ""
-        ch = chart.get(gid) or chart.get(f"{season}_{int(week):02d}_{gid}")
+        full = gid if gid in chart else f"{season}_{int(week):02d}_{gid}"
+        ch = chart.get(full)
         if ch is None:
             continue
-        out[gid] = {t: team_slots(ch, t, graded, status)
+        use = pending if full in open_ids else graded
+        out[gid] = {t: team_slots(ch, t, use, status)
                     for t in (c.get("away"), c.get("home")) if t}
     return out

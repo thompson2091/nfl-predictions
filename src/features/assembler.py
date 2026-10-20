@@ -297,8 +297,21 @@ def assemble_features() -> pl.DataFrame:
 
     # === Core features ===
     player_feats = build_player_rolling_features(weekly_stats, spine)
-    team_feats = build_team_features(pbp)
-    opp_feats = build_opponent_features(pbp)
+    # THE TEAM BUILDERS SEE A PLACEHOLDER FOR EACH TEAM'S NEXT GAME, so their
+    # own shift(1) gives that game a row holding every game played. Without
+    # it the carry-forward projected a row that was already shifted, and the
+    # upcoming board read team form one game stale. Player builders and the
+    # schedule-driven ones (coach, score-first) do not need it; the opening-
+    # drive family is left on the carry. So are coverage and personnel: 2026
+    # play-by-play has no participation data for them, so a next-game row
+    # rolls over nothing and comes out null (served as 0.0), where the carry
+    # at least holds the end-of-2025 rate. See `src/features/next_game.py`
+    # and `scripts/74_next_game_check.py`.
+    from src.features.next_game import with_stubs
+    pbp_next = with_stubs(pbp, schedules, predict_season)
+
+    team_feats = build_team_features(pbp_next)
+    opp_feats = build_opponent_features(pbp_next)
 
 
 
@@ -339,12 +352,12 @@ def assemble_features() -> pl.DataFrame:
 
     # === Red zone features ===
     player_rz_feats = build_player_redzone_features(pbp, spine)
-    team_rz_feats = build_team_redzone_features(pbp)
+    team_rz_feats = build_team_redzone_features(pbp_next)
     print(f"  Red zone player features: {player_rz_feats.shape}")
     print(f"  Red zone team features: {team_rz_feats.shape}")
 
     # === Opponent position-specific features ===
-    opp_pos_feats = build_opponent_position_features(pbp, rosters)
+    opp_pos_feats = build_opponent_position_features(pbp_next, rosters)
     print(f"  Opponent position features: {opp_pos_feats.shape}")
 
     # === Vegas & environment features ===
@@ -388,7 +401,7 @@ def assemble_features() -> pl.DataFrame:
     print(f"  First-half features: {h1_feats.shape}")
 
     # === QB features ===
-    qb_feats = build_qb_features(pbp)
+    qb_feats = build_qb_features(pbp_next)
     print(f"  QB features: {qb_feats.shape}")
 
     # === NEW Round 2: TD proxy features ===
@@ -417,7 +430,7 @@ def assemble_features() -> pl.DataFrame:
     print(f"  Injury team features: {injury_team_feats.shape}")
 
     # === NEW Round 2: Pace features ===
-    pace_feats = build_pace_features(pbp)
+    pace_feats = build_pace_features(pbp_next)
     print(f"  Pace features: {pace_feats.shape}")
 
 
@@ -475,7 +488,7 @@ def assemble_features() -> pl.DataFrame:
     print(f"  Personnel features: {personnel_feats.shape}")
 
     # === Box count features (stacked/light box opponent tendency) ===
-    box_feats = build_box_features(pbp)
+    box_feats = build_box_features(pbp_next)
     print(f"  Box count features: {box_feats.shape}")
 
     # === Carry forward into week 1 of every season, predict season included ===

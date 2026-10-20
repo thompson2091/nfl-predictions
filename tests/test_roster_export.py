@@ -93,3 +93,23 @@ def test_the_team_line_adds_averages_of_the_numbered_slots_only():
     got = roster.team_line(slots, avg)
     assert got == {"rec_avg": 80.0, "pass_avg": 254.0, "n": 1, "qb": "Q"}, (
         "an Out player or an empty slot was counted")
+
+
+def test_an_unfinished_game_is_pending_not_did_not_play(monkeypatch):
+    """With no box score yet, all 36 WAS @ SF players read "Did not play"."""
+    from src.evaluation import tracked_rules
+
+    cards = [{"game_id": "WAS_SF", "away": "WAS", "home": "SF"}]
+    monkeypatch.setattr(tracked_rules, "unfinished",
+                        lambda s, w: ({"2026_06_WAS_SF"}, {"WAS @ SF"}))
+    out = roster.build_past(2026, 6, cards)
+    if not out:
+        import pytest
+        pytest.skip("no 2026 week 6 chart or freeze on disk")
+    slots = [s for t in out["WAS_SF"].values()
+             for s in (t if isinstance(t, list) else t.get("slots", []))
+             if isinstance(s, dict) and s.get("player_id")]
+    # Every player with a frozen projection is pending; one without (a backup
+    # nobody projected) carries nothing to grade either way.
+    assert any(s.get("pending") for s in slots)
+    assert not any(s.get("void") for s in slots)

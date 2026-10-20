@@ -109,9 +109,18 @@ def board(season: int, week: int, snapshot: str = "close") -> pl.DataFrame:
     if d.is_empty():
         return pl.DataFrame()
 
-    d = (d.sort("captured_at")
-           .unique(subset=["game_id", "market", "outcome", "point", "bookmaker"],
-                   keep="last"))
+    d = d.sort("captured_at")
+    # HOW MANY BOOKS ARE ON THIS LINE NOW. Newest-per-(book, point) below keeps
+    # a line a book left days ago, so counting its books found Tuesday's
+    # number: KC @ MIA 2026 week 3 carded 11.5 against a 9.5 close, and 23 of
+    # 93 spreads sat half a point or more off. A book quotes one point per
+    # capture, so its newest quote per outcome is where it stands.
+    now = (d.unique(subset=["game_id", "market", "outcome", "bookmaker"],
+                    keep="last")
+             .group_by(["game_id", "market", "outcome", "point"])
+             .agg(pl.len().alias("n_current")))
+    d = d.unique(subset=["game_id", "market", "outcome", "point", "bookmaker"],
+                 keep="last")
     g = (d.group_by(["game_id", "home_team", "away_team", "market", "outcome",
                      "point"])
            .agg([pl.col("implied_prob").median().alias("consensus_prob"),
@@ -143,8 +152,11 @@ def board(season: int, week: int, snapshot: str = "close") -> pl.DataFrame:
 
     from src.ingest.odds_api import _prob_to_american
 
-    out = g.join(who, on=["game_id", "market", "outcome", "point"], how="left",
-                 nulls_equal=True)
+    out = (g.join(who, on=["game_id", "market", "outcome", "point"], how="left",
+                  nulls_equal=True)
+            .join(now, on=["game_id", "market", "outcome", "point"], how="left",
+                  nulls_equal=True)
+            .with_columns(pl.col("n_current").fill_null(0)))
     return (out.with_columns([
                 ((pl.col("consensus_prob") - pl.col("best_prob")) * 100)
                 .alias("gap_pp"),

@@ -1183,6 +1183,7 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
             "consensus": r["consensus_odds"], "consensus_prob": r["consensus_prob"],
             "best": r["best_odds"], "best_book": r["best_book"],
             "gap_pp": r["gap_pp"], "n_books": r["n_books"],
+            "n_current": r.get("n_current") or 0,
             # Null, not zero, when the week holds one end only. A week being
             # played has no close yet and "did not move" is a different claim
             # from "cannot be known".
@@ -1202,12 +1203,14 @@ def _enrich_lines(book_rows: list[dict], moves: dict | None = None,
         by_game.setdefault(r["game_id"], []).append(r)
     for gid, rs in by_game.items():
         a = rs[0]
-        # The MAIN line of each market is the one the most books quote. An
-        # alternate total of 33.5 exists on some games and would otherwise be
-        # as likely to be picked as the real one.
+        # The MAIN line of each market is the one the most books quote NOW —
+        # their newest quote, not any quote this week. An alternate total of
+        # 33.5 exists on some games, and a line books have moved off still
+        # carries every book that once hung it.
         def _main(mkt):
             sel = [x for x in rs if x["market"] == mkt and x["point"] is not None]
-            return max(sel, key=lambda x: x["n_books"]) if sel else None
+            return (max(sel, key=lambda x: (x.get("n_current") or 0, x["n_books"]))
+                    if sel else None)
 
         tot, spr = _main("totals"), _main("spreads")
         total_pt = abs(tot["point"]) if tot else None
@@ -2323,7 +2326,11 @@ def _serve_frozen_td(markets: list, season: int, week: int) -> None:
         if key not in ("anytime_td", "first_td"):
             continue
         kept = PF.frozen(season, week, key)
-        idx = {(gid, r.get("player_name"), r.get("team")): r
+        # Keyed by the name the BOARD shows: the board has already been
+        # through `qualified_name` ("LA DEF/ST"), the freeze has not ("DEF/ST"),
+        # and keyed raw no defense in a started game ever matched.
+        idx = {(gid, qualified_name(r.get("player_name"), r.get("team")),
+                r.get("team")): r
                for gid, rows in kept.items() for r in rows}
         served = 0
         for p in m.get("players") or []:

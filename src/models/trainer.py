@@ -383,13 +383,28 @@ def refit_conversion(df, train_seasons, splits, feature_cols, model_dir,
         print(f"  conversion population: {priced.height:,} priced, "
               f"{unpriced.height:,} unpriced (DEF/ST excluded) over "
               f"seasons {covered}")
-    # The largest expected count on every board after the fit window, from
-    # inputs alone (no target is read), so the conversion's no-certainty
-    # floor covers what has actually been served.
+    # The largest expected count on every board as served, from inputs alone
+    # (no target is read), so the conversion's no-certainty floor covers what
+    # a board can actually show.
     later_mu_max = None
     try:
-        later = _filter_low_activity(df.filter(
-            pl.col("season") > splits["val_season"]))
+        # AS SERVED, AND OVER EVERY SEASON WITH PRICES. A live board drops
+        # the players the roster says cannot play before it forms shares, so
+        # the rest of the team splits a larger share. Measured on the training
+        # pool the largest count read 1.043 and admitted r = 1.0; filtered as
+        # served, 2026 reached 1.157 and 2023 already 1.197, and a served
+        # rebuild of 2026 week 6 put Kyren Williams at the clip. The fit
+        # window's seasons count too: a board like 2023's can come again.
+        from src.prediction.predict import _filter_unavailable
+        seen = sorted(set(covered or []) | set(
+            df.filter(pl.col("season") > splits["val_season"])["season"]
+              .unique().to_list()))
+        later = _filter_low_activity(df.filter(pl.col("season").is_in(seen)))
+        if later.height:
+            later = pl.concat(
+                [x for x in (_filter_unavailable(g, s, wk) for (s, wk), g
+                             in later.group_by(["season", "week"])) if x.height],
+                how="vertical_relaxed")
         if later.height:
             Xl, _ = prepare_data(later.with_columns(pl.lit(0.0).alias("target"))
                                  if "target" not in later.columns else later,
@@ -400,7 +415,7 @@ def refit_conversion(df, train_seasons, splits, feature_cols, model_dir,
             later = apply_joint(later, later, team_model, score_col="_s",
                                 out_col="_p")
             later_mu_max = float((later["team_lambda"] * later["share"]).max())
-            print(f"  largest expected count after the fit window: "
+            print(f"  largest expected count on a board as served: "
                   f"{later_mu_max:.3f}")
     except Exception as e:                                       # noqa: BLE001
         print(f"  later boards unavailable for the headroom ({e})")

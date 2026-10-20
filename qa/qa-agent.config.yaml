@@ -29,6 +29,8 @@ workflows:
       - { action: click, target: '[data-v3tab="props"]' }
       - { action: click, target: '[data-v3tab="picks"]' }
       - { action: click, target: '[data-v3tab="angles"]' }
+      - { action: click, target: '[data-v3tab="ladder"]' }
+      - { action: click, target: '[data-v3tab="games"]' }
       - { action: click, target: '[data-v3tab="record"]' }
       - { action: expectText, text: "Holding the model to account" }
   - name: record-filters-narrow
@@ -36,9 +38,11 @@ workflows:
     steps:
       - { action: goto, url: "/" }
       - { action: click, target: '[data-v3tab="record"]' }
-      - { action: click, target: "Gaps" }
-      - { action: click, target: "Missed" }
-      - { action: click, target: "Every bet" }
+      # By attribute, not text: since 2026-10-09 the Record's "Every game"
+      # section has its own Result control, and "Missed" as text hit that one.
+      - { action: click, target: '[data-v3recview="gap"]' }
+      - { action: click, target: '[data-v3recres="miss"]' }
+      - { action: click, target: '[data-v3recwho="bets"]' }
       - { action: expectText, text: "misses only" }
 
 plugins: ["./plugins/storage.mjs"]
