@@ -395,8 +395,18 @@ def _with_book(df: pl.DataFrame, season: int, week: int,
         pl.col("player_name").map_elements(_normalize_name, return_dtype=pl.Utf8)
         .alias("player_name_norm"))
     before = df.height
+    # AND THE PRICE ITSELF, as American odds off the median implied
+    # probability. The freeze promised both (`prediction_freeze`'s
+    # docstring), and live-frozen rows carried only `book`: weeks 5-6 held 25
+    # and 0 rows with a price, so a started game served from the freeze could
+    # show our chance and the book's but not what it paid.
+    p = pl.col("implied_prob")
+    american = (pl.when(p >= 0.5).then(-100.0 * p / (1.0 - p))
+                .otherwise(100.0 * (1.0 - p) / p)).round(0)
+    fair = fair.with_columns(american.alias("_odds"))
     out = (df.join(fair.select(["player_name_norm",
-                                pl.col("market_prob").alias("book")])
+                                pl.col("market_prob").alias("book"),
+                                pl.col("_odds").alias("odds")])
                    .unique(subset=["player_name_norm"], keep="first"),
                    on="player_name_norm", how="left")
            .drop("player_name_norm"))

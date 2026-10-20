@@ -89,13 +89,18 @@ def book_ladders(seasons: list[int], snapshot: str = "close") -> pl.DataFrame:
     not quoting that market, and all of it goes — not only the rung that
     exposed it.
     """
-    from src.ingest.odds_history import BOOKS_PATH, drop_in_play
+    from src.ingest.odds_history import BOOKS_PATH, drop_in_play, resolve_game_ids
 
     b = (pl.scan_parquet(BOOKS_PATH)
          .filter(pl.col("market").is_in(list(ALT_STAT)) & (pl.col("snapshot") == snapshot)
                  & (pl.col("side") == "yes") & pl.col("season").is_in(seasons)
                  & pl.col("point").is_not_null() & pl.col("odds").is_not_null())
          .collect())
+    # Live captures name a game "Washington Commanders @ San Francisco 49ers";
+    # the schedule, the logs and the paper record key on 2026_06_WAS_SF. Left
+    # unresolved, not one 2026 game ever matched and the forward record
+    # judged nothing while reporting "no newly final games".
+    b = resolve_game_ids(b)
     b = drop_in_play(b)
     key = ["game_id", "player_name_norm", "market", "bookmaker"]
     b = (b.sort("captured_at").unique([*key, "point"], keep="last")

@@ -99,6 +99,15 @@ def board(season: int, week: int, snapshot: str = "close") -> pl.DataFrame:
     d = _this_week_only(d, season, week)
     if d.is_empty():
         return pl.DataFrame()
+    # NO PRICE QUOTED AFTER KICKOFF. Newest-per-book below selects exactly
+    # those, and on 2026 weeks 3-5 it put 29 cards on in-play lines: LV @ NO
+    # read NO at 9.5% to win against 64.9% before kickoff, with NO losing.
+    # The Record already filtered them (`season_scorecard._book_lines`), so
+    # the card and the grade disagreed. Same filter, same rows now.
+    from src.ingest.odds_history import drop_in_play
+    d = drop_in_play(d)
+    if d.is_empty():
+        return pl.DataFrame()
 
     d = (d.sort("captured_at")
            .unique(subset=["game_id", "market", "outcome", "point", "bookmaker"],

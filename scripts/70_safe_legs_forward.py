@@ -85,10 +85,14 @@ def main() -> int:
     judged = set(json.loads(judged_path.read_text())) if judged_path.exists() else set()
 
     r = sl.rungs([season])
-    todo = (final_games(season) & set(r["game_id"].unique().to_list())) - judged
+    logs = sl.game_logs()
+    # FINAL AND IN THE BOX SCORE. A game is judged once and never again, so
+    # one judged in the hours between the final and the stats landing would
+    # settle every rung to nothing and be frozen empty for good.
+    stats_in = set(logs.filter(pl.col("season") == season)["game_id"].unique().to_list())
+    todo = (final_games(season) & set(r["game_id"].unique().to_list()) & stats_in) - judged
     if todo:
         r = r.filter(pl.col("game_id").is_in(sorted(todo)))
-        logs = sl.game_logs()
         r = sl.settle(r, logs)
         r = sl.history_rates(r, logs, cfg["history_games"], cfg["history_min_games"])
         r = sl.model_probs(r).with_columns(

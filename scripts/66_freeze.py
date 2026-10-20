@@ -61,6 +61,14 @@ def main() -> int:
     print(f"=== freeze {season} week {week}")
     for market in TD_MARKETS:
         try:
+            # PREDICTED ON THE NEWEST CAPTURE FIRST. `week_board` reads
+            # `predictions_<season>_week<week>.csv`, and the only writer of
+            # that file was the Tuesday rollover — so every "kickoff" board
+            # was the Wednesday one: week 6 froze 19 players listed Out as
+            # priced, and Saquon's week 5 at 1.4% against a 30.8% book.
+            # Started games keep their rows (`predict._keep_started`).
+            from src.prediction.predict import predict
+            predict(season, week, target_type=market)
             # `week_board` records as it reads; the board it returns is not
             # needed here.
             week_board(season, week, market)

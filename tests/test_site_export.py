@@ -31,6 +31,18 @@ def site():
     return mod
 
 
+@pytest.fixture(autouse=True)
+def _no_live_grading_inputs(monkeypatch):
+    """Settlement here reads only the fixtures each test writes. Who took the
+    field and which games are unfinished come from the real raw files
+    otherwise, where these made-up players never appear."""
+    def _no_logs():
+        raise FileNotFoundError("no snap logs in this test")
+    monkeypatch.setattr("src.evaluation.safe_legs.game_logs", _no_logs)
+    monkeypatch.setattr("src.evaluation.tracked_rules.unfinished",
+                        lambda season, week: (set(), set()))
+
+
 def test_a_receiver_is_a_position_and_not_a_gap(site):
     """WR has no one-hot column, because it is the reference level.
 

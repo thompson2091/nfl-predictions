@@ -210,8 +210,23 @@ def _anchor_to_market(result: pl.DataFrame, week_df: pl.DataFrame,
     # board served without it is the old over-predicting board and nothing else
     # would say so.
     conv = conversion or {}
-    priced_share = (float(result["market_prob"].is_not_null().mean())
-                    if result.height else 0.0)
+    # MEASURED OVER GAMES STILL TO COME. A started game's prices leave the
+    # live cache at kickoff, so by Sunday night the slate reads mostly
+    # "unpriced" and the floor below tripped: every row was served at the
+    # priced level, and an unpriced player's 7% became 94% (Kyren Williams
+    # read 100% on 2026-10-19). Started games are served from the freeze.
+    share_rows = result
+    try:
+        from src.export.prediction_freeze import started_games
+        live = started_games(season, week)
+        if live and "game_id" in result.columns:
+            ahead = result.filter(~pl.col("game_id").is_in(list(live)))
+            if ahead.height:
+                share_rows = ahead
+    except Exception:                                            # noqa: BLE001
+        pass
+    priced_share = (float(share_rows["market_prob"].is_not_null().mean())
+                    if share_rows.height else 0.0)
     floor = conv.get("min_priced_share")
     if conv.get("unpriced_level") is None:
         pass
@@ -854,7 +869,11 @@ def predict(season: int, week: int, model_name: str = None,
     # then moves asks whether the price predicts itself — worth 4.4 points of
     # imaginary skill when measured. Betting analysis ranks on this column too,
     # for the reason in src/evaluation/rank_economics.py.
-    keep = ["game_id", "game_label", "player_name", "team", "probability", "rank"]
+    # `player_id` is the join key for the injury report. Without it the
+    # board's `status_for` merge never ran: on 2026 week 6 every one of 413
+    # rows read blocked=False, and 19 players listed Out were priced.
+    keep = ["game_id", "game_label", "player_id", "player_name", "team",
+            "probability", "rank"]
     if "prob_calibrated" in result.columns:
         result = result.with_columns(pl.col("prob_calibrated").alias("prob_model"))
         keep.append("prob_model")

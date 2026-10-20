@@ -375,3 +375,65 @@ def test_the_history_block_is_given_the_week_it_is_as_of():
     assert "_history_block(payload, s, w)" in src, (
         "the history block must be handed the season and week, not left to "
         "read them off a payload they are written to later")
+
+
+def test_saved_legs_settle_per_game_and_skip_players_who_did_not_play(tmp_path, monkeypatch):
+    """106 WAS @ SF legs read "miss" while the game was being played, and a
+    player with no snap read "miss" where a book voids."""
+    import importlib.util
+    from pathlib import Path as _P
+
+    import polars as pl
+
+    spec = importlib.util.spec_from_file_location(
+        "e47", _P(__file__).resolve().parents[1] / "scripts" / "47_export_site.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+
+    proc = tmp_path / "anytime_td"
+    proc.mkdir()
+    (tmp_path / "first_td").mkdir()
+    pl.DataFrame({"season": [2026] * 4, "week": [6] * 4,
+                  "game_id": ["2026_06_A_B", "2026_06_A_B", "2026_06_A_B", "2026_06_C_D"],
+                  "player_id": ["scorer", "blank", "scratch", "monday"],
+                  "player_name": ["Scorer", "Blank", "Scratch", "Monday"],
+                  "team": ["A", "A", "A", "C"]}).write_parquet(proc / "features.parquet")
+    pl.DataFrame({"season": [2026], "week": [6], "td_player_id": ["scorer"]}
+                 ).write_parquet(proc / "tds_anytime_td.parquet")
+    monkeypatch.setattr(m, "get_path", lambda *a: tmp_path / a[1] if len(a) > 1 else tmp_path)
+    monkeypatch.setattr("src.evaluation.tracked_rules.unfinished",
+                        lambda season, week: ({"2026_06_C_D"}, {"C @ D"}))
+    monkeypatch.setattr("src.evaluation.safe_legs.game_logs", lambda: pl.DataFrame(
+        {"season": [2026, 2026, 2026], "week": [6, 6, 6],
+         "player_id": ["scorer", "blank", "monday"]}))
+    monkeypatch.setattr(m, "_ou_results", lambda season, week: {})
+    got = {k: v for k, v in m.results(2026, 6).items() if k.startswith("6|any|")}
+    assert got == {"6|any|Scorer (A)": "hit", "6|any|Blank (A)": "miss"} or got == {
+        "6|any|Scorer": "hit", "6|any|Blank": "miss"}, got
+
+
+def test_a_started_game_shows_the_touchdown_board_it_kicked_off_with(monkeypatch):
+    """Kyren Williams read 100% after kickoff; frozen before it, 86%."""
+    import importlib.util
+    from pathlib import Path as _P
+
+    spec = importlib.util.spec_from_file_location(
+        "e47b", _P(__file__).resolve().parents[1] / "scripts" / "47_export_site.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    from src.export import prediction_freeze as PF
+
+    monkeypatch.setattr(PF, "started_games", lambda s, w: {"2026_06_ARI_LA"})
+    monkeypatch.setattr(PF, "missing", lambda s, w, k: [])
+    monkeypatch.setattr(PF, "frozen", lambda s, w, k: {"2026_06_ARI_LA": [
+        {"player_name": "Kyren Williams", "team": "LA", "probability": 0.86,
+         "prob_model": 0.97, "book": 0.51, "odds": -188.0, "has_market_price": True}]})
+    rows = [{"player": "Kyren Williams", "team": "LA", "game_id": "2026_06_ARI_LA",
+             "ours": 1.0, "model_only": 1.0, "book": None, "priced": False, "read": "x"},
+            {"player": "Later Man", "team": "SF", "game_id": "2026_06_WAS_SF",
+             "ours": 0.3, "model_only": 0.3, "book": 0.25}]
+    m._serve_frozen_td([{"key": "anytime_td", "players": rows}], 2026, 6)
+    k = rows[0]
+    assert (k["ours"], k["model_only"], k["book"], k["priced"]) == (0.86, 0.97, 0.51, True)
+    assert k["odds"] == "-188" and k["diff"] == 35.0 and k["read"] is None
+    assert rows[1]["ours"] == 0.3, "a game still to come was touched"

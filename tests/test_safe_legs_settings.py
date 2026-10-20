@@ -69,3 +69,26 @@ def test_a_result_is_found_by_id_when_the_spellings_differ():
         pytest.skip("2025 week 11 not in weekly_stats")
     assert got("Kenneth Gainwell") == got("Kenny Gainwell") == 24
     assert got("Kenneth Gainwell", "00-0036919") == 24
+
+
+def test_a_live_capture_game_name_resolves_to_the_schedule_id(tmp_path, monkeypatch):
+    """No 2026 game ever matched: the books file names games by full team names."""
+    import polars as pl
+    from src.ingest import odds_history
+
+    row = {"captured_at": "2026-10-19T23:00:00Z", "snapshot": "close",
+           "season": 2026, "week": 6,
+           "game_id": "Washington Commanders @ San Francisco 49ers",
+           "bookmaker": "good", "book_last_update": "2026-10-19T23:00:00Z",
+           "player_name_raw": "Rachaad White", "player_name_norm": "rachaad white",
+           "market": "rushing_yards_alt", "regions": "us", "point": 29.5,
+           "side": "yes", "odds": -300, "implied_prob": 0.75}
+    path = tmp_path / "books.parquet"
+    pl.DataFrame([row]).write_parquet(path)
+    monkeypatch.setattr(odds_history, "BOOKS_PATH", path)
+    monkeypatch.setattr(odds_history, "drop_in_play", lambda d: d)
+    try:
+        got = safe_legs.book_ladders([2026])
+    except Exception:                                            # noqa: BLE001
+        pytest.skip("no schedule on disk")
+    assert got["game_id"].to_list() == ["2026_06_WAS_SF"]

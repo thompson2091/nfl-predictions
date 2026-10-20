@@ -115,6 +115,18 @@ def results(season: int, week: int) -> dict[str, str]:
         return {}
 
     out: dict = {}
+    # WHO TOOK THE FIELD, by id: a snap or a stat line. A player with
+    # neither is a void at the book, not a miss — on week 5, 371 of 758
+    # pool players had no snap and no stat, and every leg on one of them
+    # read Lost. Absent from the map, such a leg stays pending.
+    try:
+        from src.evaluation.safe_legs import game_logs
+        played = {(int(a), b) for a, b in game_logs()
+                  .filter(pl.col("season") == season)
+                  .select(["week", "player_id"]).iter_rows()}
+    except Exception:                                            # noqa: BLE001
+        played = None
+    from src.evaluation.tracked_rules import unfinished
     # EVERY WEEK OF THE SEASON SO FAR, since 2026-10-09. Two weeks meant a
     # saved pick more than a week old went back from Won or Lost to Pending
     # on the next deploy, and the Picks tab's settled count and net shrank
@@ -127,10 +139,23 @@ def results(season: int, week: int) -> dict[str, str]:
         # it with, which is the same answer as before this existed.
         have = pl.scan_parquet(feats).collect_schema().names()
         cols = ["player_id", "player_name"] + (["team"] if "team" in have else [])
-        pool = (pl.scan_parquet(feats)
-                .filter((pl.col("season") == season) & (pl.col("week") == wk))
+        # A GAME IS NOT A WEEK. A week with play-by-play is "graded" the
+        # moment Sunday ends, and every Monday-night leg used to settle as a
+        # miss while the game was being played: 106 WAS @ SF legs on
+        # 2026-10-19. Only finished games settle, through the one definition
+        # of finished the record already uses.
+        live = unfinished(season, wk)[0] if "game_id" in have else set()
+        flt = (pl.col("season") == season) & (pl.col("week") == wk)
+        if live:
+            flt = flt & ~pl.col("game_id").is_in(list(live))
+        pool = (pl.scan_parquet(feats).filter(flt)
                 .select(cols).collect()
                 .unique(subset=["player_id"]))
+        # Only where the week's snaps are on disk: a week with none yet is
+        # unknown, and dropping everyone in it would read as nobody playing.
+        took = {pid for w_, pid in (played or ()) if w_ == wk}
+        if took:
+            pool = pool.filter(pl.col("player_id").is_in(list(took)))
         if "team" not in pool.columns:
             pool = pool.with_columns(pl.lit(None, dtype=pl.Utf8).alias("team"))
         if pool.height == 0:
@@ -2226,6 +2251,65 @@ def bets(season: int | None) -> dict:
             "losing": sum(1 for r in rows if r.get("loses"))}
 
 
+def _serve_frozen_td(markets: list, season: int, week: int) -> None:
+    """Replace a started game's touchdown numbers with the frozen ones.
+
+    Our chance, the model's, the book's de-vigged chance, the price where the
+    freeze kept one, and whether a book had priced him; then the differences
+    recomputed from those. A started game with nothing frozen keeps the
+    rebuilt row, as `prediction_freeze.settle` does, and is reported.
+    """
+    from src.export import prediction_freeze as PF
+
+    live = PF.started_games(season, week)
+    if not live:
+        return
+    for m in markets:
+        key = m.get("key")
+        if key not in ("anytime_td", "first_td"):
+            continue
+        kept = PF.frozen(season, week, key)
+        idx = {(gid, r.get("player_name"), r.get("team")): r
+               for gid, rows in kept.items() for r in rows}
+        served = 0
+        for p in m.get("players") or []:
+            gid = p.get("game_id")
+            if gid not in live or gid not in kept:
+                continue
+            f = idx.get((gid, p.get("player"), p.get("team")))
+            if f is None:
+                continue
+            ours, model = f.get("probability"), f.get("prob_model")
+            if model is None:
+                model = ours
+            book, odds = f.get("book"), f.get("odds")
+            p.update({"ours": ours, "model_only": model, "book": book,
+                      "priced": bool(f.get("has_market_price")),
+                      # The verdict was read off the rebuilt numbers; it
+                      # would describe a row this one no longer is.
+                      "read": None, "frozen": True})
+            if odds is not None:
+                p["odds_num"] = float(odds)
+                p["odds"] = f"{int(odds):+d}"
+                dec = (1 + odds / 100.0) if odds > 0 else (1 + 100.0 / -odds)
+                p["dec"] = dec
+                p["ev"] = (round(100 * (model * dec - 1), 1)
+                           if model is not None else None)
+                p["ev_adj"] = (round(100 * (ours * dec - 1), 1)
+                               if ours is not None else None)
+            else:
+                p["odds"] = p["odds_num"] = p["dec"] = p["ev"] = p["ev_adj"] = None
+            p["diff"] = (round(100 * (ours - book), 1)
+                         if ours is not None and book is not None else None)
+            p["bet_edge"] = (round(100 * (model - book), 1)
+                             if model is not None and book is not None else None)
+            served += 1
+        late = PF.missing(season, week, key)
+        print(f"  {key}: {served} started-game rows served frozen"
+              + (f"; started with nothing frozen: {', '.join(late)}" if late else ""),
+              file=sys.stderr)
+
+
 def build(season: int | None, week: int | None, brand: str) -> dict:
     import importlib.util
 
@@ -2247,6 +2331,13 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
     for m in mk:
         for pl_ in m.get("players") or []:
             pl_["player"] = qualified_name(pl_.get("player"), pl_.get("team"))
+
+    # A STARTED GAME SHOWS THE BOARD IT KICKED OFF WITH. The touchdown board
+    # is rebuilt on every export, and after kickoff the live odds cache has
+    # no price for the game: Kyren Williams read 100% anytime on 2026-10-19
+    # against 86% frozen before kickoff.
+    if s and w:
+        _serve_frozen_td(mk, s, w)
 
     pos = positions(s, w) if s and w else {}
     for m in mk:
