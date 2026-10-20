@@ -4497,12 +4497,12 @@ if (cards.length) {
     c.final_home = null; c.final_away = null; render();
     const live = app();
     ok('the box names the side we lean, not always the home team',
-       live.indexOf(c.away + ' to win') >= 0,
-       'expected ' + c.away + ' to win');
+       live.indexOf(c.away + '\u2019s side won') >= 0,
+       'expected ' + c.away + '\u2019s side won');
     ok('with that side\u2019s probability, not its complement',
        live.indexOf('>63%<') >= 0);
     ok('and the total box names the side too',
-       live.indexOf('Under 48') >= 0 && live.indexOf('>55%<') >= 0);
+       live.indexOf('Went under 48') >= 0 && live.indexOf('>55%<') >= 0);
 
     // The away team wins and the game goes UNDER: both calls right.
     c.final_home = 10; c.final_away = 20; render();
