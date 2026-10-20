@@ -1,7 +1,7 @@
 {
   "first_td": {
-    "version": "2026.10.06-first-td-market-blend",
-    "promoted_at": "2026-10-07T03:57:55+00:00",
+    "version": "2026.10.19-audit-leak-fix",
+    "promoted_at": "2026-10-20T02:48:39+00:00",
     "history": [
       "2026.08.12-baseline",
       "2026.08.12-baseline-remeasured",
@@ -13,12 +13,13 @@
       "2026.08.18-play-gate-fix",
       "2026.08.19-clean-matrix",
       "2026.10.05-drop-market-movement-anytime",
-      "2026.10.06-first-td-market-blend"
+      "2026.10.06-first-td-market-blend",
+      "2026.10.19-audit-leak-fix"
     ]
   },
   "anytime_td": {
-    "version": "2026.10.14-no-certainty-conversion",
-    "promoted_at": "2026-10-14T18:12:00+00:00",
+    "version": "2026.10.19-audit-leak-fix",
+    "promoted_at": "2026-10-20T02:48:39+00:00",
     "history": [
       "2026.08.12-baseline",
       "2026.08.12-baseline-remeasured",
@@ -37,7 +38,8 @@
       "2026.09.25-movement-and-practice-anytime-v2",
       "2026.10.05-drop-market-movement-anytime",
       "2026.10.06-first-td-market-blend",
-      "2026.10.14-no-certainty-conversion"
+      "2026.10.14-no-certainty-conversion",
+      "2026.10.19-audit-leak-fix"
     ]
   }
 }

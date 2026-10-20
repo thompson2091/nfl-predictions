@@ -780,19 +780,19 @@
   },
   "WAS_SF": {
    "paras": [
-    "San Francisco comes in as the favorite by 7.5 points, with the adjusted number putting it at 29.3 to Washington's 21.9. The 49ers have been the sharper team lately, winning 8 of their last 10 and covering 7 times, while the Commanders went 3 and 6 with an even 5-5 mark against the spread. Both defenses have played worse than expectation over that stretch, Washington allowing 27.7 a game against an expected 24.2 and San Francisco giving up 23.1 against an expected 23.0. In 146 past games priced like this one, 60.3% finished within one score, though the underdog won outright only 32.2% of the time.",
-    "San Francisco's offense has been productive, scoring 27.6 a game over its last 10 against an expected 24.0, and it holds an edge in two-minute situations, where it rates better than Washington's defense by 0.175. The Commanders have struggled to generate late-half scoring drives, rating worse than San Francisco's defense by 0.171. Both sides are missing key pieces: Washington lists four players out, while San Francisco is without Deebo Samuel and Nick Bosa, among others. Mike Evans carries a questionable tag with a rib injury.",
-    "The total sits at 51.5, having climbed from an opening of 50.5. Our model would set it lower at 50.4 before blending with the book, arriving at an adjusted total of 51.2. Washington's offense has scored 20.9 a game over its last 10, slightly above the expected 20.4, but the Commanders' attack becomes script-dependent if they fall behind early. In the lost big case, which has roughly a 24.0% chance of happening, the running back rush drops about 27.3% lower. San Francisco's ground game similarly tightens when trailing, falling about 13.7% lower in the lost case.",
-    "Jayden Daniels is projected for 237.2 passing yards, above his posted line of 233.5, and he adds another dimension on the ground with a projection of 28.1 rushing yards against a line of 27.5. Brock Purdy sits at 270.7 passing yards, below his posted 273.5. Christian McCaffrey is projected for 70.5 rushing yards and 4.6 receptions, the latter just above his line of 4.5. George Kittle projects to 59.7 receiving yards, slightly above his posted 59.5. Washington's Jacory Croskey-Merritt is listed out with a groin injury, but his projection of 52.4 rushing yards would have been well above the posted 42.5."
+    "San Francisco is favored by 7.5 points at home in a matchup that brings together two offenses playing well above what the market expected of them recently. The 49ers have scored 27.6 a game over their last 10 against an expected 24.0, while Washington has scored 20.9 against an expected 20.4. The trouble for both teams has been on the other side: San Francisco has allowed 23.1 against an expected 23.0, and Washington has allowed 27.7 against an expected 24.2, worse than what was asked of its defense. The adjusted number is 28.9 to 21.7 in favor of the 49ers, with an adjusted total of 50.6.",
+    "Washington will be without several defensive pieces, including Charles Omenihu and Javontae Jean-Baptiste, while San Francisco is missing Nick Bosa on its defensive line and Deebo Samuel from the receiving corps. Mike Evans is questionable with ribs. The injury absences matter in a game where the model on its own would set the total at 48.1, lower-scoring than the book's 51.5, yet both recent trends and the adjusted total point toward points. In 146 past games priced like this one, 60.3% finished within one score, 26.0% were shootouts and 35.6% were grinds.",
+    "San Francisco holds an edge in two-minute situations, where its offense is better than Washington's defense by 0.175. Washington's offense, meanwhile, is worse than the 49ers' defense on late-half scoring drives by 0.171. The game could turn on those margins, especially under the lights in prime time when possessions late in each half carry extra weight. Washington is coming off an overtime game and faces a short turnaround before its bye, circumstances that have produced records but not edges.",
+    "Brock Purdy is projected for 263.4 passing yards, with George Kittle the primary target at a projected 59.7 receiving yards and 5.2 receptions. Christian McCaffrey is projected for 70.5 rushing yards and 4.6 receptions as the centerpiece of the San Francisco attack. For Washington, Jayden Daniels is projected for 232.6 passing yards and 27.9 rushing yards, with Stefon Diggs projected for 47.5 receiving yards. Jacory Croskey-Merritt is listed out, so the running game will need to adjust accordingly."
    ],
    "scoreline": {
     "away": "WAS",
-    "away_pts": 21.9,
+    "away_pts": 21.7,
     "home": "SF",
-    "home_pts": 29.3,
+    "home_pts": 28.9,
     "lead": "SF",
-    "spread": -7.4,
-    "total": 51.2
+    "spread": -7.3,
+    "total": 50.6
    },
    "written": true
   }

@@ -808,17 +808,17 @@
   },
   "WAS_SF": {
    "blend": {
-    "spread": -7.4,
-    "total": 51.2,
-    "total_centered": 50.9,
-    "win_home": 0.7348
+    "spread": -7.3,
+    "total": 50.6,
+    "total_centered": 50.6,
+    "win_home": 0.732
    },
-   "model_away": 22.2,
-   "model_home": 28.2,
-   "model_spread": -6.1,
-   "model_total": 50.4,
-   "model_total_centered": 48.9,
-   "model_win_home": 0.6964,
+   "model_away": 21.0,
+   "model_home": 27.1,
+   "model_spread": -6.0,
+   "model_total": 48.1,
+   "model_total_centered": 48.0,
+   "model_win_home": 0.6933,
    "model_win_n": 2987
   }
  }

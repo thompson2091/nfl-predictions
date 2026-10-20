@@ -5,9 +5,9 @@
     "abs_spread"
   ],
   "coef": [
-    0.9002830750509776,
-    0.0018643531039704137,
-    -0.0006163613622619273
+    0.9419765154649548,
+    0.0012148575594039196,
+    -0.0005383144074476338
   ],
   "seasons_used": [
     2015,
@@ -21,11 +21,11 @@
     2023
   ],
   "n_games": 2458,
-  "mean_scorers_per_game": 0.9816924328722538,
-  "rmse": 0.1337956080649967,
-  "min_expected": 0.0,
+  "mean_scorers_per_game": 0.9943043124491456,
+  "rmse": 0.0750434839366474,
+  "min_expected": 1.0,
   "max_expected": 1.0,
-  "priced_share": 0.9481743227326266,
-  "fit_date": "2026-08-19",
+  "priced_share": 0.9553191489361702,
+  "fit_date": "2026-10-19",
   "source": "labels derived from nflverse play-by-play (see docs/DATA_SOURCES.md)"
 }
