@@ -74,6 +74,11 @@ def moves(seasons: list[int] | None = None) -> pl.DataFrame:
         d = d.filter(pl.col("season").is_in(seasons))
     if d.is_empty():
         return pl.DataFrame()
+    # No close taken after kickoff: 2,542 of 2026's closing rows were, and
+    # newest-per-book selects them. Dropping them moved every verdict ("away
+    # from" -4.70 to -3.83 per $100).
+    from src.ingest.odds_history import drop_in_play
+    d = drop_in_play(d)
 
     ends = {}
     for snap in ("open", "close"):
@@ -218,8 +223,21 @@ def evaluate(seasons: list[int] | None = None,
         # Standard error of the mean. Normal rather than Wilson: this is a
         # mean of a bounded-below but unbounded-above quantity, not a
         # proportion, and at n in the hundreds the CLT is the right tool.
-        sd = float(per_bet.std(ddof=1)) if n > 1 else 0.0
-        se = (sd / (n ** 0.5)) * 100 if n > 1 else 0.0
+        # CLUSTERED BY GAME. One game carries up to five of these bets and
+        # they settle on the same afternoon; counted as independent, 1,453
+        # rows from 787 games claimed the precision of 1,453. CR0 over games.
+        if "game_id" in s.columns and n > 1:
+            per_game = (s.with_columns(per_bet.alias("_r"))
+                         .group_by("game_id").agg(pl.col("_r").sum().alias("t"),
+                                                  pl.len().alias("k")))
+            G = per_game.height
+            mean_r = float(per_bet.mean())
+            resid = (per_game["t"] - per_game["k"] * mean_r).to_numpy()
+            var = (G / max(G - 1, 1)) * float((resid ** 2).sum()) / (n ** 2)
+            se = (var ** 0.5) * 100
+        else:
+            sd = float(per_bet.std(ddof=1)) if n > 1 else 0.0
+            se = (sd / (n ** 0.5)) * 100 if n > 1 else 0.0
         roi_lo, roi_hi = roi - 1.96 * se, roi + 1.96 * se
 
         # Kept as description, never as the verdict: it is what a reader wants

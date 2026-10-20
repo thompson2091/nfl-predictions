@@ -413,7 +413,12 @@ def count_interval(mu: np.ndarray, dispersion: float,
         mass = dist.pmf(k)
         # A step carrying no mass cannot be walked into; fall back to its edge.
         frac = np.where(mass > 1e-12, (level - below) / np.where(mass > 1e-12, mass, 1.0), 1.0)
-        return np.clip(k - 1 + np.clip(frac, 0.0, 1.0), 0.0, None)
+        # Each whole count spread over [k - 0.5, k + 0.5], not [k - 1, k].
+        # Spread over the step below it, the ceiling sat a half-catch low: at
+        # mu 4 it read 5.96, so six catches "beat" it, which happens 24% of
+        # the time against a nominal 15% (observed 20-22% on priced rows);
+        # the floor, likewise low, was missed 6-7% of the time against 15%.
+        return np.clip(k - 0.5 + np.clip(frac, 0.0, 1.0), 0.0, None)
 
     return q(lo), q(hi)
 

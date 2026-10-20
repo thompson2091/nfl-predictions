@@ -46,7 +46,7 @@ ROOT = Path(__file__).resolve().parents[2] / "archive" / "predictions"
 #: One row of a frozen board. `player_name` and `team` are the join key the
 #: rest of the project grades on; the rest is what the board showed.
 FIELDS: tuple[str, ...] = (
-    "player_name", "team", "probability", "prob_model", "rank",
+    "player_name", "player_id", "team", "probability", "prob_model", "rank",
     "has_market_price", "odds", "book", "source", "version",
 )
 
@@ -60,7 +60,9 @@ FIELDS: tuple[str, ...] = (
 OU_MARKETS: tuple[str, ...] = ("receptions", "receiving_yards",
                                "rushing_yards", "passing_yards")
 OU_FIELDS: tuple[str, ...] = (
-    "player_name", "team", "point", "proj", "lo", "hi",
+    # `player_id` kept, so grading a frozen line never has to rebuild the id
+    # from today's feature matrix by name.
+    "player_name", "player_id", "team", "point", "proj", "lo", "hi",
     "model_only", "ours", "fair_prob", "n_books",
     "price_over", "price_under",
     "model_side", "gap_side", "gap_edge_pp", "gap_threshold_pp",

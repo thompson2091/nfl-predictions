@@ -103,9 +103,13 @@ def _picks_from_boards(season: int) -> list[dict]:
                     gs = r.get("gap_side")
                     gp = r.get("price_over") if gs == "over" else r.get("price_under")
                     if gs and gp is not None:
+                        # The version too, as the model-side picks carry it:
+                        # without it every Gaps pick fell into one "None"
+                        # group and a promotion could not be told apart.
                         out.append(dict(base, rule="prop edge over threshold",
                                         side=gs, odds=gp,
-                                        edge_pp=r.get("gap_edge_pp")))
+                                        edge_pp=r.get("gap_edge_pp"),
+                                        version=r.get("version")))
     return out
 
 
@@ -268,7 +272,17 @@ def clv(season: int, picks: pl.DataFrame | None = None) -> dict:
     if p.is_empty():
         return {}
     close = _close_fair(season)
-    dr = {m: drift(pairs(m)) for m in STAT}
+    # THE RECENT MARKET'S DRIFT, NOT THE ARCHIVE'S. It is not stationary:
+    # on receptions it ran +0.93pp in 2023, +0.34 in 2024, +0.02 in 2025 and
+    # +0.06 in 2026, so the pooled +0.355 subtracted 2023's market from 2026's
+    # picks, and 73% of the "model under" rule's CLV was that correction.
+    # The season being graded and the one before it.
+    def _recent(m):
+        pr = pairs(m)
+        if pr is None or pr.is_empty() or "season" not in pr.columns:
+            return drift(pr)
+        return drift(pr.filter(pl.col("season").cast(pl.Int64) >= int(season) - 1))
+    dr = {m: _recent(m) for m in STAT}
     rows = p.to_dicts()
     names = _norm([r["player"] or "" for r in rows])
     got = []
@@ -282,9 +296,15 @@ def clv(season: int, picks: pl.DataFrame | None = None) -> dict:
         c = close.get((gid, n, r["market"], line))
         if c is None or r.get("side") not in ("over", "under"):
             continue
+        # A rule counts from its own first week, here as in its win-loss
+        # record: "model under" had 135 week-5 picks in its CLV and none in
+        # its record.
+        if int(r["week"]) < SINCE.get(r["rule"], 0):
+            continue
         s = 1 if r["side"] == "over" else -1
         got.append({"rule": r["rule"], "market": r["market"], "game": gid,
                     "clv": s * ((c - book) * 100 - dr[r["market"]]),
+                    "raw": s * (c - book) * 100,
                     "recorded_at": r.get("recorded_at")})
     out = {}
     for rule, label in RULES:
@@ -297,6 +317,11 @@ def clv(season: int, picks: pl.DataFrame | None = None) -> dict:
         mean, lo, hi = _cluster_ci(by_game)
         out[rule] = {"label": label, "n": len(mine), "mean": mean,
                      "lo": lo, "hi": hi,
+                     # The move before the drift came out, so a reader can
+                     # see how much of the figure is the correction.
+                     "raw_mean": round(st.mean(g["raw"] for g in mine), 3),
+                     "drift": {m: round(dr[m], 3) for m in
+                               sorted({g["market"] for g in mine})},
                      "markets": {m: round(st.mean(g["clv"] for g in mine
                                                   if g["market"] == m), 3)
                                  for m in sorted({g["market"] for g in mine})}}

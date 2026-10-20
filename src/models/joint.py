@@ -376,7 +376,8 @@ def mu_headroom(df: pl.DataFrame, mu_col: str,
 
 
 def fit_conversion(df: pl.DataFrame, mu_col: str, target_col: str = "target",
-                   unpriced: pl.DataFrame | None = None) -> dict:
+                   unpriced: pl.DataFrame | None = None,
+                   later_mu_max: float | None = None) -> dict:
     """Fit the level and dispersion that turn expected touchdowns into P(>=1).
 
     Two parameters, both with a physical reading, fitted by log loss on games
@@ -437,6 +438,14 @@ def fit_conversion(df: pl.DataFrame, mu_col: str, target_col: str = "target",
     # data has shown, so one season's growth cannot walk the served board
     # into the clip between refits. See `mu_headroom`.
     headroom, mu_max, growth = mu_headroom(df, mu_col)
+    # AND THE BOARDS SERVED SINCE. The fit window's largest count is not the
+    # largest the model has been asked about: after the 2026-10-19 retrain
+    # the window allowed r = 1.0 again, saturating at an expected count of
+    # 1.09, while week 5 of 2026 already put Kyren Williams at 1.04.
+    # `later_mu_max` is read off pre-kickoff inputs for the seasons after the
+    # window — no outcome enters — and raised by the same growth.
+    if later_mu_max:
+        headroom = max(headroom, float(later_mu_max) * (1.0 + growth))
 
     def search(constrained: bool):
         best = (1.0, 1e6, nll(1.0, 1e6))

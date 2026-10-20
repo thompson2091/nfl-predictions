@@ -85,8 +85,8 @@ def week_board(season: int, week: int, target_type: str = "anytime_td",
         return pl.DataFrame()
 
     df = pl.read_csv(pred)
-    keep = [c for c in ("game_id", "player_name", "team", "probability",
-                        "prob_model", "rank", "has_market_price")
+    keep = [c for c in ("game_id", "player_id", "player_name", "team",
+                        "probability", "prob_model", "rank", "has_market_price")
             if c in df.columns]
     df = df.select(keep).sort("probability", descending=True)
     if top_n is not None:
@@ -101,17 +101,36 @@ def week_board(season: int, week: int, target_type: str = "anytime_td",
     if week not in set(played_weeks(season)):
         return df.with_columns(pl.lit(None, dtype=pl.Int8).alias("scored"))
 
+    # BY PLAYER ID where the board carries one, by name and team otherwise
+    # (boards frozen before the id was kept). Two players can share a name.
+    by_id = "player_id" in df.columns and df["player_id"].null_count() < df.height
+    key = ["player_id"] if by_id else ["player_name", "team"]
     feats = (pl.scan_parquet(get_path("processed", target_type) / "features.parquet")
              .filter((pl.col("season") == season) & (pl.col("week") == week))
-             .select(["player_name", "team", "target"])
+             .select(list({*key, "target"}))
              .collect()
-             .unique(subset=["player_name", "team"], keep="last"))
+             .unique(subset=key, keep="last"))
     before = df.height
-    out = df.join(feats, on=["player_name", "team"], how="left")
+    out = df.join(feats, on=key, how="left")
     assert out.height == before, (
         f"week board join fanned out: {before} -> {out.height}")
     out = out.with_columns(
         pl.col("target").cast(pl.Int8).alias("scored")).drop("target")
+    # A PLAYER WHO NEVER TOOK THE FIELD DID NOT "FAIL TO SCORE": a book voids
+    # him. Graded as a zero, every inactive name on the board pulled the
+    # calibration rows down. Null, by id, where the week's snaps are known.
+    if by_id:
+        try:
+            from src.evaluation.safe_legs import game_logs
+            took = set(game_logs().filter(
+                (pl.col("season") == season) & (pl.col("week") == week)
+            )["player_id"].to_list())
+        except Exception:                                        # noqa: BLE001
+            took = set()
+        if took:
+            out = out.with_columns(
+                pl.when(pl.col("player_id").is_in(list(took)))
+                  .then(pl.col("scored")).otherwise(None).alias("scored"))
 
     # A WEEK IS NOT A GAME, AND THIS FUNCTION'S WHOLE POINT IS THE DIFFERENCE.
     #

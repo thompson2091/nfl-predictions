@@ -133,6 +133,13 @@ def _book_lines(season: int) -> dict:
         pl.when(pl.col("game_id").str.contains(r"^\d{4}_"))
         .then(pl.col("game_id").str.replace(r"^\d{4}_\d{2}_", ""))
         .otherwise(pl.col("game_id")).alias("pair"))
+    # THE CLOSE: each book's last quote before kickoff, then the median
+    # across books. A median over every capture of the week graded the picks
+    # against a line nobody could take — 31 of 60 games sat half a point or
+    # more off the close, and the model's spread record read 32-25-3 where
+    # the close gives 29-26-4.
+    gl = (gl.sort("captured_at")
+            .unique(subset=["pair", "bookmaker", "market", "outcome"], keep="last"))
     sp = (gl.filter(pl.col("market") == "spreads")
           .with_columns(pl.when(pl.col("outcome") == pl.col("home_team"))
                         .then(pl.col("point")).otherwise(-pl.col("point"))
@@ -261,8 +268,10 @@ def games_block(rows: list[dict]) -> dict | None:
     if not rows:
         return None
     n = len(rows)
+    # A TIE IS NEITHER SIDE'S WIN. Read as `margin > 0` it counted as a win
+    # for every away pick; a moneyline on a tie is a push at the book.
     ml_rows = [r for r in rows if r.get("model_win") is not None
-               and r.get("book_win") is not None]
+               and r.get("book_win") is not None and r.get("margin") != 0]
 
     def straight(key):
         w = sum(1 for r in ml_rows if (r[key] > 0.5) == (r["margin"] > 0))
@@ -353,16 +362,22 @@ def _one_per_player(rows: list[dict]) -> list[dict]:
     one quarterback into seventeen wins. Chosen on the line alone, before any
     edge is read, so a threshold cannot shop among them.
     """
+    # Chosen BEFORE anything about the result or the edge is read, and the
+    # way the forward record and `prop_edge.main_lines` choose: nearest the
+    # median line, a tie to the LOWER line. It broke ties on the largest edge
+    # — on 41% of frozen player-games two lines tie — and dropped pushes and
+    # unpriced lines before choosing, so an outcome could move the line.
     per: dict = defaultdict(list)
     for r in rows:
-        if r.get("won") is None or r.get("odds") is None:
+        if r.get("line") is None:
             continue
         per[(r.get("game_id"), r.get("player_name"))].append(r)
     keep = []
     for rs in per.values():
         med = st.median([x["line"] for x in rs])
-        keep.append(min(rs, key=lambda x: (abs(x["line"] - med),
-                                           -abs(x.get("edge") or 0))))
+        pick = min(rs, key=lambda x: (abs(x["line"] - med), x["line"]))
+        if pick.get("won") is not None and pick.get("odds") is not None:
+            keep.append(pick)
     return keep
 
 
