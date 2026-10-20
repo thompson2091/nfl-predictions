@@ -1,10 +1,10 @@
 {
  "kind": "receptions_market_blend",
- "weight": 0.17,
+ "weight": 0.19,
  "n": 7240,
- "fit_log_loss": 0.6433347445937053,
- "model_log_loss": 0.668475671996518,
+ "fit_log_loss": 0.6430896848032615,
+ "model_log_loss": 0.6646912426398259,
  "market_log_loss": 0.644382412520902,
- "fit_date": "2026-09-21",
+ "fit_date": "2026-10-19",
  "fitted_on": 2024
 }

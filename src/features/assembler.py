@@ -20,7 +20,7 @@ from src.features.td_proxy_features import build_td_proxy_features
 from src.features.receiver_features import build_receiver_features
 from src.features.rushing_efficiency_features import build_rushing_efficiency_features
 from src.features.matchup_features import build_matchup_interaction_features
-from src.features.injury_features import build_injury_features
+from src.features.injury_features import build_injury_features, build_vacated_share
 from src.features.pace_features import build_pace_features
 from src.features.score_first_features import build_score_first_features
 from src.features.td_streak_features import build_td_streak_features
@@ -945,6 +945,10 @@ def assemble_features() -> pl.DataFrame:
 
     # === Interaction features (after all joins) ===
     df = build_interaction_features(df)
+
+    # Who is Out and how much work they leave, on every row. After the joins
+    # because it reads the share features and the injury report together.
+    df = build_vacated_share(df)
 
     # === Round 2: Matchup interaction features ===
     df = build_matchup_interaction_features(df)

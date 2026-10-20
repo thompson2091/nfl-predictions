@@ -1,10 +1,10 @@
 {
  "kind": "receiving_yards_market_blend",
- "weight": 0.19,
+ "weight": 0.22,
  "n": 22856,
- "fit_log_loss": 0.6603141911261342,
- "model_log_loss": 0.6809365910241263,
+ "fit_log_loss": 0.6600615831440826,
+ "model_log_loss": 0.6785943013511323,
  "market_log_loss": 0.6615790666423574,
- "fit_date": "2026-09-16",
+ "fit_date": "2026-10-19",
  "fitted_on": 2024
 }
