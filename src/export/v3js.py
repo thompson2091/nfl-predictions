@@ -7404,9 +7404,53 @@ function v3RecForward(F) {
                      'Per $100', 'Likely range'], rows, {cls: 'rec--mkt'})
        : '<p class="help recfw__w">' + v3RecN(F.pending || 0)
          + ' picks are waiting on their games.</p>')
+    + v3RecSides(F)
     + v3RecClv(F.clv)
     + v3RecVersions(F)
     + '</div>';
+}
+
+//: PICKING THE SIDE, against two baselines that need no model: the under
+//: every time, and whichever side the book priced shorter. Side hit rates,
+//: not returns — a model can call more sides right than the under and still
+//: lose money on the prices. See `forward_record.side_baselines`.
+function v3RecSides(F) {
+  const pct = v => v3RecPct({pct: v, n: 1});
+  const NAME = {model: 'Our model', under: 'Always under',
+                fav: 'Book favorite'};
+  const table = list => v3RecTable(
+    ['Market', 'Legs', 'Our model', 'Always under', 'Book favorite'],
+    list.map(m => {
+      const cell = (k, v) => !has(v) ? '\u2014'
+        : m.leader === k ? '<b>' + pct(v) + '</b>' : pct(v);
+      return [esc(m.label) + (m.leader === 'model'
+                ? ' <span class="recthin recthin--up">model ahead</span>'
+                : ' <span class="recthin">' + esc(NAME[m.leader])
+                  + ' ahead</span>'),
+              v3RecN(m.legs), cell('model', m.model), cell('under', m.under),
+              cell('fav', m.fav) + (has(m.fav) && m.fav_n < m.legs
+                ? ' <span class="recthin">of ' + v3RecN(m.fav_n) + '</span>'
+                : '')];
+    }));
+  const fw = F.sides || [];
+  const bt = F.sides_backtest || {};
+  const yrs = bt.seasons || [];
+  if (!fw.length && !(bt.markets || []).length) return '';
+  return '<h3 class="recsec__t" style="margin-top:12px">Picking the side</h3>'
+    + '<p class="help" style="margin-top:3px">How often each side won on '
+    + 'the legs above, our model\u2019s side against two choices that need '
+    + 'no model: the under every time, and the side the book priced shorter. '
+    + 'This counts correct sides, not money. The highest figure in each row '
+    + 'is in bold. The book favorite counts only legs where one side was '
+    + 'priced shorter, and is not compared when that is fewer than half of '
+    + 'them.</p>'
+    + (fw.length ? table(fw) : '')
+    + ((bt.markets || []).length
+       ? '<p class="help" style="margin-top:8px">For reference, the held-out '
+         + (yrs.length > 1 ? yrs[0] + '\u2013' + yrs[yrs.length - 1]
+                           : yrs[0]) + ' backtest, one line per player-game '
+         + '(the line priced nearest even):</p>' + table(bt.markets)
+       : '');
 }
 
 //: CLOSING-LINE VALUE, the number that moves before the results do. A

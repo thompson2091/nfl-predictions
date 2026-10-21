@@ -1628,6 +1628,8 @@ def test_every_v3_screen_renders(payload_v3, v3_js, tmp_path):
                  "the record screen leads with the plain-language headline",
                  "all four sections are numbered and named",
                  "it says the game picks were written before kickoff",
+                 "the side table sits in the forward record",
+                 "and bolds the higher number, naming who is ahead",
                  "and that the player results were rebuilt afterwards",
                  "and the weeks with no game record say why",
                  "the range picker is on the page",

@@ -3017,6 +3017,38 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      JSON.stringify(v3RecRange(DATA.scorecard)));
   V.scFrom = null; V.scTo = null; render();
 
+  // PICKING THE SIDE, against the under and the book's favorite. The
+  // highest figure is bold and the market says who is ahead; a favorite
+  // counted on a subset says how many legs it covers.
+  {
+    const was = DATA.scorecard.forward;
+    const mk = (key, label, model, under, fav, favN, leader) => ({
+      key, label, legs: 100, model, under, fav, fav_n: favN, leader});
+    DATA.scorecard.forward = {weeks: [5], recovered: [], pending: 0,
+      rules: [{rule: 'model side', label: 'Our model', markets: [],
+               all: {bets: 100, hit: 0.53, be: 0.52, roi: 0.01, lo: -0.1,
+                     hi: 0.1, games: 10}, by_week: {}, by_version: {}}],
+      sides: [mk('receptions', 'Catches', 0.53, 0.55, 0.54, 100, 'under'),
+              mk('passing_yards', 'Passing yards', 0.56, 0.44, 0.5, 40,
+                 'model')],
+      sides_backtest: {seasons: [2024, 2025],
+        markets: [mk('rushing_yards', 'Rushing yards', 0.52, 0.53, null, 0,
+                     'under')]}};
+    const sd = v3RecordPage();
+    ok('the side table sits in the forward record',
+       sd.indexOf('Picking the side') >= 0
+       && sd.indexOf('Always under') >= 0
+       && sd.indexOf('Book favorite') >= 0, sd.slice(0, 300));
+    ok('and bolds the higher number, naming who is ahead',
+       sd.indexOf('<b>55.0%</b>') >= 0 && sd.indexOf('Always under ahead') >= 0
+       && sd.indexOf('<b>56.0%</b>') >= 0 && sd.indexOf('model ahead') >= 0);
+    ok('a favorite counted on fewer legs says how many',
+       sd.indexOf('of 40') >= 0);
+    ok('and the backtest reference is labeled with its seasons',
+       sd.indexOf('held-out 2024\u20132025 backtest') >= 0);
+    DATA.scorecard.forward = was; render();
+  }
+
   // MONEY READS AS MONEY, and a loss takes a real minus sign.
   ok('a profit per $100 is signed and in dollars',
      v3Money(0.0759).indexOf('+$7.59') >= 0, v3Money(0.0759));

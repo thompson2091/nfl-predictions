@@ -221,3 +221,64 @@ def test_clv_takes_the_markets_own_drift_out(monkeypatch):
     # Both closes moved +0.3pp on the over, which is exactly the drift: the
     # over gained nothing and the under lost nothing.
     assert c["mean"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_side_baselines_set_the_model_beside_the_under_and_the_favorite(monkeypatch):
+    """Side hit rates, not returns: the under every time, and the side the
+    book priced shorter, over the same graded legs."""
+    from src.evaluation import forward_record as FR
+
+    base = {"season": 2026, "week": 5, "source": None, "rule": "model side",
+            "market": "receptions", "game": "C @ D", "line": 3.5}
+    picks = [
+        # Model over, went under; book favored the under.
+        dict(base, player="A", side="over", odds=110, price_over=110,
+             price_under=-130),
+        # Model under, went under; book even.
+        dict(base, player="B", side="under", odds=-110, price_over=-110,
+             price_under=-110),
+        # Model over, went over; book favored the over.
+        dict(base, player="C", side="over", odds=-140, price_over=-140,
+             price_under=120),
+    ]
+    acts = {"A": 2.0, "B": 1.0, "C": 6.0}
+    monkeypatch.setattr(FR, "_actuals", lambda season, week, market:
+                        lambda name, player_id=None: acts.get(name))
+    monkeypatch.setattr("src.evaluation.prop_settlement.participation",
+                        lambda season: {})
+    monkeypatch.setattr("src.evaluation.tracked_rules.unfinished",
+                        lambda season, week: (set(), set()))
+    monkeypatch.setattr(FR, "backtest_baselines", lambda season: None)
+    monkeypatch.setattr(FR, "clv", lambda season: {})
+    (s,) = FR.block(2026, picks)["sides"]
+    assert s["legs"] == 3
+    assert s["model"] == pytest.approx(2 / 3)
+    assert s["under"] == pytest.approx(2 / 3)
+    assert s["fav"] == 1.0 and s["fav_n"] == 2, "an even price has no favorite"
+    assert s["leader"] == "fav"
+
+
+def test_backtest_baselines_read_one_near_even_line_a_player(tmp_path):
+    """The line priced nearest a coin flip, and none outside the band."""
+    from src.evaluation import forward_record as FR
+
+    d = tmp_path / "receptions"
+    d.mkdir()
+    pl.DataFrame({
+        "game_id": ["g1", "g1", "g2", "g3"],
+        "player_id": ["p", "p", "q", "r"],
+        "point": [2.5, 3.5, 4.5, 5.5],
+        "fair_prob": [0.52, 0.30, 0.45, 0.80],     # g3 is outside the band
+        "p_model": [0.60, 0.20, 0.55, 0.60],
+        "y_over": [0.0, 0.0, 0.0, 1.0],
+    }).write_csv(d / "backtest_2025.csv")
+    pl.DataFrame({"game_id": ["g9"], "player_id": ["z"], "point": [1.5],
+                  "fair_prob": [0.5], "p_model": [0.6], "y_over": [1.0]}
+                 ).write_csv(d / "backtest_2026.csv")
+    b = FR.backtest_baselines(2026, root=tmp_path)
+    assert b["seasons"] == [2025], "the season being graded is not a backtest"
+    (m,) = b["markets"]
+    assert m["legs"] == 2
+    assert m["model"] == 0.0 and m["under"] == 1.0
+    assert m["fav"] == 0.5 and m["fav_n"] == 2
+    assert m["leader"] == "under"

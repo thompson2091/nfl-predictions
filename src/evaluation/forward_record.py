@@ -95,8 +95,12 @@ def _picks_from_boards(season: int) -> list[dict]:
                     ms = r.get("model_side")
                     price = r.get("price_over") if ms == "over" else r.get("price_under")
                     if ms and price is not None:
+                        # Both prices, so the grade can say which side the
+                        # book made the favorite — see `side_baselines`.
                         pick = dict(base, rule="model side", side=ms, odds=price,
-                                    version=r.get("version"))
+                                    version=r.get("version"),
+                                    price_over=r.get("price_over"),
+                                    price_under=r.get("price_under"))
                         out.append(pick)
                         m = r.get("model_only")
                         if (m is not None and max(m, 1 - m) >= 0.75
@@ -161,15 +165,118 @@ def graded(season: int, picks: list[dict] | None = None) -> tuple[list, int]:
             if got == line or side not in ("over", "under"):
                 continue                                  # push
             won = (got > line) == (side == "over")
+            fav = _favorite(r.get("price_over"), r.get("price_under"))
             out.append({"week": week, "market": market, "rule": r["rule"],
                         "player": r["player"], "game_id": gid, "side": side,
                         "line": line, "odds": odds, "actual": got, "won": won,
                         "ret": _payout(odds) if won else -1.0,
+                        "under_won": got < line,
+                        "fav_won": None if fav is None
+                                   else (got > line) == (fav == "over"),
                         "model": r.get("model"), "edge_pp": r.get("edge_pp"),
                         "recovered": bool(r.get("source")),
                         "version": r.get("version")
                                    or ("recovered" if r.get("source") else None)})
     return out, pending
+
+
+def _favorite(price_over, price_under) -> str | None:
+    """The side the book priced shorter, or None when it priced them evenly
+    or one price is missing."""
+    try:
+        po, pu = _implied(float(price_over)), _implied(float(price_under))
+    except (TypeError, ValueError):
+        return None
+    return None if po == pu else ("over" if po > pu else "under")
+
+
+# ── PICKING THE SIDE, against two baselines that need no model ─────────────
+#
+# A hit rate means nothing alone: on catches the under won 54% of main lines
+# over 2024-25, so a model that called 53% of sides correctly did worse than
+# never looking. These are SIDE rates on the model-side legs, not returns.
+
+#: The backtest's main line: the one priced nearest a coin flip for each
+#: player-game, kept only if it is within this much of 0.5 de-vigged, so a
+#: player with no near-even line contributes nothing rather than a lopsided
+#: alternate.
+MAIN_LINE_BAND = 0.08
+
+
+def _sides_row(key: str, label: str, legs: int, model: float, under: float,
+               fav: float | None, fav_n: int) -> dict:
+    """One market's three side rates and which is highest. The book favorite
+    is left out of the comparison when it covers fewer than half the legs —
+    on evenly priced lines the book has no favorite to count. A tie goes to
+    the baseline: the model leads only when it beats both."""
+    cands = {"model": model, "under": under}
+    if fav is not None and fav_n * 2 >= legs:
+        cands["fav"] = fav
+    return {"key": key, "label": label, "legs": legs, "model": model,
+            "under": under, "fav": fav, "fav_n": fav_n,
+            "leader": max(cands, key=lambda k: (cands[k], k != "model"))}
+
+
+def side_baselines(rows: list[dict]) -> list[dict]:
+    """Per market, over the graded `model side` legs: how often the model's
+    side won, how often the under won, and how often the book's shorter side
+    won (on the legs where it had one)."""
+    out = []
+    for mk, ml in OU_MARKETS:
+        got = [r for r in rows if r["rule"] == "model side" and r["market"] == mk]
+        if not got:
+            continue
+        fav = [r["fav_won"] for r in got if r.get("fav_won") is not None]
+        out.append(_sides_row(
+            mk, ml, len(got), sum(r["won"] for r in got) / len(got),
+            sum(bool(r.get("under_won")) for r in got) / len(got),
+            sum(fav) / len(fav) if fav else None, len(fav)))
+    return out
+
+
+def backtest_baselines(season: int, root=None) -> dict | None:
+    """The same three rates on the held-out backtest, every season before
+    `season` that has an `output/<market>/backtest_<year>.csv`.
+
+    One main line per player-game (see `MAIN_LINE_BAND`), ties to the lower
+    line. The model's side is `p_model` against 0.5 and the book's favorite
+    is `fair_prob` against 0.5, so both are de-vigged coin flips.
+    """
+    from pathlib import Path
+
+    root = Path(root) if root is not None else (
+        Path(__file__).resolve().parents[2] / "output")
+    seasons: set[int] = set()
+    out = []
+    for mk, ml in OU_MARKETS:
+        files = sorted(f for f in (root / mk).glob("backtest_*.csv")
+                       if f.stem.split("_")[-1].isdigit()
+                       and int(f.stem.split("_")[-1]) < int(season))
+        if not files:
+            continue
+        cols = ["game_id", "player_id", "point", "fair_prob", "p_model", "y_over"]
+        try:
+            d = pl.concat([pl.read_csv(f, columns=cols) for f in files],
+                          how="vertical_relaxed")
+        except Exception:                                       # noqa: BLE001
+            continue
+        d = (d.drop_nulls(cols)
+              .with_columns((pl.col("fair_prob") - 0.5).abs().alias("_off"))
+              .sort(["_off", "point"])
+              .unique(subset=["game_id", "player_id"], keep="first")
+              .filter((pl.col("_off") <= MAIN_LINE_BAND)
+                      & (pl.col("p_model") != 0.5)))
+        if d.height == 0:
+            continue
+        seasons.update(int(f.stem.split("_")[-1]) for f in files)
+        over = pl.col("y_over") == 1
+        model = d.select(((pl.col("p_model") > 0.5) == over).mean()).item()
+        under = d.select((~over).mean()).item()
+        f = d.filter(pl.col("fair_prob") != 0.5)
+        fav = (f.select(((pl.col("fair_prob") > 0.5) == over).mean()).item()
+               if f.height else None)
+        out.append(_sides_row(mk, ml, d.height, model, under, fav, f.height))
+    return {"seasons": sorted(seasons), "markets": out} if out else None
 
 
 def _row(rows: list[dict]) -> dict:
@@ -219,6 +326,8 @@ def block(season: int, picks: list[dict] | None = None) -> dict:
                              "markets": markets,
                              "all": _row(mine) if mine else None,
                              "by_week": by_week, "by_version": by_version})
+    out["sides"] = side_baselines(rows)
+    out["sides_backtest"] = backtest_baselines(season)
     out["clv"] = clv(season)
     return out
 
