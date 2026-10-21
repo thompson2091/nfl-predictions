@@ -841,8 +841,8 @@
   "CLE_TEN": {
    "blend": {
     "spread": 1.5,
-    "total": 38.5,
-    "total_centered": 38.5,
+    "total": 37.5,
+    "total_centered": 37.5,
     "win_home": 0.4315
    },
    "model_away": 22.0,
@@ -930,10 +930,10 @@
   },
   "LA_LV": {
    "blend": {
-    "spread": 4.5,
-    "total": 47.5,
-    "total_centered": 47.5,
-    "win_home": 0.329
+    "spread": 4.0,
+    "total": 48.5,
+    "total_centered": 48.5,
+    "win_home": 0.3452
    },
    "model_away": 26.2,
    "model_home": 18.6,
@@ -945,10 +945,10 @@
   },
   "MIA_NYJ": {
    "blend": {
-    "spread": -5.0,
+    "spread": -4.5,
     "total": 39.5,
     "total_centered": 39.5,
-    "win_home": 0.6617
+    "win_home": 0.6452
    },
    "model_away": 22.7,
    "model_home": 23.4,
@@ -1005,10 +1005,10 @@
   },
   "SF_ATL": {
    "blend": {
-    "spread": 3.5,
+    "spread": 3.0,
     "total": 50.5,
     "total_centered": 50.5,
-    "win_home": 0.3619
+    "win_home": 0.3789
    },
    "model_away": 29.0,
    "model_home": 25.9,
@@ -1020,10 +1020,10 @@
   },
   "TB_CAR": {
    "blend": {
-    "spread": -3.5,
+    "spread": -3.0,
     "total": 44.5,
     "total_centered": 44.5,
-    "win_home": 0.6112
+    "win_home": 0.5937
    },
    "model_away": 23.2,
    "model_home": 25.9,
