@@ -40,7 +40,31 @@ VIEWS: tuple[tuple[str, str], ...] = (
 )
 
 
-def shortlist_sides(board_rows: list[dict], market: str) -> dict:
+_OPENS: dict = {}
+
+
+def week_opens(season: int, week: int) -> dict:
+    """`<market>|<normalized name>` -> that week's opening line and price.
+
+    The live board's own lookup (`47_export_site.opening_prices`), loaded
+    the way `week_history.ou_board` loads that script, so a past week is
+    measured against the same open the board measured it against.
+    """
+    if (season, week) not in _OPENS:
+        import importlib.util
+        from pathlib import Path
+
+        spec = importlib.util.spec_from_file_location(
+            "site_export", Path(__file__).resolve().parents[2]
+            / "scripts/47_export_site.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _OPENS[(season, week)] = mod.opening_prices(season, week) or {}
+    return _OPENS[(season, week)]
+
+
+def shortlist_sides(board_rows: list[dict], market: str,
+                    season: int | None = None, week: int | None = None) -> dict:
     """`{(player_name, line): side}` for the lines the fitted rule takes.
 
     `board_rows` are `week_history.ou_week` rows, whose names differ from the
@@ -49,18 +73,35 @@ def shortlist_sides(board_rows: list[dict], market: str) -> dict:
     reimplemented: `apply_to_board` holds the book-depth gate and the fitted
     bands, and a local copy of either would be a second rule wearing the
     first one's name.
+
+    **AND GIVEN THE WEEK'S OPEN.** The rule measures the gap to the opening
+    price at the same line and drops a row with no open (2026-10-20). The
+    live board attaches the open before the rule runs; `ou_week` rows carry
+    none, so without `season` and `week` every past row was dropped and the
+    Record's Shortlist and Fades were empty from deploy 20261020.v5 on.
     """
     from src.evaluation import ou_shortlist as ous
 
     art = ous.load(market)
     if art is None:
         return {}
-    mapped = [{"player_name": r.get("player_name"),
-               "point": r.get("line"),
-               "model_only": r.get("model"),
-               "fair_prob": r.get("book"),
-               "n_books": r.get("n_books")}
-              for r in board_rows]
+    opens: dict = {}
+    if season is not None and week is not None:
+        from src.evaluation.prop_settlement import _norm
+
+        got = week_opens(season, week)
+        names = [r.get("player_name") or "" for r in board_rows]
+        opens = {n: got.get(f"{market}|{k}") for n, k in zip(names, _norm(names))}
+    mapped = []
+    for r in board_rows:
+        o = opens.get(r.get("player_name") or "") or {}
+        mapped.append({"player_name": r.get("player_name"),
+                       "point": r.get("line"),
+                       "model_only": r.get("model"),
+                       "fair_prob": r.get("book"),
+                       "n_books": r.get("n_books"),
+                       "open_point": o.get("point"),
+                       "open_fair": o.get("fair")})
     got = ous.apply_to_board(mapped, art)
     return {(r["player_name"], r["point"]): r["side"]
             for r in (got.get("rows") or [])

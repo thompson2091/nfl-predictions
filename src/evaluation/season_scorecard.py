@@ -522,7 +522,7 @@ def ou_rows(season: int, weeks) -> dict:
             # those as eight bets is the same inflation that once turned a
             # +0.30% player edge into +6.89%.
             try:
-                sides = BV.shortlist_sides(raw, mk)
+                sides = BV.shortlist_sides(raw, mk, season, wk)
             except Exception:                                    # noqa: BLE001
                 sides = {}
             # FADES ARE THE UNDERS AMONG THE SHORTLIST'S OWN BETS, which
