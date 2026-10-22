@@ -465,6 +465,38 @@ def _yards_projections(payload: dict, market: str, season: int, week: int) -> No
 
 
 
+def _floors_block(payload: dict, season: int | None, week: int | None) -> None:
+    """Each over/under market's 90% floor for every player on the board.
+
+    The same population as the boards (the touchdown board's players), the
+    backtest verdict per market beside it, and the book's price where an
+    alternate rung sat on the floor. Recorded per game before kickoff in the
+    prediction freeze, and a started game serves what it kicked off with —
+    the same rule every other board on the page follows. See
+    `src/evaluation/floors.py`.
+    """
+    if not season or not week:
+        return
+    try:
+        from src.evaluation import floors as FL
+        from src.export import prediction_freeze as PF
+
+        eligible = {p.get("player") for m in payload.get("markets") or []
+                    for p in m.get("players") or []} - {None}
+        blk = FL.payload(season, week, eligible or None)
+        if not blk:
+            return
+        recorded = FL.freeze(blk, season, week)
+        served = FL.serve_frozen(blk, season, week)
+        PF.flush()
+        payload["floors"] = blk
+        print(f"  floors: {sum(len(m['rows']) for m in blk['markets'])} rows, "
+              f"{recorded} games recorded, {served} started-game rows served frozen",
+              file=sys.stderr)
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  floors unavailable ({e})", file=sys.stderr)
+
+
 def _flag_role_doubt(payload: dict, market: str) -> None:
     """Mark a row whose number was built for a player the market will not quote.
 
@@ -2444,6 +2476,10 @@ def build(season: int | None, week: int | None, brand: str) -> dict:
                 _YARD_Q[mk] = got
             _yards_projections(payload, mk, s, w)
             _flag_role_doubt(payload, mk)
+
+    # The 90% floors: information, not bets. After the yardage loop so the
+    # quantile curves it reads are the ones the boards were priced from.
+    _floors_block(payload, s, w)
 
     _attach_opens(payload, s, w)
     # After the opens are attached, because it prices against them.

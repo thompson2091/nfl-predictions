@@ -2827,7 +2827,9 @@ def test_the_streak_filter_is_reachable_and_has_an_empty_state():
     assert "['streak', 'Streaks']" in src, "the Streaks segment is gone"
     # The filter bar's own class. A bare "seg--5" anywhere in the source was
     # satisfied by the game's section bar, which is not this control.
-    assert "'<div class=\"seg seg--6\">'\n    + v3Seg('v3filter'" in src, \
+    # Seven since the 90% floors joined Everyone, Shortlist, Fades, Streaks,
+    # Gaps and Starred.
+    assert "'<div class=\"seg seg--7\">'\n    + v3Seg('v3filter'" in src, \
         "the filter bar's segment count does not match its options"
     assert "V.filter === 'streak'" in src, "the Streaks segment filters nothing"
     assert "Nobody on this market went one way in" in src, \

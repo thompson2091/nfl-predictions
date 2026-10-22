@@ -1336,6 +1336,20 @@ button{cursor:pointer}
 .gap span{font-size:13px;color:var(--mut);line-height:18px}
 .seg--6{grid-template-columns:repeat(6,minmax(0,1fr))}
 .seg--6 button{font-size:11px;padding:0 1px}
+/* SEVEN, since the 90% floors joined the board's filters. An even seventh of
+   a 343px bar is 47px; the longest label, "Everyone", is about 44px at 11px. */
+.seg--7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.seg--7 button{font-size:11px;padding:0 1px;letter-spacing:-.01em}
+
+/* ---- 90% floors ----
+   Player, floor, our chance, median, book price. The player cell carries the
+   team and the game on a second line, so the label column wraps rather than
+   pushing the four short numbers off a phone. */
+.rec--floor{grid-template-columns:minmax(96px,1fr) repeat(4,minmax(0,auto));
+  row-gap:8px}
+.rec--floor .rr{font-size:11.5px}
+.rec--floorrec{grid-template-columns:minmax(84px,1fr) repeat(5,minmax(0,auto))}
+.recthin--warn{border-color:var(--warn);color:var(--warn);background:var(--warnbg)}
 
 /* ---- injury report ---- */
 .injrow{display:flex;align-items:flex-start;gap:10px;padding:6px 0;

@@ -611,6 +611,7 @@ function v3MarketControls(after) {
     // The thresholds and the measured return, read off the payload — see
     // `v3EdgeNote`. Said here rather than on every row, like the others.
     gap: v3EdgeNote(),
+    floor: v3FloorNote(),
     streak: 'Players who went one way in ' + V3STREAK_MIN + ' of their last '
       + V3STREAK_OF + ' weeks, against the line they were quoted each week. '
       + 'Recent form, not an edge \u2014 nothing here is filtered on price.',
@@ -635,7 +636,7 @@ function v3MarketControls(after) {
   // still on the page.
   return '<div class="pbar">'
     + '<div class="seg seg--' + served_.length + '">' + mkts + '</div>'
-    + '<div class="seg seg--6">'
+    + '<div class="seg seg--7">'
     + v3Seg('v3filter', [['all', 'Everyone'], ['short', 'Shortlist'],
                          ['fade', 'Fades'], ['streak', 'Streaks'],
                          // THE ONE FILTER WITH A MEASURED RETURN BEHIND IT,
@@ -643,9 +644,16 @@ function v3MarketControls(after) {
                          // every other filter here is a description of the
                          // board and this one is a pre-registered bet.
                          ['gap', 'Gaps'],
-                         ['fav', 'Starred']], V.filter)
+                         ['fav', 'Starred'],
+                         // NOT A BET, AND THE ONLY FILTER THAT SAYS SO. The
+                         // line each player clears nine times in ten, for
+                         // fantasy and pick'em. See `v3Floors`.
+                         ['floor', 'Floors']], V.filter)
     + '</div>'
-    + '<div class="pbar__row">' + v3Search() + v3SortBar() + '</div>'
+    + '<div class="pbar__row">' + v3Search()
+    // The floors list has one order, highest floor first; a sort control
+    // there would move and the list would not.
+    + (V.filter === 'floor' ? '' : v3SortBar()) + '</div>'
     + '</div>'
     + (after || '')
     + '<p class="help">' + esc(cur[2]) + '</p>'
@@ -835,7 +843,148 @@ function v3Sorted(rows) {
   return out;
 }
 
+// ── 90% floors ──────────────────────────────────────────────────────────
+//
+// THE HIGHEST LINE EACH PLAYER CLEARS NINE TIMES IN TEN, AS INFORMATION.
+// Asked for for fantasy, pick'em and reference, and measured before it was
+// built: the model's 90% calls held about nine in ten on 2025, and at the
+// book's price the same calls lost money, because an alternate over carries
+// the whole vig on one side. So this view has no stake, no slip button and
+// no EV, and its help line says it is not a bet before it says anything else.
+//
+// Everything on it is computed in Python (`src/evaluation/floors.py`); the
+// page arranges finished figures.
+
+//: The payload block for the market on screen, or null.
+function v3FloorBlock() {
+  const F = DATA.floors;
+  if (!F || KIND[V.market] !== 'ou') return null;
+  const mk = V3HIST[V.market];
+  return (F.markets || []).filter(m => m.market === mk)[0] || null;
+}
+
+//: Whole dollars lost per $100 at the book's price, from the backtest.
+function v3FloorLoss() {
+  const F = DATA.floors || {};
+  return has(F.loss_per_100) ? F.loss_per_100 : null;
+}
+
+function v3FloorNote() {
+  const F = DATA.floors || {};
+  const loss = v3FloorLoss();
+  const tgt = Math.round(100 * (F.target || 0.9));
+  return 'Not bets. Each player’s ' + tgt + '% floor is the highest line '
+    + 'our model expects him to clear ' + (tgt === 90 ? 'nine times in ten'
+       : tgt + '% of the time')
+    + ', for fantasy, pick’em and reference. '
+    + (has(loss)
+       ? 'Bet at the sportsbook’s price, these lines '
+         + (loss < 0 ? 'lost about $' + Math.max(1, Math.round(-loss))
+            : 'returned about $' + Math.round(loss))
+         + ' per $100 on ' + (F.money_season || F.test_season || 'the test season')
+         + ', because the price already counts them as near-certain.'
+       : 'At the sportsbook’s price they do not pay: the price already '
+         + 'counts them as near-certain.');
+}
+
+//: The held-out record, said once above the list.
+function v3FloorVerdict(m) {
+  const F = DATA.floors || {};
+  const tgt = F.target || 0.9;
+  const b = m.backtest;
+  if (!b || !b.n) {
+    return '<div class="thin" role="note"><b>Not tested</b><span>No held-out '
+      + 'season graded these floors in this build, so how often they hold is '
+      + 'not known.</span></div>';
+  }
+  const pct = v => (v * 100).toFixed(1) + '%';
+  const said = 'On ' + (F.test_season || 'the test season') + ', a season the '
+    + 'model never trained on, ' + m.label.toLowerCase() + ' floors held '
+    + pct(b.hit) + ' of the time over ' + v3RecN(b.n) + ' player-games (likely '
+    + pct(b.lo) + ' to ' + pct(b.hi) + ').';
+  const weak = (m.weak || []).map(w => 'For players projected under '
+    + v3FloorNum(w.to) + ', they held ' + pct(w.hit) + ' (likely '
+    + pct(w.lo) + ' to ' + pct(w.hi) + ').').join(' ');
+  if (m.ok === false) {
+    return '<div class="thin" role="note"><b>Below ' + pct(tgt) + ' in testing'
+      + '</b><span>' + esc(said) + ' That is short of the target, so read '
+      + 'these floors as less safe than they claim.'
+      + (weak ? ' ' + esc(weak) : '') + '</span></div>';
+  }
+  return '<p class="help">' + esc(said) + '</p>'
+    + (weak ? '<div class="thin" role="note"><b>Weaker at the low end</b>'
+       + '<span>' + esc(weak) + ' Rows in that range are marked.</span></div>'
+       : '');
+}
+
+//: A line or a projection, without a trailing ".0" on a whole number.
+function v3FloorNum(x) {
+  if (!has(x)) return '—';
+  return Math.abs(x - Math.round(x)) < 1e-9 ? String(Math.round(x)) : x.toFixed(1);
+}
+
+//: True when a row's projection sits in a band that tested below target.
+function v3FloorWeak(m, r) {
+  return (m.weak || []).some(w => has(r.proj)
+    && (!has(w.from) || r.proj >= w.from) && (!has(w.to) || r.proj < w.to));
+}
+
+function v3Floors() {
+  if (V.week != null) {
+    return '<div class="empty">Floors are set for this week only. How past '
+      + 'weeks’ floors held is on the Record page.</div>';
+  }
+  if (KIND[V.market] !== 'ou') {
+    return '<div class="empty">Floors are set on the four over/under markets. '
+      + 'Pick catches, receiving, rushing or passing yards.</div>';
+  }
+  const m = v3FloorBlock();
+  if (!m) {
+    return '<div class="empty">This build carries no floors. Rebuild the '
+      + 'site to add them.</div>';
+  }
+  if (m.problem) {
+    return '<div class="empty">Floors could not be set on this market: '
+      + esc(m.problem) + '</div>';
+  }
+  let rows = (m.rows || []).map(r => Object.assign({}, r, {player: r.player_name}));
+  if (V.game) rows = rows.filter(r => v3Same(r.game_id, V.game));
+  rows = v3Match(rows);
+  const head = v3FloorVerdict(m);
+  if (!rows.length) {
+    return head + '<div class="empty">' + (V.q
+      ? 'No player matching “' + esc(V.q) + '” has a floor on this market.'
+      : 'Nobody on this market clears any line nine times in ten by our model '
+        + (V.game ? 'in this game.' : 'this week.')) + '</div>';
+  }
+  const body = rows.slice(0, V.shown).map(r => {
+    const weak = v3FloorWeak(m, r);
+    return ['<b>' + esc(r.player_name) + '</b>'
+            + (r.frozen ? ' <span class="recthin">as at kickoff</span>' : '')
+            + (weak ? ' <span class="recthin recthin--warn">low end</span>' : '')
+            + '<br><span class="rr">' + esc(r.team || '')
+            + (r.game_id ? ' · ' + esc(v3Key(r.game_id).replace('_', ' @ ')) : '')
+            + '</span>',
+            'Over ' + v3FloorNum(r.floor),
+            has(r.p_floor) ? Math.round(r.p_floor * 100) + '%' : '—',
+            v3FloorNum(r.proj),
+            has(r.book_odds)
+              ? (r.book_odds > 0 ? '+' : '') + r.book_odds
+              : ''];
+  });
+  return head
+    + v3RecTable(['Player', 'Floor', 'Our chance', 'Median', 'Book price'],
+                 body, {cls: 'rec--floor'})
+    + v3MoreBtn(rows.length)
+    + '<p class="help" style="margin-top:8px">Median is the middle of our '
+    + 'range for him. Book price is the median sportsbook price for that '
+    + 'exact line where one was posted, and blank where none was.</p>';
+}
+
 function v3Rows() {
+  // FLOORS ARE THEIR OWN LIST. They are not lines anybody posted, so none of
+  // the board's rows, sorts or prices apply.
+  if (V.filter === 'floor') return v3Floors();
   // A past week is fetched, so this returns a placeholder and the fetch
   // re-renders into the same node. Rendering nothing while it lands would
   // read as an empty week, which is a legitimate state and so invisible.
@@ -7744,7 +7893,56 @@ function v3RecordPage() {
        : '')
     + '</div>'
     + v3RecGames(g, S, r) + v3RecPlayers(p, S, r)
+    + v3RecFloors(S.floors)
     + '</div>';
+}
+
+//: THE 90% FLOORS, GRADED FORWARD. Each floor as it stood before kickoff,
+//: from the prediction freeze, against what the player did. A hit rate
+//: beside the target and no money, because the floors are not offered as
+//: bets. The whole season rather than the picker's range: there are a few
+//: weeks of these at most, and a range of one week reads as a verdict.
+//: Pending floors are counted once, apart, and never graded.
+function v3RecFloors(F) {
+  if (!DATA.floors && !F) return '';
+  const head = v3RecHead('03', '90% floors',
+    'Each player’s floor as the page showed it before kickoff, graded once '
+    + 'the game was final. Not bets: this checks whether they hold nine '
+    + 'times in ten.');
+  if (!F || !(F.markets || []).some(m => m.n || m.pending)) {
+    return '<div class="card" id="sbfloor">' + head
+      + '<p class="help" style="margin-top:8px">No floors have been recorded '
+      + 'before kickoff yet. The first are kept with the next week’s '
+      + 'boards.</p></div>';
+  }
+  const pct = v => (v * 100).toFixed(1) + '%';
+  const tgt = F.target || 0.9;
+  const rows = (F.markets || []).filter(m => m.n || m.pending).map(m => {
+    const tone = !m.n ? '' : (m.hi < tgt ? ' class="dn"' : '');
+    return [esc(m.label),
+            m.n ? v3RecN(m.n) : '—',
+            m.n ? '<span' + tone + '>' + pct(m.hit) + '</span>' : '—',
+            pct(tgt),
+            m.n && m.games > 1 ? pct(m.lo) + ' to ' + pct(m.hi) : '—',
+            m.pending ? v3RecN(m.pending) : ''];
+  });
+  const short = (F.markets || []).filter(m => m.n && m.hi < tgt).map(m => m.label);
+  return '<div class="card" id="sbfloor">' + head
+    + v3RecTable(['Market', 'Floors', 'Held', 'Target', 'Likely range',
+                  'Waiting'], rows, {cls: 'rec--floorrec'})
+    + '<p class="help" style="margin-top:8px">'
+    + ((F.weeks || []).length
+       ? 'Graded weeks: ' + F.weeks.join(', ') + '. '
+       : 'No floor has been graded yet. ')
+    + 'A player who did not play is left out, as a sportsbook voids him; one '
+    + 'who played and recorded nothing counts as zero. Floors waiting on '
+    + 'their game are counted once, under Waiting, and graded when it is final.'
+    + (short.length
+       ? ' ' + short.join(' and ') + (short.length > 1 ? ' are' : ' is')
+         + ' holding below ' + pct(tgt) + ' so far, beyond what luck over '
+         + 'these games would explain.'
+       : '')
+    + '</p></div>';
 }
 
 //: How many games a pattern's long run needs to appear at all.

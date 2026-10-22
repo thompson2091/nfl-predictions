@@ -76,7 +76,21 @@ OU_FIELDS: tuple[str, ...] = (
 )
 
 
+#: The 90% floors (`evaluation.floors`), one entry per over/under market,
+#: keyed `<market>_floor`. A row is one player's floor as it stood before
+#: kickoff — the line, the calibrated chance of clearing it, the median it sat
+#: under and the book's price where an alternate rung existed — so the forward
+#: record grades what the page showed rather than what today's model says.
+FLOOR_MARKETS: tuple[str, ...] = tuple(m + "_floor" for m in OU_MARKETS)
+FLOOR_FIELDS: tuple[str, ...] = (
+    "player_name", "player_id", "team", "floor", "p_floor", "proj",
+    "book_odds", "book_n", "target", "version",
+)
+
+
 def fields_for(market: str) -> tuple[str, ...]:
+    if market in FLOOR_MARKETS:
+        return FLOOR_FIELDS
     return OU_FIELDS if market in OU_MARKETS else FIELDS
 
 

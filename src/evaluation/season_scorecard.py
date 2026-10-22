@@ -941,7 +941,23 @@ def build(season: int) -> dict:
         # regraded with today's model; this is not, and the page never pools
         # the two. See `forward_record`.
         "forward": _forward(season),
+        # THE 90% FLOORS, as frozen before kickoff and graded once final.
+        # Information rather than bets, so a hit rate against the target and
+        # no money. See `floors.forward`.
+        "floors": _floors(season),
     }
+
+
+def _floors(season: int) -> dict | None:
+    try:
+        from src.evaluation.floors import forward
+
+        return forward(season)
+    except Exception as e:                                       # noqa: BLE001
+        import sys
+
+        print(f"  floors record unavailable ({e})", file=sys.stderr)
+        return None
 
 
 def _forward(season: int) -> dict | None:

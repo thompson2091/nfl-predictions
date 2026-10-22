@@ -81,9 +81,21 @@ def main() -> int:
         except Exception as e:                                   # noqa: BLE001
             print(f"  {market}: board unavailable ({e})", file=sys.stderr)
 
+    # The 90% floors, on the touchdown board's population, so the forward
+    # record grades the floors the page showed. Information, not bets.
+    try:
+        from src.evaluation import floors as FL
+
+        blk = FL.payload(season, week, FL.eligible_names(season, week))
+        n = FL.freeze(blk, season, week)
+        PF.flush()
+        print(f"  floors: {n} market-games recorded")
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  floors: unavailable ({e})", file=sys.stderr)
+
     # What is held now, and what kicked off with nothing held. The second
     # list is the one to read: those games are showing a rebuilt board.
-    for market in TD_MARKETS + PF.OU_MARKETS:
+    for market in TD_MARKETS + PF.OU_MARKETS + PF.FLOOR_MARKETS:
         kept = PF.frozen(season, week, market)
         late = PF.missing(season, week, market)
         print(f"  {market:<16} {len(kept):>2} games held"
