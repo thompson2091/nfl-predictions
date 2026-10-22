@@ -264,8 +264,17 @@ def starter_lookup(depth_charts_old: pl.DataFrame | None,
             # 0.058. The feature is reporting a real season, not a bug.
             cut = pl.col("position").replace_strict(
                 slots or {}, default=1, return_dtype=pl.Int32)
+            # IN AN ORDER OF ITS OWN. `weekly` comes out of a join, whose row
+            # order changes between runs, so "last in file order" picked a
+            # different starter on ~550 team-week positions each rebuild
+            # (2026-10-21). Sorted so the last row is the top-ranked name,
+            # ties to the lower id: the same starter every run, and the one
+            # the chart puts first.
             frames.append(
                 weekly.filter(pl.col("depth_rank") <= cut)
+                .sort(["season", "week", "team", "position", "depth_rank",
+                       "player_id"],
+                      descending=[False, False, False, False, True, True])
                 .select([
                     pl.col("player_id").alias("starter_id"),
                     "season", "week", "team", "position",

@@ -85,6 +85,14 @@ def build_market_movement_features(target_type: str = "anytime_td"
     z = pl.when((n >= MIN_WEEK_ROWS) & sd.is_not_null() & (sd > 1e-9)) \
           .then((pl.col("mkt_move_pp") - mu) / sd)
 
+    # ONE ROW PER GAME AND NAME, the key the assembler joins on. Deduplicating
+    # on the week alone kept one of two same-named players at random — row
+    # order out of `line_movement` changes between runs — so the other's game
+    # read null on some rebuilds and not others (6 rows, 2026-10-21). Sorted
+    # first so a true duplicate resolves the same way every run.
     return (mv.with_columns(z.alias("mkt_move_z"))
               .with_columns(pl.col("mkt_move_z").abs().alias("mkt_move_abs_z"))
-              .unique(subset=["season", "week", "player_name_norm"], keep="last"))
+              .sort(["season", "week", "game_id", "player_name_norm",
+                     "mkt_move_pp"], nulls_last=True)
+              .unique(subset=["season", "week", "game_id", "player_name_norm"],
+                      keep="last", maintain_order=True))
