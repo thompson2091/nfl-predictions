@@ -271345,6 +271345,3114 @@
      "version": "2026.10.20-model-batch"
     }
    ]
+  },
+  "passing_yards_floor": {
+   "2026_07_CIN_BAL": [
+    {
+     "floor": 141.5,
+     "p_floor": 0.9004,
+     "player_id": "00-0036442",
+     "player_name": "Joe Burrow",
+     "proj": 273.3,
+     "target": 0.9,
+     "team": "CIN",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 81.5,
+     "p_floor": 0.9005,
+     "player_id": "00-0034796",
+     "player_name": "Lamar Jackson",
+     "proj": 246.4,
+     "target": 0.9,
+     "team": "BAL",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 33.5,
+     "p_floor": 0.9038,
+     "player_id": "00-0035993",
+     "player_name": "Tyler Huntley",
+     "proj": 150.2,
+     "target": 0.9,
+     "team": "BAL",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_CLE_TEN": [
+    {
+     "floor": 100.5,
+     "p_floor": 0.9008,
+     "player_id": "00-0040676",
+     "player_name": "Cam Ward",
+     "proj": 208.4,
+     "target": 0.9,
+     "team": "TEN",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 79.5,
+     "p_floor": 0.901,
+     "player_id": "00-0033537",
+     "player_name": "Deshaun Watson",
+     "proj": 214.0,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9062,
+     "player_id": "00-0033869",
+     "player_name": "Mitchell Trubisky",
+     "proj": 96.1,
+     "target": 0.9,
+     "team": "TEN",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9203,
+     "player_id": "00-0040668",
+     "player_name": "Shedeur Sanders",
+     "proj": 72.2,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_DAL_PHI": [
+    {
+     "floor": 1.5,
+     "p_floor": 0.9115,
+     "player_id": "00-0040891",
+     "player_name": "Cole Payton",
+     "proj": 53.8,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 121.5,
+     "p_floor": 0.9008,
+     "player_id": "00-0033077",
+     "player_name": "Dak Prescott",
+     "proj": 257.0,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 51.5,
+     "p_floor": 0.9021,
+     "player_id": "00-0038400",
+     "player_name": "Tanner McKee",
+     "proj": 221.5,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_DEN_ARI": [
+    {
+     "floor": 120.5,
+     "p_floor": 0.9013,
+     "player_id": "00-0039732",
+     "player_name": "Bo Nix",
+     "proj": 227.3,
+     "target": 0.9,
+     "team": "DEN",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 87.5,
+     "p_floor": 0.9002,
+     "player_id": "00-0033119",
+     "player_name": "Jacoby Brissett",
+     "proj": 230.7,
+     "target": 0.9,
+     "team": "ARI",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_GB_DET": [
+    {
+     "floor": 148.5,
+     "p_floor": 0.9013,
+     "player_id": "00-0033106",
+     "player_name": "Jared Goff",
+     "proj": 287.4,
+     "target": 0.9,
+     "team": "DET",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 102.5,
+     "p_floor": 0.9005,
+     "player_id": "00-0036264",
+     "player_name": "Jordan Love",
+     "proj": 271.5,
+     "target": 0.9,
+     "team": "GB",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_IND_MIN": [
+    {
+     "floor": 7.5,
+     "p_floor": 0.9084,
+     "player_id": "00-0032950",
+     "player_name": "Carson Wentz",
+     "proj": 115.7,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 101.5,
+     "p_floor": 0.9012,
+     "player_id": "00-0035710",
+     "player_name": "Daniel Jones",
+     "proj": 190.2,
+     "target": 0.9,
+     "team": "IND",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 116.5,
+     "p_floor": 0.9008,
+     "player_id": "00-0035228",
+     "player_name": "Kyler Murray",
+     "proj": 227.8,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_KC_SEA": [
+    {
+     "floor": 138.5,
+     "p_floor": 0.9018,
+     "player_id": "00-0033873",
+     "player_name": "Patrick Mahomes",
+     "proj": 237.9,
+     "target": 0.9,
+     "team": "KC",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 97.5,
+     "p_floor": 0.901,
+     "player_id": "00-0034869",
+     "player_name": "Sam Darnold",
+     "proj": 233.9,
+     "target": 0.9,
+     "team": "SEA",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_LA_LV": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9325,
+     "player_id": "00-0038579",
+     "player_name": "Aidan O'Connell",
+     "proj": 47.2,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9305,
+     "player_id": "00-0041562",
+     "player_name": "Fernando Mendoza",
+     "proj": 38.8,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 142.5,
+     "p_floor": 0.9016,
+     "player_id": "00-0029604",
+     "player_name": "Kirk Cousins",
+     "proj": 250.1,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 148.5,
+     "p_floor": 0.9008,
+     "player_id": "00-0026498",
+     "player_name": "Matthew Stafford",
+     "proj": 268.3,
+     "target": 0.9,
+     "team": "LA",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_MIA_NYJ": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9039,
+     "player_id": "00-0041056",
+     "player_name": "Cade Klubnik",
+     "proj": 118.7,
+     "target": 0.9,
+     "team": "NYJ",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 83.5,
+     "p_floor": 0.9012,
+     "player_id": "00-0030565",
+     "player_name": "Geno Smith",
+     "proj": 223.7,
+     "target": 0.9,
+     "team": "NYJ",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.913,
+     "player_id": "00-0040014",
+     "player_name": "Kyle McCord",
+     "proj": 100.5,
+     "target": 0.9,
+     "team": "MIA",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 86.5,
+     "p_floor": 0.9007,
+     "player_id": "00-0038128",
+     "player_name": "Malik Willis",
+     "proj": 196.3,
+     "target": 0.9,
+     "team": "MIA",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_NE_CHI": [
+    {
+     "floor": 99.5,
+     "p_floor": 0.9015,
+     "player_id": "00-0039918",
+     "player_name": "Caleb Williams",
+     "proj": 241.6,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9415,
+     "player_id": "00-0028986",
+     "player_name": "Case Keenum",
+     "proj": 87.8,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 128.5,
+     "p_floor": 0.9006,
+     "player_id": "00-0039851",
+     "player_name": "Drake Maye",
+     "proj": 245.8,
+     "target": 0.9,
+     "team": "NE",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_NYG_HOU": [
+    {
+     "floor": 148.5,
+     "p_floor": 0.9,
+     "player_id": "00-0039163",
+     "player_name": "C.J. Stroud",
+     "proj": 268.9,
+     "target": 0.9,
+     "team": "HOU",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 19.5,
+     "p_floor": 0.9007,
+     "player_id": "00-0039923",
+     "player_name": "J.J. McCarthy",
+     "proj": 154.8,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9378,
+     "player_id": "00-0038998",
+     "player_name": "Jake Haener",
+     "proj": 77.3,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 71.5,
+     "p_floor": 0.9004,
+     "player_id": "00-0031503",
+     "player_name": "Jameis Winston",
+     "proj": 215.9,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_PIT_NO": [
+    {
+     "book_n": 4,
+     "book_odds": -2000,
+     "floor": 149.5,
+     "p_floor": 0.9007,
+     "player_id": "00-0023459",
+     "player_name": "Aaron Rodgers",
+     "proj": 249.7,
+     "target": 0.9,
+     "team": "PIT",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9601,
+     "player_id": "00-0039376",
+     "player_name": "Spencer Rattler",
+     "proj": 44.4,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 118.5,
+     "p_floor": 0.9006,
+     "player_id": "00-0040743",
+     "player_name": "Tyler Shough",
+     "proj": 208.0,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_SF_ATL": [
+    {
+     "floor": 133.5,
+     "p_floor": 0.9002,
+     "player_id": "00-0037834",
+     "player_name": "Brock Purdy",
+     "proj": 251.3,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 93.5,
+     "p_floor": 0.9003,
+     "player_id": "00-0039917",
+     "player_name": "Michael Penix Jr.",
+     "proj": 235.6,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 9.5,
+     "p_floor": 0.9238,
+     "player_id": "00-0036212",
+     "player_name": "Tua Tagovailoa",
+     "proj": 85.5,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:750a846e2559"
+    }
+   ],
+   "2026_07_TB_CAR": [
+    {
+     "floor": 90.5,
+     "p_floor": 0.901,
+     "player_id": "00-0034855",
+     "player_name": "Baker Mayfield",
+     "proj": 222.8,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 123.5,
+     "p_floor": 0.9003,
+     "player_id": "00-0039150",
+     "player_name": "Bryce Young",
+     "proj": 244.1,
+     "target": 0.9,
+     "team": "CAR",
+     "version": "files:750a846e2559"
+    },
+    {
+     "floor": 40.5,
+     "p_floor": 0.9059,
+     "player_id": "00-0041251",
+     "player_name": "Jalon Daniels",
+     "proj": 152.3,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:750a846e2559"
+    }
+   ]
+  },
+  "receiving_yards_floor": {
+   "2026_07_CIN_BAL": [
+    {
+     "floor": 1.5,
+     "p_floor": 0.9013,
+     "player_id": "00-0038597",
+     "player_name": "Chase Brown",
+     "proj": 18.6,
+     "target": 0.9,
+     "team": "CIN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9284,
+     "player_id": "00-0040785",
+     "player_name": "Dohnte Meyers",
+     "proj": 22.7,
+     "target": 0.9,
+     "team": "CIN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 24.5,
+     "p_floor": 0.9016,
+     "player_id": "00-0036900",
+     "player_name": "Ja'Marr Chase",
+     "proj": 75.9,
+     "target": 0.9,
+     "team": "CIN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 7.5,
+     "p_floor": 0.9051,
+     "player_id": "00-0034753",
+     "player_name": "Mark Andrews",
+     "proj": 39.5,
+     "target": 0.9,
+     "team": "BAL",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9222,
+     "player_id": "00-0036550",
+     "player_name": "Rashod Bateman",
+     "proj": 26.1,
+     "target": 0.9,
+     "team": "BAL",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 16.5,
+     "p_floor": 0.9052,
+     "player_id": "00-0036410",
+     "player_name": "Tee Higgins",
+     "proj": 62.2,
+     "target": 0.9,
+     "team": "CIN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 20.5,
+     "p_floor": 0.9014,
+     "player_id": "00-0039064",
+     "player_name": "Zay Flowers",
+     "proj": 70.6,
+     "target": 0.9,
+     "team": "BAL",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_CLE_TEN": [
+    {
+     "book_n": 2,
+     "book_odds": -1740,
+     "floor": 14.5,
+     "p_floor": 0.904,
+     "player_id": "00-0041438",
+     "player_name": "Carnell Tate",
+     "proj": 55.1,
+     "target": 0.9,
+     "team": "TEN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 8.5,
+     "p_floor": 0.906,
+     "player_id": "00-0041037",
+     "player_name": "Denzel Boston",
+     "proj": 54.4,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 6.5,
+     "p_floor": 0.9013,
+     "player_id": "00-0040663",
+     "player_name": "Harold Fannin Jr.",
+     "proj": 39.8,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 2.5,
+     "p_floor": 0.9066,
+     "player_id": "00-0036407",
+     "player_name": "Jerry Jeudy",
+     "proj": 30.6,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 5.5,
+     "p_floor": 0.9096,
+     "player_id": "00-0041547",
+     "player_name": "KC Concepcion",
+     "proj": 37.2,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 6.5,
+     "p_floor": 0.9042,
+     "player_id": "00-0038117",
+     "player_name": "Wan'Dale Robinson",
+     "proj": 32.7,
+     "target": 0.9,
+     "team": "TEN",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_DAL_PHI": [
+    {
+     "floor": 25.5,
+     "p_floor": 0.9008,
+     "player_id": "00-0036358",
+     "player_name": "CeeDee Lamb",
+     "proj": 76.9,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 3.5,
+     "p_floor": 0.9037,
+     "player_id": "00-0034351",
+     "player_name": "Dallas Goedert",
+     "proj": 33.9,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 12.5,
+     "p_floor": 0.902,
+     "player_id": "00-0036912",
+     "player_name": "DeVonta Smith",
+     "proj": 50.1,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 3.5,
+     "p_floor": 0.9093,
+     "player_id": "00-0038393",
+     "player_name": "Dontayvion Wicks",
+     "proj": 37.3,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 18.5,
+     "p_floor": 0.9008,
+     "player_id": "00-0037247",
+     "player_name": "George Pickens",
+     "proj": 70.7,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9272,
+     "player_id": "00-0038041",
+     "player_name": "Jake Ferguson",
+     "proj": 24.7,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9056,
+     "player_id": "00-0036997",
+     "player_name": "Javonte Williams",
+     "proj": 14.5,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 2.5,
+     "p_floor": 0.9042,
+     "player_id": "00-0040867",
+     "player_name": "Makai Lemon",
+     "proj": 30.9,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 3.5,
+     "p_floor": 0.9012,
+     "player_id": "00-0039410",
+     "player_name": "Ryan Flournoy",
+     "proj": 35.8,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.915,
+     "player_id": "00-0030061",
+     "player_name": "Zach Ertz",
+     "proj": 15.1,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_DEN_ARI": [
+    {
+     "floor": 3.5,
+     "p_floor": 0.911,
+     "player_id": "00-0034348",
+     "player_name": "Courtland Sutton",
+     "proj": 37.6,
+     "target": 0.9,
+     "team": "DEN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9201,
+     "player_id": "00-0033881",
+     "player_name": "Evan Engram",
+     "proj": 24.3,
+     "target": 0.9,
+     "team": "DEN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 16.5,
+     "p_floor": 0.9006,
+     "player_id": "00-0036613",
+     "player_name": "Jaylen Waddle",
+     "proj": 55.5,
+     "target": 0.9,
+     "team": "DEN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9298,
+     "player_id": "00-0033307",
+     "player_name": "Kendrick Bourne",
+     "proj": 30.4,
+     "target": 0.9,
+     "team": "ARI",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 10.5,
+     "p_floor": 0.9015,
+     "player_id": "00-0038559",
+     "player_name": "Michael Wilson",
+     "proj": 51.0,
+     "target": 0.9,
+     "team": "ARI",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9238,
+     "player_id": "00-0040730",
+     "player_name": "RJ Harvey",
+     "proj": 16.3,
+     "target": 0.9,
+     "team": "DEN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 20.5,
+     "p_floor": 0.9006,
+     "player_id": "00-0037744",
+     "player_name": "Trey McBride",
+     "proj": 59.0,
+     "target": 0.9,
+     "team": "ARI",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_GB_DET": [
+    {
+     "floor": 26.5,
+     "p_floor": 0.9031,
+     "player_id": "00-0036963",
+     "player_name": "Amon-Ra St. Brown",
+     "proj": 79.6,
+     "target": 0.9,
+     "team": "DET",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 7.5,
+     "p_floor": 0.905,
+     "player_id": "00-0038124",
+     "player_name": "Christian Watson",
+     "proj": 50.5,
+     "target": 0.9,
+     "team": "GB",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 3.5,
+     "p_floor": 0.9059,
+     "player_id": "00-0039139",
+     "player_name": "Jahmyr Gibbs",
+     "proj": 33.1,
+     "target": 0.9,
+     "team": "DET",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 5.5,
+     "p_floor": 0.905,
+     "player_id": "00-0037240",
+     "player_name": "Jameson Williams",
+     "proj": 49.8,
+     "target": 0.9,
+     "team": "DET",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 10.5,
+     "p_floor": 0.9018,
+     "player_id": "00-0040667",
+     "player_name": "Matthew Golden",
+     "proj": 57.2,
+     "target": 0.9,
+     "team": "GB",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 13.5,
+     "p_floor": 0.9034,
+     "player_id": "00-0039065",
+     "player_name": "Sam LaPorta",
+     "proj": 55.1,
+     "target": 0.9,
+     "team": "DET",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 4.5,
+     "p_floor": 0.9026,
+     "player_id": "00-0038996",
+     "player_name": "Tucker Kraft",
+     "proj": 39.6,
+     "target": 0.9,
+     "team": "GB",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_IND_MIN": [
+    {
+     "floor": 1.5,
+     "p_floor": 0.9065,
+     "player_id": "00-0033293",
+     "player_name": "Aaron Jones",
+     "proj": 19.9,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9015,
+     "player_id": "00-0036223",
+     "player_name": "Jonathan Taylor",
+     "proj": 16.3,
+     "target": 0.9,
+     "team": "IND",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 4.5,
+     "p_floor": 0.9028,
+     "player_id": "00-0038994",
+     "player_name": "Jordan Addison",
+     "proj": 38.9,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 7.5,
+     "p_floor": 0.905,
+     "player_id": "00-0038997",
+     "player_name": "Josh Downs",
+     "proj": 43.1,
+     "target": 0.9,
+     "team": "IND",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 17.5,
+     "p_floor": 0.9041,
+     "player_id": "00-0036322",
+     "player_name": "Justin Jefferson",
+     "proj": 67.2,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 12.5,
+     "p_floor": 0.9052,
+     "player_id": "00-0030279",
+     "player_name": "Keenan Allen",
+     "proj": 44.1,
+     "target": 0.9,
+     "team": "IND",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9044,
+     "player_id": "00-0032951",
+     "player_name": "Laquon Treadwell",
+     "proj": 26.8,
+     "target": 0.9,
+     "team": "IND",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 5.5,
+     "p_floor": 0.9026,
+     "player_id": "00-0035229",
+     "player_name": "T.J. Hockenson",
+     "proj": 27.4,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 7.5,
+     "p_floor": 0.907,
+     "player_id": "00-0040128",
+     "player_name": "Tyler Warren",
+     "proj": 35.8,
+     "target": 0.9,
+     "team": "IND",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_KC_SEA": [
+    {
+     "floor": 1.5,
+     "p_floor": 0.9135,
+     "player_id": "00-0039793",
+     "player_name": "AJ Barner",
+     "proj": 33.6,
+     "target": 0.9,
+     "team": "SEA",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 10.5,
+     "p_floor": 0.905,
+     "player_id": "00-0033908",
+     "player_name": "Cooper Kupp",
+     "proj": 46.8,
+     "target": 0.9,
+     "team": "SEA",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 26.5,
+     "p_floor": 0.902,
+     "player_id": "00-0038543",
+     "player_name": "Jaxon Smith-Njigba",
+     "proj": 74.3,
+     "target": 0.9,
+     "team": "SEA",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9315,
+     "player_id": "00-0039067",
+     "player_name": "Rashee Rice",
+     "proj": 29.7,
+     "target": 0.9,
+     "team": "KC",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.924,
+     "player_id": "00-0037545",
+     "player_name": "Rashid Shaheed",
+     "proj": 25.7,
+     "target": 0.9,
+     "team": "SEA",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 13.5,
+     "p_floor": 0.9089,
+     "player_id": "00-0030506",
+     "player_name": "Travis Kelce",
+     "proj": 53.8,
+     "target": 0.9,
+     "team": "KC",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 6.5,
+     "p_floor": 0.9062,
+     "player_id": "00-0039894",
+     "player_name": "Xavier Worthy",
+     "proj": 43.7,
+     "target": 0.9,
+     "team": "KC",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_LA_LV": [
+    {
+     "floor": 2.5,
+     "p_floor": 0.9009,
+     "player_id": "00-0040122",
+     "player_name": "Ashton Jeanty",
+     "proj": 22.6,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 21.5,
+     "p_floor": 0.9014,
+     "player_id": "00-0039338",
+     "player_name": "Brock Bowers",
+     "proj": 62.6,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.912,
+     "player_id": "00-0037840",
+     "player_name": "Kyren Williams",
+     "proj": 23.9,
+     "target": 0.9,
+     "team": "LA",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 2.5,
+     "p_floor": 0.9118,
+     "player_id": "00-0039066",
+     "player_name": "Michael Mayer",
+     "proj": 33.5,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 24.5,
+     "p_floor": 0.9021,
+     "player_id": "00-0039075",
+     "player_name": "Puka Nacua",
+     "proj": 75.2,
+     "target": 0.9,
+     "team": "LA",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 4.5,
+     "p_floor": 0.9057,
+     "player_id": "00-0038563",
+     "player_name": "Tre Tucker",
+     "proj": 42.7,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 3.5,
+     "p_floor": 0.9063,
+     "player_id": "00-0033110",
+     "player_name": "Tyler Higbee",
+     "proj": 34.0,
+     "target": 0.9,
+     "team": "LA",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_MIA_NYJ": [
+    {
+     "floor": 19.5,
+     "p_floor": 0.9057,
+     "player_id": "00-0037740",
+     "player_name": "Garrett Wilson",
+     "proj": 64.3,
+     "target": 0.9,
+     "team": "NYJ",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 4.5,
+     "p_floor": 0.9057,
+     "player_id": "00-0039880",
+     "player_name": "Malik Washington",
+     "proj": 32.9,
+     "target": 0.9,
+     "team": "MIA",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_NE_CHI": [
+    {
+     "floor": 4.5,
+     "p_floor": 0.9019,
+     "player_id": "00-0035676",
+     "player_name": "A.J. Brown",
+     "proj": 49.6,
+     "target": 0.9,
+     "team": "NE",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 8.5,
+     "p_floor": 0.9004,
+     "player_id": "00-0040126",
+     "player_name": "Colston Loveland",
+     "proj": 43.9,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9098,
+     "player_id": "00-0036275",
+     "player_name": "D'Andre Swift",
+     "proj": 16.3,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 2.5,
+     "p_floor": 0.9027,
+     "player_id": "00-0038621",
+     "player_name": "DeMario Douglas",
+     "proj": 33.5,
+     "target": 0.9,
+     "team": "NE",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 3.5,
+     "p_floor": 0.9032,
+     "player_id": "00-0033090",
+     "player_name": "Hunter Henry",
+     "proj": 33.5,
+     "target": 0.9,
+     "team": "NE",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 6.5,
+     "p_floor": 0.9013,
+     "player_id": "00-0040735",
+     "player_name": "Luther Burden III",
+     "proj": 47.0,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 8.5,
+     "p_floor": 0.901,
+     "player_id": "00-0039919",
+     "player_name": "Rome Odunze",
+     "proj": 51.0,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_NYG_HOU": [
+    {
+     "floor": 1.5,
+     "p_floor": 0.9167,
+     "player_id": "00-0034383",
+     "player_name": "Dalton Schultz",
+     "proj": 28.1,
+     "target": 0.9,
+     "team": "HOU",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9074,
+     "player_id": "00-0036309",
+     "player_name": "Darnell Mooney",
+     "proj": 19.7,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 8.5,
+     "p_floor": 0.9064,
+     "player_id": "00-0037838",
+     "player_name": "Isaiah Likely",
+     "proj": 41.8,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9313,
+     "player_id": "00-0040138",
+     "player_name": "Jaylin Noel",
+     "proj": 24.0,
+     "target": 0.9,
+     "team": "HOU",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9007,
+     "player_id": "00-0041042",
+     "player_name": "Malachi Fields",
+     "proj": 32.9,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 14.5,
+     "p_floor": 0.9031,
+     "player_id": "00-0039337",
+     "player_name": "Malik Nabers",
+     "proj": 56.6,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.922,
+     "player_id": "00-0039849",
+     "player_name": "Marvin Harrison Jr.",
+     "proj": 17.9,
+     "target": 0.9,
+     "team": "HOU",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 9.5,
+     "p_floor": 0.9061,
+     "player_id": "00-0036554",
+     "player_name": "Nico Collins",
+     "proj": 50.9,
+     "target": 0.9,
+     "team": "HOU",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9112,
+     "player_id": "00-0040583",
+     "player_name": "Woody Marks",
+     "proj": 15.3,
+     "target": 0.9,
+     "team": "HOU",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9029,
+     "player_id": "00-0038618",
+     "player_name": "Xavier Hutchinson",
+     "proj": 24.3,
+     "target": 0.9,
+     "team": "HOU",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_PIT_NO": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9342,
+     "player_id": "00-0033906",
+     "player_name": "Alvin Kamara",
+     "proj": 14.5,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 18.5,
+     "p_floor": 0.9061,
+     "player_id": "00-0037239",
+     "player_name": "Chris Olave",
+     "proj": 59.1,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 18.5,
+     "p_floor": 0.9049,
+     "player_id": "00-0035640",
+     "player_name": "DK Metcalf",
+     "proj": 66.8,
+     "target": 0.9,
+     "team": "PIT",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 5.5,
+     "p_floor": 0.9032,
+     "player_id": "00-0039424",
+     "player_name": "Devaughn Vele",
+     "proj": 41.2,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 8.5,
+     "p_floor": 0.9004,
+     "player_id": "00-0041489",
+     "player_name": "Germie Bernard",
+     "proj": 47.0,
+     "target": 0.9,
+     "team": "PIT",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9058,
+     "player_id": "00-0037228",
+     "player_name": "Jaylen Warren",
+     "proj": 21.9,
+     "target": 0.9,
+     "team": "PIT",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9297,
+     "player_id": "00-0036040",
+     "player_name": "Juwan Johnson",
+     "proj": 27.0,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.917,
+     "player_id": "00-0036894",
+     "player_name": "Pat Freiermuth",
+     "proj": 33.7,
+     "target": 0.9,
+     "team": "PIT",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_SF_ATL": [
+    {
+     "floor": 2.5,
+     "p_floor": 0.9117,
+     "player_id": "00-0038542",
+     "player_name": "Bijan Robinson",
+     "proj": 25.8,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.94,
+     "player_id": "00-0031236",
+     "player_name": "Brandin Cooks",
+     "proj": 23.2,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 7.5,
+     "p_floor": 0.9026,
+     "player_id": "00-0033280",
+     "player_name": "Christian McCaffrey",
+     "proj": 36.0,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9523,
+     "player_id": "00-0035719",
+     "player_name": "Deebo Samuel Sr.",
+     "proj": 29.8,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 20.5,
+     "p_floor": 0.9053,
+     "player_id": "00-0037238",
+     "player_name": "Drake London",
+     "proj": 72.3,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 17.5,
+     "p_floor": 0.9031,
+     "player_id": "00-0033288",
+     "player_name": "George Kittle",
+     "proj": 57.6,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9081,
+     "player_id": "00-0037741",
+     "player_name": "Jahan Dotson",
+     "proj": 34.0,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 4.5,
+     "p_floor": 0.9066,
+     "player_id": "00-0036970",
+     "player_name": "Kyle Pitts",
+     "proj": 39.8,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 17.5,
+     "p_floor": 0.9054,
+     "player_id": "00-0031408",
+     "player_name": "Mike Evans",
+     "proj": 67.3,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:ba73216f9b4c"
+    }
+   ],
+   "2026_07_TB_CAR": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9295,
+     "player_id": "00-0039361",
+     "player_name": "Bucky Irving",
+     "proj": 15.6,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 3.5,
+     "p_floor": 0.9031,
+     "player_id": "00-0038129",
+     "player_name": "Cade Otton",
+     "proj": 40.9,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 9.5,
+     "p_floor": 0.9018,
+     "player_id": "00-0033921",
+     "player_name": "Chris Godwin Jr.",
+     "proj": 47.8,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9161,
+     "player_id": "00-0031610",
+     "player_name": "Darren Waller",
+     "proj": 24.5,
+     "target": 0.9,
+     "team": "CAR",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 13.5,
+     "p_floor": 0.9046,
+     "player_id": "00-0040129",
+     "player_name": "Emeka Egbuka",
+     "proj": 49.7,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 6.5,
+     "p_floor": 0.9029,
+     "player_id": "00-0039491",
+     "player_name": "Jalen Coker",
+     "proj": 44.5,
+     "target": 0.9,
+     "team": "CAR",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 25.5,
+     "p_floor": 0.902,
+     "player_id": "00-0040124",
+     "player_name": "Tetairoa McMillan",
+     "proj": 72.0,
+     "target": 0.9,
+     "team": "CAR",
+     "version": "files:ba73216f9b4c"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9165,
+     "player_id": "00-0037005",
+     "player_name": "Tommy Tremble",
+     "proj": 21.7,
+     "target": 0.9,
+     "team": "CAR",
+     "version": "files:ba73216f9b4c"
+    }
+   ]
+  },
+  "receptions_floor": {
+   "2026_07_CIN_BAL": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9516,
+     "player_id": "00-0038597",
+     "player_name": "Chase Brown",
+     "proj": 3.2,
+     "target": 0.9,
+     "team": "CIN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9122,
+     "player_id": "00-0040785",
+     "player_name": "Dohnte Meyers",
+     "proj": 2.5,
+     "target": 0.9,
+     "team": "CIN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 1,
+     "book_odds": -6000,
+     "floor": 2.5,
+     "p_floor": 0.9218,
+     "player_id": "00-0036900",
+     "player_name": "Ja'Marr Chase",
+     "proj": 6.7,
+     "target": 0.9,
+     "team": "CIN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9605,
+     "player_id": "00-0034753",
+     "player_name": "Mark Andrews",
+     "proj": 3.5,
+     "target": 0.9,
+     "team": "BAL",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9023,
+     "player_id": "00-0036410",
+     "player_name": "Tee Higgins",
+     "proj": 4.3,
+     "target": 0.9,
+     "team": "CIN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9467,
+     "player_id": "00-0039064",
+     "player_name": "Zay Flowers",
+     "proj": 5.4,
+     "target": 0.9,
+     "team": "BAL",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_CLE_TEN": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.971,
+     "player_id": "00-0041438",
+     "player_name": "Carnell Tate",
+     "proj": 3.9,
+     "target": 0.9,
+     "team": "TEN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9583,
+     "player_id": "00-0041037",
+     "player_name": "Denzel Boston",
+     "proj": 3.4,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 9,
+     "book_odds": -960,
+     "floor": 1.5,
+     "p_floor": 0.9009,
+     "player_id": "00-0040663",
+     "player_name": "Harold Fannin Jr.",
+     "proj": 4.3,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9176,
+     "player_id": "00-0036407",
+     "player_name": "Jerry Jeudy",
+     "proj": 2.5,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9745,
+     "player_id": "00-0041547",
+     "player_name": "KC Concepcion",
+     "proj": 4.1,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9626,
+     "player_id": "00-0038117",
+     "player_name": "Wan'Dale Robinson",
+     "proj": 3.6,
+     "target": 0.9,
+     "team": "TEN",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_DAL_PHI": [
+    {
+     "floor": 1.5,
+     "p_floor": 0.9575,
+     "player_id": "00-0036358",
+     "player_name": "CeeDee Lamb",
+     "proj": 5.8,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9575,
+     "player_id": "00-0034351",
+     "player_name": "Dallas Goedert",
+     "proj": 3.4,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.972,
+     "player_id": "00-0036912",
+     "player_name": "DeVonta Smith",
+     "proj": 4.0,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9483,
+     "player_id": "00-0038393",
+     "player_name": "Dontayvion Wicks",
+     "proj": 3.1,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9153,
+     "player_id": "00-0037247",
+     "player_name": "George Pickens",
+     "proj": 4.6,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 3,
+     "book_odds": -5000,
+     "floor": 0.5,
+     "p_floor": 0.9178,
+     "player_id": "00-0038041",
+     "player_name": "Jake Ferguson",
+     "proj": 2.5,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 4,
+     "book_odds": -2500,
+     "floor": 0.5,
+     "p_floor": 0.9058,
+     "player_id": "00-0036997",
+     "player_name": "Javonte Williams",
+     "proj": 2.4,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9465,
+     "player_id": "00-0040867",
+     "player_name": "Makai Lemon",
+     "proj": 3.1,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9391,
+     "player_id": "00-0039410",
+     "player_name": "Ryan Flournoy",
+     "proj": 2.9,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_DEN_ARI": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9298,
+     "player_id": "00-0034348",
+     "player_name": "Courtland Sutton",
+     "proj": 2.7,
+     "target": 0.9,
+     "team": "DEN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9159,
+     "player_id": "00-0033881",
+     "player_name": "Evan Engram",
+     "proj": 2.5,
+     "target": 0.9,
+     "team": "DEN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9236,
+     "player_id": "00-0036613",
+     "player_name": "Jaylen Waddle",
+     "proj": 4.7,
+     "target": 0.9,
+     "team": "DEN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9397,
+     "player_id": "00-0033307",
+     "player_name": "Kendrick Bourne",
+     "proj": 2.9,
+     "target": 0.9,
+     "team": "ARI",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 3,
+     "book_odds": -2500,
+     "floor": 1.5,
+     "p_floor": 0.9,
+     "player_id": "00-0038559",
+     "player_name": "Michael Wilson",
+     "proj": 4.3,
+     "target": 0.9,
+     "team": "ARI",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9317,
+     "player_id": "00-0040730",
+     "player_name": "RJ Harvey",
+     "proj": 2.8,
+     "target": 0.9,
+     "team": "DEN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9555,
+     "player_id": "00-0037744",
+     "player_name": "Trey McBride",
+     "proj": 5.7,
+     "target": 0.9,
+     "team": "ARI",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_GB_DET": [
+    {
+     "floor": 2.5,
+     "p_floor": 0.9254,
+     "player_id": "00-0036963",
+     "player_name": "Amon-Ra St. Brown",
+     "proj": 6.8,
+     "target": 0.9,
+     "team": "DET",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9678,
+     "player_id": "00-0038124",
+     "player_name": "Christian Watson",
+     "proj": 3.8,
+     "target": 0.9,
+     "team": "GB",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9726,
+     "player_id": "00-0039139",
+     "player_name": "Jahmyr Gibbs",
+     "proj": 4.0,
+     "target": 0.9,
+     "team": "DET",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.959,
+     "player_id": "00-0037240",
+     "player_name": "Jameson Williams",
+     "proj": 3.4,
+     "target": 0.9,
+     "team": "DET",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9026,
+     "player_id": "00-0040667",
+     "player_name": "Matthew Golden",
+     "proj": 4.3,
+     "target": 0.9,
+     "team": "GB",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 1,
+     "book_odds": -5000,
+     "floor": 1.5,
+     "p_floor": 0.9306,
+     "player_id": "00-0039065",
+     "player_name": "Sam LaPorta",
+     "proj": 4.9,
+     "target": 0.9,
+     "team": "DET",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 7,
+     "book_odds": -3000,
+     "floor": 1.5,
+     "p_floor": 0.9065,
+     "player_id": "00-0038996",
+     "player_name": "Tucker Kraft",
+     "proj": 4.4,
+     "target": 0.9,
+     "team": "GB",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_IND_MIN": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9339,
+     "player_id": "00-0033293",
+     "player_name": "Aaron Jones",
+     "proj": 2.8,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9492,
+     "player_id": "00-0038994",
+     "player_name": "Jordan Addison",
+     "proj": 3.2,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9678,
+     "player_id": "00-0038997",
+     "player_name": "Josh Downs",
+     "proj": 3.8,
+     "target": 0.9,
+     "team": "IND",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 1,
+     "book_odds": -14999,
+     "floor": 1.5,
+     "p_floor": 0.961,
+     "player_id": "00-0036322",
+     "player_name": "Justin Jefferson",
+     "proj": 6.0,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9703,
+     "player_id": "00-0030279",
+     "player_name": "Keenan Allen",
+     "proj": 3.9,
+     "target": 0.9,
+     "team": "IND",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9269,
+     "player_id": "00-0035229",
+     "player_name": "T.J. Hockenson",
+     "proj": 2.7,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9757,
+     "player_id": "00-0040128",
+     "player_name": "Tyler Warren",
+     "proj": 4.2,
+     "target": 0.9,
+     "team": "IND",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_KC_SEA": [
+    {
+     "book_n": 3,
+     "book_odds": -10000,
+     "floor": 0.5,
+     "p_floor": 0.9565,
+     "player_id": "00-0039793",
+     "player_name": "AJ Barner",
+     "proj": 3.4,
+     "target": 0.9,
+     "team": "SEA",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 13,
+     "book_odds": -286,
+     "floor": 1.5,
+     "p_floor": 0.9197,
+     "player_id": "00-0033908",
+     "player_name": "Cooper Kupp",
+     "proj": 4.7,
+     "target": 0.9,
+     "team": "SEA",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9633,
+     "player_id": "00-0038543",
+     "player_name": "Jaxon Smith-Njigba",
+     "proj": 6.1,
+     "target": 0.9,
+     "team": "SEA",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9252,
+     "player_id": "00-0038134",
+     "player_name": "Kenneth Walker III",
+     "proj": 2.7,
+     "target": 0.9,
+     "team": "KC",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9539,
+     "player_id": "00-0039067",
+     "player_name": "Rashee Rice",
+     "proj": 3.3,
+     "target": 0.9,
+     "team": "KC",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 3,
+     "book_odds": -1840,
+     "floor": 1.5,
+     "p_floor": 0.9291,
+     "player_id": "00-0030506",
+     "player_name": "Travis Kelce",
+     "proj": 4.9,
+     "target": 0.9,
+     "team": "KC",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9716,
+     "player_id": "00-0039894",
+     "player_name": "Xavier Worthy",
+     "proj": 3.9,
+     "target": 0.9,
+     "team": "KC",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_LA_LV": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9594,
+     "player_id": "00-0040122",
+     "player_name": "Ashton Jeanty",
+     "proj": 3.4,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.945,
+     "player_id": "00-0039338",
+     "player_name": "Brock Bowers",
+     "proj": 5.3,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9673,
+     "player_id": "00-0037840",
+     "player_name": "Kyren Williams",
+     "proj": 3.7,
+     "target": 0.9,
+     "team": "LA",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9569,
+     "player_id": "00-0039066",
+     "player_name": "Michael Mayer",
+     "proj": 3.4,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 2.5,
+     "p_floor": 0.9219,
+     "player_id": "00-0039075",
+     "player_name": "Puka Nacua",
+     "proj": 6.7,
+     "target": 0.9,
+     "team": "LA",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9655,
+     "player_id": "00-0038563",
+     "player_name": "Tre Tucker",
+     "proj": 3.7,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9393,
+     "player_id": "00-0033110",
+     "player_name": "Tyler Higbee",
+     "proj": 2.9,
+     "target": 0.9,
+     "team": "LA",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_MIA_NYJ": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9139,
+     "player_id": "00-0038120",
+     "player_name": "Breece Hall",
+     "proj": 2.5,
+     "target": 0.9,
+     "team": "NYJ",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9025,
+     "player_id": "00-0041525",
+     "player_name": "Chris Bell",
+     "proj": 2.3,
+     "target": 0.9,
+     "team": "MIA",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9216,
+     "player_id": "00-0037740",
+     "player_name": "Garrett Wilson",
+     "proj": 4.7,
+     "target": 0.9,
+     "team": "NYJ",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9703,
+     "player_id": "00-0039880",
+     "player_name": "Malik Washington",
+     "proj": 3.9,
+     "target": 0.9,
+     "team": "MIA",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_NE_CHI": [
+    {
+     "floor": 1.5,
+     "p_floor": 0.9181,
+     "player_id": "00-0035676",
+     "player_name": "A.J. Brown",
+     "proj": 4.6,
+     "target": 0.9,
+     "team": "NE",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9731,
+     "player_id": "00-0040126",
+     "player_name": "Colston Loveland",
+     "proj": 4.0,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 3,
+     "book_odds": -5000,
+     "floor": 0.5,
+     "p_floor": 0.9184,
+     "player_id": "00-0036275",
+     "player_name": "D'Andre Swift",
+     "proj": 2.6,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9406,
+     "player_id": "00-0038621",
+     "player_name": "DeMario Douglas",
+     "proj": 3.0,
+     "target": 0.9,
+     "team": "NE",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9421,
+     "player_id": "00-0033090",
+     "player_name": "Hunter Henry",
+     "proj": 3.0,
+     "target": 0.9,
+     "team": "NE",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9687,
+     "player_id": "00-0040735",
+     "player_name": "Luther Burden III",
+     "proj": 3.8,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9615,
+     "player_id": "00-0039919",
+     "player_name": "Rome Odunze",
+     "proj": 3.5,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_NYG_HOU": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9374,
+     "player_id": "00-0034383",
+     "player_name": "Dalton Schultz",
+     "proj": 2.9,
+     "target": 0.9,
+     "team": "HOU",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.901,
+     "player_id": "00-0037838",
+     "player_name": "Isaiah Likely",
+     "proj": 4.3,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9149,
+     "player_id": "00-0041042",
+     "player_name": "Malachi Fields",
+     "proj": 2.5,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9275,
+     "player_id": "00-0039337",
+     "player_name": "Malik Nabers",
+     "proj": 4.8,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9716,
+     "player_id": "00-0036554",
+     "player_name": "Nico Collins",
+     "proj": 3.9,
+     "target": 0.9,
+     "team": "HOU",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_PIT_NO": [
+    {
+     "book_n": 3,
+     "book_odds": -5000,
+     "floor": 0.5,
+     "p_floor": 0.9204,
+     "player_id": "00-0033906",
+     "player_name": "Alvin Kamara",
+     "proj": 2.6,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9007,
+     "player_id": "00-0037239",
+     "player_name": "Chris Olave",
+     "proj": 4.3,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 4,
+     "book_odds": -10000,
+     "floor": 1.5,
+     "p_floor": 0.9337,
+     "player_id": "00-0035640",
+     "player_name": "DK Metcalf",
+     "proj": 5.0,
+     "target": 0.9,
+     "team": "PIT",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.908,
+     "player_id": "00-0038558",
+     "player_name": "Darnell Washington",
+     "proj": 2.4,
+     "target": 0.9,
+     "team": "PIT",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9614,
+     "player_id": "00-0039424",
+     "player_name": "Devaughn Vele",
+     "proj": 3.5,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 1,
+     "book_odds": -3500,
+     "floor": 1.5,
+     "p_floor": 0.9064,
+     "player_id": "00-0041489",
+     "player_name": "Germie Bernard",
+     "proj": 4.4,
+     "target": 0.9,
+     "team": "PIT",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 1,
+     "book_odds": -4000,
+     "floor": 0.5,
+     "p_floor": 0.9585,
+     "player_id": "00-0037228",
+     "player_name": "Jaylen Warren",
+     "proj": 3.4,
+     "target": 0.9,
+     "team": "PIT",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9331,
+     "player_id": "00-0036040",
+     "player_name": "Juwan Johnson",
+     "proj": 2.8,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.953,
+     "player_id": "00-0036894",
+     "player_name": "Pat Freiermuth",
+     "proj": 3.3,
+     "target": 0.9,
+     "team": "PIT",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_SF_ATL": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9622,
+     "player_id": "00-0038542",
+     "player_name": "Bijan Robinson",
+     "proj": 3.5,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9208,
+     "player_id": "00-0033280",
+     "player_name": "Christian McCaffrey",
+     "proj": 4.7,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9583,
+     "player_id": "00-0035719",
+     "player_name": "Deebo Samuel Sr.",
+     "proj": 3.4,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9418,
+     "player_id": "00-0037238",
+     "player_name": "Drake London",
+     "proj": 5.2,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9188,
+     "player_id": "00-0033288",
+     "player_name": "George Kittle",
+     "proj": 4.6,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 4,
+     "book_odds": -1667,
+     "floor": 0.5,
+     "p_floor": 0.9039,
+     "player_id": "00-0037741",
+     "player_name": "Jahan Dotson",
+     "proj": 2.4,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9604,
+     "player_id": "00-0036970",
+     "player_name": "Kyle Pitts",
+     "proj": 3.5,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9732,
+     "player_id": "00-0031408",
+     "player_name": "Mike Evans",
+     "proj": 4.0,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:c12e5c57dcea"
+    }
+   ],
+   "2026_07_TB_CAR": [
+    {
+     "floor": 0.5,
+     "p_floor": 0.9097,
+     "player_id": "00-0039361",
+     "player_name": "Bucky Irving",
+     "proj": 2.4,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9655,
+     "player_id": "00-0038129",
+     "player_name": "Cade Otton",
+     "proj": 3.7,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9173,
+     "player_id": "00-0033921",
+     "player_name": "Chris Godwin Jr.",
+     "proj": 4.6,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 4,
+     "book_odds": -2000,
+     "floor": 0.5,
+     "p_floor": 0.9082,
+     "player_id": "00-0036555",
+     "player_name": "Chuba Hubbard",
+     "proj": 2.4,
+     "target": 0.9,
+     "team": "CAR",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.971,
+     "player_id": "00-0040129",
+     "player_name": "Emeka Egbuka",
+     "proj": 3.9,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9626,
+     "player_id": "00-0039491",
+     "player_name": "Jalen Coker",
+     "proj": 3.6,
+     "target": 0.9,
+     "team": "CAR",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9187,
+     "player_id": "00-0040124",
+     "player_name": "Tetairoa McMillan",
+     "proj": 4.6,
+     "target": 0.9,
+     "team": "CAR",
+     "version": "files:c12e5c57dcea"
+    },
+    {
+     "book_n": 4,
+     "book_odds": -1667,
+     "floor": 0.5,
+     "p_floor": 0.9213,
+     "player_id": "00-0037005",
+     "player_name": "Tommy Tremble",
+     "proj": 2.6,
+     "target": 0.9,
+     "team": "CAR",
+     "version": "files:c12e5c57dcea"
+    }
+   ]
+  },
+  "rushing_yards_floor": {
+   "2026_07_CIN_BAL": [
+    {
+     "floor": 17.5,
+     "p_floor": 0.9021,
+     "player_id": "00-0038597",
+     "player_name": "Chase Brown",
+     "proj": 53.2,
+     "target": 0.9,
+     "team": "CIN",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 27.5,
+     "p_floor": 0.9006,
+     "player_id": "00-0032764",
+     "player_name": "Derrick Henry",
+     "proj": 77.5,
+     "target": 0.9,
+     "team": "BAL",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9138,
+     "player_id": "00-0034796",
+     "player_name": "Lamar Jackson",
+     "proj": 21.6,
+     "target": 0.9,
+     "team": "BAL",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9357,
+     "player_id": "00-0033526",
+     "player_name": "Samaje Perine",
+     "proj": 19.8,
+     "target": 0.9,
+     "team": "CIN",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_CLE_TEN": [
+    {
+     "floor": 2.5,
+     "p_floor": 0.9035,
+     "player_id": "00-0033537",
+     "player_name": "Deshaun Watson",
+     "proj": 22.2,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 10.5,
+     "p_floor": 0.9043,
+     "player_id": "00-0040784",
+     "player_name": "Quinshon Judkins",
+     "proj": 41.0,
+     "target": 0.9,
+     "team": "CLE",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 16.5,
+     "p_floor": 0.9017,
+     "player_id": "00-0035261",
+     "player_name": "Tony Pollard",
+     "proj": 58.9,
+     "target": 0.9,
+     "team": "TEN",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_DAL_PHI": [
+    {
+     "floor": 2.5,
+     "p_floor": 0.9111,
+     "player_id": "00-0037258",
+     "player_name": "Dameon Pierce",
+     "proj": 28.7,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 20.5,
+     "p_floor": 0.9033,
+     "player_id": "00-0036997",
+     "player_name": "Javonte Williams",
+     "proj": 57.7,
+     "target": 0.9,
+     "team": "DAL",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 4.5,
+     "p_floor": 0.9142,
+     "player_id": "00-0034844",
+     "player_name": "Saquon Barkley",
+     "proj": 39.2,
+     "target": 0.9,
+     "team": "PHI",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_DEN_ARI": [
+    {
+     "floor": 13.5,
+     "p_floor": 0.9033,
+     "player_id": "00-0036158",
+     "player_name": "J.K. Dobbins",
+     "proj": 48.7,
+     "target": 0.9,
+     "team": "DEN",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 9.5,
+     "p_floor": 0.9006,
+     "player_id": "00-0041027",
+     "player_name": "Jeremiyah Love",
+     "proj": 38.1,
+     "target": 0.9,
+     "team": "ARI",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9405,
+     "player_id": "00-0040730",
+     "player_name": "RJ Harvey",
+     "proj": 18.6,
+     "target": 0.9,
+     "team": "DEN",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 4.5,
+     "p_floor": 0.9118,
+     "player_id": "00-0037263",
+     "player_name": "Tyler Allgeier",
+     "proj": 33.4,
+     "target": 0.9,
+     "team": "ARI",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_GB_DET": [
+    {
+     "floor": 28.5,
+     "p_floor": 0.9025,
+     "player_id": "00-0039139",
+     "player_name": "Jahmyr Gibbs",
+     "proj": 76.8,
+     "target": 0.9,
+     "team": "DET",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9254,
+     "player_id": "00-0039811",
+     "player_name": "MarShawn Lloyd",
+     "proj": 18.9,
+     "target": 0.9,
+     "team": "GB",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_IND_MIN": [
+    {
+     "floor": 25.5,
+     "p_floor": 0.9014,
+     "player_id": "00-0033293",
+     "player_name": "Aaron Jones",
+     "proj": 63.0,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "book_n": 1,
+     "book_odds": -2500,
+     "floor": 24.5,
+     "p_floor": 0.9052,
+     "player_id": "00-0036223",
+     "player_name": "Jonathan Taylor",
+     "proj": 68.1,
+     "target": 0.9,
+     "team": "IND",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.931,
+     "player_id": "00-0035228",
+     "player_name": "Kyler Murray",
+     "proj": 23.8,
+     "target": 0.9,
+     "team": "MIN",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_KC_SEA": [
+    {
+     "floor": 10.5,
+     "p_floor": 0.9172,
+     "player_id": "00-0038797",
+     "player_name": "Emanuel Wilson",
+     "proj": 40.1,
+     "target": 0.9,
+     "team": "SEA",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 25.5,
+     "p_floor": 0.9016,
+     "player_id": "00-0038134",
+     "player_name": "Kenneth Walker III",
+     "proj": 71.7,
+     "target": 0.9,
+     "team": "KC",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_LA_LV": [
+    {
+     "book_n": 4,
+     "book_odds": -1738,
+     "floor": 19.5,
+     "p_floor": 0.9015,
+     "player_id": "00-0040122",
+     "player_name": "Ashton Jeanty",
+     "proj": 51.0,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 2.5,
+     "p_floor": 0.9122,
+     "player_id": "00-0039738",
+     "player_name": "Blake Corum",
+     "proj": 26.8,
+     "target": 0.9,
+     "team": "LA",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 23.5,
+     "p_floor": 0.9037,
+     "player_id": "00-0037840",
+     "player_name": "Kyren Williams",
+     "proj": 65.6,
+     "target": 0.9,
+     "team": "LA",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9247,
+     "player_id": "00-0040878",
+     "player_name": "Mike Washington Jr.",
+     "proj": 20.6,
+     "target": 0.9,
+     "team": "LV",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_MIA_NYJ": [
+    {
+     "floor": 9.5,
+     "p_floor": 0.9013,
+     "player_id": "00-0039794",
+     "player_name": "Braelon Allen",
+     "proj": 44.0,
+     "target": 0.9,
+     "team": "NYJ",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 3.5,
+     "p_floor": 0.909,
+     "player_id": "00-0038120",
+     "player_name": "Breece Hall",
+     "proj": 29.5,
+     "target": 0.9,
+     "team": "NYJ",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9104,
+     "player_id": "00-0038128",
+     "player_name": "Malik Willis",
+     "proj": 23.4,
+     "target": 0.9,
+     "team": "MIA",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 9.5,
+     "p_floor": 0.9059,
+     "player_id": "00-0040198",
+     "player_name": "Ollie Gordon II",
+     "proj": 49.7,
+     "target": 0.9,
+     "team": "MIA",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_NE_CHI": [
+    {
+     "floor": 18.5,
+     "p_floor": 0.9033,
+     "player_id": "00-0036275",
+     "player_name": "D'Andre Swift",
+     "proj": 53.7,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.9229,
+     "player_id": "00-0039851",
+     "player_name": "Drake Maye",
+     "proj": 27.9,
+     "target": 0.9,
+     "team": "NE",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 8.5,
+     "p_floor": 0.9004,
+     "player_id": "00-0040236",
+     "player_name": "Kyle Monangai",
+     "proj": 42.1,
+     "target": 0.9,
+     "team": "CHI",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 15.5,
+     "p_floor": 0.9018,
+     "player_id": "00-0036875",
+     "player_name": "Rhamondre Stevenson",
+     "proj": 45.9,
+     "target": 0.9,
+     "team": "NE",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "book_n": 1,
+     "book_odds": -1200,
+     "floor": 4.5,
+     "p_floor": 0.9087,
+     "player_id": "00-0040734",
+     "player_name": "TreVeyon Henderson",
+     "proj": 27.3,
+     "target": 0.9,
+     "team": "NE",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_NYG_HOU": [
+    {
+     "floor": 3.5,
+     "p_floor": 0.9204,
+     "player_id": "00-0040715",
+     "player_name": "Cam Skattebo",
+     "proj": 20.5,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 5.5,
+     "p_floor": 0.9091,
+     "player_id": "00-0035685",
+     "player_name": "David Montgomery",
+     "proj": 34.4,
+     "target": 0.9,
+     "team": "HOU",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9216,
+     "player_id": "00-0035250",
+     "player_name": "Devin Singletary",
+     "proj": 12.8,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9519,
+     "player_id": "00-0039384",
+     "player_name": "Tyrone Tracy Jr.",
+     "proj": 17.6,
+     "target": 0.9,
+     "team": "NYG",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 12.5,
+     "p_floor": 0.9003,
+     "player_id": "00-0040583",
+     "player_name": "Woody Marks",
+     "proj": 48.8,
+     "target": 0.9,
+     "team": "HOU",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_PIT_NO": [
+    {
+     "floor": 2.5,
+     "p_floor": 0.9275,
+     "player_id": "00-0033906",
+     "player_name": "Alvin Kamara",
+     "proj": 24.5,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 21.5,
+     "p_floor": 0.9059,
+     "player_id": "00-0037228",
+     "player_name": "Jaylen Warren",
+     "proj": 67.3,
+     "target": 0.9,
+     "team": "PIT",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 1.5,
+     "p_floor": 0.922,
+     "player_id": "00-0038551",
+     "player_name": "Kendre Miller",
+     "proj": 24.3,
+     "target": 0.9,
+     "team": "NO",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_SF_ATL": [
+    {
+     "floor": 26.5,
+     "p_floor": 0.9035,
+     "player_id": "00-0038542",
+     "player_name": "Bijan Robinson",
+     "proj": 77.6,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 4.5,
+     "p_floor": 0.9116,
+     "player_id": "00-0037746",
+     "player_name": "Brian Robinson",
+     "proj": 23.3,
+     "target": 0.9,
+     "team": "ATL",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9434,
+     "player_id": "00-0037834",
+     "player_name": "Brock Purdy",
+     "proj": 19.2,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 23.5,
+     "p_floor": 0.9006,
+     "player_id": "00-0033280",
+     "player_name": "Christian McCaffrey",
+     "proj": 68.9,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9043,
+     "player_id": "00-0041052",
+     "player_name": "Kaelon Black",
+     "proj": 18.6,
+     "target": 0.9,
+     "team": "SF",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ],
+   "2026_07_TB_CAR": [
+    {
+     "floor": 21.5,
+     "p_floor": 0.9067,
+     "player_id": "00-0039361",
+     "player_name": "Bucky Irving",
+     "proj": 61.9,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 23.5,
+     "p_floor": 0.9001,
+     "player_id": "00-0036555",
+     "player_name": "Chuba Hubbard",
+     "proj": 65.4,
+     "target": 0.9,
+     "team": "CAR",
+     "version": "files:2d2fc08c1bfb"
+    },
+    {
+     "floor": 0.5,
+     "p_floor": 0.9344,
+     "player_id": "00-0041251",
+     "player_name": "Jalon Daniels",
+     "proj": 27.8,
+     "target": 0.9,
+     "team": "TB",
+     "version": "files:2d2fc08c1bfb"
+    }
+   ]
   }
  }
 }
