@@ -78,3 +78,19 @@ def test_the_model_does_not_beat_the_market_on_average():
     mae = lambda a, b: float((g[a] - g[b]).abs().mean())   # noqa: E731
     assert mae("total_model", "total_actual") > mae("total_market", "total_actual")
     assert mae("margin_model", "margin_actual") > mae("margin_market", "margin_actual")
+
+
+def test_a_saved_fit_is_not_served_when_a_column_changes_under_its_name(
+        tmp_path, monkeypatch):
+    """The cache checked column NAMES only, so redefining a column kept the
+    old booster. The training rows are fingerprinted now."""
+    monkeypatch.setattr(gm, "_fit_path", lambda season: tmp_path / "f.pkl")
+    tr = pl.DataFrame({"a": [1.0, 2.0, 3.0], "b": [0.1, 0.2, 0.3]})
+    fp = gm._fingerprint(tr, ["a", "b"])
+    gm._save_fit(2026, ["a", "b"], "booster", fp)
+    assert gm._load_fit(2026, ["a", "b"], fp) == "booster"
+    moved = tr.with_columns(pl.col("b") * 2)
+    assert gm._load_fit(2026, ["a", "b"], gm._fingerprint(moved, ["a", "b"])) is None
+    # A last-bit difference from a rebuild is the same matrix.
+    noise = tr.with_columns(pl.col("b") + 1e-14)
+    assert gm._fingerprint(noise, ["a", "b"]) == fp

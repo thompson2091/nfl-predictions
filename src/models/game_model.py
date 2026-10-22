@@ -44,6 +44,20 @@ flagged by the screen. Walk-forward over 1,935 games, paired:
 A margin gain at 1.2 standard errors carried by one season (2020, -0.72) and a
 total that gets worse is not a family to add. The rolling `team_*`/`opp_*`
 columns already carry most of what these say.
+
+**EVERY QB RUSHING TOUCHDOWN WAS TRIED AND IS NOT A GAIN EITHER.**
+2026-10-22: `team_qb_rush_td_rate_*` counts scramble touchdowns only, and the
+full count (`team_qb_all_rush_td_rate_*`, sneaks and designed runs included)
+read as total MAE -0.112 on one walk-forward. That was one LightGBM seed:
+`colsample_bytree` samples by column position, so a column change is also a
+re-draw. Over eight seeds, 2019-25, 1,871 games, paired per game on the
+eight-seed mean prediction:
+
+    new beside old      margin +0.002   total +0.021 (d/se +0.94)
+    new replacing old   margin +0.010   total -0.021 (d/se -0.95)
+    seed-to-seed sd of the total MAE itself: 0.034
+
+The -0.112 is the best of the eight seeds, not the expected effect.
 """
 from __future__ import annotations
 
@@ -361,15 +375,16 @@ def predict_week(season: int, week: int, d: pl.DataFrame | None = None
     # archived one was paying repeatedly. Saved beside the other models and
     # reloaded, so a rebuild costs a load.
     m = _FITS.get(season)
+    fp = _fingerprint(tr, feats)
     if m is None:
-        m = _load_fit(season, feats)
+        m = _load_fit(season, feats, fp)
     if m is None:
         m = lgb.LGBMRegressor(n_estimators=400, learning_rate=0.05,
                               num_leaves=31, min_child_samples=40,
                               subsample=0.8, colsample_bytree=0.6,
                               random_state=0, verbose=-1)
         m.fit(tr.select(feats).to_numpy(), tr["points"].to_numpy())
-        _save_fit(season, feats, m)
+        _save_fit(season, feats, m, fp)
     _FITS[season] = m
     te = te.with_columns(
         pl.Series("pred", m.predict(te.select(feats).to_numpy())))
@@ -387,13 +402,32 @@ def _fit_path(season: int):
     return get_path("models") / "game_model" / f"points_{season}.pkl"
 
 
-def _load_fit(season: int, feats: list[str]):
-    """The saved model, or None if it was fitted on different columns.
+def _fingerprint(tr: pl.DataFrame, feats: list[str]) -> str:
+    """A hash of the training rows the fit would see, rounded to 1e-9.
+
+    Rounded because a rebuild moves some float columns in the last bit
+    (summation order), and that is not a different matrix.
+    """
+    import hashlib
+
+    x = (tr.select(feats)
+           .with_columns(pl.all().cast(pl.Float64).round(9))
+           .hash_rows(seed=0))
+    return hashlib.sha256(x.to_numpy().tobytes()).hexdigest()[:16]
+
+
+def _load_fit(season: int, feats: list[str], fp: str | None = None):
+    """The saved model, or None if it was fitted on different columns or rows.
 
     The feature list is stored WITH the booster and checked on load. A model
     reloaded against a changed feature matrix predicts from columns that have
     silently moved — the trap `leaky_columns` exists to catch would come back
     through the back door, with no error anywhere.
+
+    NAMES ARE NOT ENOUGH. A column whose definition changes under the same
+    name (the QB rush-TD count, 2026-10-22) passes a name check and serves a
+    booster fitted on the old values. So the training rows are fingerprinted
+    too, and a fit saved before the fingerprint existed is refitted once.
     """
     import pickle
 
@@ -406,16 +440,19 @@ def _load_fit(season: int, feats: list[str]):
         return None
     if blob.get("features") != list(feats):
         return None
+    if fp is not None and blob.get("data") != fp:
+        return None
     return blob.get("model")
 
 
-def _save_fit(season: int, feats: list[str], model) -> None:
+def _save_fit(season: int, feats: list[str], model,
+              fp: str | None = None) -> None:
     import pickle
 
     path = _fit_path(season)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(pickle.dumps({"features": list(feats), "model": model,
-                                   "season": season}))
+                                   "season": season, "data": fp}))
 
 
 #: Where the measured comparison against the closing line is kept.
