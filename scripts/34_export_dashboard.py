@@ -697,13 +697,20 @@ def teams(season: int, week: int, target_type: str) -> dict:
                 ]).drop(["_names", "_probs"]))
         out = out.join(top2, on=["game_id", "team"], how="left")
 
-    labels = None
-    for p in preds.values():
-        if p is not None and "game_label" in p.columns:
-            labels = p.select(["game_id", "game_label"]).unique()
-            break
-    if labels is not None:
+    # From the schedule, not from the prediction frames: a started game's rows
+    # are its frozen board (`serve_started`), which has no `game_label`, so
+    # labels read off the frames came back null for every game already
+    # kicked off — and the null broke the sort below. Thursday night's game
+    # did it to the first deploy of week 7's Sunday (2026-10-25).
+    try:
+        sched = pl.read_parquet(get_path("raw") / "schedules.parquet")
+        labels = sched.select([
+            "game_id",
+            (pl.col("away_team") + " @ " + pl.col("home_team")).alias("game_label"),
+        ]).unique("game_id")
         out = out.join(labels, on="game_id", how="left")
+    except Exception as e:                                   # noqa: BLE001
+        problems.append(f"Game labels: {e}")
 
     d = out.to_pandas()
     rows = []
