@@ -1,9 +1,335 @@
 {
+ "1": {
+  "ARI_LAC": {
+   "backfilled": "2026-10-25",
+   "model_away": 23.3,
+   "model_home": 26.3,
+   "model_spread": -2.9,
+   "model_total": 49.6,
+   "model_total_centered": 49.6,
+   "model_win_home": 0.5666,
+   "model_win_n": 1865
+  },
+  "ATL_PIT": {
+   "backfilled": "2026-10-25",
+   "model_away": 19.5,
+   "model_home": 23.8,
+   "model_spread": -4.2,
+   "model_total": 43.3,
+   "model_total_centered": 43.3,
+   "model_win_home": 0.5931,
+   "model_win_n": 1865
+  },
+  "BAL_IND": {
+   "backfilled": "2026-10-25",
+   "model_away": 24.8,
+   "model_home": 24.3,
+   "model_spread": 0.5,
+   "model_total": 49.1,
+   "model_total_centered": 49.1,
+   "model_win_home": 0.4959,
+   "model_win_n": 1865
+  },
+  "BUF_HOU": {
+   "backfilled": "2026-10-25",
+   "model_away": 26.1,
+   "model_home": 20.5,
+   "model_spread": 5.5,
+   "model_total": 46.6,
+   "model_total_centered": 46.6,
+   "model_win_home": 0.3931,
+   "model_win_n": 1865
+  },
+  "CHI_CAR": {
+   "backfilled": "2026-10-25",
+   "model_away": 21.1,
+   "model_home": 18.5,
+   "model_spread": 2.6,
+   "model_total": 39.7,
+   "model_total_centered": 39.7,
+   "model_win_home": 0.4522,
+   "model_win_n": 1865
+  },
+  "CLE_JAX": {
+   "backfilled": "2026-10-25",
+   "model_away": 17.6,
+   "model_home": 23.1,
+   "model_spread": -5.5,
+   "model_total": 40.7,
+   "model_total_centered": 40.7,
+   "model_win_home": 0.6191,
+   "model_win_n": 1865
+  },
+  "DAL_NYG": {
+   "backfilled": "2026-10-25",
+   "model_away": 20.7,
+   "model_home": 27.1,
+   "model_spread": -6.4,
+   "model_total": 47.8,
+   "model_total_centered": 47.8,
+   "model_win_home": 0.6367,
+   "model_win_n": 1865
+  },
+  "DEN_KC": {
+   "backfilled": "2026-10-25",
+   "model_away": 16.1,
+   "model_home": 17.8,
+   "model_spread": -1.6,
+   "model_total": 33.9,
+   "model_total_centered": 33.9,
+   "model_win_home": 0.5398,
+   "model_win_n": 1865
+  },
+  "GB_MIN": {
+   "backfilled": "2026-10-25",
+   "model_away": 13.7,
+   "model_home": 23.0,
+   "model_spread": -9.3,
+   "model_total": 36.7,
+   "model_total_centered": 36.7,
+   "model_win_home": 0.6907,
+   "model_win_n": 1865
+  },
+  "MIA_LV": {
+   "backfilled": "2026-10-25",
+   "model_away": 21.7,
+   "model_home": 18.5,
+   "model_spread": 3.2,
+   "model_total": 40.1,
+   "model_total_centered": 40.1,
+   "model_win_home": 0.4398,
+   "model_win_n": 1865
+  },
+  "NE_SEA": {
+   "backfilled": "2026-10-25",
+   "model_away": 19.5,
+   "model_home": 25.6,
+   "model_spread": -6.0,
+   "model_total": 45.1,
+   "model_total_centered": 45.1,
+   "model_win_home": 0.6289,
+   "model_win_n": 1865
+  },
+  "NO_DET": {
+   "backfilled": "2026-10-25",
+   "model_away": 22.1,
+   "model_home": 24.6,
+   "model_spread": -2.6,
+   "model_total": 46.7,
+   "model_total_centered": 46.7,
+   "model_win_home": 0.5605,
+   "model_win_n": 1865
+  },
+  "NYJ_TEN": {
+   "backfilled": "2026-10-25",
+   "model_away": 19.6,
+   "model_home": 23.3,
+   "model_spread": -3.7,
+   "model_total": 43.0,
+   "model_total_centered": 43.0,
+   "model_win_home": 0.583,
+   "model_win_n": 1865
+  },
+  "SF_LA": {
+   "backfilled": "2026-10-25",
+   "model_away": 28.4,
+   "model_home": 29.5,
+   "model_spread": -1.1,
+   "model_total": 57.9,
+   "model_total_centered": 57.9,
+   "model_win_home": 0.5294,
+   "model_win_n": 1865
+  },
+  "TB_CIN": {
+   "backfilled": "2026-10-25",
+   "model_away": 24.6,
+   "model_home": 26.2,
+   "model_spread": -1.7,
+   "model_total": 50.8,
+   "model_total_centered": 50.8,
+   "model_win_home": 0.5418,
+   "model_win_n": 1865
+  },
+  "WAS_PHI": {
+   "backfilled": "2026-10-25",
+   "model_away": 21.9,
+   "model_home": 26.8,
+   "model_spread": -4.8,
+   "model_total": 48.7,
+   "model_total_centered": 48.7,
+   "model_win_home": 0.6052,
+   "model_win_n": 1865
+  }
+ },
+ "2": {
+  "CAR_ATL": {
+   "backfilled": "2026-10-25",
+   "model_away": 23.2,
+   "model_home": 26.4,
+   "model_spread": -3.2,
+   "model_total": 49.6,
+   "model_total_centered": 48.6,
+   "model_win_home": 0.5728,
+   "model_win_n": 1865
+  },
+  "CIN_HOU": {
+   "backfilled": "2026-10-25",
+   "model_away": 18.4,
+   "model_home": 20.6,
+   "model_spread": -2.2,
+   "model_total": 39.0,
+   "model_total_centered": 38.0,
+   "model_win_home": 0.5522,
+   "model_win_n": 1865
+  },
+  "CLE_TB": {
+   "backfilled": "2026-10-25",
+   "model_away": 21.7,
+   "model_home": 27.8,
+   "model_spread": -6.1,
+   "model_total": 49.5,
+   "model_total_centered": 48.5,
+   "model_win_home": 0.6308,
+   "model_win_n": 1865
+  },
+  "DET_BUF": {
+   "backfilled": "2026-10-25",
+   "model_away": 24.8,
+   "model_home": 28.7,
+   "model_spread": -3.9,
+   "model_total": 53.5,
+   "model_total_centered": 52.5,
+   "model_win_home": 0.5871,
+   "model_win_n": 1865
+  },
+  "GB_NYJ": {
+   "backfilled": "2026-10-25",
+   "model_away": 20.7,
+   "model_home": 21.9,
+   "model_spread": -1.2,
+   "model_total": 42.6,
+   "model_total_centered": 41.6,
+   "model_win_home": 0.5315,
+   "model_win_n": 1865
+  },
+  "IND_KC": {
+   "backfilled": "2026-10-25",
+   "model_away": 22.9,
+   "model_home": 22.4,
+   "model_spread": 0.5,
+   "model_total": 45.4,
+   "model_total_centered": 44.4,
+   "model_win_home": 0.4959,
+   "model_win_n": 1865
+  },
+  "JAX_DEN": {
+   "backfilled": "2026-10-25",
+   "model_away": 24.1,
+   "model_home": 17.5,
+   "model_spread": 6.6,
+   "model_total": 41.7,
+   "model_total_centered": 40.7,
+   "model_win_home": 0.3714,
+   "model_win_n": 1865
+  },
+  "LV_LAC": {
+   "backfilled": "2026-10-25",
+   "model_away": 15.8,
+   "model_home": 20.8,
+   "model_spread": -5.0,
+   "model_total": 36.7,
+   "model_total_centered": 35.7,
+   "model_win_home": 0.6092,
+   "model_win_n": 1865
+  },
+  "MIA_SF": {
+   "backfilled": "2026-10-25",
+   "model_away": 19.9,
+   "model_home": 31.4,
+   "model_spread": -11.6,
+   "model_total": 51.3,
+   "model_total_centered": 50.3,
+   "model_win_home": 0.7302,
+   "model_win_n": 1865
+  },
+  "MIN_CHI": {
+   "backfilled": "2026-10-25",
+   "model_away": 22.9,
+   "model_home": 20.0,
+   "model_spread": 2.9,
+   "model_total": 42.9,
+   "model_total_centered": 41.9,
+   "model_win_home": 0.446,
+   "model_win_n": 1865
+  },
+  "NO_BAL": {
+   "backfilled": "2026-10-25",
+   "model_away": 24.6,
+   "model_home": 21.6,
+   "model_spread": 3.0,
+   "model_total": 46.1,
+   "model_total_centered": 45.1,
+   "model_win_home": 0.4439,
+   "model_win_n": 1865
+  },
+  "NYG_LA": {
+   "backfilled": "2026-10-25",
+   "model_away": 26.7,
+   "model_home": 24.0,
+   "model_spread": 2.7,
+   "model_total": 50.7,
+   "model_total_centered": 49.7,
+   "model_win_home": 0.4501,
+   "model_win_n": 1865
+  },
+  "PHI_TEN": {
+   "backfilled": "2026-10-25",
+   "model_away": 25.6,
+   "model_home": 20.8,
+   "model_spread": 4.8,
+   "model_total": 46.4,
+   "model_total_centered": 45.4,
+   "model_win_home": 0.4071,
+   "model_win_n": 1865
+  },
+  "PIT_NE": {
+   "backfilled": "2026-10-25",
+   "model_away": 18.1,
+   "model_home": 24.7,
+   "model_spread": -6.6,
+   "model_total": 42.8,
+   "model_total_centered": 41.8,
+   "model_win_home": 0.6405,
+   "model_win_n": 1865
+  },
+  "SEA_ARI": {
+   "backfilled": "2026-10-25",
+   "model_away": 26.7,
+   "model_home": 18.2,
+   "model_spread": 8.5,
+   "model_total": 44.9,
+   "model_total_centered": 43.9,
+   "model_win_home": 0.3351,
+   "model_win_n": 1865
+  },
+  "WAS_DAL": {
+   "backfilled": "2026-10-25",
+   "model_away": 26.9,
+   "model_home": 27.7,
+   "model_spread": -0.8,
+   "model_total": 54.7,
+   "model_total_centered": 53.7,
+   "model_win_home": 0.5231,
+   "model_win_n": 1865
+  }
+ },
  "3": {
   "ARI_SF": {
    "blend": {
     "spread": -7.6,
-    "total": 51.2
+    "total": 51.2,
+    "win_home": 0.7424,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 25.3,
    "model_home": 33.3,
@@ -23,7 +349,9 @@
   "BAL_DAL": {
    "blend": {
     "spread": 3.2,
-    "total": 51.8
+    "total": 51.8,
+    "win_home": 0.3715,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 26.0,
    "model_home": 24.4,
@@ -35,7 +363,9 @@
   "CAR_CLE": {
    "blend": {
     "spread": 2.7,
-    "total": 42.7
+    "total": 42.7,
+    "win_home": 0.3888,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 24.0,
    "model_home": 20.3,
@@ -47,7 +377,9 @@
   "CIN_PIT": {
    "blend": {
     "spread": 3.3,
-    "total": 43.2
+    "total": 43.2,
+    "win_home": 0.3681,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 23.4,
    "model_home": 21.3,
@@ -59,7 +391,9 @@
   "HOU_IND": {
    "blend": {
     "spread": 1.1,
-    "total": 45.0
+    "total": 45.0,
+    "win_home": 0.4458,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 25.0,
    "model_home": 26.0,
@@ -71,7 +405,9 @@
   "KC_MIA": {
    "blend": {
     "spread": 10.6,
-    "total": 45.1
+    "total": 45.1,
+    "win_home": 0.1664,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 24.8,
    "model_home": 19.4,
@@ -83,7 +419,9 @@
   "LAC_BUF": {
    "blend": {
     "spread": -7.1,
-    "total": 49.0
+    "total": 49.0,
+    "win_home": 0.7282,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 19.6,
    "model_home": 27.1,
@@ -95,7 +433,9 @@
   "LA_DEN": {
    "blend": {
     "spread": 2.0,
-    "total": 44.6
+    "total": 44.6,
+    "win_home": 0.4134,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 20.9,
    "model_home": 21.7,
@@ -107,7 +447,9 @@
   "LV_NO": {
    "blend": {
     "spread": -3.4,
-    "total": 43.0
+    "total": 43.0,
+    "win_home": 0.6089,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 18.0,
    "model_home": 23.9,
@@ -119,7 +461,9 @@
   "MIN_TB": {
    "blend": {
     "spread": 1.0,
-    "total": 42.9
+    "total": 42.9,
+    "win_home": 0.4494,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 21.0,
    "model_home": 22.8,
@@ -131,7 +475,9 @@
   "NE_JAX": {
    "blend": {
     "spread": -2.6,
-    "total": 46.8
+    "total": 46.8,
+    "win_home": 0.5806,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 24.6,
    "model_home": 25.1,
@@ -143,7 +489,9 @@
   "NYJ_DET": {
    "blend": {
     "spread": -6.3,
-    "total": 48.5
+    "total": 48.5,
+    "win_home": 0.7043,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 23.0,
    "model_home": 27.9,
@@ -155,7 +503,9 @@
   "PHI_CHI": {
    "blend": {
     "spread": 3.8,
-    "total": 41.8
+    "total": 41.8,
+    "win_home": 0.3512,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 21.3,
    "model_home": 21.3,
@@ -167,7 +517,9 @@
   "SEA_WAS": {
    "blend": {
     "spread": 7.8,
-    "total": 43.3
+    "total": 43.3,
+    "win_home": 0.2313,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 29.5,
    "model_home": 20.2,
@@ -179,7 +531,9 @@
   "TEN_NYG": {
    "blend": {
     "spread": -2.7,
-    "total": 40.7
+    "total": 40.7,
+    "win_home": 0.5841,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 22.3,
    "model_home": 26.0,
@@ -193,7 +547,9 @@
   "ARI_NYG": {
    "blend": {
     "spread": 0.3,
-    "total": 44.3
+    "total": 44.3,
+    "win_home": 0.4764,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 20.3,
    "model_home": 23.8,
@@ -205,7 +561,9 @@
   "ATL_NO": {
    "blend": {
     "spread": -2.5,
-    "total": 46.1
+    "total": 46.1,
+    "win_home": 0.578,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 20.1,
    "model_home": 22.7,
@@ -217,7 +575,9 @@
   "DAL_HOU": {
    "blend": {
     "spread": -2.4,
-    "total": 48.1
+    "total": 48.1,
+    "win_home": 0.5745,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 23.9,
    "model_home": 25.5,
@@ -229,7 +589,9 @@
   "DEN_SF": {
    "blend": {
     "spread": -2.7,
-    "total": 46.3
+    "total": 46.3,
+    "win_home": 0.5852,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 20.9,
    "model_home": 24.8,
@@ -241,7 +603,9 @@
   "DET_CAR": {
    "blend": {
     "spread": 2.5,
-    "total": 49.8
+    "total": 49.8,
+    "win_home": 0.3975,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 22.6,
    "model_home": 25.6,
@@ -253,7 +617,9 @@
   "GB_TB": {
    "blend": {
     "spread": 2.5,
-    "total": 42.9
+    "total": 42.9,
+    "win_home": 0.3975,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 23.7,
    "model_home": 27.0,
@@ -265,7 +631,9 @@
   "IND_WAS": {
    "blend": {
     "spread": 2.9,
-    "total": 48.7
+    "total": 48.7,
+    "win_home": 0.3836,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 26.2,
    "model_home": 26.5,
@@ -277,7 +645,9 @@
   "JAX_CIN": {
    "blend": {
     "spread": -3.3,
-    "total": 51.2
+    "total": 51.2,
+    "win_home": 0.6063,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 21.3,
    "model_home": 29.2,
@@ -289,7 +659,9 @@
   "KC_LV": {
    "blend": {
     "spread": 4.0,
-    "total": 45.9
+    "total": 45.9,
+    "win_home": 0.3464,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 21.9,
    "model_home": 20.4,
@@ -301,7 +673,9 @@
   "LAC_SEA": {
    "blend": {
     "spread": -6.8,
-    "total": 43.7
+    "total": 43.7,
+    "win_home": 0.7197,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 20.0,
    "model_home": 25.4,
@@ -313,7 +687,9 @@
   "LA_PHI": {
    "blend": {
     "spread": 2.6,
-    "total": 44.6
+    "total": 44.6,
+    "win_home": 0.394,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 22.5,
    "model_home": 22.3,
@@ -325,7 +701,9 @@
   "MIA_MIN": {
    "blend": {
     "spread": -10.9,
-    "total": 38.8
+    "total": 38.8,
+    "win_home": 0.8238,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 13.0,
    "model_home": 26.4,
@@ -337,7 +715,9 @@
   "NE_BUF": {
    "blend": {
     "spread": -6.4,
-    "total": 49.1
+    "total": 49.1,
+    "win_home": 0.7078,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 22.5,
    "model_home": 28.2,
@@ -349,7 +729,9 @@
   "NYJ_CHI": {
    "blend": {
     "spread": -2.6,
-    "total": 43.2
+    "total": 43.2,
+    "win_home": 0.5816,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 21.9,
    "model_home": 22.0,
@@ -361,7 +743,9 @@
   "PIT_CLE": {
    "blend": {
     "spread": 2.2,
-    "total": 40.0
+    "total": 40.0,
+    "win_home": 0.4081,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 21.9,
    "model_home": 21.5,
@@ -373,7 +757,9 @@
   "TEN_BAL": {
    "blend": {
     "spread": -10.6,
-    "total": 45.4
+    "total": 45.4,
+    "win_home": 0.8173,
+    "win_home_backfilled": "2026-10-25"
    },
    "model_away": 22.3,
    "model_home": 27.5,

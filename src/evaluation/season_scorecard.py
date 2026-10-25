@@ -205,6 +205,14 @@ def game_rows(season: int) -> list[dict]:
                 "model_total_centered": snap.get("model_total_centered"),
                 "blend_total_centered":
                     (snap.get("blend") or {}).get("total_centered"),
+                # NOT WRITTEN BEFORE KICKOFF, and carried so the page can say
+                # so. Weeks 1 and 2 were frozen afterwards from a model trained
+                # on earlier seasons; weeks 3 and 4 had their adjusted win
+                # chance read afterwards off the adjusted spread frozen at
+                # kickoff (`scripts/63_backfill_blend_win.py`).
+                "rebuilt": bool(snap.get("backfilled")),
+                "blend_win_rebuilt":
+                    bool((snap.get("blend") or {}).get("win_home_backfilled")),
             })
     return out
 
@@ -915,6 +923,11 @@ def build(season: int) -> dict:
                 "games": games_block(g),
                 "players": pb,
             }
+    # Weeks whose game numbers were filled in after the fact, by kind, so
+    # the page never calls them written before kickoff.
+    rebuilt = sorted({r["week"] for r in grows if r.get("rebuilt")})
+    adj_rebuilt = sorted({r["week"] for r in grows
+                          if r.get("blend_win_rebuilt")})
     # Weeks a game record cannot exist for, said once rather than per range.
     missing = [{"week": w,
                 "why": "the game model did not exist until after these games "
@@ -928,6 +941,8 @@ def build(season: int) -> dict:
         "default": f"{gweeks[0]}-{played[-1]}" if gweeks
                    else (f"{played[0]}-{played[-1]}" if played else ""),
         "missing": missing,
+        "rebuilt_weeks": rebuilt,
+        "adj_rebuilt_weeks": adj_rebuilt,
         "break_even": BREAK_EVEN,
         # Per week, not per range — see `bets_block`. The page adds up the
         # weeks the picker is showing.
