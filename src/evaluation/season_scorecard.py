@@ -938,8 +938,11 @@ def build(season: int) -> dict:
         "season": season, "played": played,
         "game_weeks": gweeks, "player_weeks": played,
         "ranges": ranges,
-        "default": f"{gweeks[0]}-{played[-1]}" if gweeks
-                   else (f"{played[0]}-{played[-1]}" if played else ""),
+        # FROM THE FIRST WEEK WRITTEN DOWN BEFORE KICKOFF, so the headline
+        # is the accountability record; rebuilt weeks are one pick away.
+        "default": (f"{min(set(gweeks) - set(rebuilt) or gweeks)}-{played[-1]}"
+                    if gweeks
+                    else (f"{played[0]}-{played[-1]}" if played else "")),
         "missing": missing,
         "rebuilt_weeks": rebuilt,
         "adj_rebuilt_weeks": adj_rebuilt,

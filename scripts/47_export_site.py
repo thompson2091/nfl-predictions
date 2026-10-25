@@ -2390,7 +2390,14 @@ def _serve_frozen_td(markets: list, season: int, week: int) -> None:
                       "priced": bool(f.get("has_market_price")),
                       # The verdict was read off the rebuilt numbers; it
                       # would describe a row this one no longer is.
-                      "read": None, "frozen": True})
+                      "read": None, "frozen": True,
+                      # NO BEST PRICE ON A STARTED GAME. The freeze keeps
+                      # none, and the one joined on was each book's newest
+                      # capture — after the frozen price beside it, so it
+                      # could sit shorter than "posted" (Freiermuth, PIT @ NO
+                      # 2026-10-25: posted +270 frozen, best +260 at 09:13).
+                      # A price that cannot be taken is not a best one.
+                      "best": None, "best_book": None, "n_best": None})
             if odds is not None:
                 p["odds_num"] = float(odds)
                 p["odds"] = f"{int(odds):+d}"

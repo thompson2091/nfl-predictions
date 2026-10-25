@@ -429,7 +429,8 @@ def test_a_started_game_shows_the_touchdown_board_it_kicked_off_with(monkeypatch
         {"player_name": "Kyren Williams", "team": "LA", "probability": 0.86,
          "prob_model": 0.97, "book": 0.51, "odds": -188.0, "has_market_price": True}]})
     rows = [{"player": "Kyren Williams", "team": "LA", "game_id": "2026_06_ARI_LA",
-             "ours": 1.0, "model_only": 1.0, "book": None, "priced": False, "read": "x"},
+             "ours": 1.0, "model_only": 1.0, "book": None, "priced": False, "read": "x",
+             "best": "+260", "best_book": "betmgm", "n_best": 1},
             {"player": "Later Man", "team": "SF", "game_id": "2026_06_WAS_SF",
              "ours": 0.3, "model_only": 0.3, "book": 0.25}]
     m._serve_frozen_td([{"key": "anytime_td", "players": rows}], 2026, 6)
@@ -437,6 +438,9 @@ def test_a_started_game_shows_the_touchdown_board_it_kicked_off_with(monkeypatch
     assert (k["ours"], k["model_only"], k["book"], k["priced"]) == (0.86, 0.97, 0.51, True)
     assert k["odds"] == "-188" and k["diff"] == 35.0 and k["read"] is None
     assert rows[1]["ours"] == 0.3, "a game still to come was touched"
+    # A best price is today's quote; beside a frozen price it can sit shorter
+    # than "posted", and after kickoff it cannot be taken anyway.
+    assert (k["best"], k["best_book"], k["n_best"]) == (None, None, None)
 
 
 def test_a_started_games_defense_matches_its_frozen_row(monkeypatch):
