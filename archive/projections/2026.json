@@ -1257,8 +1257,8 @@
   "DEN_ARI": {
    "blend": {
     "spread": 4.5,
-    "total": 43.0,
-    "total_centered": 43.0,
+    "total": 43.5,
+    "total_centered": 43.5,
     "win_home": 0.329
    },
    "model_away": 23.1,
@@ -1286,10 +1286,10 @@
   },
   "IND_MIN": {
    "blend": {
-    "spread": -6.5,
+    "spread": -7.0,
     "total": 41.5,
     "total_centered": 41.5,
-    "win_home": 0.7087
+    "win_home": 0.7235
    },
    "model_away": 22.0,
    "model_home": 22.6,
@@ -1331,10 +1331,10 @@
   },
   "MIA_NYJ": {
    "blend": {
-    "spread": -4.0,
+    "spread": -3.5,
     "total": 39.5,
     "total_centered": 39.5,
-    "win_home": 0.6283
+    "win_home": 0.6112
    },
    "model_away": 19.0,
    "model_home": 22.2,
@@ -1361,10 +1361,10 @@
   },
   "NYG_HOU": {
    "blend": {
-    "spread": -10.5,
+    "spread": -10.0,
     "total": 42.5,
     "total_centered": 42.5,
-    "win_home": 0.8133
+    "win_home": 0.802
    },
    "model_away": 24.3,
    "model_home": 28.2,
@@ -1392,8 +1392,8 @@
   "SF_ATL": {
    "blend": {
     "spread": 2.5,
-    "total": 50.5,
-    "total_centered": 50.5,
+    "total": 50.0,
+    "total_centered": 50.0,
     "win_home": 0.3961
    },
    "model_away": 29.3,
