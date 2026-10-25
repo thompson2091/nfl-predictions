@@ -1470,14 +1470,34 @@ if (cards.length) {
   ok('and the board keeps its own', V.filter === 'fade');
   V.filter = 'all';
 
-  ['all', 'flip', 'agree', 'diff'].forEach(f => {
-    V.gfilter = f;
-    let e = null;
-    try { render(); } catch (ex) { e = ex; }
-    ok('games filter ' + f + ' renders', !e, e && e.message);
-    ok('games filter ' + f + ' never renders blank',
-       textOf({ _html: app() }).join('').trim().length > 40);
+  ['all', 'flip', 'agree'].forEach(f => {
+    [0, 3, 6, 10].forEach(gp => {
+      V.gfilter = f; V.ggap = gp;
+      let e = null;
+      try { render(); } catch (ex) { e = ex; }
+      ok('games filter ' + f + ' at gap ' + gp + ' renders', !e, e && e.message);
+      ok('games filter ' + f + ' at gap ' + gp + ' never renders blank',
+         textOf({ _html: app() }).join('').trim().length > 40);
+    });
   });
+
+  // THE SAME SLICE AS THE RECORD'S. Agrees plus a gap used to be empty by
+  // construction, because Agrees meant within 3pp; it now means the same
+  // winner, and the gap is the graded pick's distance from the book.
+  V.gfilter = 'agree'; V.ggap = 0; V.gbasis = 'model'; render();
+  const nAgree = app().split('data-v3game=').length - 1;
+  V.ggap = 3; render();
+  const nAgree3 = app().split('data-v3game=').length - 1;
+  const want = cards.filter(c => has(c.win_home) && has(c.model_win_home)
+    && c.model_win_home !== 0.5
+    && (c.model_win_home > 0.5) === (c.win_home > 0.5)
+    && Math.abs(c.model_win_home - c.win_home) * 100 >= 3).length;
+  ok('agrees at 3pp+ keeps the same-winner games 3pp or more from the book',
+     nAgree3 === want, nAgree3 + ' shown, ' + want + ' expected');
+  ok('and a gap only narrows the set', nAgree3 <= nAgree);
+  V.ggap = 0; V.gfilter = 'diff'; render();
+  ok('a saved Disagrees falls back to every game',
+     app().split('data-v3game=').length - 1 === cards.length);
   V.gfilter = 'all';
 }
 
@@ -2937,6 +2957,32 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      h.indexOf('have no game record') >= 0
      && h.indexOf('nothing recorded a projection') >= 0);
 
+  // A WEEK FILLED IN AFTERWARDS IS NEVER CALLED WRITTEN BEFORE KICKOFF.
+  // Weeks 1 and 2 of 2026 were frozen on 2026-10-25 from a model trained on
+  // earlier seasons; weeks 3 and 4 had their adjusted win chance read off
+  // the adjusted spread frozen at kickoff.
+  {
+    const SC = DATA.scorecard;
+    const gw = (SC.game_weeks || []).slice();
+    const keep = [SC.rebuilt_weeks, SC.adj_rebuilt_weeks];
+    if (gw.length >= 2) {
+      SC.rebuilt_weeks = [gw[0]]; SC.adj_rebuilt_weeks = [gw[1]];
+      V.scFrom = gw[0]; V.scTo = gw[1];
+      const hr = v3RecordPage();
+      ok('a rebuilt week is named as rebuilt',
+         hr.indexOf('Game picks for week ' + gw[0] + ' were rebuilt '
+                    + 'afterwards') >= 0, hr.slice(0, 600));
+      ok('and only the other weeks are said to be written before kickoff',
+         hr.indexOf('Game picks for week ' + gw[1] + ' were written down '
+                    + 'before kickoff') >= 0);
+      ok('and a backfilled adjusted win chance says where it came from',
+         hr.indexOf('adjusted win chance for week ' + gw[1]
+                    + ' was read afterwards') >= 0);
+      V.scFrom = null; V.scTo = null;
+    }
+    SC.rebuilt_weeks = keep[0]; SC.adj_rebuilt_weeks = keep[1];
+  }
+
   // THE PICKER SELECTS, IT DOES NOT COMPUTE.
   ok('the range picker is on the page',
      h.indexOf('data-v3scfrom') >= 0 && h.indexOf('data-v3scto') >= 0);
@@ -3078,8 +3124,8 @@ if (cards.length && cards[0].matchup && cards[0].matchup.splits) {
      h.indexOf('Model alone') < 0 && h.indexOf('Shown on the card') < 0
      && h.indexOf('Blended win chance') < 0
      && h.indexOf('95% range') < 0, h);
-  ok('before week 5 a new row says when it starts rather than inventing one',
-     h.indexOf('recorded from week 5') >= 0);
+  ok('before week 3 a new row says when it starts rather than inventing one',
+     h.indexOf('recorded from week 3') >= 0);
   // AND THE RANGE IS NOT A COLUMN. Four cells each reading "39.3% to
   // 71.8%", every one wide enough to contain every other row, read as the
   // page declining to say anything — so the interval is said once, in

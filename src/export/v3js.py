@@ -191,6 +191,7 @@ const V = Object.assign({
   //: the sportsbook on a page whose whole point is the second opinion. Our
   //: model is the default; book and adjusted are one tap away.
   gbasis: 'model',
+  ggap: 0,
   week: null, game: null, gameTab: 'odds', cat: 'all',
   picks: {}, betType: 'twos', stake: 10, shown: V3SHOW,
   lodds: 100, rungs: 6, q: '', half: 'full', metric: 'all',
@@ -310,7 +311,7 @@ function v3Save() {
       market: V.market, sort: V.sort, filter: V.filter, picks: V.picks,
       picksWeek: V.picksWeek,
       betType: V.betType, stake: V.stake, game: V.game,
-      desc: V.desc, gfilter: V.gfilter, gbasis: V.gbasis,
+      desc: V.desc, gfilter: V.gfilter, gbasis: V.gbasis, ggap: V.ggap,
       // The saved picks themselves, not a flag. `V.saved` used to be a
       // boolean that nothing read and nothing kept.
       saved: V.saved, savedGone: V.savedGone, savedFilter: V.savedFilter,
@@ -2004,15 +2005,37 @@ function v3Games() {
   // Sharing `V.filter` meant picking "Fades" on This week and arriving here
   // with no segment pressed and every game shown, or picking "Model
   // disagrees" and going back to a board silently unfiltered.
+  //
+  // THE SAME SLICES AS THE RECORD'S "EVERY GAME", by the same rules
+  // (`v3RgGrade`), so a slice read there can be found here on a week's
+  // cards. Asked for 2026-10-25, after Record showed adjusted-agrees-3pp+ at
+  // 7-3 and nothing here could pick those games out. "Agrees" used to mean
+  // same winner AND within 3pp, which made Agrees plus a gap always empty;
+  // it now means same winner, and "Disagrees" went, since it was Upsets plus
+  // a gap. The pick is the "Graded on" one; on Book it is our model's, as on
+  // the Record's book row — the book cannot disagree with itself.
+  const pickOf = c => {
+    if (!has(c.win_home)) return null;
+    const p = V.gbasis === 'adj' ? v3AdjWin(c)
+            : has(c.model_win_home) ? c.model_win_home : null;
+    if (!has(p) || p === 0.5) return null;
+    return {upset: (p > 0.5) !== (c.win_home > 0.5),
+            gap: Math.abs(p - c.win_home) * 100};
+  };
   const FGROUPS = {
     all: () => true,
-    flip: c => lean(c)[1] === 'tag tag--warn',
-    agree: c => lean(c)[1] === 'tag',
-    diff: c => lean(c)[1] !== 'tag',
+    flip: c => { const k = pickOf(c); return !!k && k.upset; },
+    agree: c => { const k = pickOf(c); return !!k && !k.upset; },
   };
-  const flips = cards.filter(FGROUPS.flip).length;
-  const agree = cards.filter(FGROUPS.agree).length;
-  const show = cards.filter(FGROUPS[V.gfilter] || FGROUPS.all);
+  const ggap = [0, 3, 6, 10].indexOf(Number(V.ggap)) >= 0 ? Number(V.ggap) : 0;
+  const gapOk = c => {
+    if (!ggap) return true;
+    const k = pickOf(c);
+    return !!k && k.gap >= ggap;
+  };
+  const flips = cards.filter(c => lean(c)[1] === 'tag tag--warn').length;
+  const agree = cards.length - flips;
+  const show = cards.filter(FGROUPS[V.gfilter] || FGROUPS.all).filter(gapOk);
 
   const rows = show.map(c => {
     const l = lean(c);
@@ -2120,11 +2143,16 @@ function v3Games() {
     // `pbar` is the shared pinned-filter bar rather than a props-only one, so
     // the two boards cannot drift apart visually. `--free` because this one
     // stands on its own instead of tucking under a bar above it.
-    + '<div class="pbar pbar--free"><div class="seg seg--4">'
+    + '<div class="pbar pbar--free"><div class="seg seg--3">'
     + v3Seg('v3gfilter', [['all', 'All'], ['flip', 'Upsets'],
-                          ['agree', 'Agrees'], ['diff', 'Disagrees']],
+                          ['agree', 'Agrees']],
             V.gfilter)
     + '</div>'
+    + '<div class="gbasis"><span class="eyebrow">Gap</span>'
+    + '<div class="seg seg--4">'
+    + v3Seg('v3ggap', [[0, 'Any'], [3, '3pp+'], [6, '6pp+'], [10, '10pp+']],
+            ggap)
+    + '</div></div>'
     // WHOSE PICK IS BEING GRADED, on its own line under the filter. Three
     // words rather than a sentence: the row underneath already labels every
     // percentage, so this only has to say which of them the row is about.
@@ -2135,13 +2163,13 @@ function v3Games() {
                          ['adj', 'Adj']], V.gbasis)
     + '</div></div></div>'
     + '<div class="list">' + (rows || '<div class="empty">'
-      + (V.gfilter === 'flip'
+      + (ggap && cards.length
+         ? 'No game this week fits those filters.'
+         : V.gfilter === 'flip'
          ? 'Our model picks the same winner as the book in every game this week.'
          : V.gfilter === 'agree'
-         ? 'Our model differs from the book on every game this week.'
-         : V.gfilter === 'diff'
-         ? 'Our model and the book are within a point of each other on every '
-           + 'game this week.'
+         ? 'Our model picks a different winner from the book in every game '
+           + 'this week.'
          : 'No games on the board yet.') + '</div>')
     + '</div>'
     + '<div class="card"><div class="name">Reading a game line</div>'
@@ -6489,7 +6517,7 @@ const V3RG_GAPS = {ml: [[0, 'Any'], [3, '3pp+'], [6, '6pp+'], [10, '10pp+']],
                    to: [[0, 'Any'], [1, '1 pt+'], [2, '2 pts+'], [3, '3 pts+']]};
 
 //: One game, graded for the market and whose pick is chosen. Null when that
-//: side had no number for it (the adjusted win chance starts in week 5).
+//: side had no number for it (the adjusted win chance starts in week 3).
 function v3RgGrade(g, mkt, who) {
   const [w, gid, hs, as, bw, mw, blw, bs, ms, bls, bt, mt, blt] = g;
   const t = String(gid).split('_');
@@ -6597,7 +6625,7 @@ function v3RecGameDissect(S, a, b) {
   const none = st.set === 'upset' && st.who === 'book'
     ? 'The sportsbook’s pick is its favorite, so it never picks an upset.'
     : st.who === 'adj' && ml && !R.all.length
-    ? 'The adjusted win chance was first recorded in week 5.'
+    ? 'The adjusted win chance starts in week 3.'
     : 'No game in these weeks fits those filters.';
   const summary = R.all.length
     ? '<p class="recl__h"><b>' + R.all.length + (R.all.length === 1
@@ -6763,7 +6791,7 @@ function v3RecGames(g, S, span) {
        ? ' Blended: ' + m.brier_blend.toFixed(4) + ' against '
          + m.brier_book_blend.toFixed(4) + ' on the same ' + m.blend.n
          + ' games.'
-       : ' The blended win chance is recorded from week 5.')
+       : ' The blended win chance is recorded from week 3.')
     + '</p>'
     + (cRows.length
        ? '<p class="recsub">The total, ignoring the week\u2019s scoring '
@@ -7854,6 +7882,13 @@ function v3RecordPage() {
   const span = r[0] === r[1] ? 'Week ' + r[0] : 'Weeks ' + r[0] + '–' + r[1];
   const gw = (S.game_weeks || []);
   const inRange = gw.filter(w => w >= r[0] && w <= r[1]);
+  // WEEKS FILLED IN AFTERWARDS, named wherever the range reaches them, so
+  // "written down before kickoff" is never said of a number that was not.
+  const rb = (S.rebuilt_weeks || []).filter(w => w >= r[0] && w <= r[1]);
+  const arb = (S.adj_rebuilt_weeks || []).filter(w => w >= r[0] && w <= r[1]);
+  const wkList = xs => (xs.length > 1 ? 'weeks ' : 'week ')
+    + (xs.length > 2 ? xs[0] + '–' + xs[xs.length - 1] : xs.join(' and '));
+  const fresh = inRange.filter(w => rb.indexOf(w) < 0);
   return '<div class="wrap">'
     + '<div class="eyebrow">' + (S.season || '') + ' season · '
     + esc(span) + '</div>'
@@ -7867,11 +7902,22 @@ function v3RecordPage() {
     + '<div class="card recnote">'
     + '<div class="eyebrow">Where these come from</div>'
     + '<p class="help" style="margin-top:6px">'
-    + (inRange.length
-       ? '<b style="color:var(--ink)">Game picks were written down before '
-         + 'kickoff</b> — the numbers that were on the card.'
+    + (fresh.length
+       ? '<b style="color:var(--ink)">Game picks for ' + wkList(fresh)
+         + ' were written down before kickoff</b> — the numbers that were on '
+         + 'the card.'
        : '<b style="color:var(--ink)">No game picks in this range</b> were '
          + 'recorded before kickoff.')
+    + (rb.length
+       ? ' <b style="color:var(--ink)">Game picks for ' + wkList(rb)
+         + ' were rebuilt afterwards</b>, from a model trained only on '
+         + 'earlier seasons: a test, not a record. They have no adjusted '
+         + 'number.'
+       : '')
+    + (arb.length
+       ? ' The adjusted win chance for ' + wkList(arb) + ' was read '
+         + 'afterwards off the adjusted spread written down before kickoff.'
+       : '')
     + ' <b style="color:var(--ink)">Player results were rebuilt afterwards</b>'
     + ', current model against archived prices: a test of the model on weeks '
     + 'it did not serve, not a record of bets anyone could have placed.'
@@ -8623,7 +8669,7 @@ function v3Refocus(t) {
 // One delegated listener. Every control is a `data-v3*` attribute, so a
 // control that is added and never wired here does nothing at all rather than
 // throwing — which is why `test_every_v3_control_is_handled` exists.
-const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis', 'v3pick', 'v3more',
+const V3CLICKS = ['v3tab', 'v3mkt', 'v3sort', 'v3filter', 'v3gfilter', 'v3gbasis', 'v3ggap', 'v3pick', 'v3more',
                   'v3keep', 'v3unkeep', 'v3savedfilter', 'v3pickopen',
                   'v3copypicks', 'v3restoreopen', 'v3restoredo',
                   'v3game', 'v3gamestep', 'v3back', 'v3gtab', 'v3cat', 'v3type',
@@ -8861,6 +8907,7 @@ function v3Do(kind, v) {
     case 'v3sort': V.sort = v; break;
     case 'v3filter': V.filter = v; V.shown = V3SHOW; V.top = 'section'; break;
     case 'v3gfilter': V.gfilter = v; V.top = 'section'; break;
+    case 'v3ggap': V.ggap = Number(v) || 0; V.top = 'section'; break;
     case 'v3gbasis': V.gbasis = v; V.top = 'section'; break;
     case 'v3more': V.shown = 1e9; break;
     // Tapping the open row closes it: one open at a time, so the board does
