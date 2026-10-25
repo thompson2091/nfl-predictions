@@ -800,46 +800,46 @@
  "7": {
   "CIN_BAL": {
    "paras": [
-    "Baltimore hosts Cincinnati in a divisional clash priced as a narrow contest, with the Ravens favored by 2.5 points and the adjusted number sitting at 26.8 for Baltimore and 24.2 for Cincinnati. These are two teams who've both outperformed market expectations offensively over their last 10 games: the Ravens have scored 26.9 per game against an expected 24.4, while the Bengals have put up 26.2 against an expected 25.7. On the defensive side, Cincinnati has allowed 22.7 against an expected 23.2, playing better than asked, while Baltimore has allowed 21.0 against an expected 21.0, right on the mark.",
-    "The shape of this one turns on Baltimore's ability to capitalize in tight spaces. The Ravens hold an edge in red zone touchdowns, better than Cincinnati's defense by 0.27, and they're also ahead on second down conversion by 0.15. Those are the possession-extending and finish moments that separate teams in a division game where both sides know each other's tendencies. In past games priced like this, 60.6% finished within one score, and that's the kind of margin this setting tends to produce.",
-    "Cincinnati comes in off a bye week with a clean injury report, as does Baltimore on normal rest. The Bengals will look to Joe Burrow, projected for 273.3 passing yards, a figure above his posted line of 261.5. Chase Brown should carry the ground game at a projected 53.2 rushing yards, just above his line of 51.5. For the Ravens, Derrick Henry is projected at 77.5 rushing yards, below his posted line of 85.5, which suggests Baltimore may need to lean more heavily on the pass than the power run that typically defines them.",
-    "Ja'Marr Chase is projected for 75.9 receiving yards and 6.7 receptions, both just shy of and just above his respective lines, while Tee Higgins sits at 62.2 yards and 4.3 catches, both slightly below the posted numbers. The Bengals' offensive workload is script-dependent: if they fall behind badly, a scenario with roughly a 16.5% chance, both the running back rush and Burrow's passing yardage drop considerably. That makes the early exchanges critical, and in a game where the total sits at 51.0, expect both quarterbacks to have the ball in their hands when it matters most."
+    "Cincinnati comes in as a 3.0-point favorite in Baltimore, and the division rivalry sets up as a tight one. In 434 past games priced like this, 54.8% finished within one score. The adjusted number puts Cincinnati at 24.8 and Baltimore at 21.8, with the total at 46.5. Both teams arrive healthy, with nobody missing practice on either side, and Cincinnati has had the bye week to prepare while Baltimore plays on normal rest.",
+    "The Bengals have been better than expected on both sides lately, scoring 26.2 a game over their last 10 against an expected 25.7 while allowing 22.7 against an expected 23.2. Baltimore has been even more productive offensively, posting 26.9 against an expected 24.4, though its defense has run exactly level with expectation at 21.0 allowed. Where this one turns may come down to Baltimore's red zone work, where the Ravens offense is better than Cincinnati's defense by 0.27, and second down conversions, where Baltimore holds a 0.15 edge.",
+    "The game script matters more for Baltimore than Cincinnati. If the Ravens fall behind significantly, their running back usage drops about 27.3% and quarterback passing yards fall about 22.4%, with that lost big case carrying a 19.4% chance. Cincinnati's running back usage is similarly script-dependent, down 27.3% when trailing badly, though that scenario has only a 12.9% chance of materializing for the Bengals. Derrick Henry is projected for 77.5 rushing yards against a line of 73.5, while Chase Brown sits at 53.2 against 51.5.",
+    "Joe Burrow is projected for 273.3 passing yards against a line of 269.5, with Ja'Marr Chase expected to collect 75.9 receiving yards on 6.7 receptions, both figures above their posted lines of 72.5 and 6.5. Tyler Huntley checks in at 150.2 passing yards against a line of 167.5, relying on Zay Flowers to produce 70.6 receiving yards against 68.5. Tee Higgins is projected just a tick below his line at 62.2 against 62.5. The shape of this one likely comes down to whether Cincinnati can protect a lead or Baltimore can force Burrow into enough tight windows to keep it close late."
    ],
    "scoreline": {
     "away": "CIN",
-    "away_pts": 24.2,
+    "away_pts": 24.8,
     "home": "BAL",
-    "home_pts": 26.8,
-    "lead": "BAL",
-    "spread": -2.5,
-    "total": 51.0
+    "home_pts": 21.8,
+    "lead": "CIN",
+    "spread": 3.0,
+    "total": 46.5
    },
    "written": true
   },
   "CLE_TEN": {
    "paras": [
-    "The adjusted numbers have Cleveland by 1.5 in a game that sits at 37.5, and neither offense has earned much trust lately. The Browns have scored 16.2 a game over their last 10 against an expected 17.2, while Tennessee has managed 16.7 against an expected 17.3. Cleveland's defense has been the steadier side, allowing 20.0 against an expected 23.1, but the Titans have leaked 25.0 against an expected 23.5. Both teams are running below market expectations on offense, and only one defense has held up its end.",
-    "The model on its own would set the total at 45.2, higher-scoring than the book's 37.5, but the blended adjusted number suggests something tighter. In 121 past games priced like this one, 59.5% finished within one score and the underdog won outright 43.0% of the time. Cleveland has covered 7 times in its last 10 and won 6, while Tennessee has covered just 4 times and won only 2. The Titans are playing from behind more often than not, and their defense has been the weaker link all season.",
-    "The game turns on whether either quarterback can move the ball consistently in the red zone. On EPA per play, Cleveland's offense is worse than Tennessee's defense by 0.129, which is a narrow margin but enough to matter in a low-scoring affair. The Browns run a script-dependent ground game, just like the Titans, and both running backs see their usage drop by 27.3% in blowout losses, though that case sits at only a 13.2% chance. If the game stays tight, both sides will try to control tempo and field position rather than trade scores.",
-    "Deshaun Watson is projected for 214.0 passing yards, just above his posted line of 209.5, while Cam Ward sits at 208.4 against a line of 190.5. Harold Fannin Jr. is projected for 39.8 receiving yards against a posted line of 30.5 and 4.3 receptions against 3.5, offering Cleveland a reliable underneath option. On the Tennessee side, Carnell Tate is projected for 55.1 receiving yards against 54.5, and Tony Pollard is projected for 58.9 rushing yards, which sits below his posted line of 65.5. The game likely comes down to which offense can sustain drives when it matters most."
+    "Cleveland comes in as the favorite by 2.0 points in a game the book has totaled at 37.0, and the adjusted number settles at 19.5 for the Browns and 17.5 for the Titans. Neither side has been lighting up scoreboards lately. Cleveland has scored 16.2 a game over its last 10, below the 17.2 the market expected from its offense, while Tennessee has put up 16.7 against an expected 17.3. The difference has been on the other side of the ball: Cleveland's defense has allowed 20.0 points when asked to hold teams to 23.1, while Tennessee has given up 25.0 against an expected 23.5.",
+    "The shape of this one figures to be tight and low. In 102 past games priced like this, 59.8% finished within one score, and the public seems to agree with that assessment\u201459.1% of tickets are on the under. Cleveland on EPA per play is worse than Tennessee's defense by 0.129, which speaks to how little daylight there is between these two offenses. Both quarterbacks are projected modestly: Deshaun Watson at 214.0 passing yards and Cam Ward at 208.4. Neither is being asked to carry the day through the air, and neither may be able to.",
+    "Tennessee's running game will be important as long as the Titans stay within range. Tony Pollard is projected for 58.9 rushing yards, but the context matters\u2014in the case where Tennessee falls behind big, which has about a 14.7% chance of happening, the Titans' running back usage drops by about 27.3%. Ward's passing yardage also drops by about 22.4% in that same scenario. Cleveland will try to control tempo and lean on a defense that has outperformed expectations, keeping Tennessee from finding any rhythm.",
+    "The game turns on whether either offense can sustain drives when it counts. Harold Fannin Jr. is projected for 39.8 receiving yards and 4.3 receptions for Cleveland, both above his posted lines, and he may be Watson's best outlet underneath. For Tennessee, Carnell Tate is projected for 55.1 receiving yards, and he will need to win in space if Ward is going to have any success moving the chains. This is a game that figures to be decided late, with field position and a handful of possessions making the difference."
    ],
    "scoreline": {
     "away": "CLE",
     "away_pts": 19.5,
     "home": "TEN",
-    "home_pts": 18.0,
+    "home_pts": 17.5,
     "lead": "CLE",
-    "spread": 1.5,
-    "total": 37.5
+    "spread": 2.0,
+    "total": 37.0
    },
    "written": true
   },
   "DAL_PHI": {
    "paras": [
-    "Philadelphia hosts Dallas in a divisional matchup where the Cowboys are favored by 4.5 points despite neither team arriving in good form. The adjusted projection has Dallas at 24.2 and Philadelphia at 19.8, a total of 44.0 that suggests a grind rather than a shootout. Both offenses have underperformed recently: Dallas has scored 24.1 per game over its last ten against an expected 26.6, while Philadelphia has managed only 18.4 against an expected 21.8. Neither defense has picked up the slack, each allowing more than the market asked.",
-    "The Cowboys have covered just twice in their last ten games and stand 3-7 over that stretch, a run that led to Brian Schottenheimer taking over as head coach. Dallas should be able to move the ball against a Philadelphia defense that has allowed more than expected, but the offense has been inconsistent enough that the margin figures to stay manageable. In past games priced like this one, 51.3% finished within one score, and the structure here points that way again.",
-    "Philadelphia's task is to avoid falling behind early, because Tanner McKee's workload becomes script-dependent: if the Eagles lose big, his passing yards drop by about 22.4%, and the run game shrinks by roughly 27.3%. That scenario has about a 24.6% chance of occurring, but staying competitive gives the Eagles a better chance to keep the game close into the fourth quarter. Nick Sirianni has won 67.0% of his games, though neither coach's spread record clears the break-even threshold.",
-    "Dak Prescott is projected for 257.0 passing yards, below his posted line of 262.5, while McKee sits at 221.5 against a line of 215.5. CeeDee Lamb's projection of 76.9 receiving yards trails his 81.5 line, but George Pickens is expected to go over his 63.5 mark with a projection of 70.7. The edge in two-minute situations favors Philadelphia's offense over Dallas's defense by 0.291, which could matter if this one stays tight late."
+    "This is a division game under the lights, and the adjusted number has Dallas at 24.2 and Philadelphia at 19.8. Both offenses have underperformed lately: the Cowboys have scored 24.1 per game over their last 10 against an expected 26.6, while the Eagles have managed just 18.4 against an expected 21.8. Defense has been a problem on both sides too, each allowing more than the market asked of them. In comparable past games priced like this one, 51.3% finished within one score, which tells you how division matchups tend to play out even when one side is favored.",
+    "The Cowboys arrive having won just 3 of their last 10 and covered only twice, while Philadelphia is 4 and 6 with three covers in that stretch. Brian Schottenheimer has won 39.1% across 22 games as a head coach, a small sample that does not suggest an edge either way. Nick Sirianni has won 67.0% and covered 51.1% over 88 games, though that record does not beat the bookmaker's cut by itself. The line has moved from 5.5 down to 4.5, with 73.9% of tickets backing Dallas, more than the 63.4% it opened with.",
+    "Philadelphia's offensive EPA per play is worse than Dallas's defense by 0.298, which suggests the Cowboys should have the advantage there. But in two-minute situations, the Eagles' offense is actually better than Dallas's defense by 0.291, meaning late-drive scenarios could shift the momentum. The model's own total sits at 41.7 before blending with the book, lower-scoring than the posted 44.0, and in Dallas's recent games the over has landed 8 times against 2 unders.",
+    "Tanner McKee is projected for 221.5 passing yards, above his posted line of 212.5, while Dak Prescott sits at 257.0, just below his 259.5 mark. Saquon Barkley's projection is 39.2 rushing yards, well under the 68.5 line, a figure that reflects how script-dependent Philadelphia's backfield becomes when the Eagles fall behind. CeeDee Lamb is projected for 76.9 receiving yards and George Pickens for 70.7, the latter above his line of 66.5. DeVonta Smith checks in at 50.1, below his posted 67.5, as the passing game adjusts to McKee under center."
    ],
    "scoreline": {
     "away": "DAL",
@@ -854,46 +854,46 @@
   },
   "DEN_ARI": {
    "paras": [
-    "Denver comes in as the favorite by 4.5 points in a game the model prices at 24.0 to 19.5, with a total set at 43.5. This is a meeting between two offenses that have undershot market expectations recently, but the story is mostly about what's happened on the other side of the ball. Denver's defense has allowed 18.1 points per game over its last 10, below the 20.1 that was expected of it, while Arizona has leaked 31.8 against an expected 27.5. That gap tells you where the difference sits.",
-    "The Broncos have covered seven times in those 10 games and won seven, with the under landing eight times. Arizona has covered just three times in its last 10, winning twice and losing eight. In past games priced like this one, 50.8% finished within one score, so this figures to stay within reach for stretches even if Denver controls the middle portions. The total opened at 45.5 and has dropped to 43.5, while the spread has moved from 3.5 to 4.5.",
-    "The matchup shows Denver's offense slightly behind Arizona's defense in several tempo and situational metrics, including 1.7 worse on plays per game and 0.207 worse on late-half scoring drives. Arizona's run game and Jacoby Brissett's passing yards both become script-dependent if the Cardinals fall behind early, which has about a 24.7% chance of happening, and in that case both drop significantly. That puts pressure on Arizona to stay close early.",
-    "Bo Nix is projected for 227.3 passing yards, above his posted line of 222.5, and 18.4 rushing yards, also above his line of 13.5. Brissett is projected for 230.7 passing yards, below his line of 237.5. Jaylen Waddle sits at 55.5 receiving yards, level with his line, while Trey McBride is projected for 59.0, below his 65.5 mark. Michael Wilson is projected for 51.0 receiving yards, above his 49.5 line, giving Arizona at least one receiver expected to clear his number."
+    "Denver arrives as a 4.5-point favorite in a game the market expects to stay low-scoring, with a total set at 43.0. The Broncos have defended well over their last 10 games, allowing 18.1 points against an expected 20.1, while Arizona has struggled badly on that side, giving up 31.8 against an expected 27.5. Both offenses have underperformed what the market asked of them, Denver scoring 19.3 against an expected 22.6 and Arizona 19.9 against an expected 20.6. The adjusted number sees this finishing Denver 23.8, Arizona 19.2.",
+    "The shape of this one looks like a grind. Denver has gone under the total 8 times in its last 10 games, covering the spread in 7 of them while winning 7 overall. Arizona has covered just 3 times in that same span, winning only 2 while losing 8. In 414 past games priced like this, 51.4% finished within one score and 31.2% were grinds, so expect the Broncos to control without pulling away and the Cardinals to hang around without threatening much.",
+    "Where the game could turn is late in halves and under pressure. Denver's offense is worse than Arizona's defense on late-half scoring drives by 0.207 and on two-minute EPA by 0.199, meaning the Broncos may struggle to create separation when it matters most. If Arizona falls behind by much, the script dependence cuts hard: the Cardinals' rushing attack drops about 27.3% when they've lost big, a scenario with roughly a 23.9% chance of happening.",
+    "Bo Nix is projected for 227.3 passing yards and Jacoby Brissett for 230.7, neither quarterback expected to light it up. Trey McBride leads Arizona's passing game with a projection of 59.0 receiving yards, while Jaylen Waddle sits at 55.5 for Denver. On the ground, J.K. Dobbins is projected for 48.7 rushing yards, slightly ahead of Tyler Allgeier's 33.4 for the Cardinals. The difference figures to be Denver's defense, which has done the job all season while Arizona's has not."
    ],
    "scoreline": {
     "away": "DEN",
-    "away_pts": 24.0,
+    "away_pts": 23.8,
     "home": "ARI",
-    "home_pts": 19.5,
+    "home_pts": 19.2,
     "lead": "DEN",
     "spread": 4.5,
-    "total": 43.5
+    "total": 43.0
    },
    "written": true
   },
   "GB_DET": {
    "paras": [
-    "Detroit comes off a bye as a 3.0-point favorite at home in a division game, and the adjusted number reflects that edge: 28.2 for the Lions, 25.2 for Green Bay. Both defenses have played worse than expected over their last ten games, allowing more points than the market asked of them, and the total has climbed from 52.5 at the open to 53.5 now. In past games priced like this one, 62.6% finished within one score, so the line suggests a game that stays tight even if it doesn't stay quiet.",
-    "Detroit's offense has been productive, scoring 29.5 a game over its last ten against an expected 27.4, and it holds edges in the late-game situations that decide close divisional matchups. On two-minute EPA, the Lions' offense is better than Green Bay's defense by 0.342, and on late-half scoring drives they're better by 0.31. Green Bay's offense, meanwhile, has struggled to reach what the market has asked, scoring 19.7 a game against an expected 21.9. The Packers covered just twice in their last ten, winning four and losing six.",
-    "The game turns on whether Green Bay can stay competitive enough to keep its offense on schedule. Josh Jacobs is projected for 24.3 rushing yards against a line of 40.5, well below it, and if the Packers fall behind early, the run game becomes script-dependent: in the lost big case, it drops about 27.3% lower. That case has roughly a 20.4% chance of happening. Jordan Love is projected for 271.5 passing yards against a line of 275.5, slightly below it, and in that same lost big scenario his yardage would drop about 22.4% lower.",
-    "For Detroit, Jared Goff is projected for 287.4 passing yards against a line of 279.5, and he'll lean on Amon-Ra St. Brown, projected for 79.6 receiving yards against 79.5, and Sam LaPorta, projected for 55.1 receiving yards and 4.9 receptions against lines of 51.5 and 4.5. Jahmyr Gibbs is projected for 76.8 rushing yards against a line of 90.5, below it, but the Lions have enough weapons in the pass game to control the clock late if they get ahead. Green Bay needs Love and the passing game to keep pace, because the ground game isn't built to carry them here."
+    "Detroit comes off a bye as a 3.5-point favorite, rested and riding an offense that has scored 29.5 a game over its last 10, well above what the market expected. Green Bay has managed just 19.7 in that same span, below expectation, and the model sets this at 29.5 to 26.0. The Lions have put points up all season, but both defenses have played worse than asked: Detroit has allowed 28.7 against an expected 24.7, Green Bay 23.5 against 22.1. That combination has pushed the total from 52.5 at open all the way to 55.5, with 78.5% of tickets now on the over.",
+    "The story is whether Green Bay can keep pace. Jordan Love is projected for 271.5 passing yards against a posted line of 268.5, which is above it, but Detroit holds an edge on two-minute situations by 0.342 and on late-half scoring drives by 0.31. In past games priced like this, 65.1% finished within one score and 33.7% were shootouts, so this figures to stay tight for a while before one side pulls clear. If the Packers fall behind early, the running game becomes fragile: Josh Jacobs is projected for just 24.3 rushing yards against a line of 41.5, well below it, and the script-dependent model shows Green Bay's rush drops about 27.3% lower in the lost big case.",
+    "Detroit's offense should control tempo. Jared Goff is projected for 287.4 passing yards against a line of 291.5, just below it, but the real work comes from the skill players around him. Jahmyr Gibbs is projected for 76.8 rushing yards against a line of 75.5, above it, and Amon-Ra St. Brown sits at 79.6 receiving yards against 79.5, also above. Sam LaPorta is projected for 55.1 receiving yards and 4.9 receptions, both above their posted lines. The Lions have gone over the total in 8 of their last 10 games, and that pattern looks likely to continue if they can exploit a Green Bay defense that has struggled to meet expectations.",
+    "The adjustment Green Bay needs is tempo, not talent. Matt LaFleur has won 65.0% across 121 games, Dan Campbell 56.7% across 87, but neither record clears break-even by itself against the cut. MarShawn Lloyd is projected for 18.9 rushing yards against a line of 10.5, above it, and Tucker Kraft sits at 4.4 receptions against 4.5, just below. If the Packers can keep this within one score deep into the second half, Love has the arm to make it a game. But Detroit's rest advantage and home edge at 3.5 points suggest the Lions will have the last say, especially late when their offense has been better by 0.31 on scoring drives."
    ],
    "scoreline": {
     "away": "GB",
-    "away_pts": 25.2,
+    "away_pts": 26.0,
     "home": "DET",
-    "home_pts": 28.2,
+    "home_pts": 29.5,
     "lead": "DET",
-    "spread": -3.0,
-    "total": 53.5
+    "spread": -3.5,
+    "total": 55.5
    },
    "written": true
   },
   "IND_MIN": {
    "paras": [
-    "The book makes MIN favored by 6.5 on a total of 41.5. Our own number is IND 17.5, MIN 24.0.",
-    "In 319 games priced like this one, IND won outright 28.8% of the time and 48.0% finished within one score. 34.8% turned into shootouts against 22.3% that became grinds. Those are the games that have happened, not a forecast of this one.",
-    "IND has scored 23.4 a game over its last 10 against an expected 20.4, and allowed 29.1 against an expected 23.8.",
-    "MIN has scored 22.9 a game over its last 10 against an expected 22.1, and allowed 11.6 against an expected 20.9."
+    "Minnesota comes off a bye having won all ten of its last outings, and the defense has been the story: it's allowed just 11.6 points per game over that stretch against an expected 20.9, playing well above what the market asked. Indianapolis arrives having lost eight of its last ten, and the defense has gone the other direction, allowing 29.1 against an expected 23.8. The Vikings are favored by 6.5 points with a total set at 41.5, and our adjusted number has it 24.0 to 17.5.",
+    "The Colts offense has actually outperformed lately, scoring 23.4 per game against an expected 20.4, and it holds edges in several areas: 10.2 plays per game, 0.382 in red zone touchdowns, and 0.367 in late-half scoring drives against this Minnesota defense. But Indianapolis becomes script-dependent when trailing badly, a scenario with roughly a 31.3% chance of happening, and in that case the running back's rush production drops about 27.3% while the quarterback's passing yardage falls about 22.4%.",
+    "In 319 past games priced like this one, 48.0% finished within one score, so there's reason to think this stays competitive even with the favorite coming in perfect over its last ten. The model on its own would set the total at 44.5, higher-scoring than the book's 41.5, though our adjusted figure sticks with that lower number. Minnesota has seen the under land in eight of its last ten games, while Indianapolis has gone over six times in that span.",
+    "Kyler Murray is projected for 227.8 passing yards and 23.8 on the ground, with Aaron Jones projected for 63.0 rushing yards against a line of 48.5. For the Colts, Daniel Jones is projected for 190.2 passing yards, Jonathan Taylor for 68.1 rushing, and Josh Downs for 43.1 receiving yards on 3.8 receptions. Justin Jefferson is projected for 67.2 receiving yards and 6.0 catches as Minnesota looks to keep its winning streak intact."
    ],
    "scoreline": {
     "away": "IND",
@@ -904,104 +904,104 @@
     "spread": -6.5,
     "total": 41.5
    },
-   "written": false
+   "written": true
   },
   "KC_SEA": {
    "paras": [
-    "Seattle comes in as a 2.5-point favorite in a game the market expects to stay low-scoring, with a total of 42.5. Both defenses have earned it. Over their last 10 games, Kansas City has allowed 17.9 a game against an expected 19.2, below what was asked of its defense. Seattle has been even stingier at 17.1 against an expected 19.7. The trouble for Kansas City is that its offense has lagged, scoring 19.7 against an expected 22.6, while Seattle's has carried the load at 26.2 against an expected 24.1. The model's own unadjusted total sits at 48.8, higher-scoring than the book, but the adjusted call lands right on Kansas City 20.0 and Seattle 22.5.",
-    "Kansas City's offense holds edges where it can generate them. On plays per game, it sits better than Seattle's defense by 1.5, and on EPA per play the advantage is 0.29 in its favor. But Seattle's defense has the kind of two-minute EPA that creates problems late, sitting worse than Kansas City's defense by 0.475. In 478 past games priced like this one, 62.1% finished within one score, and the underdog won outright 40.6% of the time. Those games split fairly evenly between shootouts at 32.6% and grinds at 29.3%, but this total suggests the latter.",
-    "The public has moved slightly toward Kansas City, with 58.6% of tickets now on the underdog against 58.1% at the open, and the line has shifted from 2.0 to 2.5 in Seattle's direction. If Kansas City falls behind early, the script dependence bites hard: in the lost big case, which carries about a 16.5% chance, the running back rush drops about 27.3% and the quarterback's passing yards fall about 22.4%. That makes Seattle's ability to control pace critical, and the Seahawks have the recent form to do it.",
-    "Patrick Mahomes is projected for 237.9 passing yards against a line of 241.5, just below it, while Sam Darnold checks in at 233.9 against 233.5, just above. Travis Kelce is projected for 53.8 receiving yards against 47.5, above the line, and he's expected to haul in 4.9 receptions against 4.5. For Seattle, Jaxon Smith-Njigba is projected for 74.3 yards against 71.5, and Cooper Kupp sits at 46.8 against just 25.5, well above. Kenneth Walker III is projected for 71.7 rushing yards against 70.5. The skill players are where this game gets decided, and Seattle has more of them producing above their marks."
+    "Seattle is favored by 3.0 points in a game where both defenses have been playing well. Over their last 10, the Seahawks have allowed 17.1 points a game against an expected 19.7, while Kansas City has allowed 17.9 against an expected 19.2. The book has set the total at 42.5, but our model on its own would set it at 48.9, which is higher-scoring. Both teams are on normal rest, and neither has anyone who missed practice.",
+    "The key difference shows up on offense. Seattle has scored 26.2 a game over its last 10, above the expected 24.1, while Kansas City has scored just 19.7 against an expected 22.6. On EPA per play, Kansas City's offense is better than Seattle's defense by 0.29, but the Chiefs have been underperforming what the market has asked of them. In 503 past games priced like this one, 61.8% finished within one score, while 32.4% were shootouts and 29.0% were grinds.",
+    "The spread has moved from 2.0 to 2.5 in Seattle's direction, even as 59.0% of tickets have come in on Kansas City. That public lean hasn't shifted the line back. If Kansas City falls behind big, which has roughly a 16.7% chance of happening, the run game becomes script-dependent and drops about 27.3% lower in that case. Seattle is coming off both an overtime game and a Thursday game, though neither pattern clears break-even as an edge.",
+    "Sam Darnold is projected for 233.9 passing yards against a posted line of 233.5, while Patrick Mahomes sits at 237.9 against 238.5. Cooper Kupp is projected for 46.8 receiving yards against a line of just 24.5, well above it, while Jaxon Smith-Njigba is at 74.3 against 73.5. Travis Kelce is projected for 4.9 receptions against 4.5, and Kenneth Walker III is expected to carry for 71.7 rushing yards against a line of 70.5. The game turns on whether Kansas City's offense can find the rhythm it has been missing."
    ],
    "scoreline": {
     "away": "KC",
-    "away_pts": 20.0,
+    "away_pts": 19.8,
     "home": "SEA",
-    "home_pts": 22.5,
+    "home_pts": 22.8,
     "lead": "SEA",
-    "spread": -2.5,
+    "spread": -3.0,
     "total": 42.5
    },
    "written": true
   },
   "LA_LV": {
    "paras": [
-    "Los Angeles travels to Las Vegas favored by 4.0 points in a matchup where both defenses have struggled lately. The Rams have allowed more than expected over their last 10 games, and the Raiders have done the same. Both teams have seen the over land six times in that stretch, though the totals line has moved down from 48.5 to 47.5. The adjusted projection puts this at 26.2 for the Rams and 22.2 for the Raiders, suggesting a game that stays within reach but doesn't turn into a shootout.",
-    "The Rams arrive having underperformed offensively, scoring 25.3 per game against an expected 26.5, but they've covered just three times in their last 10. The Raiders have gone the other way, scoring 20.7 against an expected 18.7, and they've covered seven of 10 despite a 4-6 record. In games priced like this one in the past, the underdog won outright 34.5% of the time and 50.7% finished within one score, so this figures to be competitive deeper into the fourth quarter than the spread might suggest.",
-    "Where the Rams have an edge is late in games. Their offense is better than the Raiders defense by 0.268 on two-minute EPA and by 0.183 on two-minute success, which matters when a game tightens. The public has moved toward Las Vegas, with 74.2% of spread tickets now on the Raiders, but Sean McVay's teams have covered 55.0% across 151 games, a record that doesn't beat the cut but reflects consistent execution.",
-    "Kirk Cousins is projected for 250.1 passing yards against a line of 237.5, the clearest individual expectation above the posted number. Matthew Stafford sits at 268.3 against 270.5, just underneath. Tre Tucker projects above his line at 42.7 receiving yards, while Brock Bowers and Puka Nacua both project below theirs. The game turns on whether the Rams can protect a lead late or whether Cousins and the Raiders passing game can keep them within striking distance when it matters."
+    "The Rams travel to Las Vegas as three-point favorites in a contest the model expects to finish 25.8 to 22.8. Los Angeles has underperformed its offensive expectations over its last 10 games, scoring 25.3 against an expected 26.5, while its defense has allowed 23.7 against an expected 21.2. The Raiders have gone the other way on offense, putting up 20.7 against an expected 18.7, though their defense has also played worse than asked, allowing 26.2 against an expected 24.1. Both teams arrive on normal rest with clean practice reports.",
+    "The line has moved considerably from its opening of 5.5 points down to 3.0, even as 66.3% of tickets remain on the underdog Raiders. In 334 past games priced like this one, the underdog won outright 37.1% of the time and 53.9% finished within one score. Las Vegas has covered the spread 7 times in its last 10 games despite a 4-6 record, while the Rams have covered just 3 times with a 5-5 mark. Both teams have seen the over land 6 times in those 10 contests.",
+    "The Rams hold edges in two-minute situations, where their offense is better than the Raiders defense by 0.268 in EPA and 0.183 in success rate. Los Angeles also holds an advantage of 6.3 plays per game in the matchup between its offense and Las Vegas's defense. The model's unadjusted total sits at 50.2, higher-scoring than the book's 48.5, though the adjusted number aligns with the posted total. In comparable past games, 30.5% were shootouts and 34.1% were grinds.",
+    "Matthew Stafford is projected for 268.3 passing yards, just above his posted line of 267.5, while Kirk Cousins sits at 250.1 against a line of 250.5. On the ground, Kyren Williams is forecast for 65.6 rushing yards against a line of 65.5, with Ashton Jeanty projected for 51.0 against 50.5. The receiving picture centers on Brock Bowers, who is projected for 62.6 yards against a line of 60.5 and 5.3 receptions against 5.5. Puka Nacua sits well below his posted yardage line at 75.2 against 95.5, also projected for 6.7 receptions against a line of 7.5."
    ],
    "scoreline": {
     "away": "LA",
-    "away_pts": 26.2,
+    "away_pts": 25.8,
     "home": "LV",
-    "home_pts": 22.2,
+    "home_pts": 22.8,
     "lead": "LA",
-    "spread": 4.0,
+    "spread": 3.0,
     "total": 48.5
    },
    "written": true
   },
   "MIA_NYJ": {
    "paras": [
-    "Two struggling defenses meet in a divisional game that the book prices with the Jets favored by 4.5 points and a total at 39.5. Our adjusted number has New York at 22.0 and Miami at 17.5. Both defenses have allowed more than expected over their last ten games, Miami giving up 27.0 per contest against an expected 25.1, while the Jets have allowed 27.6 against an expected 24.3. Neither offense has pulled its weight either, with the Jets scoring 15.6 against an expected 17.8 and Miami managing 17.0 against an expected 18.5.",
-    "The betting public is heavily sided with New York, as 83.2% of spread tickets back the home favorite. That confidence sits against a coach in Aaron Glenn whose 21.7% win rate across 22 games tells a story of a team still finding its way. Miami comes in off a bye week, which at least provides rest and preparation time for Jeff Hafley's squad as it tries to stay competitive in a division matchup on the road.",
-    "The shape of the game likely hinges on whether either side can establish rhythm early. In games priced like this one, 56.6% finished within one score, suggesting this stays tight even if it doesn't always feel sharp. Miami's offense is worse than the Jets defense by 8.4 on plays per game, and the Dolphins are worse by 0.267 on late-half scoring drives. New York holds a slight edge on two-minute situations, where the Jets offense is worse than Miami's defense by 0.276, meaning Miami actually has the advantage there.",
-    "The total has drifted down from 40.5 to 39.5, with 60.9% of tickets now on the under. That movement reflects what both teams have shown recently: limited offensive production and defenses that bend without necessarily forcing the other side into mistakes. If the game script turns against Miami early, both the running back workload and quarterback passing yardage become script-dependent and could fall further. This one figures to be decided by which team makes fewer mistakes in a game neither is built to dominate."
+    "This is a division game between two teams that have struggled identically over their last ten outings, each winning just twice and losing eight times. The adjusted number has the Jets at 21.8 and the Dolphins at 17.8, with the total set at 39.5. Both offenses have underperformed what the market expected of them recently: Miami has scored 17.0 per game against an expected 18.5, while the Jets have managed just 15.6 against an expected 17.8. Neither defense has held up its end either, each allowing more than was asked of it.",
+    "Miami is coming off a bye week while the Jets continue on normal rest, and the market has the Jets favored by 4.0 points at home. In past games priced like this one, the underdog won outright 36.7% of the time and 59.6% finished within one score, so divisional underdogs tend to keep things competitive even when they don't win. The line has moved from an opening of 5.5 down to 4.0, with more ticket count shifting toward Miami than it started with, though the Jets still hold 78.8% of the action on the spread.",
+    "The game turns on whether either offense can string together consistent drives in what projects as a low-scoring affair. Miami's offense is worse than the Jets defense by 8.4 plays per game, while the Jets offense is worse than Miami's defense by 0.276 in two-minute situations. Both teams have covered the spread fewer than half the time in their last ten games, and neither coaching staff has provided much of an edge: Aaron Glenn has covered 50.0% across his previous 22 games, a record that does not beat the bookmaker's cut by itself.",
+    "Geno Smith is projected for 223.7 passing yards, just above his posted line, while Malik Willis sits at 196.3, also slightly above his number. Garrett Wilson's projection of 64.3 receiving yards falls just short of his 64.5 line, and he's expected to haul in 4.7 receptions against a posted 5.5. For Miami, Ollie Gordon II is projected for 49.7 rushing yards and Malik Willis adds 23.4 on the ground, both above their lines. The game likely stays close through the fourth quarter, decided by whichever quarterback can avoid the mistake that turns a tight divisional struggle into a loss."
    ],
    "scoreline": {
     "away": "MIA",
-    "away_pts": 17.5,
+    "away_pts": 17.8,
     "home": "NYJ",
-    "home_pts": 22.0,
+    "home_pts": 21.8,
     "lead": "NYJ",
-    "spread": -4.5,
+    "spread": -4.0,
     "total": 39.5
    },
    "written": true
   },
   "NE_CHI": {
    "paras": [
-    "The book makes CHI favored by 3.0 on a total of 50.5. Our own number is NE 23.8, CHI 26.8.",
-    "In 321 games priced like this one, NE won outright 46.1% of the time and 59.2% finished within one score. 27.1% turned into shootouts against 34.0% that became grinds. Those are the games that have happened, not a forecast of this one.",
-    "NE has scored 20.3 a game over its last 10 against an expected 22.7, and allowed 16.8 against an expected 21.9.",
-    "CHI has scored 25.2 a game over its last 10 against an expected 24.0, and allowed 22.7 against an expected 23.6."
+    "Chicago enters as a 3.0-point favorite at home on Thursday night, with both teams on short rest. The adjusted number has the Bears at 27.0 and New England at 24.0, reflecting a total of 51.0 that the model on its own would set considerably lower, at 47.1. Both defenses have outperformed expectations lately: New England has allowed 16.8 points per game over its last ten against an expected 21.9, while Chicago has allowed 22.7 against an expected 23.6. The Bears offense has also exceeded what was asked of it at 25.2 per game, while New England's attack has lagged at 20.3 against an expected 22.7.",
+    "The matchups favor Chicago's offense in key moments. Ben Johnson's unit is better than Mike Vrabel's defense by 14.7 plays per game, by 0.322 on two-minute EPA, and by 0.175 on late-half scoring drives. That situational edge matters in a game priced this tightly. In past games priced similarly, 60.8% finished within one score, which is where this one projects to land. Chicago has covered six of its last ten while winning five, and New England has won seven of ten but tends to play unders, which have hit six times in that stretch.",
+    "New England's offensive production becomes script-dependent if the game gets away from them. In the lost big case, which has roughly a 16.7% chance of happening, the Patriots running back rush drops about 27.3% lower and the quarterback passing yards fall about 22.4% lower. That makes staying competitive early critical for Vrabel's group, which carries several underdog patterns with win rates around 52.4% but records that do not clear break-even at the lower bound.",
+    "Drake Maye is projected for 245.8 passing yards and 27.9 rushing yards, with his mobility a factor against a Bears defense that has tightened up recently. Caleb Williams is projected for 241.6 passing yards as he looks to Rome Odunze at 51.0 receiving yards and Luther Burden III at 47.0. D'Andre Swift is projected for 53.7 rushing yards on the ground, while Rhamondre Stevenson sits at 45.9 for New England. The game likely turns on whether the Patriots can keep pace early before Chicago's situational advantages take over late."
    ],
    "scoreline": {
     "away": "NE",
-    "away_pts": 23.8,
+    "away_pts": 24.0,
     "home": "CHI",
-    "home_pts": 26.8,
+    "home_pts": 27.0,
     "lead": "CHI",
     "spread": -3.0,
-    "total": 50.5
+    "total": 51.0
    },
-   "written": false
+   "written": true
   },
   "NYG_HOU": {
    "paras": [
-    "Houston is favored by 10.0 points at home, with an adjusted number of 26.5 to 16.5 and a total of 43.0. Both teams arrive on normal rest before their byes, and neither has practice absences. The Texans hold edges where the end of halves matter: they're better than the Giants defense by 0.432 in two-minute EPA and by 0.289 in late-half scoring drives. Houston's offense also holds a 2.5 advantage in plays per game, giving them more chances to work with.",
-    "Over their last 10 games, the Giants have outperformed market expectations on both sides of the ball, scoring 23.8 against an expected 21.5 and allowing 21.2 against an expected 22.9. Houston's offense has also beaten its number at 24.8 against an expected 21.8, but their defense has struggled, allowing 22.3 against an expected 20.0. That defensive gap could explain why the model on its own would set the total at 46.8, higher-scoring than the book's 43.0, though the adjusted figure remains at 43.0.",
-    "The shape of this game likely turns on whether New York can stay within striking distance. In 156 past games priced like this one, the underdog won outright 17.9% of the time, and 44.2% finished within one score. If the Giants fall behind early, their running back production drops by about 27.3% in the lost big case, which has roughly a 42.9% chance of happening, and their quarterback's passing yards fall by about 22.4% in the same scenario. Houston can control tempo and protect a lead without needing to press.",
-    "C.J. Stroud is projected for 268.9 passing yards against a line of 255.5, suggesting the Texans will need to throw more than the market expects. Nico Collins is projected for 50.9 receiving yards and 3.9 receptions, both below his posted lines of 65.5 and 4.5, which hints at Houston spreading the ball around or leaning on the run once ahead. The Giants have covered six of their last 10, but this is a steeper hill, and the game's likely rhythm favors the home side grinding out a double-digit win."
+    "Houston comes in as the favorite by 10.5 points, built on an offense that has been scoring above what the market expected over its last 10 games and an ability to finish drives late in halves. The Texans hold advantages in plays per game, two-minute execution, and late-half scoring drives against a Giants defense that has actually played well, allowing fewer points than expected. C.J. Stroud is projected for 268.9 passing yards, just above his line, though the script dependency is minimal if Houston pulls ahead. The challenge for DeMeco Ryans' team has been a defense that has allowed more than expected, which keeps the door open even in games where they're favored.",
+    "New York has quietly outperformed on both sides of the ball recently, scoring 23.8 per game against an expected 21.5 while the defense has allowed 21.2 against an expected 22.9. But this is a double-digit underdog spot, and the script dependency cuts hard if the Giants fall behind: J.J. McCarthy's passing yardage drops 22.4 percent in the lost big case, which has roughly a 46.5 percent chance of happening, and the running back rush falls 27.3 percent in that same scenario. McCarthy is projected for 154.8 yards, well below his posted line, and the ground game looks limited with Cam Skattebo and Tyrone Tracy Jr. both projected under their marks.",
+    "The adjusted number sits at 26.5 for Houston and 16.0 for New York, and the shape of this one likely hinges on whether the Giants can keep it close long enough to stay in their preferred script. In 142 past games priced like this, 41.5 percent finished within one score, so there's precedent for the underdog hanging around even when the spread is wide. The model's own unadjusted total of 52.5 suggests more scoring potential than the book's 42.5, which has moved up from 41.0 as the public has leaned toward the over.",
+    "Isaiah Likely offers New York's most interesting individual matchup, projected for 41.8 receiving yards against a line of 39.5, one of the few Giants skill players tracking above his number. Malik Nabers is projected slightly below at 56.6 yards, and the Houston defense that has struggled to meet expectations will need to account for both. On the other side, Nico Collins is projected for 50.9 yards against a line of 58.5, and Woody Marks sits at 48.8 rushing yards against 53.5, both below their marks. Stroud and the Houston passing game remain the clearest path to control, but the Giants have shown enough defensively to make them earn it."
    ],
    "scoreline": {
     "away": "NYG",
-    "away_pts": 16.5,
+    "away_pts": 16.0,
     "home": "HOU",
     "home_pts": 26.5,
     "lead": "HOU",
-    "spread": -10.0,
-    "total": 43.0
+    "spread": -10.5,
+    "total": 42.5
    },
    "written": true
   },
   "PIT_NO": {
    "paras": [
-    "Pittsburgh arrives as a 3.5-point favorite in a matchup where both defenses have struggled lately. The Steelers have allowed 21.9 points per game over their last ten, worse than the 20.8 the market expected of them. New Orleans has had it even rougher on that side, giving up 24.6 against an expected 22.4. The adjusted number sees this finishing Pittsburgh 24.0, New Orleans 20.5, suggesting a game that stays within reach but tips narrowly to the visitor.",
-    "New Orleans has been the more productive offense recently, scoring 25.2 per game over its last ten against an expected 21.4, well above what was asked. The Saints hold edges in plays per game by 5.8, two-minute situations by 0.32, and red zone touchdowns by 0.309 against Pittsburgh's defense. That's a real pathway for Tyler Shough and this offense to stay in front of the chains, especially if Alvin Kamara can contribute on the ground where he's projected for 24.5 rushing yards against a line of 17.5.",
-    "Pittsburgh's offense has been more measured, scoring exactly the 20.4 per game the market expected over its last ten. Aaron Rodgers is projected for 249.7 passing yards just below his line of 250.5, while DK Metcalf should be the primary target at a projected 66.8 receiving yards and 5.0 receptions, both above their posted lines. Jaylen Warren gives them a ground option at a projected 67.3 rushing yards. The spread has moved from 1.5 up to 3.5, suggesting late money sees Pittsburgh pulling away, but in games priced like this one, 55.5% have finished within one score.",
-    "The game turns on whether New Orleans can capitalize on those offensive edges or whether Pittsburgh's experience steadies things late. Chris Olave is projected for just 59.1 receiving yards against a line of 74.5, which may reflect how Pittsburgh plans to take him away. If the Saints fall behind early, their run game becomes script-dependent and drops by 27.3% in that scenario. Metcalf and Warren become the names to watch if Pittsburgh controls tempo, but Kamara and Shough give New Orleans the pieces to keep this tight into the fourth quarter."
+    "Pittsburgh arrives as a 3.5-point favorite in a game where both defenses have struggled lately. The Steelers have allowed 21.9 points per game over their last 10, worse than the 20.8 expected of them, while New Orleans has given up 24.6 against an expected 22.4. The Saints offense has been the story on their side, scoring 25.2 per game against an expected 21.4, well above what the market asked. Pittsburgh's offense has been precisely level with expectation at 20.4. The adjusted number sits at 24.0 to 20.5, and in 427 past games priced this way, 55.5% finished within one score.",
+    "New Orleans finds edges in several matchups. On plays per game, the Saints offense is better than Pittsburgh's defense by 5.8. They are better by 0.32 on two-minute EPA and by 0.309 on red zone touchdowns. But there is script risk: if New Orleans falls behind early, its run game drops by about 27.3% and even Tyler Shough's passing yardage falls by about 22.4%, despite what you might expect when chasing. That lost big scenario has roughly a 19.4% chance of happening, and it would alter the shape of the contest considerably.",
+    "The line opened at 1.5 and has moved all the way up to 3.5, suggesting that money has backed the Steelers as the week has gone on. The total has held firm at 44.5, though the model on its own would set it at 50.9 before blending with the book. Both teams are on normal rest, and neither has anyone who missed practice. New Orleans plays the week before a bye, a pattern that has gone 196-157 but does not clear break-even, so it is a record rather than an edge.",
+    "Aaron Rodgers is projected for 249.7 passing yards against a line of 235.5, with DK Metcalf projected for 66.8 receiving yards above his 59.5 line and 5.0 receptions above 4.5. Jaylen Warren is projected for 67.3 rushing yards, just above his 65.5 mark. For New Orleans, Alvin Kamara is projected for 24.5 rushing yards against 18.5, while Chris Olave sits at 59.1 receiving yards well below his 74.5 line. Tyler Shough is projected for 208.0 passing yards, below his 227.5 posted number. The game turns on whether the Saints can keep it within reach long enough for their offense to exploit the matchups it finds."
    ],
    "scoreline": {
     "away": "PIT",
@@ -1016,28 +1016,28 @@
   },
   "SF_ATL": {
    "paras": [
-    "San Francisco arrives as a 3.0-point favorite with both sides healthy and fresh on normal rest. The 49ers have been the sharper team lately, their defense holding opponents to 22.1 points per game over their last 10 while their offense has scored 25.1. Atlanta's defense has been the softer unit, allowing 24.1 against an expected 23.7, though the Falcons' offense has pulled its weight at 24.3 per game. On EPA per play, San Francisco's offense holds an edge of 0.231 over Atlanta's defense, the clearest mismatch on paper.",
-    "The game sets up as a test of how well the Falcons can handle a 49ers attack that should move the ball consistently. Brock Purdy is projected for 251.3 passing yards, and Christian McCaffrey remains the dual-threat centerpiece with projections of 68.9 rushing yards and 4.7 receptions. Michael Penix Jr. counters with a projection of 235.6 passing yards, trying to keep Atlanta within range. In 244 past games priced like this one, the underdog won outright 36.5% of the time and 58.2% finished within one score, so the Falcons have more than a puncher's chance.",
-    "Where Atlanta's offense finds traction is in the red zone, where it rates better than San Francisco's defense by 0.25. Kyle Pitts is projected for 39.8 receiving yards, above his posted line, suggesting the tight end could be a factor in scoring territory. Bijan Robinson is projected for 77.6 rushing yards, though that comes with the caveat that Atlanta's running back rush becomes script-dependent if the Falcons fall behind early. If they lose contact, his volume drops by about 27.3%, and that scenario carries roughly a 19.7% chance.",
-    "The adjusted number sits at 26.8 for San Francisco and 23.8 for Atlanta, with a total of 50.5. The model on its own would set the total at 54.9, suggesting more offense than the book is pricing in, though the final blend is what matters. Drake London is projected for 72.3 receiving yards and 5.2 receptions, both slightly below his lines, while George Kittle sits at 57.6 yards and 4.6 catches. The 49ers should control this one if their defense holds, but Atlanta has the pieces to keep it within reach if Penix and the red zone unit deliver."
+    "San Francisco arrives as a 2.5-point favorite in a matchup that projects to 26.5 for the 49ers and 24.0 for the Falcons. The line opened at 4.5 and has tightened considerably, suggesting sharper money sees this closer than the public first imagined. Over their last ten games, the 49ers have outperformed on both sides of the ball, scoring 25.1 per game against an expected 24.4 while allowing 22.1 against an expected 23.1. Atlanta has leaned on its offense, scoring 24.3 against an expected 21.8, but the defense has underperformed, allowing 24.1 against an expected 23.7.",
+    "The shape of this game likely hinges on how San Francisco controls the line of scrimmage. The 49ers hold an advantage on EPA per play, where their offense is better than Atlanta's defense by 0.231. The Falcons counter in the red zone, where their offense is better than San Francisco's defense by 0.25, meaning Atlanta can capitalize when it gets inside the twenty. In past games priced like this one, 58.4% finished within one score, and the underdog won outright 36.6% of the time. This figures to stay tight.",
+    "Atlanta's offensive profile shifts dramatically when trailing. If the Falcons fall into a lost big scenario, which has roughly a 19.3% chance of happening, their running back rush drops about 27.3% and their quarterback's passing yards fall about 22.4%. That makes early script crucial for Raheem Morris, who needs Michael Penix Jr. and the passing game functional to keep pace. The total has climbed from 49.5 to 50.5, and the model's unadjusted view would set it at 57.2, well above the book's number.",
+    "Christian McCaffrey is projected for 68.9 rushing yards and 4.7 receptions, both above his posted lines, and he remains the fulcrum of Kyle Shanahan's attack. Brock Purdy sits at 251.3 passing yards, just beneath his line of 252.5. For Atlanta, Kyle Pitts is projected for 39.8 receiving yards against a line of 37.5, offering a secondary option behind Drake London, who checks in at 72.3 yards. Bijan Robinson's workload, projected at 77.6 rushing yards, sets the tone for how Atlanta tries to control clock and tempo."
    ],
    "scoreline": {
     "away": "SF",
-    "away_pts": 26.8,
+    "away_pts": 26.5,
     "home": "ATL",
-    "home_pts": 23.8,
+    "home_pts": 24.0,
     "lead": "SF",
-    "spread": 3.0,
+    "spread": 2.5,
     "total": 50.5
    },
    "written": true
   },
   "TB_CAR": {
    "paras": [
-    "Carolina sits three points favored in a division matchup where neither offense has been clicking quite the way it ought to. Tampa Bay has scored 20.0 a game over its last 10, below the 22.2 the market expected, while its defense has allowed 22.4 against an expected 21.6. The Panthers have been more productive at 24.1 per game against an expected 21.1, but their defense has also leaked more than asked, giving up 24.0 against an expected 23.0. Both teams have seen the under land more often in recent weeks, and the adjusted projection calls for a final around Tampa Bay 20.8 and Carolina 23.8.",
-    "The Buccaneers arrive off an overtime game and have covered just once in their last 10 outings, winning only twice. Baker Mayfield is projected for 222.8 passing yards, above his posted line of 218.5, but Tampa Bay's late-game execution has been a concern: the offense is worse than Carolina's defense by 0.453 in two-minute EPA and worse by 0.421 in late-half scoring drives. If the Buccaneers fall behind early, the script turns against them. Bucky Irving is projected for 61.9 rushing yards, and the run game could falter if Tampa Bay ends up chasing points.",
-    "Carolina has covered six of its last 10 and holds the edge in pace, with its offense better than Tampa Bay's defense by 9.1 plays per game. Bryce Young is projected for 244.1 passing yards, though that sits below his posted line of 251.5, suggesting a measured approach rather than a shootout. The Panthers will lean on ball control and field position, looking to keep Mayfield off the field and avoid the kind of mistakes that have cost them in close games. In 586 past games priced this way, 59.7% finished within one score.",
-    "The betting public has leaned heavily on Carolina, with 81.3% of tickets on the home favorite, and the line has moved from 2.5 to 3.5 in their direction. Tetairoa McMillan is projected for 72.0 receiving yards, just above his posted 70.5, and figures to be Young's primary target in key moments. For Tampa Bay, the challenge is keeping it competitive into the fourth quarter, where Todd Bowles' group has struggled to find answers. The game likely stays close through three quarters before Carolina pulls away late."
+    "Carolina is favored by 3.0 points at home in a division game that figures to play out close and defensive. Over their last ten games, the Panthers have gotten more from their offense than the market expected, scoring 24.1 per game against an expected 21.1, while Tampa Bay has struggled to reach what was asked of it, scoring 20.0 against an expected 22.2. Both defenses have played worse than expectation, though, which helps explain why the under has landed more often for each team in that stretch. In 586 past games priced like this one, 59.7% finished within one score.",
+    "The Buccaneers arrive having won just 2 of their last 10 games and covered only once, numbers that reflect an offense that has consistently underperformed and a defense allowing 22.4 per game against an expected 21.6. Tampa Bay's two-minute operation is worse than Carolina's defense by 0.453, and its late-half scoring drives are worse by 0.421, which matters in tight divisional games where a single possession can decide the outcome. The model sees this one staying tight, with an adjusted number of 20.8 for Tampa Bay and 23.8 for Carolina.",
+    "Carolina has covered 6 of its last 10 and won 4, a decent run for a team that has outperformed offensively while struggling to stop anyone. The Panthers' offense is better than Tampa Bay's defense by 9.1 plays per game, which should give Dave Canales room to work. Both coaches have records that do not beat the bookmaker's cut by themselves: Todd Bowles has won 43.5% and covered 44.7% across 132 games, while Canales has won 41.0% and covered 53.8% across 39.",
+    "Baker Mayfield is projected for 222.8 passing yards, just below his posted line of 225.5, while Bryce Young is projected for 244.1 against a line of 245.5. On the ground, Bucky Irving is projected for 61.9 rushing yards against a line of 60.5, and Chuba Hubbard for 65.4 against 65.5. Tetairoa McMillan is projected for 72.0 receiving yards, just above his line of 71.5, while Chris Godwin Jr. is projected for 47.8 against 46.5. The shape of this one should be familiar: a divisional game that stays within reach, decided by execution in moments that matter."
    ],
    "scoreline": {
     "away": "TB",
