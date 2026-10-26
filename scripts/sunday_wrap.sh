@@ -47,8 +47,10 @@ say() { echo "$@" | tee -a "$LOG"; }
 run() {
     local name="$1"; shift
     say "  -> $name"
-    if ! "$@" >> "$LOG" 2>&1; then
-        say "     FAILED (exit $?) — see $LOG"
+    "$@" >> "$LOG" 2>&1
+    local rc=$?
+    if [ $rc -ne 0 ]; then
+        say "     FAILED (exit $rc) — see $LOG"
         return 1
     fi
 }
@@ -140,8 +142,14 @@ except Exception as e:                      # noqa: BLE001
 PYEOF
 )"
 
-say "  graded games: $BEFORE -> $AFTER"
-if [ "$BEFORE" = "$AFTER" ] && [ "${1:-}" != "--force" ]; then
+# AGAINST THE LAST PUBLISH, NOT THE LAST RUN. Compared with this run's own
+# BEFORE, a publish that failed is never retried: the run that ingested the
+# finals crashes in the export, and every run after it sees no new finals.
+# 2026-10-25's thirteen results sat off the site all night that way.
+STAMP="$LOG_DIR/.wrap_published"
+PUBLISHED="$(cat "$STAMP" 2>/dev/null || echo "$BEFORE")"
+say "  graded games: $BEFORE -> $AFTER (last published: $PUBLISHED)"
+if [ "$PUBLISHED" = "$AFTER" ] && [ "${1:-}" != "--force" ]; then
     say "  no new finals since the last run — nothing to publish"
     say "=== $(date -u +%FT%TZ) done ==="
     exit 0
@@ -149,6 +157,7 @@ fi
 
 export_or_stop board "$PY" scripts/47_export_site.py  || exit 1
 export_or_stop site  "$PY" scripts/20_export_html.py  || exit 1
+[ "$AFTER" -ge 0 ] 2>/dev/null && echo "$AFTER" > "$STAMP"
 
 # Same guard as the rollover: without the key ssh falls through to asking for
 # a password, and there is nobody at the keyboard at midnight.

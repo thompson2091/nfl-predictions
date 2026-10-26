@@ -82,6 +82,11 @@ def main() -> int:
     record_path = out_dir / f"forward_{season}.csv"
     judged_path = out_dir / f"forward_{season}_games.json"
     record = pl.read_csv(record_path) if record_path.exists() else None
+    # A night that judged games and found no legs writes a header-only file.
+    # Read back, every column of it is a string, and concatenating real legs
+    # onto it turns `hit` into text whose mean is None (2026-10-26).
+    if record is not None and record.height == 0:
+        record = None
     judged = set(json.loads(judged_path.read_text())) if judged_path.exists() else set()
 
     r = sl.rungs([season])

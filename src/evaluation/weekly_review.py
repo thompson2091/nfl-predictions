@@ -44,6 +44,9 @@ def score_week(season: int, week: int, target_type: str,
     # A played week has scorers in it. All-zero means the results aren't in.
     if int(wdf["target"].sum() or 0) == 0:
         return None
+    # PART-PLAYED WEEKS. On Sunday night the Monday game is still unplayed and
+    # its players have no target yet; grade the games that have one.
+    wdf = wdf.filter(pl.col("target").is_not_null())
 
     wdf = _filter_low_activity(wdf)
     model_dir = get_path("models", target_type)
