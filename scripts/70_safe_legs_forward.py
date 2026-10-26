@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 sys.path.insert(0, ".")
 
@@ -59,6 +60,19 @@ def calibrated(r: pl.DataFrame, fits: dict) -> pl.DataFrame:
         pl.min_horizontal("p_hist", "p_model").alias("p_both"))
 
 
+def load_record(path: Path) -> pl.DataFrame | None:
+    """The forward record so far, or None when there are no legs in it.
+
+    A night that judged games and found no legs writes a header-only file.
+    Read back, every column of it is a string, and concatenating real legs
+    onto it turns `hit` into text whose mean is None (2026-10-26).
+    """
+    if not path.exists():
+        return None
+    record = pl.read_csv(path)
+    return record if record.height else None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--season", type=int, default=None)
@@ -81,12 +95,7 @@ def main() -> int:
 
     record_path = out_dir / f"forward_{season}.csv"
     judged_path = out_dir / f"forward_{season}_games.json"
-    record = pl.read_csv(record_path) if record_path.exists() else None
-    # A night that judged games and found no legs writes a header-only file.
-    # Read back, every column of it is a string, and concatenating real legs
-    # onto it turns `hit` into text whose mean is None (2026-10-26).
-    if record is not None and record.height == 0:
-        record = None
+    record = load_record(record_path)
     judged = set(json.loads(judged_path.read_text())) if judged_path.exists() else set()
 
     r = sl.rungs([season])

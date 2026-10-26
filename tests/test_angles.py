@@ -722,7 +722,18 @@ def test_a_quarterbacks_record_against_one_opponent_looks_backward(sched):
     assert seen == list(range(len(seen))), (
         f"the count should run 0,1,2,... and runs {seen}; the total is "
         f"probably being taken per club rather than per quarterback")
-    assert w["qb_won"].to_list() == [0] * len(seen), (
+    # His wins before each meeting, from the scores. Not a hardcoded zero: he
+    # beat Pittsburgh in 2026 week 4, so the week 8 rematch carries one.
+    res = {r["game_id"]: (r["home_score"] - r["away_score"])
+           * (1 if r["home_team"] == "PIT" else -1) < 0
+           for r in ids.filter(pl.col("game_id").is_in(w["game_id"].to_list())
+                               & pl.col("home_score").is_not_null())
+                       .iter_rows(named=True)}
+    want, won = [], 0
+    for gid in w["game_id"].to_list():
+        want.append(won)
+        won += int(res.get(gid, False))
+    assert w["qb_won"].to_list() == want, (
         "a quarterback credited with a win he does not have")
     # And the opponent's copy is the other side of the same fixture.
     by = {(r["game_id"], r["team"]): r for r in tg.iter_rows(named=True)}

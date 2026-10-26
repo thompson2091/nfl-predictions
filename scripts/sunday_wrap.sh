@@ -34,12 +34,12 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
-LOG_DIR="logs"
+LOG_DIR="${WRAP_LOG_DIR:-logs}"   # overridable for tests
 mkdir -p "$LOG_DIR"
 DATE="$(date +%Y%m%d_%H%M%S)"
 LOG="$LOG_DIR/sunday_wrap_$DATE.log"
 
-PY=".venv/bin/python"
+PY="${WRAP_PY:-.venv/bin/python}"   # overridable for tests
 [ -x "$PY" ] || PY="$(command -v python3)"
 
 say() { echo "$@" | tee -a "$LOG"; }
