@@ -836,10 +836,10 @@
   },
   "DAL_PHI": {
    "paras": [
-    "This is a divisional meeting between two teams whose defenses have underperformed lately. Dallas has allowed 28.4 a game over its last 10, above what was expected of its defense. Philadelphia has allowed 21.4 against an expected 20.3, also worse than what was asked. Both offenses have struggled too: the Cowboys have scored 24.1 against an expected 26.6, while the Eagles have managed just 18.4 against an expected 21.8. The adjusted number sits at 24.2 for Dallas and 19.8 for Philadelphia, suggesting a game that stays relatively controlled despite those defensive issues.",
-    "The Cowboys arrive favored by 4.5 points but carrying a difficult recent run: they won 3 and lost 7 over their last 10, covering the spread just twice while failing to cover seven times. Philadelphia has won 4 and lost 6 in that same span, covering three times and failing to cover seven. In 435 past games priced like this one, 51.3% finished within one score, and the underdog won outright 37.2% of the time. The spread opened at 5.5 and has since moved down to 4.5, even as 72.1% of tickets have landed on Dallas.",
-    "The matchup tilts in specific directions depending on the measure. Philadelphia's offense is worse than Dallas's defense by 0.298 on EPA per play, but the Eagles hold an edge in two-minute situations, where they rate better than the Cowboys' defense by 0.291. Dallas's offense is worse than Philadelphia's defense by 4.2 on plays per game. If the Eagles fall behind early, their run game becomes script-dependent: in the lost big case, which has roughly a 24.6% chance of happening, it drops about 27.3% lower.",
-    "Dak Prescott is projected for 257.0 passing yards, just below his posted line of 259.5, with CeeDee Lamb projected for 76.9 receiving yards. For Philadelphia, Tanner McKee is projected for 221.5 passing yards, above his line of 212.5, while Saquon Barkley sits well below his rushing line at a projected 39.2 yards against 68.5. DeVonta Smith is projected for 50.1 receiving yards, well short of his 67.5 line. George Pickens, now with Dallas, is projected for 70.7 receiving yards and 4.6 receptions, both slightly above his posted marks."
+    "The book makes DAL favored by 4.5 on a total of 44.0. Our own number is DAL 24.2, PHI 19.8.",
+    "In 435 games priced like this one, PHI won outright 37.2% of the time and 51.3% finished within one score. 27.8% turned into shootouts against 36.8% that became grinds. Those are the games that have happened, not a forecast of this one.",
+    "DAL did not practice KaVontae Turpin (WR), Dee Winters (LB), Drew Shelton (T); PHI did not practice DeVonta Smith (WR), Dontayvion Wicks (WR), Michael Carter II (CB).",
+    "DAL has scored 24.1 a game over its last 10 against an expected 26.6, and allowed 28.4 against an expected 23.6."
    ],
    "scoreline": {
     "away": "DAL",
@@ -850,40 +850,40 @@
     "spread": 4.5,
     "total": 44.0
    },
-   "written": true
+   "written": false
   },
   "DEN_ARI": {
    "paras": [
-    "Denver arrives as a 4.5-point favorite in a game the market expects to stay low-scoring, with a total sitting at 43.5 after dropping from its opening number. The Broncos have played cleaner football lately, holding opponents to 18.1 points per game over their last ten while their defense has performed better than expected. Arizona has struggled on the other side, allowing 31.8 points per game in that same stretch against an expected 27.5, and the Cardinals have won just twice in those ten outings.",
-    "Both offenses have underperformed what was asked of them recently. Denver has scored 19.3 points per game against an expected 22.6, while Arizona has managed 19.9 against an expected 20.6. The adjusted projection sees this one finishing Denver 24.0, Arizona 19.5, and in comparable past games priced like this, half have finished within one score. Neither team brings major situational edges in late-half scoring or two-minute work, and both enter with clean practice reports.",
-    "The shape of this game likely hinges on whether Arizona can keep it competitive early or whether Denver's defense forces the Cardinals into a hole. Arizona's running game becomes script-dependent when trailing big, dropping roughly 27.3% lower in that scenario, and there's about a 24.7% chance of that case materializing. If the Cardinals fall behind, Jacoby Brissett will need to carry more of the load through the air, where he projects for 230.7 passing yards.",
-    "Bo Nix projects for 227.3 passing yards for Denver, leaning on a rushing attack led by J.K. Dobbins, who sits just above his line at 48.7 yards. For Arizona, Trey McBride remains the central target at 59.0 receiving yards projected, while Michael Wilson figures at 51.0. Jaylen Waddle should see volume for the Broncos at 55.5 receiving yards and 4.7 receptions. The game turns on whether Denver's defense can continue its recent form and whether Arizona finds enough rhythm to stay within striking distance."
+    "Denver comes in having done its best work on defense, allowing 18.1 points per game over its last ten against an expected 20.1. The offense has lagged, scoring 19.3 against an expected 22.6, but that defense has been good enough to post seven wins in ten tries. Arizona's defense tells the opposite story: it has allowed 31.8 per game against an expected 27.5, well above what was asked of it, and the Cardinals have won just twice in that span. The book makes Denver the favorite by 4.5 points, with the adjusted number at 24.2 to 19.8 and a total of 44.0.",
+    "The shape of this one figures to be low-scoring. Denver has gone under the total eight times in its last ten games, and when past games have been priced like this one, 36.8% were grinds. Both offenses have undershot market expectations recently, Denver's by more than three points per game and Arizona's by less than a point. The totals line has moved down from 45.5 to 43.5, and our model on its own would set it at 44.3, which is higher-scoring than the book's 44.0. Neither side is dealing with practice absences.",
+    "Arizona's offensive plan becomes script-dependent when the Cardinals fall behind by a lot, a scenario with a 24.6% chance of happening. In that case, the running back's rushing volume drops by about 27.3% and Jacoby Brissett's passing yardage falls by about 22.4%. Denver's edge shows up in late-game situations: the Broncos' offense is worse than Arizona's defense on plays per game by 1.7, on late-half scoring drives by 0.207, and on two-minute EPA by 0.199. Those margins favor Arizona, meaning the Cardinals have defensive advantages in crunch time even as their overall numbers have been poor.",
+    "Bo Nix is projected for 227.3 passing yards and Brissett for 230.7, both slightly above their posted lines. J.K. Dobbins is projected for 48.7 rushing yards, just above his line of 48.5, while Jaylen Waddle is projected for 55.5 receiving yards on 4.7 receptions, both narrowly above his marks. For Arizona, Trey McBride is projected for 59.0 receiving yards on 5.7 receptions, both below his posted lines, and Tyler Allgeier is projected for 33.4 rushing yards against a line of 32.5. The quarterbacks are close to even on paper, but the players around them will decide whether this stays tight or Denver pulls away late."
    ],
    "scoreline": {
     "away": "DEN",
-    "away_pts": 24.0,
+    "away_pts": 24.2,
     "home": "ARI",
-    "home_pts": 19.5,
+    "home_pts": 19.8,
     "lead": "DEN",
     "spread": 4.5,
-    "total": 43.5
+    "total": 44.0
    },
    "written": true
   },
   "GB_DET": {
    "paras": [
-    "Detroit comes off the bye as a 3.5-point favorite in a divisional game that projects to 29.5 for the Lions and 26.0 for the Packers. The total has climbed from 52.5 at the open to 55.5 now, and both offenses have put up points lately: Detroit has scored 29.5 a game over its last 10, above the 27.4 the market expected, while Green Bay has managed only 19.7 against an expected 21.9. Both defenses have played worse than expectation in that stretch, Detroit allowing 28.7 against an expected 24.7 and Green Bay giving up 23.5 against an expected 22.1.",
-    "The game turns on late situations, where Detroit holds clear edges. The Lions' offense is better than Green Bay's defense by 0.342 on two-minute EPA and by 0.31 on late-half scoring drives, the kind of spots that decide tight division games. In 86 past games priced like this one, 65.1% finished within one score, so expect this to stay close even if Detroit controls the tempo. The Packers' rushing script becomes fragile if they fall behind: in the lost big case, the running back rush drops about 27.3% lower, a scenario with roughly an 18.6% chance of happening.",
-    "Matt LaFleur's Packers have covered only twice in their last 10 games, while Dan Campbell's Lions have covered three times in theirs. Neither record beats the bookmaker's cut by itself, but the pattern of high-scoring games follows Detroit: the over has landed eight times in the Lions' last 10, while the under has landed six times in Green Bay's. On plays per game, Green Bay's offense is worse than Detroit's defense by 11.3, which suggests the Packers will need Jordan Love's arm to keep pace.",
-    "Love projects for 271.5 passing yards, above his posted line of 269.5, while Jared Goff projects for 287.4, just below his 289.5 line. Jahmyr Gibbs projects for 76.8 rushing yards against a line of 75.5, and Amon-Ra St. Brown sits at 79.6 receiving yards against 79.5. For Green Bay, Josh Jacobs projects for only 24.3 rushing yards against a posted 37.5, well below it, while MarShawn Lloyd projects for 18.9 against 11.5. Sam LaPorta projects for 4.9 receptions against 4.5, a modest edge in what should be a game decided by which offense executes when the clock matters."
+    "Detroit comes off the bye as a 4.0-point favorite at home in a division game, and the adjusted number likes them at 29.8 to Green Bay's 25.8. The Lions have scored 29.5 a game over their last 10, above the 27.4 the market expected of their offense, while the Packers have managed just 19.7 against an expected 21.9. Both defenses have underperformed\u2014Detroit allowing 28.7 against an expected 24.7, Green Bay giving up 23.5 against an expected 22.1\u2014but it's the gap between the offenses that shapes this one.",
+    "The game turns on whether Detroit can exploit late-half situations, where their offense is better than Green Bay's defense by 0.31 on late-half scoring drives and by 0.342 on two-minute EPA. The total sits at 55.5, and in 88 past games priced like this one, 64.8% finished within one score while 34.1% were shootouts and 36.4% were grinds. The betting public has pushed the total up from its 52.5 opening, with 77.1% of tickets now on the over.",
+    "Green Bay's ground game will be script-dependent: if they fall behind by much\u2014an 18.2% chance according to the model\u2014Josh Jacobs' workload could shrink, and he's already projected for just 24.3 rushing yards against a line of 37.5. Jordan Love is projected for 271.5 passing yards, slightly above his 269.5 line, but the Packers' offense ranks worse than Detroit's defense by 11.3 on plays per game. Matt LaFleur's team has covered just twice in its last 10 games.",
+    "Jared Goff is projected for 287.4 passing yards, just under his 289.5 line, but he has the weapons to control this game. Amon-Ra St. Brown is projected for 79.6 receiving yards on 6.8 receptions, Sam LaPorta for 55.1 yards on 4.9 catches, and Jahmyr Gibbs for 76.8 rushing yards. All three are projected slightly above their posted lines, and if Detroit's offense clicks the way it has over the last 10 games, the Lions should have enough to hold the division edge at home."
    ],
    "scoreline": {
     "away": "GB",
-    "away_pts": 26.0,
+    "away_pts": 25.8,
     "home": "DET",
-    "home_pts": 29.5,
+    "home_pts": 29.8,
     "lead": "DET",
-    "spread": -3.5,
+    "spread": -4.0,
     "total": 55.5
    },
    "written": true
@@ -908,36 +908,36 @@
   },
   "KC_SEA": {
    "paras": [
-    "Seattle comes in as the favorite by 3.0 points in a game where both defenses have outperformed expectations lately. The Seahawks have scored 26.2 a game over their last 10, above the 24.1 the market expected of their offense, while holding opponents to 17.1 against an expected 19.7. Kansas City has struggled more on offense, scoring 19.7 against an expected 22.6, though their defense has also been stout at 17.9 allowed versus a 19.2 benchmark. The book has set the total at 42.5, but the model on its own would price it at 48.9, suggesting the market is expecting something lower-scoring than the underlying numbers imply.",
-    "The Chiefs' offense holds edges in plays per game by 1.5 and EPA per play by 0.29 against Seattle's defense, but those advantages haven't translated to points recently. Kansas City has gone under the total in 8 of their last 10 games, a stretch where they covered just 4 times while going 5 and 5 straight up. In 503 past games priced like this one, the underdog won outright 39.6% of the time and 61.8% finished within one score, so this figures to stay competitive even if it doesn't flip.",
-    "Sam Darnold is projected for 233.9 passing yards against a line of 233.5, with Jaxon Smith-Njigba expected to haul in 74.3 receiving yards and Cooper Kupp sitting well above his posted number at 46.8 yards against 24.5. Patrick Mahomes checks in at 237.9 passing yards against 238.5, just beneath his line, while Travis Kelce is projected for 53.8 receiving yards and 4.9 receptions. Kenneth Walker III is expected to carry the Seattle ground game at 71.7 rushing yards against 70.5.",
-    "The Seahawks are coming off both an overtime game and a Thursday game, patterns that have produced records of 147-171 and 199-174 respectively but don't clear break-even at the lower bounds of their intervals. More relevant is that both defenses have been playing well, and Seattle's two-minute offense is worse than Kansas City's defense by 0.475 in EPA, which could matter late if this stays within one score as most games at this price have. Darnold has never beaten this opponent, a pattern that has gone 117-134, and facing Mahomes in prime time rarely gets easier with time."
+    "Seattle comes in as the favorite by 3.0 points in a game where both defenses have been outperforming expectations lately. The Seahawks have scored 26.2 a game over their last 10, above the 24.1 the market asked of their offense, while allowing just 17.1 against an expected 19.7. Kansas City has struggled more on the offensive side, scoring 19.7 against an expected 22.6, though its defense has also played better than asked, allowing 17.9 against an expected 19.2. The adjusted number has this one at 23.0 to 20.0, with a total of 43.0.",
+    "Kansas City's offense holds an edge on EPA per play, better than Seattle's defense by 0.29, and the Chiefs also generate 1.5 more plays per game than the Seahawks' defense typically faces. But Patrick Mahomes is projected for 237.9 passing yards against a line of 238.5, suggesting a workmanlike effort rather than a shootout performance. The model's own unadjusted view would set the total at 48.9, higher-scoring than the book's 43.0, but the adjusted number reflects a tighter contest. In 544 past games priced like this one, 61.6% finished within one score.",
+    "Seattle's passing attack should distribute the ball effectively, with Sam Darnold projected for 233.9 yards against a line of 233.5. Jaxon Smith-Njigba is projected for 74.3 receiving yards, just above his line of 73.5, while Cooper Kupp's projection of 46.8 sits well above his posted 25.5. Kenneth Walker III is expected to handle the ground game at 71.7 rushing yards against a line of 70.5. For Kansas City, Travis Kelce remains the focal point with a projection of 53.8 receiving yards and 4.9 receptions, the latter above his line of 4.5.",
+    "The Seahawks are coming off both an overtime game and a Thursday game, patterns that have produced records of 46.2% and 53.4% respectively in past instances, though neither clears break-even at the lower bound. Darnold has never beaten this opponent, a pattern that has gone 46.6% in previous graded games. Andy Reid has won 72.0% across 181 games coaching Kansas City, while Mike Macdonald has won 67.5% across 38 with Seattle, though neither coach's spread record beats the bookmaker's cut by itself. This figures to be a close game between two well-coached sides whose defenses have been the steadier units."
    ],
    "scoreline": {
     "away": "KC",
-    "away_pts": 19.8,
+    "away_pts": 20.0,
     "home": "SEA",
-    "home_pts": 22.8,
+    "home_pts": 23.0,
     "lead": "SEA",
     "spread": -3.0,
-    "total": 42.5
+    "total": 43.0
    },
    "written": true
   },
   "LA_LV": {
    "paras": [
-    "Los Angeles travels to Las Vegas as a 3.0-point favorite in a game the model projects at 25.8 to 22.8. The Rams have underperformed on both sides lately, scoring 25.3 per game over their last ten against an expected 26.5 while allowing 23.7 against an expected 21.2. Las Vegas has gotten more from its offense than the market anticipated, scoring 20.7 against an expected 18.7, but the defense has struggled just as much, allowing 26.2 against an expected 24.1. Both teams are dealing with defenses playing worse than expectation, which sets up a game where possessions matter and neither side can count on stops.",
-    "The spread opened at 5.5 and has fallen to 3.5, with 63.7% of tickets backing the Raiders despite the Rams drawing more action than they started with. In past games priced like this one, 53.9% finished within one score, and the visiting favorite won outright just 37.1% of the time. Sean McVay has covered 55.0% across 151 games, a record that does not beat the bookmaker's cut by itself. This looks like the kind of afternoon where the underdog hangs around, both defenses bend, and field position becomes the difference.",
-    "Where the game turns is likely to be the Rams' ability to move the ball late. On two-minute EPA, Los Angeles holds an edge of 0.268 over the Las Vegas defense, and on two-minute success rate the advantage is 0.183. The Raiders carry script dependencies that hurt them if they fall behind: in the lost big case, the running back's rush drops about 27.3% and the quarterback's passing yards fall about 22.4%, with that case carrying a 21.6% chance. If the Rams can get a lead and force Kirk Cousins to chase, the structure tips their way.",
-    "Matthew Stafford is projected for 268.3 passing yards against a line of 267.5, just above it, while Cousins sits at 250.1 against 250.5. Kyren Williams is projected for 65.6 rushing yards against 65.5, and Blake Corum for 26.8 against 25.5, suggesting the Rams lean on the ground to control tempo. For Las Vegas, Brock Bowers is projected for 62.6 receiving yards against 61.5 and Ashton Jeanty for 51.0 rushing yards against 50.5. The game hinges on whether Stafford can protect the ball and whether Bowers can win enough underneath to keep the Raiders in rhythm when they need it most."
+    "The Rams travel to Las Vegas as 3.5-point favorites in a game projected to settle around 26.0 to 22.5. Los Angeles has underperformed offensively over its last 10 games, scoring 25.3 per outing against an expected 25.5, while its defense has been the bigger concern at 23.7 allowed against an expected 21.2. The Raiders have actually exceeded offensive expectations in that same stretch, putting up 20.7 against an expected 18.7, though their defense has also leaked points at 26.2 against an expected 24.1. Both sides have struggled to keep opponents in check, which helps explain why the over has landed six times in the last 10 for each team.",
+    "Sean McVay brings a Rams offense that holds edges in two-minute situations, better than Las Vegas by 0.268 in EPA and 0.183 in success rate. Matthew Stafford is projected for 268.3 passing yards against a line of 267.5, suggesting the aerial attack will carry the load. The Raiders counter with Kirk Cousins, projected just below his line at 250.1 yards, and their offensive rhythm is fragile when they fall behind\u2014the quarterback's yardage drops about 22.4% in blowouts, a scenario with a 21.7% chance of unfolding. In 309 past games priced like this one, 53.7% finished within one score, so this figures to stay competitive into the fourth quarter.",
+    "The line has moved significantly, opening at 5.5 and dropping to 3.5, while 63.7% of tickets have backed the Raiders despite the shift. That suggests the market sees this closer than it first appeared. Las Vegas is coming off three straight losses, a pattern that has gone 393-361 in similar spots, though that record does not clear break-even. The Rams covered just three times in their last 10, while the Raiders went 7-3 against the spread in that span, a contrast that reflects Los Angeles underperforming its market expectations and Las Vegas exceeding theirs, at least relative to what was asked.",
+    "Kyren Williams is projected right at his rushing line of 65.5 yards, with backup Blake Corum expected to chip in 26.8 against a 25.5 mark, giving the Rams a two-headed ground attack. For Las Vegas, rookie Ashton Jeanty is projected for 51.0 yards against 50.5, while Brock Bowers\u2014the tight end centerpiece\u2014is expected to reach 62.6 receiving yards and 5.3 catches, both hovering near his posted lines. Puka Nacua draws a tougher matchup, projected at 75.2 yards against 83.5, and 6.7 receptions against 7.5. The game turns on whether the Raiders can keep pace when the Rams push tempo, and whether Cousins has enough weapons operating at full capacity to answer."
    ],
    "scoreline": {
     "away": "LA",
-    "away_pts": 25.8,
+    "away_pts": 26.0,
     "home": "LV",
-    "home_pts": 22.8,
+    "home_pts": 22.5,
     "lead": "LA",
-    "spread": 3.0,
+    "spread": 3.5,
     "total": 48.5
    },
    "written": true
