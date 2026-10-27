@@ -1241,17 +1241,17 @@
   },
   "DAL_PHI": {
    "blend": {
-    "spread": 4.5,
-    "total": 44.0,
-    "total_centered": 44.0,
-    "win_home": 0.3283
+    "spread": 4.0,
+    "total": 43.5,
+    "total_centered": 43.5,
+    "win_home": 0.3446
    },
-   "model_away": 23.1,
-   "model_home": 21.3,
-   "model_spread": 1.8,
-   "model_total": 44.3,
-   "model_total_centered": 44.0,
-   "model_win_home": 0.4688,
+   "model_away": 24.2,
+   "model_home": 19.3,
+   "model_spread": 4.9,
+   "model_total": 43.6,
+   "model_total_centered": 43.5,
+   "model_win_home": 0.4051,
    "model_win_n": 1865
   },
   "DEN_ARI": {

@@ -836,21 +836,21 @@
   },
   "DAL_PHI": {
    "paras": [
-    "The book makes DAL favored by 4.5 on a total of 44.0. Our own number is DAL 24.2, PHI 19.8.",
-    "In 435 games priced like this one, PHI won outright 37.2% of the time and 51.3% finished within one score. 27.8% turned into shootouts against 36.8% that became grinds. Those are the games that have happened, not a forecast of this one.",
-    "DAL did not practice KaVontae Turpin (WR), Dee Winters (LB), Drew Shelton (T); PHI did not practice DeVonta Smith (WR), Dontayvion Wicks (WR), Michael Carter II (CB).",
-    "DAL has scored 24.1 a game over its last 10 against an expected 26.6, and allowed 28.4 against an expected 23.6."
+    "Dallas arrives favored by 4.0 points in a division game that carries the shape of games priced like this before: in 420 comparable past matchups, 51.7% finished within one score and the underdog won outright 39.5% of the time. Both offenses have fallen short of market expectations over their last ten games, with Philadelphia scoring 18.4 per game against an expected 21.8 and Dallas posting 24.1 against an expected 26.6. The defenses have struggled too, each allowing more than asked. Our adjusted number has it at 23.8 to 19.8, tracking the total of 43.5 and the 4.0-point margin.",
+    "The game turns on whether Dallas can keep Philadelphia from dictating tempo early. Philadelphia's offense is worse than Dallas's defense by 0.298 on EPA per play, but it flips in two-minute situations where the Eagles are better by 0.291. Dallas's offense is worse than Philadelphia's defense by 4.2 on plays per game, suggesting possessions will matter. Philadelphia's running back rush and quarterback passing yards are both script-dependent, falling about 27.4% and 22.3% lower respectively in the lost big case, which has roughly a 21.9% chance of happening. If the Eagles fall behind, the offense narrows.",
+    "Neither coaching record clears the bookmaker's cut on its own: Brian Schottenheimer has won 39.1% and covered 40.9% across 22 games, while Nick Sirianni has won 67.0% and covered 51.1% across 88. Dallas has covered just twice and lost seven times in its last ten games, while Philadelphia has covered three times with four wins against six losses. The line opened at 5.5 and has moved down to 4.5, with 67.5% of tickets now on Dallas, up from 63.4% at the open.",
+    "Dak Prescott is projected for 257.0 passing yards, just below his line of 259.5, with CeeDee Lamb projected for 76.5 receiving yards and 5.7 receptions, both under his posted numbers. George Pickens is projected for 69.3 receiving yards, slightly above his line of 68.5. Tanner McKee is projected for 222.0 passing yards against a line of 223.5, while Saquon Barkley is projected for 39.5 rushing yards, well below his line of 55.5. DeVonta Smith, listed out with a hamstring injury, is projected for 50.0 receiving yards against a line of 67.5. Dameon Pierce is projected for 28.7 rushing yards, above his line of 19.5."
    ],
    "scoreline": {
     "away": "DAL",
-    "away_pts": 24.2,
+    "away_pts": 23.8,
     "home": "PHI",
     "home_pts": 19.8,
     "lead": "DAL",
-    "spread": 4.5,
-    "total": 44.0
+    "spread": 4.0,
+    "total": 43.5
    },
-   "written": false
+   "written": true
   },
   "DEN_ARI": {
    "paras": [
