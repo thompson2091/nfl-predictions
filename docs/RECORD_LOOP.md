@@ -174,15 +174,19 @@ player-game, nearest the player's median line) show why:
 - Calibrating does not turn the whole book profitable at −110-type prices;
   it changes which picks are worth taking.
 
-**Candidate change for the week-9 promotion:** a per-market calibration
-layer on the over/under models, fitted walk-forward on past seasons, with
-the Gaps margins and the confidence band re-derived on the calibrated
-probabilities. Judge it on 2025 held out, then on its own version of the
-forward record, CLV first.
+**Shipped 2026-10-20** in `2026.10.20-model-batch` (deploy `20261020.v4`):
+`src/models/ou_calibration.py` maps each market's raw probability through
+`expit(a + b * logit(p))`, fitted on 2024 and served on 2024–25. The blends
+and Gaps margins were refit on the calibrated number, and the backtests now
+label a player who played and recorded nothing. Week 7 is the first week
+on the calibrated versions; judge it on those versions, CLV first.
 
-Caution: These backtests leave out a player who played and recorded
-nothing, which flatters overs by up to about 5 points. Fix that before
-reading any per-$100 figure from them as final.
+Important: The confidence band was not re-derived. "Our model, 75%+ sure"
+still cuts at 0.75, a cut measured on the raw probability, and the
+calibrated one rarely reaches it: on the 2025 backtest the share at 0.75 or
+more fell from 4.9% to 0.35% on receiving yards and from 9.1% to 0% on
+rushing yards. The rule has recorded no bets on a calibrated version.
+Re-deriving the cut makes it a new rule, under its own name.
 
 ### Unders beat overs
 
