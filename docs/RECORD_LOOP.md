@@ -96,7 +96,8 @@ the first week that can test it.
 | Our model, 75%+ band, calibrated | The same band as 75%+ sure, carried to the calibrated scale: each market's cut is 0.75 and 0.25 through its calibration | Week 9 | 2025: +$10.00 per $100 [+2.41, +17.59]; 2024: +$1.45 [−6.49, +9.39] |
 
 A rule found on the weeks that grade it would be grading its own fit. So the
-unders rule counts only from week 6, the first week after it was found.
+unders rule counts only from week 5, the first week after the weeks it was
+read off (2–4).
 
 Important: Changing a rule's cut or threshold creates a new rule. Give it a
 new name and leave the old one in place, so the old rule's record stays
