@@ -89,6 +89,14 @@ if feat.exists():
     built = (pl.scan_parquet(feat)
              .filter((pl.col("season") == season) & (pl.col("week") == week))
              .select(pl.len()).collect().item())
+# FEATURE ROWS ARE NOT A BOARD. The Sunday wrap runs the same chain through
+# features, so once the rosters are up it fills the week's rows without
+# predicting it. On 2026-10-27 the rollover's ingest broke on a dropped
+# download, the wrap built week 8's rows an hour later, and every slot after
+# that called week 8 built with no predictions behind it.
+pred = get_path("output", "anytime_td") / f"predictions_{season}_week{week}.csv"
+if not pred.exists():
+    built = 0
 
 print(f"{season} {week} {built}")
 PYEOF
@@ -148,8 +156,10 @@ DATE=$(date +%F)
 run() {
     local name="$1"; shift
     say "  -> $name"
-    if ! "$@" > "$LOG_DIR/${name}_${DATE}.log" 2>&1; then
-        say "     FAILED (exit $?) — see $LOG_DIR/${name}_${DATE}.log"
+    "$@" > "$LOG_DIR/${name}_${DATE}.log" 2>&1
+    local rc=$?
+    if [ $rc -ne 0 ]; then
+        say "     FAILED (exit $rc) — see $LOG_DIR/${name}_${DATE}.log"
         return 1
     fi
 }
