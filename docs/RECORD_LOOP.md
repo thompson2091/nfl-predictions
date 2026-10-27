@@ -83,7 +83,7 @@ own bets. Recovered boards predate the stamp and form their own population.
 
 ## The rules being tracked
 
-The forward record grades four rules on the over/under markets. Each is
+The forward record grades five rules on the over/under markets. Each is
 defined in `src/evaluation/tracked_rules.py`, with where it came from and
 the first week that can test it.
 
@@ -92,7 +92,8 @@ the first week that can test it.
 | Our model | The unblended model's side on every priced line | Week 2 | The baseline |
 | Gaps | Where the blended number beats the book's fair price by a fitted margin | Week 2 | Margins fitted on 2024–25 |
 | Our model, 75%+ sure | Our model's side where it is at least 75% sure | Week 2 | Top band of a 2024–25 measurement |
-| Our model's unders, catches and rushing | Our model's unders on those two markets | Week 6 | Read off weeks 2–4 of 2026 |
+| Our model's unders, catches and rushing | Our model's unders on those two markets | Week 5 | Read off weeks 2–4 of 2026 |
+| Our model, 75%+ band, calibrated | The same band as 75%+ sure, carried to the calibrated scale: each market's cut is 0.75 and 0.25 through its calibration | Week 9 | 2025: +$10.00 per $100 [+2.41, +17.59]; 2024: +$1.45 [−6.49, +9.39] |
 
 A rule found on the weeks that grade it would be grading its own fit. So the
 unders rule counts only from week 6, the first week after it was found.
@@ -186,7 +187,9 @@ still cuts at 0.75, a cut measured on the raw probability, and the
 calibrated one rarely reaches it: on the 2025 backtest the share at 0.75 or
 more fell from 4.9% to 0.35% on receiving yards and from 9.1% to 0% on
 rushing yards. The rule has recorded no bets on a calibrated version.
-Re-deriving the cut makes it a new rule, under its own name.
+On 2026-10-27 the band was registered again on the calibrated scale, as
+"Our model, 75%+ band, calibrated", counting from week 9. The old rule
+stays, so its record still reads on its own.
 
 ### Unders beat overs
 

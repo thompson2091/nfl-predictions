@@ -34,6 +34,7 @@ RULES: tuple[tuple[str, str], ...] = (
     ("model side", "Our model"),
     ("prop edge over threshold", "Gaps"),
     ("model confident", "Our model, 75%+ sure"),
+    ("model confident, calibrated", "Our model, 75%+ band, calibrated"),
     ("model under", "Our model's unders, catches and rushing"),
 )
 
@@ -44,7 +45,8 @@ RULES: tuple[tuple[str, str], ...] = (
 #: dropped the one week that pulls its interval across zero (audit
 #: 2026-10-19: week 6 alone +0.49 [+0.16, +0.82]; with week 5 +0.21
 #: [-0.04, +0.46]).
-SINCE = {"model confident": 2, "model under": 5}
+SINCE = {"model confident": 2, "model under": 5,
+         "model confident, calibrated": 9}
 UNDER_MARKETS = ("receptions", "rushing_yards")
 
 #: The stat each market settles against, in `weekly_stats`.
@@ -70,8 +72,12 @@ def _picks_from_boards(season: int) -> list[dict]:
     """
     import statistics
 
+    from src.evaluation.tracked_rules import RULES as TRACKED
+    from src.evaluation.tracked_rules import confident_calibrated
     from src.export import prediction_freeze as PF
 
+    # The calibrated band's cuts live once, in `tracked_rules`.
+    cal_rules = {r["market"]: r for r in TRACKED if r.get("kind") == "model_conf_cal"}
     out = []
     for wk, markets in PF.load(int(season)).items():
         for market, games in (markets or {}).items():
@@ -106,6 +112,11 @@ def _picks_from_boards(season: int) -> list[dict]:
                         if (m is not None and max(m, 1 - m) >= 0.75
                                 and int(wk) >= SINCE["model confident"]):
                             out.append(dict(pick, rule="model confident"))
+                        cal = cal_rules.get(market)
+                        if (m is not None and cal is not None
+                                and confident_calibrated(m, cal)
+                                and int(wk) >= SINCE["model confident, calibrated"]):
+                            out.append(dict(pick, rule="model confident, calibrated"))
                         if (ms == "under" and market in UNDER_MARKETS
                                 and int(wk) >= SINCE["model under"]):
                             out.append(dict(pick, rule="model under"))

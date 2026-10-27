@@ -308,6 +308,7 @@ def test_a_tracked_rule_carries_where_it_came_from():
         shape = (("min_book_pct", "max_book_pct", "max_ratio")
                  if r.get("kind") == "lay"
                  else ("threshold_pp",) if r.get("kind") == "prop_edge"
+                 else ("min_over", "max_under") if r.get("kind") == "model_conf_cal"
                  else () if r.get("kind") in ("model_side", "model_conf",
                                               "model_under")
                  else ("min_odds", "max_odds", "min_edge_pp"))
@@ -630,6 +631,15 @@ TRACKED_RULE_DEFINITIONS = {
     ("model confident", "receiving_yards"): {"kind": "model_conf", "min_conf": 0.75},
     ("model confident", "rushing_yards"): {"kind": "model_conf", "min_conf": 0.75},
     ("model confident", "passing_yards"): {"kind": "model_conf", "min_conf": 0.75},
+    # The same band on the calibrated scale, registered 2026-10-27.
+    ("model confident, calibrated", "receptions"):
+        {"kind": "model_conf_cal", "min_over": 0.6449, "max_under": 0.3410},
+    ("model confident, calibrated", "receiving_yards"):
+        {"kind": "model_conf_cal", "min_over": 0.6098, "max_under": 0.3668},
+    ("model confident, calibrated", "rushing_yards"):
+        {"kind": "model_conf_cal", "min_over": 0.5494, "max_under": 0.4280},
+    ("model confident, calibrated", "passing_yards"):
+        {"kind": "model_conf_cal", "min_over": 0.6344, "max_under": 0.3412},
     ("model under", "receptions"): {"kind": "model_under"},
     ("model under", "rushing_yards"): {"kind": "model_under"},
 }
@@ -715,3 +725,25 @@ def test_the_picks_file_header_matches_the_columns_that_write_it():
     assert header == list(COLUMNS), (
         f"the file's header is {header} but `record` writes {list(COLUMNS)} "
         f"— migrate the file before changing COLUMNS")
+
+
+def test_the_calibrated_band_is_the_raw_band_through_the_served_calibration():
+    """`model confident, calibrated` exists because the 0.75 cut was measured
+    on the raw number and the boards serve the calibrated one. Its cuts are
+    0.75 and 0.25 through each market's calibration of 2026-10-20, frozen in
+    the rule. A refit that moves the served calibration does not move them;
+    this says so loudly instead, because from then on the frozen cuts and the
+    served scale describe different populations."""
+    import numpy as np
+
+    from src.evaluation.tracked_rules import RULES, confident_calibrated
+    from src.models import ou_calibration as OC
+
+    for r in (r for r in RULES if r.get("kind") == "model_conf_cal"):
+        cal = OC.load(r["market"])
+        hi, lo = OC.apply(np.array([0.75, 0.25]), cal)
+        assert (r["min_over"], r["max_under"]) == pytest.approx((hi, lo), abs=1e-4), (
+            f"{r['market']}: the served calibration moved since the cuts were "
+            f"frozen; register a new rule rather than editing these")
+        assert confident_calibrated(hi + 1e-4, r) and confident_calibrated(lo - 1e-4, r)
+        assert not confident_calibrated(0.5, r)

@@ -223,6 +223,43 @@ RULES = (
     }
     for mkt in PER_GAME_MARKETS
 ) + tuple(
+    # ── THE SAME BAND ON THE CALIBRATED SCALE, registered 2026-10-27 ─────
+    #
+    # "model confident" was measured on the raw probability. From week 7 the
+    # boards serve the calibrated one (`models.ou_calibration`, 2026-10-20),
+    # which almost never reaches 0.75: on the 2025 backtest the share fell
+    # from 4.9% to 0.35% on receiving yards and from 9.1% to 0% on rushing.
+    # The rule went silent rather than failing. The calibration is monotone
+    # per market, so raw >= 0.75 is calibrated >= f(0.75) and raw <= 0.25 is
+    # calibrated <= f(0.25): the cuts below are those two numbers through the
+    # served calibration of 2026-10-20, frozen here so a refit cannot move
+    # them under the record. Not asymmetric by choice — `a` is not zero.
+    {
+        "name": "model confident, calibrated",
+        "market": mkt,
+        "kind": "model_conf_cal",
+        "min_over": cut[0],
+        "max_under": cut[1],
+        "since": 9,
+        "status": "unproven — the 2024-25 band carried to the calibrated "
+                  "scale, recorded forward",
+        "found": "cuts are f(0.75) and f(0.25) through the served "
+                 "calibration fitted 2026-10-20 on 2024-25. Measured "
+                 "2026-10-27 through `confidence.legs` (the Record's own "
+                 "chain): 2025 +10.00 per $100 [+2.41, +17.59] over 563 "
+                 "bets, 2024 +1.45 [-6.49, +9.39] over 533, against the "
+                 "whole book's -1.99 and -2.91. The old 0.75 cut on the "
+                 "calibrated number keeps 49-53 bets a season",
+        "control": "nothing on 2026 chose the cuts; week 9 is the first "
+                   "week after registration",
+        "out_of_sample": "starts week 9 of 2026",
+        "expected_per_week": 25,
+    }
+    for mkt, cut in (("receptions", (0.6449, 0.3410)),
+                     ("receiving_yards", (0.6098, 0.3668)),
+                     ("rushing_yards", (0.5494, 0.4280)),
+                     ("passing_yards", (0.6344, 0.3412)))
+) + tuple(
     {
         "name": "model under",
         "market": mkt,
@@ -240,6 +277,12 @@ RULES = (
     }
     for mkt in ("receptions", "rushing_yards")
 )
+
+
+def confident_calibrated(p: float, rule: dict) -> bool:
+    """Inside the calibrated band: over at `min_over` or more, under at
+    `max_under` or less."""
+    return p >= rule["min_over"] or p <= rule["max_under"]
 
 
 def rules_for(target_type: str) -> list[dict]:

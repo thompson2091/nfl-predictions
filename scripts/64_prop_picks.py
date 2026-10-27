@@ -38,7 +38,7 @@ sys.path.insert(0, ".")
 
 from src.evaluation.prop_edge import qualifying                  # noqa: E402
 from src.evaluation.tracked_rules import (PICKS_PATH, record,    # noqa: E402
-                                          rules_for)
+                                          confident_calibrated, rules_for)
 from src.evaluation.week_history import ou_week                  # noqa: E402
 
 MARKETS = ("receptions", "receiving_yards", "rushing_yards", "passing_yards")
@@ -166,11 +166,13 @@ def main() -> int:
             total += n
             print(f"  {market}: model side on {len(base)} lines, "
                   f"{n} newly recorded")
-            # THE TWO SELECTION RULES are subsets of the model's own side,
+            # THE SELECTION RULES are subsets of the model's own side,
             # recorded under their own names so each has its own record.
             for kind, keep in (
                     ("model_conf", lambda p, r: max(p["model"], 1 - p["model"])
                      >= r["min_conf"]),
+                    ("model_conf_cal",
+                     lambda p, r: confident_calibrated(p["model"], r)),
                     ("model_under", lambda p, r: p["side"] == "under")):
                 rule = _rule(market, kind)
                 if not rule:
